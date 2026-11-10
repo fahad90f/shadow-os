@@ -1,0 +1,41 @@
+#!/usr/bin/make -f
+# NEXUS OS packaging. One source package builds every NEXUS component:
+#   dpkg-buildpackage -A   → architecture-independent packages (no compiler run)
+#   dpkg-buildpackage -B   → compiled packages for the build architecture
+#   dpkg-buildpackage -b   → both
+# Normally invoked through build/packages/build.sh inside the build chroot.
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export QT_QPA_PLATFORM = offscreen
+
+GEN := debian/generated
+
+%:
+	dh $@ --buildsystem=cmake+ninja
+
+# ---- compiled components (CMake) — architecture-dependent builds only -------
+override_dh_auto_configure-arch:
+	dh_auto_configure -- -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+override_dh_auto_test-arch:
+	@echo "GUI smoke tests run from tests/desktop/smoke.sh, not during package build"
+
+# ---- architecture-independent packages: nothing to compile ------------------
+override_dh_auto_configure-indep override_dh_auto_install-indep override_dh_auto_test-indep:
+	@true
+
+override_dh_auto_build-indep:
+	mkdir -p $(GEN)
+	scripts/gen-identity.sh $(GEN)
+	scripts/gen-apt-source.sh $(GEN)
+	python3 -m py_compile system/installer/engine/nexus_installer/*.py
+	find system/installer/engine -name __pycache__ -prune -exec rm -rf {} +
+	python3 tests/installation/test_plan.py
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -rf $(GEN)
+
+# The dpkg trigger of nexus-boot must not make package installation wait.
+override_dh_installdeb:
+	dh_installdeb

@@ -1,0 +1,4 @@
+# Re-install the boot loader when the signed GRUB/shim binaries or the GRUB
+# modules they are installed from change.
+interest-noawait /usr/lib/grub
+interest-noawait /usr/lib/shim

@@ -52,24 +52,6 @@ EOF
           "$MERGED/etc/apt/keyrings/nexus-image-build.gpg"
 fi
 
-# ---- on-media package pool (bootloader front-ends for the installer) --------
-POOL_LIST="$NEXUS_ROOT/build/iso/pool.list"
-if [ -f "$POOL_LIST" ]; then
-    mapfile -t POOL_PKGS < <(awk -v arch="$ARCH" '
-        { sub(/#.*/, "") } NF == 0 { next }
-        { pkg = $1
-          if (match($0, /\[[^]]*\]/)) { spec = substr($0, RSTART+1, RLENGTH-2); n = split(spec, a, /[ \t]+/); ok = 0
-              for (i = 1; i <= n; i++) if (a[i] == arch) ok = 1; if (!ok) next }
-          print pkg }' "$POOL_LIST")
-    if [ "${#POOL_PKGS[@]}" -gt 0 ]; then
-        log "downloading installer pool: ${POOL_PKGS[*]}"
-        mkdir -p "$STAGING/pool"
-        run --bind "$STAGING/pool:/run/nexus-pool" -- /bin/sh -ec \
-            'cd /run/nexus-pool && apt-get -q download "$@"' sh "${POOL_PKGS[@]}"
-        (cd "$STAGING/pool" && sha256sum -- *.deb > SHA256SUMS)
-    fi
-fi
-
 # ---- static rootfs overlay ---------------------------------------------------
 if [ -d "$NEXUS_ROOT/distro/base/rootfs" ]; then
     log "applying rootfs overlay"

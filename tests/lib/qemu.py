@@ -420,6 +420,11 @@ class VM:
         self.sendline("sudo -n systemctl poweroff")
         return self.wait_for_exit(timeout)
 
+    def shell_poweroff_as(self, password: str, timeout: float = 240) -> bool:
+        """Power off an installed system, where sudo asks for the user's password."""
+        self.sendline(f"echo '{password}' | sudo -S -p '' systemctl poweroff")
+        return self.wait_for_exit(timeout)
+
     def sudo(self, command: str, timeout: float = 300, *, check: bool = True) -> tuple[int, str]:
         quoted = command.replace("'", "'\"'\"'")
         return self.run(f"sudo -n sh -c '{quoted}'", timeout, check=check)

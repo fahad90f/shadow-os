@@ -1,0 +1,4 @@
+debian/generated/os-release usr/lib
+debian/generated/issue etc
+debian/generated/issue.net etc
+debian/generated/nexus-release usr/share/nexus

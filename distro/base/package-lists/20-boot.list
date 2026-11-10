@@ -1,7 +1,7 @@
 # Boot chain. The *-bin and *-signed packages only ship files under /usr/lib;
-# nothing here writes to a disk at package-install time. The installer runs
-# grub-install explicitly and then installs the matching grub-efi-*/grub-pc
-# front-end package from the on-media pool (build/iso/pool.list).
+# nothing here writes to a disk at package-install time. Installing GRUB to a
+# disk and keeping it current afterwards is the job of the nexus-boot package
+# (system/boot/nexus-boot), which replaces Debian's grub-pc/grub-efi-* front-ends.
 
 grub-common
 grub2-common

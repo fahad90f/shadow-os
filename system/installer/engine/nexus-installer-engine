@@ -1,0 +1,11 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""NEXUS OS installer engine (see nexus_installer/__init__.py)."""
+import sys
+
+sys.path.insert(0, "/usr/lib/nexus-installer")
+sys.dont_write_bytecode = True
+
+from nexus_installer.__main__ import main  # noqa: E402
+
+sys.exit(main())

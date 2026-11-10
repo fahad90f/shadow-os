@@ -1,8 +1,0 @@
-# Packages placed in /pool on the install media (not installed in the live
-# system). The live image carries the GRUB *-bin payloads for every firmware
-# type; exactly one of these mutually-exclusive front-end packages is installed
-# into the target by the installer once it knows how the machine boots, so
-# that future GRUB security updates re-install the boot loader correctly.
-grub-efi-amd64 [amd64]
-grub-pc [amd64]
-grub-efi-arm64 [arm64]

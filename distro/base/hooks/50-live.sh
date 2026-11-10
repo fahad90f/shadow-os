@@ -1,13 +1,5 @@
-# Live-session defaults consumed by live-config at boot.
-mkdir -p /etc/live/config.conf.d
-cat > /etc/live/config.conf.d/nexus.conf <<CONF
-# NEXUS OS live session defaults (override on the kernel command line with
-# live-config.username=..., live-config.hostname=..., etc.)
-LIVE_USERNAME="nexus"
-LIVE_USER_FULLNAME="NEXUS Live Session"
-LIVE_HOSTNAME="nexus"
-LIVE_USER_DEFAULT_GROUPS="audio cdrom dip floppy video plugdev netdev bluetooth lpadmin sudo wireshark kvm"
-CONF
+# Image-level adjustments for the live medium (session defaults themselves
+# come from the nexus-live package).
 
 # The root account has no password; administration goes through sudo/polkit.
 passwd -l root >/dev/null

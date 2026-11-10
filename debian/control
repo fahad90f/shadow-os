@@ -1,0 +1,130 @@
+Source: nexus-os
+Section: misc
+Priority: optional
+Maintainer: NEXUS OS Developers <nexus-os@users.noreply.github.com>
+Rules-Requires-Root: no
+Standards-Version: 4.7.2
+Homepage: https://github.com/fahad90fa/Custom-OS
+Build-Depends:
+ debhelper-compat (= 13),
+ python3
+Build-Depends-Arch:
+ cmake (>= 3.25),
+ ninja-build,
+ pkg-config,
+ extra-cmake-modules,
+ librsvg2-bin,
+ qt6-base-dev (>= 6.8),
+ qt6-base-private-dev,
+ qt6-declarative-dev,
+ qt6-declarative-private-dev,
+ qt6-svg-dev,
+ qt6-wayland-dev,
+ qt6-wayland-private-dev,
+ qt6-tools-dev,
+ qml6-module-qtquick,
+ qml6-module-qtquick-controls,
+ qml6-module-qtquick-layouts,
+ qml6-module-qtquick-window,
+ qml6-module-qtquick-templates,
+ qml6-module-qtquick-effects,
+ qml6-module-qtquick-dialogs,
+ qml6-module-qtquick-shapes,
+ qml6-module-qtqml-models,
+ qml6-module-qtqml-workerscript,
+ qml6-module-qtcore,
+ libwayland-dev,
+ wayland-protocols,
+ plasma-wayland-protocols,
+ liblayershellqtinterface-dev,
+ libkdecorations3-dev,
+ libxkbcommon-dev,
+ libkf6windowsystem-dev,
+ libkf6globalaccel-dev,
+ libkf6idletime-dev,
+ libkf6config-dev,
+ libkf6coreaddons-dev,
+ libkf6service-dev,
+ libkf6kio-dev,
+ libkf6solid-dev,
+ libkf6syntaxhighlighting-dev,
+ libkf6archive-dev,
+ libkf6bluezqt-dev,
+ libkf6pulseaudioqt-dev,
+ libpolkit-qt6-1-dev,
+ libpackagekitqt6-dev,
+ libappstreamqt-dev,
+ libqtermwidget-dev,
+ libpam0g-dev,
+ libudev-dev
+
+Package: nexus-base-files
+Architecture: all
+Multi-Arch: foreign
+Depends: ${misc:Depends}, base-files
+Description: NEXUS OS identity and base system files
+ Identifies the installed system as NEXUS OS: os-release, login banners and
+ the distribution description used by system tools and the NEXUS desktop.
+ .
+ The files Debian's base-files package owns are diverted rather than
+ replaced, so Debian point-release updates of base-files keep applying
+ cleanly.
+
+Package: nexus-boot
+Architecture: all
+Depends: ${misc:Depends},
+ grub-common, grub2-common, efibootmgr, os-prober, mokutil,
+ shim-signed,
+ grub-efi-amd64-signed | grub-efi-arm64-signed,
+ grub-efi-amd64-bin | grub-efi-arm64-bin
+Recommends: grub-pc-bin
+Conflicts: grub-pc, grub-efi-amd64, grub-efi-arm64, grub-efi-ia32, grub-coreboot, grub-ieee1275, grub-xen
+Description: NEXUS OS boot loader management
+ Keeps the GRUB boot loader of an installed NEXUS OS system current.
+ .
+ NEXUS OS starts through Debian's Microsoft-signed shim and Debian-signed
+ GRUB so that UEFI Secure Boot works without enrolling keys. This package
+ provides nexus-grub-install, which copies those signed binaries onto the EFI
+ System Partition (or writes the legacy BIOS boot sector), maintains the
+ "NEXUS OS" firmware boot entry, and is re-run automatically by a dpkg
+ trigger whenever a GRUB or shim security update is installed. It replaces
+ the grub-pc/grub-efi-* front-end packages and ships the GRUB defaults.
+
+Package: nexus-installer
+Architecture: all
+Depends: ${misc:Depends}, python3 (>= 3.11),
+ nexus-boot,
+ parted, gdisk, fdisk, util-linux, dosfstools, e2fsprogs, squashfs-tools,
+ cryptsetup, cryptsetup-initramfs, lvm2, initramfs-tools, udev, passwd, locales,
+ console-setup, apt
+Description: NEXUS OS installer engine
+ The non-interactive engine that installs NEXUS OS from the live medium to
+ disk. It probes the machine, turns an answer file into an explicit plan
+ (every partition created, formatted or kept), and carries out a plan only
+ when given the hash of the plan that was shown.
+ .
+ Supports whole-disk installation, installation into free space alongside
+ other operating systems, and manual partition assignment; GPT, UEFI with
+ Secure Boot, legacy BIOS on amd64, and LUKS2 full-disk encryption. The
+ graphical installer and unattended installations both drive this engine.
+
+Package: nexus-live
+Architecture: all
+Depends: ${misc:Depends}, live-boot, live-boot-initramfs-tools, live-config, live-config-systemd,
+ live-tools, user-setup, sudo
+Description: NEXUS OS live-session configuration
+ Configures the system for running from the installation medium: the live
+ user account, host name and session start-up. It is removed from the
+ installed system by the installer.
+
+Package: nexus-archive-keyring
+Architecture: all
+Multi-Arch: foreign
+Depends: ${misc:Depends}
+Description: OpenPGP key and APT source of the NEXUS OS package repository
+ The public key that authenticates the NEXUS OS package repository (NEXUS
+ CORE, SECURITY and COMMUNITY) and the APT source entry for it.
+ .
+ The source entry is enabled only in builds that were given a repository URL;
+ otherwise it is installed disabled, so the system never points at a
+ repository that does not exist.

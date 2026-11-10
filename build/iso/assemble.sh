@@ -10,7 +10,6 @@
 #   /boot/grub/grub.cfg         boot menu (shared by UEFI and BIOS)
 #   /boot/grub/i386-pc/         BIOS core image and modules         (amd64)
 #   /live/{vmlinuz,initrd.img,filesystem.squashfs}
-#   /pool/                      bootloader packages for the installer
 #
 # The image carries a real GPT: partition 1 is the ISO9660 filesystem,
 # partition 2 an appended EFI System Partition. Written raw to a USB stick it

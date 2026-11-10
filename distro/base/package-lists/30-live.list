@@ -1,9 +1,9 @@
-# Live-session support (removed from the target by the installer).
+# Live-session support. Configuration lives in the nexus-live package
+# (system/live); the installer removes all of this from the installed system.
 live-boot
 live-boot-initramfs-tools
 live-config
 live-config-systemd
-# live-config creates the live user through Debian's user-setup
-user-setup
 live-tools
+user-setup
 uuid-runtime

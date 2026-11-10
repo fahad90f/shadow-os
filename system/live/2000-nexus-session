@@ -1,0 +1,65 @@
+#!/bin/sh
+# live-config component: NEXUS OS session set-up for the live medium.
+#
+# Runs once at boot of the live system (never on an installed system — the
+# installer removes the nexus-live package). It
+#   * logs the live user straight into NEXUS HORIZON through SDDM, and
+#   * records what the boot menu asked for (nexus.autostart=installer|recovery)
+#     so the session can open the installer or the recovery tool.
+
+. /usr/lib/live/config.sh
+
+Cmdline ()
+{
+	for _PARAMETER in ${LIVE_CONFIG_CMDLINE}
+	do
+		case "${_PARAMETER}" in
+			live-config.noautologin|noautologin)
+				NEXUS_NOAUTOLOGIN="true"
+				;;
+			live-config.username=*|username=*)
+				LIVE_USERNAME="${_PARAMETER#*username=}"
+				;;
+			nexus.autostart=*)
+				NEXUS_AUTOSTART="${_PARAMETER#nexus.autostart=}"
+				;;
+		esac
+	done
+}
+
+Init ()
+{
+	if component_was_executed "nexus-session"
+	then
+		exit 0
+	fi
+	echo -n " nexus-session"
+}
+
+Config ()
+{
+	mkdir -p /run/nexus
+	case "${NEXUS_AUTOSTART}" in
+		installer|recovery)
+			echo "${NEXUS_AUTOSTART}" > /run/nexus/autostart
+			;;
+	esac
+	# Marks the running system as a live session for the shell and the apps.
+	: > /run/nexus/live-session
+
+	if [ -e /usr/share/wayland-sessions/nexus-horizon.desktop ] && \
+	   [ -n "${LIVE_USERNAME}" ] && [ "${NEXUS_NOAUTOLOGIN}" != "true" ]
+	then
+		mkdir -p /etc/sddm.conf.d
+		printf '[Autologin]\nUser=%s\nSession=nexus-horizon\nRelogin=false\n' "${LIVE_USERNAME}" \
+			> /etc/sddm.conf.d/10-nexus-live.conf
+		# live-config's own sddm component assumes a Plasma or LXQt session.
+		rm -f /etc/sddm.conf
+	fi
+
+	touch /var/lib/live/config/nexus-session
+}
+
+Cmdline
+Init
+Config
