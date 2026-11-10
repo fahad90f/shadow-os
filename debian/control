@@ -128,3 +128,25 @@ Description: OpenPGP key and APT source of the NEXUS OS package repository
  The source entry is enabled only in builds that were given a repository URL;
  otherwise it is installed disabled, so the system never points at a
  repository that does not exist.
+
+Package: nexus-hardening
+Architecture: all
+Depends: ${misc:Depends}, python3, nftables, apparmor, auditd, sudo, iproute2, init-system-helpers,
+ util-linux, procps
+Recommends: apparmor-profiles, apparmor-profiles-extra, apparmor-utils, cryptsetup-bin, mokutil,
+ nexus-boot
+Description: NEXUS OS security baseline
+ The security configuration NEXUS OS ships with, as one removable package:
+ .
+  * kernel hardening through sysctl and kernel command-line parameters;
+  * no implicit loading of rarely used network protocol and filesystem
+    modules;
+  * a default-deny nftables host firewall and nexus-firewall to manage it;
+  * audit rules for identity, privilege, kernel-module and boot-chain changes;
+  * NetworkManager privacy defaults (per-network MAC address, IPv6 privacy);
+  * nexus-security-status, the read-only JSON report of firewall, AppArmor,
+    disk encryption, Secure Boot, updates, listening services, logins, audit
+    and hardening state that the Security Center displays.
+ .
+ Every setting is documented with what it protects against and what it can
+ affect; none of them disables a security mechanism to make software work.

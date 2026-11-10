@@ -1,0 +1,11 @@
+security/hardening/sysctl.d/60-nexus-hardening.conf usr/lib/sysctl.d
+security/hardening/modprobe.d/nexus-hardening.conf usr/lib/modprobe.d
+security/hardening/grub.d/20-nexus-hardening.cfg etc/default/grub.d
+security/hardening/journald.conf.d/nexus.conf usr/lib/systemd/journald.conf.d
+security/hardening/sudoers.d/nexus-hardening etc/sudoers.d
+security/hardening/NetworkManager/80-nexus-privacy.conf usr/lib/NetworkManager/conf.d
+security/firewall/nftables.conf etc
+security/firewall/nexus-firewall usr/sbin
+security/audit/nexus-security-status usr/sbin
+security/audit/50-nexus.rules etc/audit/rules.d
+security/permissions/org.nexus.security.policy usr/share/polkit-1/actions
