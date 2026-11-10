@@ -1,7 +1,10 @@
 #!/bin/bash
 # Create (or refresh) the Debian build chroot used to compile NEXUS packages.
 #
-#   build/chroot/create.sh [--arch amd64|arm64] [--recreate]
+#   build/chroot/create.sh [--arch amd64|arm64] [--recreate] [--dev-tools]
+#
+#   --dev-tools  additionally install build/chroot/dev-tools.list: the runtime
+#                tools and services used when running/testing apps in the chroot
 #
 # Packages are always compiled inside a pristine Debian <suite> chroot of the
 # *target* architecture, never against the build host's libraries. For a
@@ -12,10 +15,12 @@
 
 ARCH="$(host_arch)"
 RECREATE=0
+DEV_TOOLS=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --arch) ARCH="$2"; shift 2 ;;
         --recreate) RECREATE=1; shift ;;
+        --dev-tools) DEV_TOOLS=1; shift ;;
         -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
@@ -63,6 +68,14 @@ log "installing ${#DEPS[@]} build dependencies"
 in_chroot "$CHROOT" -- apt-get -q update
 in_chroot "$CHROOT" -- eatmydata apt-get -q -y --no-install-recommends \
     -o Acquire::Retries=5 install "${DEPS[@]}"
+if [ "$DEV_TOOLS" -eq 1 ]; then
+    mapfile -t TOOLS < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$NEXUS_ROOT/build/chroot/dev-tools.list")
+    log "installing ${#TOOLS[@]} development/test tools"
+    # Nothing may be started inside the chroot.
+    printf '#!/bin/sh\nexit 101\n' > "$CHROOT/usr/sbin/policy-rc.d"; chmod 755 "$CHROOT/usr/sbin/policy-rc.d"
+    in_chroot "$CHROOT" -- eatmydata apt-get -q -y --no-install-recommends \
+        -o Acquire::Retries=5 install "${TOOLS[@]}"
+fi
 in_chroot "$CHROOT" -- apt-get -q clean
 
 log "build chroot ready: $CHROOT"

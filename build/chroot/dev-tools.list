@@ -1,0 +1,80 @@
+# Runtime tools installed into the build chroot for *development and testing*
+# only (not build dependencies): the command-line programs and services the
+# application back-ends talk to, plus what the nested-compositor tests need.
+# Install with: build/chroot/create.sh --dev-tools
+
+# compositor / session pieces for nested shell tests
+kwin-wayland
+libkscreen-bin
+xdotool
+x11-utils
+x11-xserver-utils
+wayland-utils
+
+# KDE Frameworks QML modules and runtime bits used by apps
+kio6
+qml6-module-org-kde-syntaxhighlighting
+qml6-module-org-kde-bluezqt
+libkf6networkmanagerqt-dev
+libkf6dbusaddons-dev
+libkf6iconthemes-dev
+libkf6notifications-dev
+libkf6i18n-dev
+libkf6crash-dev
+breeze-icon-theme
+hicolor-icon-theme
+
+# system tools the back-ends invoke
+systemd
+network-manager
+iproute2
+iputils-ping
+traceroute
+bind9-dnsutils
+whois
+iw
+ethtool
+tcpdump
+procps
+psmisc
+pciutils
+usbutils
+lshw
+dmidecode
+nftables
+apparmor
+apparmor-utils
+auditd
+udisks2
+packagekit
+appstream
+upower
+bluez
+pipewire
+wireplumber
+pipewire-pulse
+pulseaudio-utils
+libarchive-tools
+p7zip-full
+unzip
+zip
+cryptsetup-bin
+dosfstools
+e2fsprogs
+btrfs-progs
+parted
+gdisk
+fdisk
+smartmontools
+lm-sensors
+mokutil
+polkitd
+pkexec
+sudo
+openssh-client
+curl
+locales
+tzdata
+util-linux-extra
+accountsservice
+power-profiles-daemon

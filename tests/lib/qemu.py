@@ -130,9 +130,9 @@ class VM:
         self._extra.extend(args)
 
     def _ensure_usb(self):
-        if not self._usb_added:
-            self._extra.extend(["-device", "qemu-xhci,id=xhci"])
-            self._usb_added = True
+        # The controller itself is emitted first in _command(), before any
+        # device that needs a USB bus.
+        self._usb_added = True
 
     # ---- lifecycle -----------------------------------------------------------
     def _command(self) -> list[str]:
@@ -173,6 +173,8 @@ class VM:
                 code_path = str(padded)
             cmd += ["-drive", f"if=pflash,format=raw,unit=0,readonly=on,file={code_path}",
                     "-drive", f"if=pflash,format=raw,unit=1,file={self._vars_file}"]
+        if self._usb_added or self.graphics:
+            cmd += ["-device", "qemu-xhci,id=xhci"]
         if self.smbios_serial:
             cmd += ["-smbios", f"type=1,serial={self.smbios_serial}"]
         cmd += ["-chardev", f"socket,id=ser0,path={self._serial_path},server=on,wait=off,logfile={self.serial_log},logappend=on",
@@ -181,14 +183,14 @@ class VM:
                 "-device", "virtio-rng-pci",
                 "-netdev", "user,id=net0", "-device", "virtio-net-pci,netdev=net0"]
         if self.graphics:
-            if self.arch == "amd64":
-                cmd += ["-device", "VGA,vgamem_mb=64"]
-            else:
-                cmd += ["-device", "virtio-gpu-pci"]
-                self._ensure_usb()
-            self._ensure_usb()
+            cmd += ["-device", "VGA,vgamem_mb=64" if self.arch == "amd64" else "virtio-gpu-pci"]
             cmd += ["-device", "usb-kbd", "-device", "usb-tablet", "-display", "none"]
         else:
+            # Legacy BIOS boot loaders drive the screen through VGA BIOS calls;
+            # a PC with no display adapter at all is not a configuration that
+            # exists outside of emulators, and GRUB stalls on it.
+            if self.firmware == "bios":
+                cmd += ["-device", "VGA"]
             cmd += ["-display", "none"]
         cmd += self._extra
         for d in self._drives:

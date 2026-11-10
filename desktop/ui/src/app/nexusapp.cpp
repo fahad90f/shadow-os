@@ -6,8 +6,12 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
+#include <QEventLoop>
 #include <QFont>
 #include <QIcon>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QQmlContext>
 #include <QQmlError>
 #include <QQuickWindow>
@@ -46,6 +50,16 @@ void AppContext::activate(const QStringList &arguments)
 App::App(int &argc, char **argv, const AppInfo &info)
     : m_info(info)
 {
+    // Diagnostic mode never opens a window, so it must work without a display
+    // server (serial console, SSH, CI).
+    for (int i = 1; i < argc; ++i) {
+        const QByteArray arg(argv[i]);
+        if (arg == "--dump" || arg.startsWith("--dump=")) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            break;
+        }
+    }
+
     // The NEXUS Qt Quick Controls style; an explicit user/test override wins.
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE"))
         qputenv("QT_QUICK_CONTROLS_STYLE", "org.nexus.style");
@@ -90,11 +104,61 @@ App::~App()
     m_engine.reset();
 }
 
+void App::setDumpTopics(const QStringList &topics)
+{
+    m_dumpTopics = topics;
+}
+
+int App::finishDump(const QJsonValue &value) const
+{
+    QJsonDocument doc;
+    if (value.isArray())
+        doc = QJsonDocument(value.toArray());
+    else if (value.isObject())
+        doc = QJsonDocument(value.toObject());
+    else
+        doc = QJsonDocument(QJsonObject{{QStringLiteral("value"), value}});
+    std::fputs(doc.toJson(QJsonDocument::Indented).constData(), stdout);
+    std::fflush(stdout);
+    return 0;
+}
+
+int App::dumpError(const QString &message) const
+{
+    std::fprintf(stderr, "%s: %s\n", qPrintable(m_info.id), qPrintable(message));
+    if (!m_dumpTopics.isEmpty())
+        std::fprintf(stderr, "available topics: %s\n", qPrintable(m_dumpTopics.join(QStringLiteral(", "))));
+    return 2;
+}
+
+bool App::waitFor(QObject *sender, const char *signal, int timeoutMs)
+{
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(sender, signal, &loop, SLOT(quit()));
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timer.start(timeoutMs);
+    loop.exec();
+    return timer.isActive();    // still running → the signal ended the loop
+}
+
 bool App::processArguments()
 {
+    QCommandLineOption dumpOption(QStringLiteral("dump"),
+        m_dumpTopics.isEmpty()
+            ? QStringLiteral("Print diagnostic data for <topic> as JSON and exit.")
+            : QStringLiteral("Print diagnostic data for <topic> as JSON and exit. Topics: %1.")
+                  .arg(m_dumpTopics.join(QStringLiteral(", "))),
+        QStringLiteral("topic"));
+    m_parser.addOption(dumpOption);
     m_parser.process(*m_app);
     m_argumentsProcessed = true;
     m_context->setArguments(m_parser.positionalArguments());
+    if (m_parser.isSet(dumpOption)) {
+        m_dumpTopic = m_parser.value(dumpOption);
+        return true;
+    }
 
     if (!m_info.singleInstance || !qEnvironmentVariableIsEmpty("NEXUS_SMOKE_TEST")
         || !qEnvironmentVariableIsEmpty("NEXUS_SCREENSHOT"))

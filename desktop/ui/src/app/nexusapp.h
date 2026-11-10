@@ -3,6 +3,7 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QJsonValue>
 #include <QQmlApplicationEngine>
 #include <QString>
 #include <QStringList>
@@ -61,6 +62,14 @@ private:
 //   NEXUS_SCREENSHOT=<file.png> render, save a screenshot of the main window,
 //                               then exit (NEXUS_SCREENSHOT_DELAY=<ms>, default 2500)
 //   NEXUS_WINDOW_SIZE=<W>x<H>   force the main window size (for stable screenshots)
+//
+// and the diagnostic mode every application provides:
+//
+//   <app> --dump <topic>        print, as JSON, the same data the UI would show
+//                               for <topic> and exit — no window is opened.
+//                               The VM integration tests compare this output
+//                               with the system's own tools, so the back-ends
+//                               are verified without driving the GUI.
 class App
 {
 public:
@@ -77,6 +86,20 @@ public:
     // instance was activated); the exit code is then 0.
     bool processArguments();
 
+    // ---- diagnostic mode (--dump <topic>) ---------------------------------
+    // Declare the topics this application can dump (shown in --help).
+    void setDumpTopics(const QStringList &topics);
+    // After processArguments(): the requested topic, or empty if not in dump mode.
+    QString dumpTopic() const { return m_dumpTopic; }
+    // Print 'value' as JSON on stdout and return the process exit code (0).
+    // An unknown topic should be reported with dumpError().
+    int finishDump(const QJsonValue &value) const;
+    int dumpError(const QString &message) const;
+    // Spin the event loop until 'signal' of 'sender' fires or the timeout
+    // elapses (for back-ends that gather their data asynchronously).
+    // Returns false on timeout.
+    bool waitFor(QObject *sender, const char *signal, int timeoutMs = 15000);
+
     // Make a C++ object reachable from QML as a context property.
     void expose(const QString &name, QObject *object);
 
@@ -92,6 +115,8 @@ private:
     QCommandLineParser m_parser;
     AppContext *m_context = nullptr;
     QStringList m_qmlWarnings;
+    QStringList m_dumpTopics;
+    QString m_dumpTopic;
     bool m_argumentsProcessed = false;
 };
 

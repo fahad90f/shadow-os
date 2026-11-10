@@ -78,7 +78,7 @@ Accent=$ACCENT"
         exec xvfb-run -a -s "-screen 0 1920x1200x24 -nolisten tcp" \
             dbus-run-session -- timeout --signal=KILL "${NEXUS_RUN_TIMEOUT:-60}" "$exe" "$@"
     ' run "$B" "$bin" "$SHOT" "$SIZE" "$SMOKE" "$DELAY" "$appearance" "$@"
-    [ -n "$SHOT" ] && [ -f "$SHOTS/$SHOT" ] && log "screenshot: $SHOTS/$SHOT"
+    if [ -n "$SHOT" ] && [ -f "$SHOTS/$SHOT" ]; then log "screenshot: $SHOTS/$SHOT"; fi
     ;;
 shell)
     chr /bin/bash -c "export QML_IMPORT_PATH=$B/qml LD_LIBRARY_PATH=$B/lib; cd $B 2>/dev/null || cd /; exec bash -i"
