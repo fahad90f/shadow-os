@@ -78,3 +78,13 @@ tzdata
 util-linux-extra
 accountsservice
 power-profiles-daemon
+
+# Wayland platform plugin, cursors and a fallback decoration for nested tests
+qt6-wayland
+breeze-cursor-theme
+kwin-style-breeze
+qml6-module-org-kde-layershell
+# Runtime pieces the desktop packages depend on (icons, platform theme)
+qt6-svg-plugins
+qt6-image-formats-plugins
+plasma-integration

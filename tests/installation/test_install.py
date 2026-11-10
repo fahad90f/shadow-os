@@ -103,17 +103,26 @@ def boot_installed(args, name: str, disks: list[tuple[Path, str]], vars_file, pa
     for path, bus in disks:
         vm.add_disk(path, bus=bus)
     vm.start()
-    vm.expect(r"Linux version \S+", args.timeout, fail=PANIC)
+    # The installed system boots quietly: there is no kernel banner to wait for.
     if passphrase:
         vm.expect(r"Please unlock disk \S+", args.timeout, fail=PANIC)
         time.sleep(2)
         vm.sendline(passphrase)
         report("disk unlock prompt answered", True)
     vm.login(USER, PASSWORD, timeout=args.timeout)
+    report("installed system booted from disk to a login prompt", True)
     return vm
 
 
 def verify_installed(vm: VM, args, *, encrypted=False, separate_home=False, swap="file"):
+    plain_sudo = vm.sudo
+
+    def sudo(command, timeout=300, check=True):
+        vm.run(f"echo '{PASSWORD}' | sudo -S -p '' -v")
+        return plain_sudo(command, timeout, check=check)
+
+    vm.sudo = sudo
+
     def check(name, ok, detail=""):
         report(name, ok, detail)
         if not ok:
@@ -149,7 +158,7 @@ def verify_installed(vm: VM, args, *, encrypted=False, separate_home=False, swap
     if separate_home:
         _, out = vm.run("findmnt -n -o SOURCE,FSTYPE /home")
         check("/home is a separate filesystem", "ext4" in out, out.strip())
-    _, out = vm.run("swapon --show=NAME,TYPE --noheadings")
+    _, out = vm.run("tail -n +2 /proc/swaps")
     if swap == "file":
         check("swap file active", "/swapfile" in out and "file" in out, out.strip())
     elif swap == "partition":
@@ -183,6 +192,17 @@ def verify_installed(vm: VM, args, *, encrypted=False, separate_home=False, swap
 
 def scenario_erase(args, *, encrypt=False, separate_home=False, swap="file"):
     work = Path(args.workdir)
+    if args.verify_only:
+        # Re-check a disk installed by a previous run of this scenario.
+        target, other = work / "target.qcow2", work / "bystander.qcow2"
+        vm = boot_installed(args, "installed", [(target, "virtio"), (other, "virtio")],
+                            work / "install.efivars.fd", PASSPHRASE if encrypt else None)
+        try:
+            verify_installed(vm, args, encrypted=encrypt, separate_home=separate_home, swap=swap)
+            vm.shell_poweroff_as(PASSWORD)
+        finally:
+            vm.stop()
+        return
     target = make_disk(work / "target.qcow2", "32G")
     other = make_disk(work / "bystander.qcow2", "1G")
     vm = live_session(args, "install", [(target, "virtio"), (other, "virtio")])
@@ -403,6 +423,8 @@ if __name__ == "__main__":
     ap.add_argument("--timeout", type=float, default=900)
     ap.add_argument("--install-timeout", type=float, default=3600)
     ap.add_argument("--workdir", required=True)
+    ap.add_argument("--verify-only", action="store_true",
+                    help="(erase scenarios) skip installation; boot and verify the disk left by a previous run")
     a = ap.parse_args()
     Path(a.workdir).mkdir(parents=True, exist_ok=True)
 

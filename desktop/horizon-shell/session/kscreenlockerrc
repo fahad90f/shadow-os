@@ -1,0 +1,10 @@
+# System defaults of the screen locker for NEXUS HORIZON.
+# The Control Center (Power, Privacy) writes the user's values to
+# ~/.config/kscreenlockerrc.
+[Daemon]
+# Lock automatically after 10 minutes without input, and when suspending.
+Autolock=true
+Timeout=10
+LockOnResume=true
+# Seconds during which a just-locked screen can be dismissed without the password.
+LockGrace=5

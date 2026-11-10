@@ -15,7 +15,7 @@ cmake_minimum_required(VERSION 3.25)
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/distro/base/nexus.conf" _nexus_version_line REGEX "^NEXUS_VERSION=")
 string(REGEX REPLACE "^NEXUS_VERSION=\"?([0-9.]+)\"?.*$" "\\1" NEXUS_VERSION "${_nexus_version_line}")
 
-project(nexus-os VERSION ${NEXUS_VERSION} LANGUAGES CXX
+project(nexus-os VERSION ${NEXUS_VERSION} LANGUAGES C CXX
         DESCRIPTION "NEXUS OS desktop environment and system applications"
         HOMEPAGE_URL "https://github.com/fahad90fa/Custom-OS")
 

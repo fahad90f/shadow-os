@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NEXUS HORIZON Shell
+Comment=Panel, dock, launcher and session dialogs of the NEXUS HORIZON desktop
+Exec=/usr/bin/horizon-shell
+Icon=nexus-os
+NoDisplay=true
+# Wayland interfaces the compositor grants to this program only: the list of
+# windows (dock, panel) and virtual desktops.
+X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,org_kde_plasma_virtual_desktop_management,org_kde_plasma_activation_feedback

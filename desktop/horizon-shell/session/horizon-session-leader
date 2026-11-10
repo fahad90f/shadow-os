@@ -1,0 +1,74 @@
+#!/bin/sh
+# horizon-session-leader — supervisor of a NEXUS HORIZON session.
+#
+# Started by the compositor (see nexus-horizon-session) once it is ready. It
+#   1. publishes the session environment to systemd and D-Bus activation, so
+#      user services, portals and XDG autostart entries see the display;
+#   2. starts the session target (which pulls in XDG autostart applications);
+#   3. runs the shell and restarts it if it crashes;
+#   4. ends the session when the shell exits normally (that is "log out").
+#
+# Exit status of horizon-shell: 0 = the user logged out; anything else = crash.
+
+ENV_VARS="WAYLAND_DISPLAY DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE
+XDG_MENU_PREFIX KDE_FULL_SESSION KDE_SESSION_VERSION QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME GDK_BACKEND
+SDL_VIDEODRIVER CLUTTER_BACKEND MOZ_ENABLE_WAYLAND ELECTRON_OZONE_PLATFORM_HINT _JAVA_AWT_WM_NONREPARENTING
+XCURSOR_THEME XCURSOR_SIZE"
+
+have_systemd_user() {
+    [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/systemd/private" ]
+}
+
+# shellcheck disable=SC2086
+if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+    if have_systemd_user; then
+        dbus-update-activation-environment --systemd $ENV_VARS
+    else
+        dbus-update-activation-environment $ENV_VARS
+    fi
+fi
+
+# The application database must exist before the launcher is first opened.
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 >/dev/null 2>&1
+fi
+
+if have_systemd_user; then
+    systemctl --user --no-block start nexus-horizon-session.target
+fi
+
+cleanup() {
+    if have_systemd_user; then
+        systemctl --user stop nexus-horizon-session.target
+        # shellcheck disable=SC2086
+        systemctl --user unset-environment $ENV_VARS
+    fi
+}
+
+# Restart the shell after a crash, but not forever: five crashes within a
+# minute means something is fundamentally wrong, and ending the session
+# (back to the login screen) is better than a restart loop.
+crashes=0
+window_start=$(date +%s)
+while :; do
+    /usr/bin/horizon-shell
+    status=$?
+    if [ "$status" -eq 0 ]; then
+        break                       # log out
+    fi
+    now=$(date +%s)
+    if [ $((now - window_start)) -gt 60 ]; then
+        window_start=$now
+        crashes=0
+    fi
+    crashes=$((crashes + 1))
+    echo "horizon-session-leader: horizon-shell exited with status $status (crash $crashes)" >&2
+    if [ "$crashes" -ge 5 ]; then
+        echo "horizon-session-leader: the shell keeps crashing; ending the session" >&2
+        break
+    fi
+    sleep 1
+done
+
+cleanup
+exit 0

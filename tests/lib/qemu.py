@@ -17,6 +17,7 @@ about real hardware.
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import re
@@ -202,6 +203,9 @@ class VM:
             if p.exists():
                 p.unlink()
         cmd = self._command()
+        # Whatever happens to the test, never leave an emulator running: it
+        # would keep the disk images locked for the next run.
+        atexit.register(self.stop)
         (self.workdir / f"{self.name}.cmdline").write_text(" ".join(cmd) + "\n")
         self._proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
                                       stdout=open(self.qemu_log, "ab"), stderr=subprocess.STDOUT)
@@ -390,7 +394,8 @@ class VM:
         self.expect(r"login: ", timeout, fail=PANIC)
         time.sleep(1)
         self.sendline(user)
-        self.expect(r"Password: ", 60)
+        # The prompt is localised on an installed system ("Passwort:", "Mot de passe :" …).
+        self.expect(r"(?i)(pass|contrase|parol|senha|wachtwoord|has[lł]o)[^\n:]*: ?$", 60)
         time.sleep(0.5)
         self.sendline(password)
         self.expect(r"[$#] ", 120)

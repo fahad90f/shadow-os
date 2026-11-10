@@ -78,6 +78,73 @@ ThemeIconProvider::ThemeIconProvider()
 {
 }
 
+namespace {
+
+// Renders an SVG file (or resource) centred into a transparent pixmap of the
+// requested size, keeping its aspect ratio. Uses the SVG renderer directly so
+// it does not depend on the image-format plugin being installed.
+QPixmap renderSvg(const QString &path, const QSize &target, const QColor &currentColor = QColor())
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QByteArray svg = file.readAll();
+    if (currentColor.isValid())
+        svg.replace("currentColor", currentColor.name(QColor::HexRgb).toLatin1());
+    QSvgRenderer renderer(svg);
+    if (!renderer.isValid())
+        return {};
+    QPixmap pixmap(target);
+    pixmap.fill(Qt::transparent);
+    QSizeF natural = renderer.defaultSize();
+    if (natural.isEmpty())
+        natural = target;
+    const QSizeF fitted = natural.scaled(target, Qt::KeepAspectRatio);
+    const QRectF rect((target.width() - fitted.width()) / 2.0, (target.height() - fitted.height()) / 2.0,
+                      fitted.width(), fitted.height());
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    renderer.render(&p, rect);
+    return pixmap;
+}
+
+QPixmap fromFile(const QString &path, const QSize &target)
+{
+    if (!QFileInfo(path).isFile())
+        return {};
+    if (path.endsWith(QLatin1String(".svg"), Qt::CaseInsensitive)
+        || path.endsWith(QLatin1String(".svgz"), Qt::CaseInsensitive)) {
+        const QPixmap svg = renderSvg(path, target);
+        if (!svg.isNull())
+            return svg;
+    }
+    const QPixmap raster(path);
+    if (raster.isNull())
+        return {};
+    return raster.scaled(target, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+}
+
+QPixmap fromTheme(const QString &name, const QSize &target)
+{
+    if (name.isEmpty())
+        return {};
+    QIcon icon = QIcon::fromTheme(name);
+    if (icon.isNull()) {
+        // Old launchers write the icon as "name.png"; the theme knows it as "name".
+        static const QStringList suffixes{QStringLiteral(".png"), QStringLiteral(".svg"), QStringLiteral(".xpm")};
+        for (const QString &suffix : suffixes) {
+            if (name.endsWith(suffix, Qt::CaseInsensitive)) {
+                icon = QIcon::fromTheme(name.left(name.size() - suffix.size()));
+                break;
+            }
+        }
+    }
+    return icon.isNull() ? QPixmap() : icon.pixmap(target);
+}
+
+} // namespace
+
 QPixmap ThemeIconProvider::requestPixmap(const QString &id, QSize *size, const QSize &requestedSize)
 {
     QSize target = requestedSize;
@@ -85,17 +152,15 @@ QPixmap ThemeIconProvider::requestPixmap(const QString &id, QSize *size, const Q
         target = QSize(48, 48);
 
     const QString name = QUrl::fromPercentEncoding(id.toUtf8());
-    QIcon icon;
-    if (name.startsWith(QLatin1Char('/')) && QFileInfo::exists(name))
-        icon = QIcon(name);
-    else if (!name.isEmpty())
-        icon = QIcon::fromTheme(name);
-    if (icon.isNull())
-        icon = QIcon::fromTheme(QStringLiteral("application-x-executable"));
-    if (icon.isNull())
-        icon = QIcon(QStringLiteral(":/nexus/icons/app-generic.svg"));
-
-    QPixmap pixmap = icon.pixmap(target);
+    QPixmap pixmap = name.startsWith(QLatin1Char('/')) ? fromFile(name, target) : fromTheme(name, target);
+    if (pixmap.isNull())
+        pixmap = fromTheme(QStringLiteral("application-x-executable"), target);
+    if (pixmap.isNull()) {
+        // Last resort, always available: the generic glyph compiled into the
+        // library. An entry without a usable icon must still be recognisable
+        // as an entry, never an empty square.
+        pixmap = renderSvg(QStringLiteral(":/nexus/icons/app-generic.svg"), target, QColor(0x9A, 0xA7, 0xBD));
+    }
     if (size)
         *size = pixmap.size();
     return pixmap;

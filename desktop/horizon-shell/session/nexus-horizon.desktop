@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=NEXUS HORIZON
+Comment=The NEXUS OS desktop (Wayland)
+Exec=/usr/bin/nexus-horizon-session
+TryExec=/usr/bin/nexus-horizon-session
+DesktopNames=NEXUS;KDE
+X-KDE-PluginInfo-Version=0.1.0

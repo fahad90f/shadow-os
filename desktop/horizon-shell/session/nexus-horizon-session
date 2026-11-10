@@ -1,0 +1,45 @@
+#!/bin/sh
+# nexus-horizon-session — start the NEXUS HORIZON desktop.
+#
+# Run by the display manager for the "NEXUS HORIZON" session
+# (/usr/share/wayland-sessions/nexus-horizon.desktop). It sets the session
+# environment and starts the compositor, which in turn starts the session
+# supervisor (horizon-session-leader) once it accepts clients; when the
+# supervisor exits, the compositor exits and the session is over.
+#
+# Compositor: KWin in Wayland mode. NEXUS HORIZON uses KWin as its compositor
+# and window manager; the shell, session and settings on top are NEXUS's own
+# (docs/desktop/architecture.md).
+
+# Desktop identity. "NEXUS" comes first; "KDE" lets software that only knows
+# the established desktops (portal back-ends, KDE Frameworks applications,
+# xdg-utils) pick its KDE behaviour.
+export XDG_CURRENT_DESKTOP="NEXUS:KDE"
+export XDG_SESSION_DESKTOP="nexus"
+export XDG_SESSION_TYPE="wayland"
+export XDG_MENU_PREFIX="nexus-"
+export KDE_FULL_SESSION="true"
+export KDE_SESSION_VERSION="6"
+
+# Toolkits: native Wayland first, X11 (through Xwayland) as fallback.
+export QT_QPA_PLATFORM="wayland;xcb"
+export QT_QPA_PLATFORMTHEME="kde"
+export GDK_BACKEND="wayland,x11"
+export SDL_VIDEODRIVER="wayland,x11"
+export CLUTTER_BACKEND="wayland"
+export MOZ_ENABLE_WAYLAND="1"
+export ELECTRON_OZONE_PLATFORM_HINT="auto"
+# Java (Swing/AWT) tools such as Burp Suite and Ghidra run through Xwayland
+# and need this to lay out correctly under a non-reparenting window manager.
+export _JAVA_AWT_WM_NONREPARENTING="1"
+
+export XCURSOR_THEME="${XCURSOR_THEME:-breeze_cursors}"
+export XCURSOR_SIZE="${XCURSOR_SIZE:-24}"
+
+# A place for per-session state of NEXUS components.
+if [ -n "$XDG_RUNTIME_DIR" ]; then
+    mkdir -p "$XDG_RUNTIME_DIR/nexus"
+fi
+
+exec kwin_wayland_wrapper --xwayland \
+    --exit-with-session=/usr/libexec/nexus/horizon-session-leader

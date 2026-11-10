@@ -1,0 +1,46 @@
+# System defaults of the compositor (KWin) for NEXUS HORIZON.
+# Installed as /etc/xdg/kwinrc; a user's ~/.config/kwinrc overrides it.
+
+[Desktops]
+Number=4
+Rows=1
+
+[Windows]
+# New windows appear centred; snapping to screen edges and other windows.
+Placement=Centered
+BorderSnapZone=12
+WindowSnapZone=12
+ElectricBorderMaximize=true
+ElectricBorderTiling=true
+FocusPolicy=ClickToFocus
+RollOverDesktops=true
+
+[Plugins]
+# Effects: smooth workspace slide, window open/close scaling, overview.
+slideEnabled=true
+scaleEnabled=true
+fadeEnabled=true
+overviewEnabled=true
+blurEnabled=true
+contrastEnabled=true
+kwin4_effect_dialogparentEnabled=true
+kwin4_effect_fadingpopupsEnabled=true
+kwin4_effect_loginEnabled=false
+kwin4_effect_logoutEnabled=false
+# No compositor-drawn splash/screen edges belonging to Plasma.
+screenedgeEnabled=false
+
+[Effect-overview]
+BorderActivate=9
+
+[Xwayland]
+Scale=1
+XwaylandEavesdrops=None
+
+[TabBox]
+LayoutName=thumbnail_grid
+
+[org.kde.kdecoration2]
+BorderSize=None
+ButtonsOnLeft=
+ButtonsOnRight=IAX

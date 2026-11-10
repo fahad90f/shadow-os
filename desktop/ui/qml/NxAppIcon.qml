@@ -15,6 +15,9 @@ Image {
     source: name !== "" ? "image://nxtheme/" + encodeURIComponent(name) : ""
     sourceSize: Qt.size(Math.round(size * Screen.devicePixelRatio), Math.round(size * Screen.devicePixelRatio))
     smooth: true
-    asynchronous: true
+    // Loaded synchronously on purpose: icon-theme lookups (QIcon, and the
+    // desktop's icon engine behind it) are only safe on the GUI thread, and an
+    // asynchronous load would run them on the image-loader thread.
+    asynchronous: false
     fillMode: Image.PreserveAspectFit
 }
