@@ -1,0 +1,91 @@
+# @NEXUS_NAME@ @NEXUS_VERSION@ "@NEXUS_CODENAME@" (@ARCH@) — install/live media boot menu.
+# Generated from system/boot/grub/live-grub.cfg.in. Shared by UEFI (Debian's
+# signed GRUB image, modules built in) and legacy BIOS (modules loaded from
+# /boot/grub/i386-pc).
+
+set default=live
+set timeout=8
+
+if [ "$grub_platform" = "pc" ]; then
+    insmod part_gpt
+    insmod part_msdos
+    insmod all_video
+fi
+
+set gfxmode=auto
+set gfxpayload=keep
+if loadfont $prefix/fonts/unicode.pf2 ; then
+    insmod gfxterm
+    insmod png
+    terminal_output gfxterm
+fi
+
+if [ -f $prefix/themes/nexus/theme.txt ]; then
+    set theme=$prefix/themes/nexus/theme.txt
+else
+    set menu_color_normal=cyan/black
+    set menu_color_highlight=white/blue
+fi
+
+set live_args="boot=live components quiet splash"
+
+# Automated test hook. The QEMU test harness (tests/lib/qemu.py) tags the
+# virtual machine with an SMBIOS system serial number; when (and only when)
+# that tag is present, boot the serial-console entry without waiting. Real
+# hardware never carries this serial, so the menu behaves normally there.
+smbios --type 1 --get-string 7 --set nexus_smbios_serial
+if [ "$nexus_smbios_serial" = "NEXUS-AUTOTEST" ]; then
+    set default="advanced>live-serial"
+    set timeout=1
+fi
+if [ "$nexus_smbios_serial" = "NEXUS-AUTOTEST-INSTALLED" ]; then
+    set default="advanced>localboot"
+    set timeout=1
+fi
+
+menuentry "@NEXUS_NAME@ - Live session" --id live --class nexus --class gnu-linux --class os {
+    linux  /live/vmlinuz $live_args
+    initrd /live/initrd.img
+}
+
+menuentry "@NEXUS_NAME@ - Live session (safe graphics)" --id live-safe --class nexus --class gnu-linux --class os {
+    linux  /live/vmlinuz $live_args nomodeset
+    initrd /live/initrd.img
+}
+
+menuentry "Install @NEXUS_NAME@" --id install --class nexus --class gnu-linux --class os {
+    linux  /live/vmlinuz $live_args nexus.autostart=installer
+    initrd /live/initrd.img
+}
+
+submenu "Advanced options" --id advanced --class submenu {
+    menuentry "Live session - verbose boot (no splash)" --id live-verbose --class nexus {
+        linux  /live/vmlinuz boot=live components
+        initrd /live/initrd.img
+    }
+    menuentry "Live session - copy system to RAM" --id live-toram --class nexus {
+        linux  /live/vmlinuz $live_args toram
+        initrd /live/initrd.img
+    }
+    menuentry "Live session - serial console (ttyS0, 115200 8N1)" --id live-serial --class nexus {
+        linux  /live/vmlinuz boot=live components console=tty0 console=ttyS0,115200n8
+        initrd /live/initrd.img
+    }
+    menuentry "Recovery environment" --id recovery --class nexus {
+        linux  /live/vmlinuz boot=live components nexus.autostart=recovery
+        initrd /live/initrd.img
+    }
+    if [ "$grub_platform" = "efi" ]; then
+        menuentry "UEFI firmware settings" --id fwsetup --class settings {
+            fwsetup
+        }
+    fi
+    menuentry "Boot from the first local disk" --id localboot --class disk {
+        if [ "$grub_platform" = "efi" ]; then
+            exit
+        else
+            set root=(hd0)
+            chainloader +1
+        fi
+    }
+}

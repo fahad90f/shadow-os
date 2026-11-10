@@ -1,0 +1,33 @@
+# Build artefacts (chroots, caches, ISO staging, test VMs) — never committed.
+/build/work/
+/build/out/
+/build/cmake/
+/obj-*/
+/debian/.debhelper/
+/debian/tmp/
+/debian/files
+/debian/*.substvars
+/debian/*.debhelper.log
+/debian/debhelper-build-stamp
+/debian/nexus-*/
+/debian/libnexus*/
+/debian/linux-*/
+*.deb
+*.buildinfo
+*.changes
+
+# Signing material must never enter the repository (see distro/signing/README.md).
+*.key
+*.pem
+*.p12
+/distro/signing/private/
+secring.*
+*.gnupg/
+
+# Editors / tooling
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+*.swp
+compile_commands.json

@@ -1,0 +1,23 @@
+# Firmware and CPU microcode for real hardware. All of these are in Debian's
+# "non-free-firmware" component, which Debian's own official images enable by
+# default since Debian 12. Licences permit redistribution; see
+# docs/packaging/licensing.md.
+
+firmware-linux-free
+firmware-linux-nonfree
+firmware-misc-nonfree
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-brcm80211
+firmware-mediatek
+firmware-libertas
+firmware-amd-graphics
+firmware-intel-graphics
+firmware-intel-misc
+firmware-sof-signed
+firmware-bnx2
+firmware-bnx2x
+firmware-nvidia-graphics
+intel-microcode [amd64]
+amd64-microcode [amd64]

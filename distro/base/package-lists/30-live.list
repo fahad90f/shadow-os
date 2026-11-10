@@ -1,0 +1,9 @@
+# Live-session support (removed from the target by the installer).
+live-boot
+live-boot-initramfs-tools
+live-config
+live-config-systemd
+# live-config creates the live user through Debian's user-setup
+user-setup
+live-tools
+uuid-runtime

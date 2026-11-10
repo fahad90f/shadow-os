@@ -1,0 +1,108 @@
+# Core operating system: init, kernel, storage, base utilities.
+# Syntax: one package per line; "[arch ...]" restricts a line to those
+# Debian architectures; '#' starts a comment.
+
+# init / service management
+systemd
+systemd-sysv
+systemd-timesyncd
+libpam-systemd
+libnss-systemd
+dbus
+dbus-user-session
+udev
+kmod
+
+# kernel (Debian-signed; boots under Secure Boot without key enrolment)
+linux-image-amd64 [amd64]
+linux-image-arm64 [arm64]
+initramfs-tools
+zstd
+
+# authentication / privilege
+sudo
+polkitd
+pkexec
+libpam-modules
+passwd
+adduser
+
+# locale / console
+locales
+console-setup
+keyboard-configuration
+kbd
+tzdata
+
+# base utilities
+apt
+apt-utils
+ca-certificates
+gnupg
+bash-completion
+less
+nano
+vim-tiny
+man-db
+manpages
+procps
+psmisc
+util-linux
+util-linux-extra
+bsdextrautils
+file
+findutils
+gawk
+lsb-release
+rsync
+curl
+wget
+xz-utils
+unzip
+zip
+p7zip-full
+libarchive-tools
+tree
+htop
+
+# hardware inspection
+pciutils
+usbutils
+lshw
+dmidecode
+hwdata
+lm-sensors
+smartmontools
+nvme-cli
+
+# storage / filesystems
+e2fsprogs
+dosfstools
+btrfs-progs
+xfsprogs
+ntfs-3g
+exfatprogs
+parted
+gdisk
+fdisk
+cryptsetup
+cryptsetup-initramfs
+lvm2
+squashfs-tools
+udisks2
+
+# networking
+network-manager
+wpasupplicant
+wireless-regdb
+iw
+iproute2
+iputils-ping
+iputils-tracepath
+ethtool
+openssh-client
+bind9-dnsutils
+bind9-host
+whois
+traceroute
+net-tools

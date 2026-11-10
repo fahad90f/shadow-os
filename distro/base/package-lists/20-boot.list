@@ -1,0 +1,22 @@
+# Boot chain. The *-bin and *-signed packages only ship files under /usr/lib;
+# nothing here writes to a disk at package-install time. The installer runs
+# grub-install explicitly and then installs the matching grub-efi-*/grub-pc
+# front-end package from the on-media pool (build/iso/pool.list).
+
+grub-common
+grub2-common
+efibootmgr
+os-prober
+mokutil
+
+# UEFI x86_64 — Microsoft-signed shim + Debian-signed GRUB (Secure Boot)
+shim-signed [amd64]
+grub-efi-amd64-bin [amd64]
+grub-efi-amd64-signed [amd64]
+# Legacy BIOS x86_64
+grub-pc-bin [amd64]
+
+# UEFI AArch64
+shim-signed [arm64]
+grub-efi-arm64-bin [arm64]
+grub-efi-arm64-signed [arm64]
