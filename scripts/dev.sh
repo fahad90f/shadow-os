@@ -18,6 +18,7 @@
 #           --shot saves a screenshot of its main window into build/work/shots/
 #           --smoke exits non-zero if the QML engine reported warnings/errors
 #   shell   interactive shell in the chroot with the same environment
+#   exec    run one command in the chroot: scripts/dev.sh exec -- apt-cache show nmap
 #   nested  a real NEXUS HORIZON session for testing: KWin (Wayland) runs inside
 #           a virtual X server and <commands> are executed in it as session
 #           clients, e.g.  'horizon-shell & sleep 4; nexus-files /usr &'
@@ -25,7 +26,9 @@
 #           Inside <commands>, "xdo" sends input to the session
 #           (xdo mousemove 20 16 click 1; xdo key super), and "shot NAME"
 #           takes an additional screenshot. Built binaries of every build
-#           directory are on PATH and have launcher entries.
+#           directory are on PATH and have launcher entries. Log files
+#           written to $HOME/*.log and anything put into $NEXUS_LOGS end up
+#           in build/work/shots/nested-logs/<dir>/.
 #
 # The repository is mounted read-only at /src; build trees live in the chroot
 # under /build/<NAME> (default NAME: dev).
@@ -118,8 +121,10 @@ Accent=$ACCENT"
         pins=""
         for bindir in /build/*/bin; do
             [ -d "$bindir" ] || continue
-            PATH="$bindir:$PATH"
+            PATH="$PATH:$bindir"
         done
+        # This build directory wins over the others.
+        PATH="$B/bin:$PATH"
         for desktop in /src/applications/*/org.nexus.*.desktop /src/system/*/org.nexus.*.desktop; do
             [ -f "$desktop" ] || continue
             id="$(basename "$desktop" .desktop)"
@@ -142,6 +147,8 @@ Accent=$ACCENT"
         xvfb=$!
         sleep 1.5
         export NEXUS_NESTED_X="$display" NEXUS_SHOTS=/shots
+        # Where <commands> can leave files that should survive the session.
+        export NEXUS_LOGS="/shots/nested-logs/$(basename "$B")"; mkdir -p "$NEXUS_LOGS"
         cat > "$HOME/session.sh" <<SESSION
 xdo() { DISPLAY="$display" xdotool "\$@"; }
 shot() { DISPLAY="$display" import -window root "/shots/\$1"; }
@@ -159,8 +166,9 @@ SESSION
         timeout --signal=KILL "${NEXUS_RUN_TIMEOUT:-180}" dbus-run-session -- bash "$HOME/session.sh" 2>&1 | grep -v "fd limit"
         kill "$xvfb" 2>/dev/null
         # Logs of the last nested session stay available for debugging.
-        mkdir -p /shots/nested-logs
-        cp "$HOME"/*.log /shots/nested-logs/ 2>/dev/null
+        logs="/shots/nested-logs/$(basename "$B")"
+        mkdir -p "$logs"
+        cp "$HOME"/*.log "$logs"/ 2>/dev/null
         rm -rf "$HOME"
         true
     ' nested "$B" "$SHOT" "$SIZE" "$WAIT" "$appearance" "$*"
@@ -168,6 +176,12 @@ SESSION
     ;;
 shell)
     chr /bin/bash -c "export QML_IMPORT_PATH=$B/qml LD_LIBRARY_PATH=$B/lib; cd $B 2>/dev/null || cd /; exec bash -i"
+    ;;
+exec)
+    # Non-interactive command in the chroot (repository at /src, read-only):
+    #   scripts/dev.sh exec -- apt-cache policy nmap
+    [ $# -ge 1 ] || die "usage: dev.sh exec [--dir NAME] -- <command> [args...]"
+    chr env QML_IMPORT_PATH="$B/qml" LD_LIBRARY_PATH="$B/lib" PATH="$B/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" "$@"
     ;;
 *)
     sed -n '2,20p' "$0"; exit 1 ;;

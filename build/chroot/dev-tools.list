@@ -88,3 +88,10 @@ qml6-module-org-kde-layershell
 qt6-svg-plugins
 qt6-image-formats-plugins
 plasma-integration
+# Lock screen (KScreenLocker loads its QML from a "Plasma/Shell" package),
+# login screen and boot-menu theme tooling; clients for testing shell modules
+plasma-desktoptheme
+sddm
+grub-common
+libkf6statusnotifieritem-dev
+libnotify-bin
