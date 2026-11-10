@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="688" height="160" viewBox="0 0 688.00 160"><title>NEXUS OS</title><g transform="scale(0.625)"><title>NEXUS OS</title>
+<defs>
+<linearGradient id="nx-g" gradientUnits="userSpaceOnUse" x1="40" y1="40" x2="216" y2="216"><stop offset="0" stop-color="#22D8F5"/><stop offset="0.55" stop-color="#3D8BFF"/><stop offset="1" stop-color="#9B6BFF"/></linearGradient>
+<linearGradient id="nx-n" gradientUnits="userSpaceOnUse" x1="84" y1="84" x2="172" y2="172"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#CFE9FF"/></linearGradient>
+<filter id="nx-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+</defs>
+<path d="M128.00 28.00 L214.60 78.00 L214.60 178.00 L128.00 228.00 L41.40 178.00 L41.40 78.00Z" fill="none" stroke="url(#nx-g)" stroke-width="13" stroke-linejoin="round"/>
+<path d="M92 170V88L164 168V86" fill="none" stroke="url(#nx-n)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="92" cy="88" r="13.5" fill="#22D8F5"/>
+<circle cx="92" cy="88" r="5.5" fill="#06080C"/>
+<circle cx="164" cy="168" r="13.5" fill="#9B6BFF"/>
+<circle cx="164" cy="168" r="5.5" fill="#06080C"/>
+</g><g transform="translate(196 42.00)"><path transform="translate(6.00 6) scale(0.64)" d="M0 100V0L78 100V0" fill="none" stroke="#E9EEF8" stroke-width="15.62" stroke-linecap="round" stroke-linejoin="round"/><path transform="translate(77.68 6) scale(0.64)" d="M0 0H62M0 50H50M0 100H62" fill="none" stroke="#E9EEF8" stroke-width="15.62" stroke-linecap="round" stroke-linejoin="round"/><path transform="translate(139.12 6) scale(0.64)" d="M0 0L80 100M80 0L0 100" fill="none" stroke="#E9EEF8" stroke-width="15.62" stroke-linecap="round" stroke-linejoin="round"/><path transform="translate(212.08 6) scale(0.64)" d="M0 0V62A38 38 0 0 0 76 62V0" fill="none" stroke="#E9EEF8" stroke-width="15.62" stroke-linecap="round" stroke-linejoin="round"/><path transform="translate(282.48 6) scale(0.64)" d="M68 12C56 2 40 0 30 0 12 0 2 12 2 25 2 40 14 46 35 50 56 54 68 60 68 75 68 88 58 100 40 100 26 100 12 96 0 86" fill="none" stroke="#E9EEF8" stroke-width="15.62" stroke-linecap="round" stroke-linejoin="round"/><path transform="translate(366.96 6) scale(0.64)" d="M43 0A43 50 0 1 0 43 100 43 50 0 1 0 43 0Z" fill="none" stroke="#22D8F5" stroke-width="9.69" stroke-linecap="round" stroke-linejoin="round"/><path transform="translate(441.20 6) scale(0.64)" d="M68 12C56 2 40 0 30 0 12 0 2 12 2 25 2 40 14 46 35 50 56 54 68 60 68 75 68 88 58 100 40 100 26 100 12 96 0 86" fill="none" stroke="#22D8F5" stroke-width="9.69" stroke-linecap="round" stroke-linejoin="round"/></g></svg>
