@@ -5,6 +5,7 @@
 // on the Wayland compositor.
 #include "applications.h"
 #include "effects.h"
+#include "module.h"
 #include "polkitagent.h"
 #include "session.h"
 #include "shellsettings.h"
@@ -28,8 +29,9 @@ int main(int argc, char **argv)
 
     Nexus::App app(argc, argv, info);
     QGuiApplication::setQuitOnLastWindowClosed(false);
-    app.setDumpTopics({QStringLiteral("apps"), QStringLiteral("settings"), QStringLiteral("workspaces"),
-                       QStringLiteral("session"), QStringLiteral("shortcuts")});
+    app.setDumpTopics(QStringList{QStringLiteral("apps"), QStringLiteral("settings"), QStringLiteral("workspaces"),
+                                  QStringLiteral("session"), QStringLiteral("shortcuts"), QStringLiteral("modules")}
+                      + Horizon::ShellModules::dumpTopics());
     if (!app.processArguments())
         return 0;
 
@@ -77,6 +79,13 @@ int main(int argc, char **argv)
             return app.finishDump(QJsonObject{{QStringLiteral("available"), shortcuts.available()},
                                               {QStringLiteral("shortcuts"), QJsonArray::fromVariantList(shortcuts.list())}});
         }
+        if (topic == QLatin1String("modules")) {
+            const Horizon::ShellModules modules;
+            return app.finishDump(QJsonObject{{QStringLiteral("modules"), QJsonArray::fromStringList(modules.names())},
+                                              {QStringLiteral("dumpTopics"), QJsonArray::fromStringList(Horizon::ShellModules::dumpTopics())}});
+        }
+        if (Horizon::ShellModules::hasDump(topic))
+            return app.finishDump(Horizon::ShellModules::dump(topic));
         return app.dumpError(QStringLiteral("unknown dump topic '%1'").arg(topic));
     }
 
@@ -95,6 +104,19 @@ int main(int argc, char **argv)
     app.expose(QStringLiteral("shortcuts"), &shortcuts);
     app.expose(QStringLiteral("polkitAgent"), &polkitAgent);
     app.expose(QStringLiteral("effects"), &effects);
+
+    // Optional modules (notifications, tray, quick settings, ...).
+    Horizon::ShellModules modules;
+    Horizon::ShellContext context;
+    context.app = &app;
+    context.settings = &settings;
+    context.applications = &applications;
+    context.windows = &windows;
+    context.workspaces = &workspaces;
+    context.session = &session;
+    context.shortcuts = &shortcuts;
+    modules.initialize(context);
+    app.expose(QStringLiteral("shellModules"), &modules);
 
     // Registering needs the event loop (and fails harmlessly outside a login
     // session, e.g. in the headless smoke test).

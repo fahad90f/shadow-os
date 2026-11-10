@@ -9,36 +9,84 @@ QtObject {
 
     readonly property var primaryScreen: Qt.application.screens.length > 0 ? Qt.application.screens[0] : null
 
-    function toggleLauncher() {
-        if (launcher.open) launcher.hide()
-        else { sessionMenu.hide(); dockMenu.hide(); launcher.show() }
-    }
+    // ---- overlays: one at a time ------------------------------------------------
+    // The overlay shown last (launcher, a menu, a module's popup). Presenting
+    // another one hides it.
+    property var activeOverlay: null
+    // Overlays that can be opened by name: by a global shortcut, a panel
+    // button or another module. Modules register theirs with registerOverlay().
+    property var namedOverlays: ({})
+    property var overlayNames: []
+    readonly property string openOverlayName: activeOverlay && activeOverlay.open ? activeOverlay.overlayName : ""
 
-    function toggleSessionMenu() {
-        if (sessionMenu.open) sessionMenu.hide()
-        else { launcher.hide(); dockMenu.hide(); sessionMenu.show() }
+    function present(overlay) {
+        if (activeOverlay && activeOverlay !== overlay) activeOverlay.hide()
+        activeOverlay = overlay
+        overlay.show()
     }
+    function toggle(overlay) {
+        if (overlay.open) overlay.hide()
+        else present(overlay)
+    }
+    function closeOverlays() {
+        if (activeOverlay) activeOverlay.hide()
+    }
+    function registerOverlay(name, overlay) {
+        namedOverlays[name] = overlay
+        overlay.overlayName = name
+        overlayNames = Object.keys(namedOverlays)
+    }
+    function hasOverlay(name) { return overlayNames.indexOf(name) >= 0 }
 
-    // What a named action (global shortcut, panel button) does.
+    // What a named action (global shortcut, panel button) does. Actions the
+    // core does not know open the overlay registered under that name, or are
+    // passed to the modules through unhandledAction().
     function trigger(name) {
         switch (name) {
-        case "launcher": toggleLauncher(); break
-        case "session-menu": toggleSessionMenu(); break
         case "terminal": session.run("nexus-terminal"); break
         case "files": session.run("nexus-files"); break
         case "settings": session.run("nexus-control-center"); break
         case "task-manager": session.run("nexus-monitor", ["--page", "processes"]); break
         case "screenshot": session.run("nexus-screenshot"); break
         case "screenshot-region": session.run("nexus-screenshot", ["--region"]); break
-        default: shell.unhandledAction(name)
+        default:
+            if (namedOverlays[name]) toggle(namedOverlays[name])
+            else shell.unhandledAction(name)
         }
     }
 
-    // Emitted for actions owned by optional modules (volume, brightness,
-    // media keys, quick settings, notifications).
+    // Emitted for actions owned by optional modules (volume, brightness and
+    // media keys).
     signal unhandledAction(string name)
 
+    // Shows a short message from the shell itself (errors of shell actions).
+    function notify(message) { toast.show(message) }
+
+    // ---- optional modules ------------------------------------------------------------
+    property var moduleObjects: []
+    function loadModules() {
+        const created = []
+        const instantiate = (source, parent, properties) => {
+            const component = Qt.createComponent(source)
+            if (component.status !== Component.Ready) {
+                console.error("horizon-shell: cannot load module component " + source + ": " + component.errorString())
+                return
+            }
+            const object = component.createObject(parent, properties)
+            if (object) created.push(object)
+            else console.error("horizon-shell: cannot create module component " + source)
+        }
+        for (const item of shellModules.panelItems)
+            instantiate(item.source, panel.moduleArea, { shell: shell, panel: panel })
+        for (const source of shellModules.surfaces)
+            instantiate(source, shell, { shell: shell })
+        moduleObjects = created
+    }
+
     Component.onCompleted: {
+        registerOverlay("launcher", launcher)
+        registerOverlay("session-menu", sessionMenu)
+        loadModules()
         const request = session.takeAutostartRequest()
         if (request === "installer") session.run("nexus-installer")
         else if (request === "recovery") session.run("nexus-recovery")
@@ -72,19 +120,22 @@ QtObject {
         screen: shell.primaryScreen
         launcherOpen: launcher.open
         sessionMenuOpen: sessionMenu.open
-        onLauncherRequested: shell.toggleLauncher()
-        onSessionMenuRequested: shell.toggleSessionMenu()
+        clockOpen: shell.openOverlayName === "calendar"
+        clockEnabled: shell.overlayNames.indexOf("calendar") >= 0
+        onLauncherRequested: shell.trigger("launcher")
+        onSessionMenuRequested: shell.trigger("session-menu")
+        onClockRequested: shell.trigger("calendar")
     }
 
     property Dock dockBar: Dock {
         screen: shell.primaryScreen
-        onMenuRequested: (index, centerX) => dockMenu.openFor(index, centerX)
+        onMenuRequested: (index, centerX) => { dockMenu.prepare(index, centerX); shell.present(dockMenu) }
     }
 
     // ---- overlays ---------------------------------------------------------------------
     property Launcher launcher: Launcher {
         screen: shell.primaryScreen
-        onSessionMenuRequested: shell.toggleSessionMenu()
+        onSessionMenuRequested: shell.trigger("session-menu")
     }
 
     property SessionMenu sessionMenu: SessionMenu {

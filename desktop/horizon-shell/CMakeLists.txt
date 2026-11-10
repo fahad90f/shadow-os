@@ -11,7 +11,35 @@ find_package(PolkitQt6-1 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 
+# Core QML plus the QML of every shell module (modules/<name>/qml/). All of
+# it forms one QML module, org.nexus.horizon, so file names must be unique.
+#
+# HORIZON_MODULES restricts the build to the named modules ("-" for none), so
+# a module can be developed while others are unfinished. Default: all.
+set(HORIZON_MODULES "" CACHE STRING "Semicolon-separated shell modules to build (default: all; '-' for none)")
 file(GLOB HORIZON_QML CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} qml/*.qml)
+file(GLOB _module_dirs CONFIGURE_DEPENDS LIST_DIRECTORIES true modules/*)
+set(HORIZON_MODULE_SOURCES "")
+set(HORIZON_MODULE_DIRS "")
+set(HORIZON_MODULE_CMAKE "")
+foreach(dir IN LISTS _module_dirs)
+    if(NOT IS_DIRECTORY ${dir})
+        continue()
+    endif()
+    get_filename_component(_module ${dir} NAME)
+    if(HORIZON_MODULES AND NOT _module IN_LIST HORIZON_MODULES)
+        continue()
+    endif()
+    message(STATUS "horizon-shell module: ${_module}")
+    list(APPEND HORIZON_MODULE_DIRS ${dir})
+    file(GLOB _sources CONFIGURE_DEPENDS ${dir}/*.cpp ${dir}/*.h)
+    list(APPEND HORIZON_MODULE_SOURCES ${_sources})
+    file(GLOB _qml CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${dir}/qml/*.qml)
+    list(APPEND HORIZON_QML ${_qml})
+    if(EXISTS ${dir}/module.cmake)
+        list(APPEND HORIZON_MODULE_CMAKE ${dir}/module.cmake)
+    endif()
+endforeach()
 foreach(f IN LISTS HORIZON_QML)
     get_filename_component(_name ${f} NAME)
     set_source_files_properties(${f} PROPERTIES QT_RESOURCE_ALIAS ${_name})
@@ -28,6 +56,8 @@ qt_add_executable(horizon-shell
     src/shortcuts.cpp src/shortcuts.h
     src/polkitagent.cpp src/polkitagent.h
     src/effects.cpp src/effects.h
+    src/module.cpp src/module.h
+    ${HORIZON_MODULE_SOURCES}
 )
 qt6_generate_wayland_protocol_client_sources(horizon-shell
     FILES ${PLASMA_WAYLAND_PROTOCOLS_DIR}/plasma-window-management.xml)
@@ -39,9 +69,18 @@ qt_add_qml_module(horizon-shell
     DEPENDENCIES QtQuick
 )
 target_include_directories(horizon-shell PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+foreach(dir IN LISTS HORIZON_MODULE_DIRS)
+    target_include_directories(horizon-shell PRIVATE ${dir})
+endforeach()
 target_link_libraries(horizon-shell PRIVATE
     Nexus::App Qt6::WaylandClient PkgConfig::WAYLAND_CLIENT
     KF6::Service KF6::KIOGui KF6::WindowSystem KF6::GlobalAccel
     PolkitQt6-1::Agent PolkitQt6-1::Core)
 
 install(TARGETS horizon-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# Per-module build additions (extra packages, link libraries, generated
+# sources). The target "horizon-shell" exists at this point.
+foreach(module_cmake IN LISTS HORIZON_MODULE_CMAKE)
+    include(${module_cmake})
+endforeach()

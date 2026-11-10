@@ -6,6 +6,31 @@
 # in Main.qml.
 file(GLOB CC_BACKENDS CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} backends/*.cpp backends/*.h)
 file(GLOB CC_PAGES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} pages/*.qml)
+
+# NEXUS_CC_PAGES restricts the build to the named pages (plus About), so a
+# page can be developed while others are unfinished: a file belongs to page
+# "users" when its lower-cased name starts with "users" (UsersPage.qml,
+# usersbackend.cpp, usershelper.h). Default: every page.
+set(NEXUS_CC_PAGES "" CACHE STRING "Semicolon-separated Control Center page keys to build (default: all)")
+if(NEXUS_CC_PAGES)
+    set(_cc_keys about ${NEXUS_CC_PAGES})
+    foreach(_list CC_BACKENDS CC_PAGES)
+        set(_kept "")
+        foreach(_file IN LISTS ${_list})
+            get_filename_component(_name ${_file} NAME)
+            string(TOLOWER ${_name} _lower)
+            foreach(_key IN LISTS _cc_keys)
+                string(FIND ${_lower} ${_key} _pos)
+                if(_pos EQUAL 0)
+                    list(APPEND _kept ${_file})
+                    break()
+                endif()
+            endforeach()
+        endforeach()
+        set(${_list} ${_kept})
+    endforeach()
+    message(STATUS "Control Center pages: ${_cc_keys}")
+endif()
 file(GLOB CC_HELPERS CONFIGURE_DEPENDS helpers/*-helper)
 file(GLOB CC_POLICIES CONFIGURE_DEPENDS helpers/*.policy)
 

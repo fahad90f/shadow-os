@@ -12,6 +12,8 @@ ShellSurface {
     property real scrimOpacity: 0.0
     property bool modal: false
     property bool open: false
+    // Set by Shell.registerOverlay(): the name this overlay can be opened by.
+    property string overlayName: ""
 
     signal dismissed()
 

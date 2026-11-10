@@ -15,7 +15,8 @@ OverlaySurface {
     property var entry: ({})
     property var windowList: []
 
-    function openFor(index, x) {
+    // Fills the menu for a dock entry; the shell then presents it.
+    function prepare(index, x) {
         row = index
         centerX = x
         const i = dock.index(index, 0)
@@ -24,7 +25,6 @@ OverlaySurface {
             running: dock.data(i, 262)
         }
         windowList = dock.windowsOf(index)
-        show()
     }
 
     component MenuRow: Rectangle {

@@ -14,16 +14,20 @@ Item {
     property color iconColor: Theme.textPrimary
     property string tooltip: ""
     property bool bold: false
+    // false: shows its content but does not react (no hover, no click).
+    property bool interactive: true
+    // A small count shown at the icon's corner (0 hides it).
+    property int badge: 0
 
     signal clicked()
 
     implicitWidth: row.implicitWidth + Theme.spaceMd * 2
     implicitHeight: Theme.panelHeight
-    activeFocusOnTab: true
-    Accessible.role: Accessible.Button
+    activeFocusOnTab: interactive
+    Accessible.role: interactive ? Accessible.Button : Accessible.StaticText
     Accessible.name: tooltip !== "" ? tooltip : text
-    Keys.onReturnPressed: clicked()
-    Keys.onSpacePressed: clicked()
+    Keys.onReturnPressed: if (interactive) clicked()
+    Keys.onSpacePressed: if (interactive) clicked()
 
     Rectangle {
         anchors.fill: parent
@@ -32,7 +36,7 @@ Item {
         radius: Theme.radiusSm
         color: root.checked ? Theme.accentFill
             : tap.pressed ? Theme.pressedOverlay
-            : hover.hovered || root.activeFocus ? Theme.hoverOverlay : "transparent"
+            : root.interactive && (hover.hovered || root.activeFocus) ? Theme.hoverOverlay : "transparent"
         Behavior on color { ColorAnimation { duration: Theme.motionFast } }
     }
 
@@ -58,8 +62,29 @@ Item {
         }
     }
 
-    HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
-    TapHandler { id: tap; onTapped: root.clicked() }
+    Rectangle {
+        visible: root.badge > 0
+        anchors.right: row.right
+        anchors.rightMargin: -7
+        anchors.top: row.top
+        anchors.topMargin: -5
+        width: Math.max(14, badgeText.implicitWidth + 6)
+        height: 14
+        radius: 7
+        color: Theme.accent
+        Text {
+            id: badgeText
+            anchors.centerIn: parent
+            text: root.badge > 99 ? "99+" : root.badge
+            color: Theme.textOnAccent
+            font.family: Theme.fontUi
+            font.pixelSize: 9
+            font.weight: Theme.weightBold
+        }
+    }
+
+    HoverHandler { id: hover; cursorShape: root.interactive ? Qt.PointingHandCursor : Qt.ArrowCursor }
+    TapHandler { id: tap; enabled: root.interactive; onTapped: root.clicked() }
 
     ToolTip.visible: tooltip !== "" && hover.hovered && !checked
     ToolTip.text: tooltip

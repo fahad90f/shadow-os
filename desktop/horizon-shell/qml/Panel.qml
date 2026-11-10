@@ -10,14 +10,16 @@ ShellSurface {
 
     property bool launcherOpen: false
     property bool sessionMenuOpen: false
-    property bool statusOpen: false
-    // Items supplied by optional shell modules (system tray, status indicators).
-    property alias trayArea: trayRow.data
-    property alias statusArea: statusRow.data
+    property bool clockOpen: false
+    // The clock is a button only when something (the calendar module) will
+    // answer a click on it.
+    property bool clockEnabled: false
+    // Where the items of optional shell modules (system tray, status
+    // indicators, notifications) are placed.
+    readonly property Item moduleArea: moduleRow
 
     signal launcherRequested()
     signal sessionMenuRequested()
-    signal statusRequested()
     signal clockRequested()
 
     layer: "top"
@@ -121,6 +123,8 @@ ShellSurface {
             return shellSettings.clockDate ? Qt.formatDate(root.now, "ddd d MMM") + "   " + time : time
         }
         tooltip: Qt.formatDate(root.now, Qt.locale().dateFormat(Locale.LongFormat))
+        checked: root.clockOpen
+        interactive: root.clockEnabled
         onClicked: root.clockRequested()
     }
 
@@ -132,13 +136,9 @@ ShellSurface {
         spacing: 0
 
         Row {
-            id: trayRow
+            id: moduleRow
             Layout.alignment: Qt.AlignVCenter
-            spacing: 2
-        }
-        Row {
-            id: statusRow
-            Layout.alignment: Qt.AlignVCenter
+            height: parent.height
             spacing: 0
         }
         PanelButton {

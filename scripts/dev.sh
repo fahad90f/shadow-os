@@ -10,7 +10,10 @@
 #
 #   build   configure (once) and build; --only restricts the configured
 #           components, so parallel work on different apps can use separate
-#           --dir build directories without touching each other
+#           --dir build directories without touching each other.
+#           --modules "a;b" restricts the shell modules built into
+#           horizon-shell ("-" for none); --cc-pages "a;b" does the same for
+#           Control Center pages
 #   run     start a built GUI binary under a virtual X server with software GL;
 #           --shot saves a screenshot of its main window into build/work/shots/
 #           --smoke exits non-zero if the QML engine reported warnings/errors
@@ -36,11 +39,13 @@ SHOTS="$NEXUS_WORK/shots"
 mkdir -p "$SHOTS" "$CHROOT/build"
 
 cmd="${1:-}"; shift || true
-DIR="dev"; ONLY=""; SHOT=""; SIZE=""; SMOKE=0; DELAY=""; LIGHT=0; ACCENT=""; WAIT=8
+DIR="dev"; ONLY=""; SHOT=""; SIZE=""; SMOKE=0; DELAY=""; LIGHT=0; ACCENT=""; WAIT=8; MODULES=""; CCPAGES=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --dir) DIR="$2"; shift 2 ;;
         --only) ONLY="$2"; shift 2 ;;
+        --modules) MODULES="$2"; shift 2 ;;
+        --cc-pages) CCPAGES="$2"; shift 2 ;;
         --shot) SHOT="$2"; shift 2 ;;
         --size) SIZE="$2"; shift 2 ;;
         --delay) DELAY="$2"; shift 2 ;;
@@ -58,9 +63,10 @@ chr() { in_chroot "$CHROOT" --bind "$NEXUS_ROOT:/src:ro" --bind "$SHOTS:/shots" 
 
 case "$cmd" in
 build)
-    if [ ! -f "$CHROOT$B/build.ninja" ] || [ -n "$ONLY" ]; then
+    if [ ! -f "$CHROOT$B/build.ninja" ] || [ -n "$ONLY$MODULES$CCPAGES" ]; then
         chr cmake -S /src -B "$B" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_INSTALL_PREFIX=/usr ${ONLY:+-DNEXUS_ONLY="$ONLY"}
+            -DCMAKE_INSTALL_PREFIX=/usr ${ONLY:+-DNEXUS_ONLY="$ONLY"} \
+            ${MODULES:+-DHORIZON_MODULES="$MODULES"} ${CCPAGES:+-DNEXUS_CC_PAGES="$CCPAGES"}
     fi
     chr ninja -C "$B" -j "${NEXUS_JOBS}" "$@"
     ;;
