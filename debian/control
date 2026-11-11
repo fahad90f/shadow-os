@@ -915,9 +915,10 @@ Description: SHADOW Terminal
 
 Package: shadow-assistant
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version})
-Recommends: libgtk-3-bin
-Suggests: speech-dispatcher
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
+ speech-dispatcher, espeak-ng, pocketsphinx, pocketsphinx-en-us, xdg-utils
+Recommends: pulseaudio-utils, pipewire-bin, wtype, xdotool, libgtk-3-bin
+Suggests: piper-tts
 Description: Shadow Assistant
  A personal AI assistant for Shadow OS: a conversation that can answer
  questions and carry out tasks on the computer through NVIDIA Nemotron
