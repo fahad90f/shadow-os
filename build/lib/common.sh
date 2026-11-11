@@ -18,6 +18,8 @@ export NEXUS_ROOT
 : "${NEXUS_CACHE:=$NEXUS_WORK/cache}"
 : "${NEXUS_JOBS:=$(nproc)}"
 export NEXUS_WORK NEXUS_OUT NEXUS_CACHE NEXUS_JOBS
+# Fresh checkouts (CI) have neither directory; everything below assumes them.
+mkdir -p "$NEXUS_WORK" "$NEXUS_OUT" 2>/dev/null || true
 
 # Build-time mirrors. Plain HTTP is deliberate: APT authenticates content with
 # the signed Release file, and build hosts behind TLS-intercepting proxies do
