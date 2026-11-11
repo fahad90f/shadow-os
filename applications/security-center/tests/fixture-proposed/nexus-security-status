@@ -1,0 +1,4 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# TEST FIXTURE — the fixed report of ../fixture plus the proposed fields.
+NEXUS_SC_FIXTURE_PROPOSED=1 exec "$(dirname "$0")/../fixture/nexus-security-status" "$@"

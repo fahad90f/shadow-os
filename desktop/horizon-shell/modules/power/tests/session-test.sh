@@ -71,7 +71,10 @@ start_session() {   # time-scale lock-on-resume
     sleep 1
     export DBUS_SYSTEM_BUS_ADDRESS="unix:path=$W/system-bus"
     mkfifo "$W/ctl"
-    python3 "$TESTS/fake-services.py" --control "$W/ctl" --log "$W/fakes.log" --notifications &
+    # The stand-in notification daemon only where the shell has none of its own.
+    fake_notifications=--notifications
+    horizon-shell --dump modules 2>/dev/null | field modules | grep -q notifications && fake_notifications=
+    python3 "$TESTS/fake-services.py" --control "$W/ctl" --log "$W/fakes.log" $fake_notifications &
     sleep 1.5
     printf '[Daemon]\nAutolock=false\nLockOnResume=%s\nLockGrace=0\n' "$2" > "$HOME/.config/kscreenlockerrc"
     # The inner compositor: a client of the outer one, with its screen locker.
@@ -357,6 +360,36 @@ updates)
     check "lock done" "$(st idle.timers.lock.state)" done
     check "locked (org.freedesktop.ScreenSaver.GetActive)" "$(locked)" "(true,)"
     shot modpower-idle-locked.png
+    finish
+    ;;
+
+popup)
+    # Only with a shell built with --modules "power;notifications": the
+    # notices in the shell's own notification daemon (same process, same bus
+    # connection). POWER_TEST_CLICK="X Y" clicks there (the action button).
+    power_conf 0 0 0  0 0 0
+    printf '[Updates]\nAutoCheck=true\nCheckIntervalHours=24\n' > "$HOME/.config/nexus/updater.conf"
+    mkdir -p "$W/bin" "$W/upd"
+    cp "$TESTS/fake-updater.sh" "$W/bin/nexus-updater"
+    export FAKE_UPDATER_DIR="$W/upd"
+    echo security > "$W/upd/result"; : > "$W/upd/runs"; ln -s "$W/upd/runs" "$W/runs"
+    PATH="$W/bin:$(dirname "$(command -v horizon-shell)"):/usr/sbin:/usr/bin:/sbin:/bin"
+    start_session 600 true
+    contains "shell has its own notification daemon" "$(horizon-shell --dump modules | field modules)" notifications
+    check "check ran" "$(grep -c -- --check "$W/upd/runs")" 1
+    check "notification accepted by the shell's daemon" "$(st notifications.sent)/$(st notifications.lastError)" "1/<missing>"
+    shot modpower-popup-updates.png
+    if [ -n "${POWER_TEST_CLICK:-}" ]; then
+        xdo mousemove $POWER_TEST_CLICK click 1
+        sleep 1.5
+        check "clicking the action started nexus-updater" "$(grep -c '^run $' "$W/upd/runs")" 1
+        shot modpower-popup-after-click.png
+    fi
+    ctl upower on-battery true
+    ctl battery 4 4
+    sleep 1
+    check "battery notice sent" "$(st notifications.sent)" 2
+    shot modpower-popup-battery.png
     finish
     ;;
 

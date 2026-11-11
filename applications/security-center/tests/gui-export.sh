@@ -22,7 +22,7 @@ xdo key ctrl+a; xdo key ctrl+v; sleep 1; shot seccenter-ex-6-clipboard-pasted.pn
 click 763 533 1
 # Save as JSON, then as text; keep copies of the written files.
 click 1074 78 2; click 535 436 1; shot seccenter-ex-7-save-json.png; click 852 533 1.5; shot seccenter-ex-8-saved-toast.png
-click 1074 78 2; click 852 533 1.5
+click 1074 78 2; click 471 436 1; click 852 533 1.5
 ls -l "$HOME"/nexus-security-report-* > "$NEXUS_LOGS/gui-export-files.log" 2>&1
 cp "$HOME"/nexus-security-report-* "$NEXUS_LOGS/" 2>/dev/null
 # Saving again under the same name: the dialog warns before replacing.

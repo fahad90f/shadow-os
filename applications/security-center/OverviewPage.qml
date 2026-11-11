@@ -11,6 +11,7 @@ NxPage {
     id: page
 
     required property var center
+    property bool interactive: true      // false while a dialog covers the page
     signal openPage(string key)
     signal actionRequested(string action)
     signal copyRequested(string format)
@@ -107,6 +108,7 @@ NxPage {
             label: qsTr("Firewall")
             icon: "firewall"
             loading: page.waiting
+            interactive: page.interactive
             linkText: qsTr("Open Firewall")
             stateText: !Fmt.has(s) ? qsTr("Not checked") : page.unavailable(s) ? qsTr("Not determined")
                 : s.active ? qsTr("Active") : qsTr("Not active")
@@ -127,6 +129,7 @@ NxPage {
             label: qsTr("AppArmor")
             icon: "shield-check"
             loading: page.waiting
+            interactive: page.interactive
             linkText: qsTr("Open AppArmor")
             stateText: !Fmt.has(s) ? qsTr("Not checked") : page.unavailable(s) ? qsTr("Not determined")
                 : s.enabled ? qsTr("Enabled") : qsTr("Not enabled")
@@ -145,6 +148,7 @@ NxPage {
             label: qsTr("Disk encryption")
             icon: "disk-lock"
             loading: page.waiting
+            interactive: page.interactive
             linkText: qsTr("Open Encryption")
             stateText: !Fmt.has(s) ? qsTr("Not checked") : page.unavailable(s) ? qsTr("Not determined")
                 : s.live_session ? qsTr("Live session")
@@ -167,6 +171,7 @@ NxPage {
             label: qsTr("Secure Boot")
             icon: "key"
             loading: page.waiting
+            interactive: page.interactive
             linkText: qsTr("Open Secure Boot")
             stateText: !Fmt.has(s) ? qsTr("Not checked") : page.unavailable(s) ? qsTr("Not determined")
                 : s.firmware === "bios" ? qsTr("Not supported")
@@ -187,6 +192,7 @@ NxPage {
             label: qsTr("Updates")
             icon: "arrow-up-circle"
             loading: page.waiting
+            interactive: page.interactive
             linkText: qsTr("Open Updates")
             stateText: !Fmt.has(s) ? qsTr("Not checked") : page.unavailable(s) ? qsTr("Not determined")
                 : s.security > 0 ? qsTr("Security updates: %1").arg(s.security)
@@ -208,6 +214,7 @@ NxPage {
             label: qsTr("Network exposure")
             icon: "globe"
             loading: page.waiting
+            interactive: page.interactive
             linkText: qsTr("Open Network exposure")
             stateText: !Fmt.has(s) ? qsTr("Not checked") : page.unavailable(s) ? qsTr("Not determined")
                 : qsTr("Listening sockets: %1").arg(s.count)

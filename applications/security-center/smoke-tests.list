@@ -14,3 +14,22 @@ nexus-security-center --tools-dir /src/security --page hardening
 nexus-security-center --tools-dir /src/security --page network
 nexus-security-center --tools-dir /src/security --page services
 nexus-security-center --tools-dir /src/security --page logins
+# Populated states (installed machine with UEFI, LUKS, AppArmor, systemd) from
+# the fixed test report in tests/fixture; tests/fixture-proposed adds the
+# fields requested from the real tool (README.md).
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture --page firewall
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture --page apparmor
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture --page encryption
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture --page secureboot
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture --page updates
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture --page hardening
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture --page network
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture --page services
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture --page logins
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture-proposed --page firewall
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture-proposed --page apparmor
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture-proposed --page encryption
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture-proposed --page secureboot
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture-proposed --page logins
+nexus-security-center --tools-dir /src/applications/security-center/tests/fixture-proposed --page hardening

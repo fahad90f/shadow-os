@@ -12,6 +12,8 @@ NxPage {
 
     // Bumped when a change is refused, so switches show the real value again.
     property int revision: 0
+    // Makes a binding depend on 'revision' as well as on the value itself.
+    function live(revision, value) { return value }
 
     function intervalText(hours) {
         if (hours === 1) return qsTr("Every hour")
@@ -166,11 +168,11 @@ NxPage {
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
                 enabled: !updates.busy
-                checked: (page.revision, updates.listsEnabled)
+                checked: page.live(page.revision, updates.listsEnabled)
                 Accessible.name: qsTr("Refresh the package lists in the background")
                 onToggled: {
                     const wanted = checked
-                    checked = Qt.binding(() => (page.revision, updates.listsEnabled))
+                    checked = Qt.binding(() => page.live(page.revision, updates.listsEnabled))
                     // Installing without fresh lists would install nothing new.
                     updates.setAutomatic(wanted, wanted && updates.unattendedEnabled)
                 }
@@ -190,11 +192,11 @@ NxPage {
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
                 enabled: !updates.busy && (updates.unattendedInstalled || updates.unattendedEnabled)
-                checked: (page.revision, updates.unattendedEnabled)
+                checked: page.live(page.revision, updates.unattendedEnabled)
                 Accessible.name: qsTr("Install updates automatically")
                 onToggled: {
                     const wanted = checked
-                    checked = Qt.binding(() => (page.revision, updates.unattendedEnabled))
+                    checked = Qt.binding(() => page.live(page.revision, updates.unattendedEnabled))
                     updates.setAutomatic(wanted || updates.listsEnabled, wanted)
                 }
             }

@@ -52,7 +52,7 @@ QString failureText(const Nexus::CommandResult &result)
         if (result.exitCode == 126)
             return FirewallBackend::tr("The request was not authorised.");
         if (result.exitCode == 127)
-            return FirewallBackend::tr("Authentication failed, or no authentication agent is running in this session.");
+            return FirewallBackend::tr("Authentication failed: polkit is not running, or no authentication agent is running in this session.");
     }
     if (result.exitCode == -2)
         return FirewallBackend::tr("The firewall tool did not answer in time.");

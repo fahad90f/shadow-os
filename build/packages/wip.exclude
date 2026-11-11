@@ -8,7 +8,6 @@ applications/editor
 applications/archive-manager
 applications/disk-manager
 applications/screenshot
-applications/security-center
 system/recovery
 desktop/horizon-shell/modules/power
 applications/control-center/pages/AppearancePage.qml

@@ -752,3 +752,15 @@ Description: NEXUS Files
  search, previews, trash with restore, permissions, archives, removable
  drives and network locations, with file operations that report progress
  and ask before replacing or deleting.
+
+Package: nexus-security-center
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ nexus-hardening, pkexec, polkitd
+Recommends: nexus-updater
+Description: NEXUS Security Center
+ Shows the real security state of the machine as reported by system checks:
+ firewall, AppArmor, disk encryption, Secure Boot, updates, listening
+ services and connections, logins, audit events and kernel hardening, with
+ the recommendations that follow from them, and manages the host firewall.
+ It reports states with their evidence; it does not compute scores.

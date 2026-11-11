@@ -12,6 +12,8 @@ NxPage {
 
     // Bumped when a change is refused, so the switch shows the real state again.
     property int revision: 0
+    // Makes a binding depend on 'revision' as well as on the value itself.
+    function live(revision, value) { return value }
     property string removePort: ""
     property string removeProtocol: ""
 
@@ -93,11 +95,11 @@ NxPage {
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
                 enabled: firewall.ready && !firewall.busy
-                checked: (page.revision, firewall.statusKnown && firewall.active)
+                checked: page.live(page.revision, firewall.statusKnown && firewall.active)
                 Accessible.name: qsTr("Firewall")
                 onToggled: {
                     const wanted = checked
-                    checked = Qt.binding(() => (page.revision, firewall.statusKnown && firewall.active))
+                    checked = Qt.binding(() => page.live(page.revision, firewall.statusKnown && firewall.active))
                     if (wanted) firewall.setEnabled(true)
                     else disableDialog.open()
                 }

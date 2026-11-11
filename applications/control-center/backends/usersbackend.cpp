@@ -105,6 +105,30 @@ std::optional<QString> autologinUserIn(const QString &path)
     }
     return value;
 }
+// What passwd(1) said when it refused: its prompts are stripped from the text.
+QString passwdFailure(const Nexus::CommandResult &result)
+{
+    if (result.exitCode == -1)
+        return UsersBackend::tr("passwd could not be started");
+    if (result.exitCode == -2)
+        return UsersBackend::tr("passwd did not finish in time");
+    QString text = result.errText() + QLatin1Char('\n') + result.outText();
+    if (text.contains(QLatin1String("Authentication token manipulation error")) || text.contains(QLatin1String("Authentication failure")))
+        return UsersBackend::tr("the current password is not correct");
+    for (const char *prompt : {"Current password: ", "New password: ", "Retype new password: "})
+        text.remove(QLatin1String(prompt));
+    QStringList kept;
+    const QStringList lines = text.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &raw : lines) {
+        QString line = raw.trimmed();
+        if (line.startsWith(QLatin1String("passwd: ")))
+            line = line.mid(8);
+        if (line.isEmpty() || line == QLatin1String("password unchanged") || line.startsWith(QLatin1String("Changing password for")))
+            continue;
+        kept << line;
+    }
+    return kept.isEmpty() ? UsersBackend::tr("the new password was refused") : kept.join(QStringLiteral("; "));
+}
 } // namespace
 
 UsersBackend::UsersBackend(QObject *parent)
@@ -525,10 +549,7 @@ void UsersBackend::setPassword(const QString &userName, const QString &password,
             if (result.ok()) {
                 Q_EMIT succeeded(tr("Your password was changed."));
             } else {
-                const QStringList lines = result.errText().trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-                Q_EMIT failed(tr("Your password was not changed: %1")
-                                  .arg(result.exitCode == -1 ? tr("passwd could not be started")
-                                       : lines.isEmpty() ? tr("the current password is wrong or the new one was refused") : lines.constLast()));
+                Q_EMIT failed(tr("Your password was not changed: %1").arg(passwdFailure(result)));
             }
             refresh();
         }, 60000, input);

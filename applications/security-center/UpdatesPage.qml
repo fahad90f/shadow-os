@@ -18,16 +18,6 @@ SectionPage {
     sectionTitle: qsTr("The update state")
     subtitle: qsTr("Pending package upgrades according to the package lists on this computer. Nothing is downloaded or installed here.")
 
-    actions: [
-        NxButton {
-            visible: page.center.updaterInstalled
-            text: qsTr("Open NEXUS Updater")
-            iconName: "external-link"
-            kind: "primary"
-            onClicked: page.updaterRequested()
-        }
-    ]
-
     NxBanner {
         visible: page.ready && page.up.lists_present === false
         kind: "warning"
@@ -90,6 +80,18 @@ SectionPage {
             subtitle: Fmt.has(page.up.last_upgrade) ? ""
                 : qsTr("The status tool reports when the package lists were refreshed, not when updates were last installed. NEXUS Updater shows the update history.")
             value: Fmt.has(page.up.last_upgrade) ? page.center.localTime(page.up.last_upgrade) : qsTr("not reported")
+        }
+        NxRow {
+            visible: page.center.updaterInstalled
+            icon: "arrow-up-circle"
+            title: qsTr("NEXUS Updater")
+            subtitle: qsTr("Refresh the package lists, install updates and see the update history.")
+            NxButton {
+                text: qsTr("Open NEXUS Updater")
+                iconName: "external-link"
+                kind: "primary"
+                onClicked: page.updaterRequested()
+            }
         }
         NxRow {
             visible: !page.center.updaterInstalled

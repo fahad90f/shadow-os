@@ -221,7 +221,20 @@ void AccessibilityBackend::fetchEffects()
                 for (const QString &name : names)
                     m_supported.insert(name, true);
             }
-            setRunning(true);
+            // Which renderer the compositor uses decides whether effects can draw at all.
+            QDBusMessage type = QDBusMessage::createMethodCall(kKWin, QStringLiteral("/Compositor"), kProperties, QStringLiteral("Get"));
+            type << QStringLiteral("org.kde.kwin.Compositing") << QStringLiteral("compositingType");
+            auto *third = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(type, 8000), this);
+            connect(third, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w3) {
+                w3->deleteLater();
+                const QDBusPendingReply<QDBusVariant> reply3 = *w3;
+                m_compositingType = reply3.isError() ? QString() : reply3.value().variant().toString();
+                if (softwareRendering()) {
+                    for (auto it = m_supported.begin(); it != m_supported.end(); ++it)
+                        it.value() = false;
+                }
+                setRunning(true);
+            });
         });
     });
 }
@@ -352,6 +365,10 @@ void AccessibilityBackend::setEffectEnabled(const QString &id, bool enabled)
         Q_EMIT failed(m_running ? tr("This KWin has no effect named “%1”.").arg(id) : m_statusMessage);
         return;
     }
+    if (enabled && !m_supported.value(id, false)) {
+        Q_EMIT failed(tr("The compositor cannot run “%1” with its current renderer.").arg(trText(info->title)));
+        return;
+    }
     // Zoom and the magnifying glass use the same shortcuts and exclude each other.
     if (enabled && info->excludes) {
         const QString other = QLatin1String(info->excludes);
@@ -374,7 +391,7 @@ void AccessibilityBackend::trigger(const QString &shortcutName)
         for (const Action &action : info.actions)
             known = known || shortcutName == QLatin1String(action.name);
     }
-    if (!known || !m_running)
+    if (!known || !m_running || softwareRendering())
         return;
     QDBusMessage message = QDBusMessage::createMethodCall(kAccel, kAccelComponentPath, kAccelComponent, QStringLiteral("invokeShortcut"));
     message << shortcutName;
@@ -480,6 +497,8 @@ QJsonObject AccessibilityBackend::toJson() const
         {QStringLiteral("compositorRunning"), m_running},
         {QStringLiteral("statusMessage"), m_statusMessage},
         {QStringLiteral("canPersist"), canPersist()},
+        {QStringLiteral("compositingType"), m_compositingType},
+        {QStringLiteral("softwareRendering"), softwareRendering()},
         {QStringLiteral("effects"), effects},
         {QStringLiteral("loadedEffects"), QJsonArray::fromStringList(m_loaded)},
         {QStringLiteral("shortcutsAvailable"), m_shortcutsAvailable},

@@ -38,6 +38,8 @@ class AccessibilityBackend : public QObject
     Q_PROPERTY(bool compositorRunning READ compositorRunning NOTIFY changed)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY changed)
     Q_PROPERTY(bool canPersist READ canPersist CONSTANT)
+    Q_PROPERTY(QString compositingType READ compositingType NOTIFY changed)
+    Q_PROPERTY(bool softwareRendering READ softwareRendering NOTIFY changed)
     Q_PROPERTY(QVariantList effects READ effects NOTIFY changed)
     Q_PROPERTY(bool shortcutsAvailable READ shortcutsAvailable NOTIFY changed)
     Q_PROPERTY(int colorblindMode READ colorblindMode NOTIFY changed)
@@ -53,6 +55,13 @@ public:
     bool compositorRunning() const { return m_running; }
     QString statusMessage() const { return m_statusMessage; }
     bool canPersist() const;
+    // org.kde.kwin.Compositing.compositingType: "qpainter" is KWin's software
+    // renderer. Its effects are written for OpenGL; with the software renderer
+    // the magnifier is "active" without drawing anything and the pointer
+    // marker crashed KWin 6.3.6 when triggered (seen in the nested test
+    // session), so nothing is offered for switching on in that mode.
+    QString compositingType() const { return m_compositingType; }
+    bool softwareRendering() const { return m_compositingType == QLatin1String("qpainter") || m_compositingType == QLatin1String("none"); }
     // Each: id, title, description, icon, supported, loaded, stored (value in
     // kwinrc, true/false/absent → "storedKnown"), actions: [{name, label, keys}].
     QVariantList effects() const;
@@ -86,7 +95,7 @@ private:
     void applyEffect(const QString &id, bool enabled, bool reportFailure);
 
     bool m_ready = false, m_running = false, m_shortcutsAvailable = false;
-    QString m_statusMessage;
+    QString m_statusMessage, m_compositingType;
     QStringList m_existing, m_loaded;
     QMap<QString, bool> m_supported;
     QMap<QString, bool> m_stored;            // kwinrc [Plugins] <id>Enabled, when present

@@ -108,6 +108,7 @@ NxWindow {
 
             OverviewPage {
                 center: backend
+                interactive: !saveDialog.visible
                 onOpenPage: (key) => window.openPage(key)
                 onActionRequested: (action) => window.runAction(action)
                 onCopyRequested: (format) => window.copyReport(format)

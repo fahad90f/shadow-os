@@ -16,6 +16,9 @@ NxCard {
     property string evidence: ""
     property string linkText: qsTr("Details")
     property bool loading: false
+    // False while a dialog is open above the tile: pointer handlers below a
+    // popup still see taps that the popup's own handlers did not consume.
+    property bool interactive: true
     signal clicked()
 
     readonly property color toneColor: tone === "success" ? Theme.success
@@ -34,8 +37,8 @@ NxCard {
     Keys.onReturnPressed: clicked()
     Keys.onSpacePressed: clicked()
 
-    HoverHandler { cursorShape: Qt.PointingHandCursor }
-    TapHandler { onTapped: { root.forceActiveFocus(); root.clicked() } }
+    HoverHandler { enabled: root.interactive; cursorShape: Qt.PointingHandCursor }
+    TapHandler { enabled: root.interactive; onTapped: { root.forceActiveFocus(); root.clicked() } }
 
     ColumnLayout {
         id: column

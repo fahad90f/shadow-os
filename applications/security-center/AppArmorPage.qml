@@ -60,28 +60,28 @@ SectionPage {
             Layout.fillWidth: true
             label: qsTr("Complaining")
             value: page.counts ? String(page.counts.complain) : ""
-            detail: qsTr("violations are only logged")
+            detail: qsTr("violations only logged")
             icon: "eye"
         }
         NxStatTile {
             Layout.fillWidth: true
             label: qsTr("Kill")
             value: page.counts ? String(page.counts.kill) : ""
-            detail: qsTr("violating process is killed")
+            detail: qsTr("violator is killed")
             icon: "x-circle"
         }
         NxStatTile {
             Layout.fillWidth: true
             label: qsTr("Unconfined mode")
             value: page.counts ? String(page.counts.unconfined) : ""
-            detail: qsTr("profile loaded, not restricting")
+            detail: qsTr("loaded, not restricting")
             icon: "lock-open"
         }
         NxStatTile {
             Layout.fillWidth: true
             label: qsTr("Confined processes")
             value: Fmt.has(page.aa.confined_processes) ? String(page.aa.confined_processes) : qsTr("—")
-            detail: Fmt.has(page.aa.confined_processes) ? qsTr("running under a profile now") : qsTr("not determined")
+            detail: Fmt.has(page.aa.confined_processes) ? qsTr("under a profile now") : qsTr("not determined")
             icon: "cpu"
         }
     }

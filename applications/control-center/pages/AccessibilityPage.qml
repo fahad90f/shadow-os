@@ -124,6 +124,13 @@ NxPage {
         message: a11y.statusMessage
     }
 
+    NxBanner {
+        visible: a11y.compositorRunning && a11y.softwareRendering
+        kind: "info"
+        title: qsTr("Screen effects need hardware graphics")
+        message: qsTr("The compositor is drawing with its software renderer (no OpenGL), with which the magnifier and the other KWin effects cannot draw. They can be switched on when the session runs with a graphics driver.")
+    }
+
     NxSection {
         visible: a11y.compositorRunning && a11y.effects.length > 0
         title: qsTr("Screen effects")
@@ -150,8 +157,8 @@ NxPage {
                 NxRow {
                     icon: effect.modelData.icon
                     title: effect.modelData.title
-                    subtitle: effect.modelData.supported ? effect.modelData.description
-                        : qsTr("%1 Not available: the compositor reports that it cannot run this effect with its current renderer.").arg(effect.modelData.description)
+                    subtitle: effect.modelData.supported || a11y.softwareRendering ? effect.modelData.description
+                        : qsTr("%1 Not available: the compositor reports that it cannot run this effect on this hardware.").arg(effect.modelData.description)
                     Switch {
                         anchors.verticalCenter: parent.verticalCenter
                         enabled: effect.modelData.supported || effect.modelData.loaded
@@ -165,7 +172,7 @@ NxPage {
                 }
                 // Shortcuts of the effect, with buttons that do the same.
                 Flow {
-                    visible: effect.modelData.loaded && effect.modelData.actions.length > 0
+                    visible: effect.modelData.loaded && effect.modelData.supported && effect.modelData.actions.length > 0
                     Layout.fillWidth: true
                     Layout.leftMargin: Theme.spaceLg + Theme.icon + Theme.spaceMd
                     Layout.rightMargin: Theme.spaceLg
@@ -183,7 +190,7 @@ NxPage {
                     }
                 }
                 RowLayout {
-                    visible: effect.modelData.id === "colorblindnesscorrection" && effect.modelData.loaded
+                    visible: effect.modelData.id === "colorblindnesscorrection" && effect.modelData.loaded && effect.modelData.supported
                     Layout.fillWidth: true
                     Layout.leftMargin: Theme.spaceLg + Theme.icon + Theme.spaceMd
                     Layout.rightMargin: Theme.spaceLg

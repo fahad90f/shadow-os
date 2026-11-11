@@ -15,8 +15,16 @@ NxPage {
 
     // Bumped when a change is refused, so switches show the real state again.
     property int revision: 0
+    // Makes a binding depend on 'revision' as well as on the value itself.
+    function live(revision, value) { return value }
     property string selectedName: ""
-    readonly property var selected: (users.users, users.user(selectedName))
+    readonly property var selected: {
+        const list = users.users
+        for (let i = 0; i < list.length; i++) {
+            if (list[i].userName === selectedName) return list[i]
+        }
+        return ({})
+    }
     readonly property bool hasSelection: selected.userName !== undefined
 
     function selectDefault() {
@@ -257,18 +265,18 @@ NxPage {
         }
         NxRow {
             id: adminRow
-            readonly property string block: page.hasSelection ? (users.users, users.demoteBlockReason(page.selected.userName)) : ""
+            readonly property string block: page.hasSelection ? users.demoteBlockReason(page.selected.userName) : ""
             icon: "shield"
             title: qsTr("Administrator")
             subtitle: block !== "" ? block : qsTr("Administrators can install software and change system settings (members of the “sudo” group).")
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
                 enabled: !users.busy && (adminRow.block === "" || !checked)
-                checked: (page.revision, page.hasSelection && page.selected.admin)
+                checked: page.live(page.revision, page.hasSelection && page.selected.admin)
                 Accessible.name: qsTr("Administrator")
                 onToggled: {
                     const wanted = checked
-                    checked = Qt.binding(() => (page.revision, page.hasSelection && page.selected.admin))
+                    checked = Qt.binding(() => page.live(page.revision, page.hasSelection && page.selected.admin))
                     users.setAdministrator(page.selected.userName, wanted)
                 }
             }
@@ -283,18 +291,18 @@ NxPage {
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
                 enabled: users.sddmInstalled && !users.busy
-                checked: (page.revision, page.hasSelection && page.selected.autoLogin)
+                checked: page.live(page.revision, page.hasSelection && page.selected.autoLogin)
                 Accessible.name: qsTr("Sign in automatically")
                 onToggled: {
                     const wanted = checked
-                    checked = Qt.binding(() => (page.revision, page.hasSelection && page.selected.autoLogin))
+                    checked = Qt.binding(() => page.live(page.revision, page.hasSelection && page.selected.autoLogin))
                     users.setAutoLogin(page.selected.userName, wanted)
                 }
             }
         }
         NxRow {
             id: removeRow
-            readonly property string block: page.hasSelection ? (users.users, users.removeBlockReason(page.selected.userName)) : ""
+            readonly property string block: page.hasSelection ? users.removeBlockReason(page.selected.userName) : ""
             icon: "trash"
             iconColor: block === "" ? Theme.danger : Theme.textSecondary
             title: qsTr("Remove this account")

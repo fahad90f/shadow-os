@@ -172,6 +172,7 @@ private:
     void runExtract(const ExtractRequest &request);
     void finishExtract(const ExtractRequest &request, const QStringList &toolWarnings);
     void runTest();
+    void verifyGzip(const QString &kind, const std::function<void()> &next);
     void runDelete(const QStringList &selection);
     void runAdd(const QStringList &paths);
     void runCreate(const QString &output, const QStringList &inputs, const QVariantMap &options);
@@ -218,4 +219,5 @@ private:
     int m_progressDone = 0;
     int m_progressTotal = 0;
     QString m_temporaryOutput;
+    QString m_gzipVerified;     // size/mtime of the archive whose gzip CRC was checked
 };

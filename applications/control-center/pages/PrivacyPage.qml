@@ -12,6 +12,8 @@ NxPage {
 
     // Bumped when a change is refused, so controls show the real value again.
     property int revision: 0
+    // Makes a binding depend on 'revision' as well as on the value itself.
+    function live(revision, value) { return value }
     property string cleanId: ""
 
     function choices(values, current, format) {
@@ -113,11 +115,11 @@ NxPage {
             enabled: privacy.lockConfigurable
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
-                checked: (page.revision, privacy.autolock)
+                checked: page.live(page.revision, privacy.autolock)
                 Accessible.name: qsTr("Lock the screen automatically")
                 onToggled: {
                     const wanted = checked
-                    checked = Qt.binding(() => (page.revision, privacy.autolock))
+                    checked = Qt.binding(() => page.live(page.revision, privacy.autolock))
                     privacy.setAutolock(wanted)
                 }
             }
@@ -134,7 +136,7 @@ NxPage {
                 model: items
                 textRole: "text"
                 valueRole: "value"
-                currentIndex: (page.revision, page.indexOfValue(items, privacy.lockTimeoutMinutes))
+                currentIndex: page.live(page.revision, page.indexOfValue(items, privacy.lockTimeoutMinutes))
                 Accessible.name: qsTr("Lock after")
                 onActivated: privacy.setLockTimeoutMinutes(currentValue)
             }
@@ -145,11 +147,11 @@ NxPage {
             enabled: privacy.lockConfigurable
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
-                checked: (page.revision, privacy.lockOnResume)
+                checked: page.live(page.revision, privacy.lockOnResume)
                 Accessible.name: qsTr("Lock when the computer wakes from sleep")
                 onToggled: {
                     const wanted = checked
-                    checked = Qt.binding(() => (page.revision, privacy.lockOnResume))
+                    checked = Qt.binding(() => page.live(page.revision, privacy.lockOnResume))
                     privacy.setLockOnResume(wanted)
                 }
             }
@@ -167,7 +169,7 @@ NxPage {
                 model: items
                 textRole: "text"
                 valueRole: "value"
-                currentIndex: (page.revision, page.indexOfValue(items, privacy.lockGraceSeconds))
+                currentIndex: page.live(page.revision, page.indexOfValue(items, privacy.lockGraceSeconds))
                 Accessible.name: qsTr("Ask for the password")
                 onActivated: privacy.setLockGraceSeconds(currentValue)
             }
