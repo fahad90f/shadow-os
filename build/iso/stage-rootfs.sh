@@ -45,9 +45,34 @@ else
 deb [signed-by=/etc/apt/keyrings/shadow-image-build.gpg] file:///run/shadow-repo $SHADOW_CODENAME core security community
 EOF
     run --bind "$REPO_DIR:/run/shadow-repo:ro" -- apt-get -q update
+    # Install resiliently. The full arsenal configures hundreds of packages in
+    # one transaction; a maintainer script that creates a system user can fail
+    # transiently ("useradd: cannot open /etc/shadow") under that load, leaving
+    # a few packages unconfigured. A clean "dpkg --configure -a" pass then
+    # completes them, so we retry and only give up (failing the build) if a
+    # package is still broken afterwards. The open-file limit is raised for the
+    # big transaction and inode/space usage is logged for diagnosis.
     # shellcheck disable=SC2086
-    run --bind "$REPO_DIR:/run/shadow-repo:ro" -- apt-get -q -y --no-install-recommends \
-        -o Dpkg::Options::=--force-confnew install $SHADOW_PKGS
+    run --bind "$REPO_DIR:/run/shadow-repo:ro" -- bash -eu -c '
+        ulimit -n 1048576 2>/dev/null || ulimit -n 65536 2>/dev/null || true
+        echo "space/inodes before SHADOW install:"; df -h / || true; df -i / || true
+        opts="-q -y --no-install-recommends -o Dpkg::Options::=--force-confnew -o Dpkg::Use-Pty=0"
+        ok=
+        for a in 1 2 3; do
+            echo "=== SHADOW package install: attempt $a ==="
+            if apt-get $opts install "$@"; then ok=1; break; fi
+            echo "=== attempt $a left packages unconfigured; recovering ==="
+            dpkg --configure -a || true
+            apt-get $opts --fix-broken install || true
+        done
+        if [ -z "${ok:-}" ]; then
+            echo "=== SHADOW install FAILED after retries ==="
+            echo "open-file limit now: $(ulimit -n)"
+            echo "space/inodes now:"; df -h / || true; df -i / || true
+            echo "packages still in a bad state:"; dpkg --audit || true
+            exit 1
+        fi
+    ' shadow-install $SHADOW_PKGS
     rm -f "$MERGED/etc/apt/sources.list.d/shadow-image-build.list" \
           "$MERGED/etc/apt/keyrings/shadow-image-build.gpg"
 
