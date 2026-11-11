@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// @@GENERATED@@
+//
+// NEXUS design tokens for the login and lock screens, which run outside the
+// session and cannot import org.nexus.ui. Dark values in every case: both
+// screens are drawn over the wallpaper.  import "tokens.js" as T
+.pragma library
+
+var bgBase = "@{bgBase}";
+var bgSurface = "@{bgSurface}";
+var bgRaised = "@{bgRaised}";
+var bgOverlay = "@{bgOverlay}";
+var bgInput = "@{bgInput}";
+var bgHover = "@{bgHover}";
+var bgPressed = "@{bgPressed}";
+var borderSubtle = "@{borderSubtle}";
+var border = "@{border}";
+var borderStrong = "@{borderStrong}";
+var textPrimary = "@{textPrimary}";
+var textSecondary = "@{textSecondary}";
+var textMuted = "@{textMuted}";
+var textDisabled = "@{textDisabled}";
+var textOnAccent = "@{textOnAccent}";
+var success = "@{success}";
+var warning = "@{warning}";
+var danger = "@{danger}";
+var accent = "@{accent}";
+var accentName = "@@ACCENT@@";
+
+// Translucent surfaces over the wallpaper (#AARRGGBB).
+var glassPanel = "@{argb:bgSurface:0.72}";
+var glassPopup = "@{argb:bgRaised:0.94}";
+var glassField = "@{argb:bgInput:0.78}";
+var scrimTop = "@{argb:bgBase:0.35}";
+var scrimBottom = "@{argb:bgBase:0.78}";
+var accentFill = "@{argb:accent:0.16}";
+var hoverFill = "@{argb:textPrimary:0.07}";
+var pressedFill = "@{argb:textPrimary:0.13}";
+var dangerFill = "@{argb:danger:0.14}";
+var warningFill = "@{argb:warning:0.14}";
+
+var gradientStart = "@{brand.gradientStart}";
+var gradientMid = "@{brand.gradientMid}";
+var gradientEnd = "@{brand.gradientEnd}";
+
+var fontUi = "@{font.ui}";
+var fontMono = "@{font.mono}";
+var fontCaption = @{fontSize.caption};
+var fontSmall = @{fontSize.small};
+var fontBody = @{fontSize.body};
+var fontBodyLarge = @{fontSize.bodyLarge};
+var fontTitle = @{fontSize.title};
+var fontHeading = @{fontSize.heading};
+var fontDisplay = @{fontSize.display};
+var fontHero = @{fontSize.hero};
+
+var spaceXs = @{space.xs};
+var spaceSm = @{space.sm};
+var spaceMd = @{space.md};
+var spaceLg = @{space.lg};
+var spaceXl = @{space.xl};
+var spaceXxl = @{space.xxl};
+
+var radiusSm = @{radius.sm};
+var radiusMd = @{radius.md};
+var radiusLg = @{radius.lg};
+var radiusXl = @{radius.xl};
+
+var controlHeight = @{size.controlHeightLarge};
+var rowHeight = @{size.rowHeight};
+var focusRing = @{size.focusRing};
+
+var motionFast = @{motion.fast};
+var motionNormal = @{motion.normal};
+var motionSlow = @{motion.slow};

@@ -122,7 +122,7 @@ def _int(obj: dict, key: str, where: str, lo: int, hi: int) -> int | None:
 
 
 def _device(value: str | None, where: str) -> str:
-    if not value or not DEVICE_RE.match(value) or ".." in value:
+    if not value or not DEVICE_RE.fullmatch(value) or ".." in value:
         raise InstallError(f"Answer file: {where} must be a block device path such as /dev/nvme0n1.")
     return value
 
@@ -136,14 +136,19 @@ def parse(data: dict, *, zoneinfo_dir: str = "/usr/share/zoneinfo",
 
     # ---- localisation ----------------------------------------------------
     locale = _str(data, "locale", "en_US.UTF-8", "top level")
-    if not LOCALE_RE.match(locale):
+    if not LOCALE_RE.fullmatch(locale):
         raise InstallError(f"Answer file: invalid locale '{locale}'.")
     if not locale.endswith(".UTF-8") and "@" not in locale:
         locale += ".UTF-8"
     if os.path.isfile(supported_locales):
         with open(supported_locales, encoding="utf-8", errors="replace") as fh:
-            known = {line.split()[0] for line in fh if line.strip() and not line.startswith("#")}
-        if locale not in known:
+            known = dict(line.split()[:2] for line in fh
+                         if len(line.split()) >= 2 and not line.startswith("#"))
+        # Some UTF-8 locales are listed without the ".UTF-8" suffix (hi_IN, vi_VN, ...).
+        bare = locale[:-len(".UTF-8")] if locale.endswith(".UTF-8") else locale
+        if locale not in known and known.get(bare) == "UTF-8":
+            locale = bare
+        if known.get(locale) != "UTF-8":
             raise InstallError(f"Answer file: locale '{locale}' is not available on this system.")
 
     kb = data.get("keyboard", {})
@@ -152,19 +157,19 @@ def parse(data: dict, *, zoneinfo_dir: str = "/usr/share/zoneinfo",
     variant = _str(kb, "variant", "", "keyboard") or ""
     model = _str(kb, "model", "pc105", "keyboard")
     for name, value in (("layout", layout), ("model", model)):
-        if not XKB_RE.match(value):
+        if not XKB_RE.fullmatch(value):
             raise InstallError(f"Answer file: invalid keyboard {name} '{value}'.")
-    if variant and not XKB_RE.match(variant):
+    if variant and not XKB_RE.fullmatch(variant):
         raise InstallError(f"Answer file: invalid keyboard variant '{variant}'.")
 
     timezone = _str(data, "timezone", "Etc/UTC", "top level")
-    if not TIMEZONE_RE.match(timezone) or ".." in timezone:
+    if not TIMEZONE_RE.fullmatch(timezone) or ".." in timezone:
         raise InstallError(f"Answer file: invalid time zone '{timezone}'.")
     if os.path.isdir(zoneinfo_dir) and not os.path.isfile(os.path.join(zoneinfo_dir, timezone)):
         raise InstallError(f"Answer file: unknown time zone '{timezone}'.")
 
     hostname = _str(data, "hostname", "nexus", "top level")
-    if not HOSTNAME_RE.match(hostname):
+    if not HOSTNAME_RE.fullmatch(hostname):
         raise InstallError(f"Answer file: invalid host name '{hostname}' "
                            "(lower-case letters, digits and hyphens; at most 63 characters).")
 
@@ -174,7 +179,7 @@ def parse(data: dict, *, zoneinfo_dir: str = "/usr/share/zoneinfo",
         raise InstallError("Answer file: 'user' is required.")
     _expect_keys(u, {"fullname", "username", "password", "password_hash", "autologin"}, "user")
     username = _str(u, "username", None, "user", required=True)
-    if not USERNAME_RE.match(username) or username in RESERVED_USERS:
+    if not USERNAME_RE.fullmatch(username) or username in RESERVED_USERS:
         raise InstallError(f"Answer file: '{username}' is not a valid user name "
                            "(start with a lower-case letter; letters, digits, '-' and '_'; not a system account).")
     fullname = _str(u, "fullname", "", "user") or ""
@@ -186,7 +191,7 @@ def parse(data: dict, *, zoneinfo_dir: str = "/usr/share/zoneinfo",
         raise InstallError("Answer file: give exactly one of user.password and user.password_hash.")
     if password is not None and ("\n" in password or "\r" in password):
         raise InstallError("Answer file: user.password must not contain line breaks.")
-    if password_hash is not None and not re.match(r"^\$(y|6|5|2[aby]|7|gy)\$[A-Za-z0-9./$=,+-]+$", password_hash):
+    if password_hash is not None and not re.fullmatch(r"^\$(y|6|5|2[aby]|7|gy)\$[A-Za-z0-9./$=,+-]+$", password_hash):
         raise InstallError("Answer file: user.password_hash is not a crypt(5) hash (yescrypt or SHA-512 expected).")
     user = User(fullname, username, password, password_hash, _bool(u, "autologin", False, "user"))
 
@@ -287,13 +292,13 @@ def parse(data: dict, *, zoneinfo_dir: str = "/usr/share/zoneinfo",
     k = data.get("kernel", {})
     _expect_keys(k, {"extra_cmdline"}, "kernel")
     extra = _str(k, "extra_cmdline", "", "kernel") or ""
-    if not CMDLINE_RE.match(extra) or len(extra) > 512:
+    if not CMDLINE_RE.fullmatch(extra) or len(extra) > 512:
         raise InstallError("Answer file: kernel.extra_cmdline contains unsupported characters.")
 
     p = data.get("packages", {})
     _expect_keys(p, {"profiles", "install_now"}, "packages")
     profiles = p.get("profiles", [])
-    if not isinstance(profiles, list) or not all(isinstance(x, str) and PROFILE_RE.match(x) for x in profiles):
+    if not isinstance(profiles, list) or not all(isinstance(x, str) and PROFILE_RE.fullmatch(x) for x in profiles):
         raise InstallError("Answer file: packages.profiles must be a list of profile names.")
 
     return Answers(

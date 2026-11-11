@@ -1,0 +1,197 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# nexus-apply-appearance — carry the NEXUS appearance (dark/light, accent)
+# over to everything that is not a NEXUS application: Qt/KDE applications
+# and KWin decorations (kdeglobals), GTK 3/4 and libadwaita (GSettings,
+# settings.ini, and through kdeglobals the KDE settings portal).
+#
+#   nexus-apply-appearance                         apply ~/.config/nexus/appearance.conf
+#   nexus-apply-appearance --mode light --accent violet
+#   nexus-apply-appearance --list                  installed colour schemes
+#
+# appearance.conf ([Appearance] ColorScheme=dark|light, Accent=<name>) is
+# written by the NEXUS shell and Control Center; a missing file or key means
+# the system default (dark, default accent). Only the user's own
+# configuration files are written. Running applications are told to reload
+# over the session bus; without a bus the change applies to applications
+# started afterwards.
+set -eu
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}"
+mode="" accent=""
+
+usage() { sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'; }
+
+find_scheme() {
+    # Path of the colour scheme "$1", searched like KDE does.
+    old_ifs="$IFS"; IFS=:
+    for dir in ${XDG_DATA_HOME:-$HOME/.local/share} ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do
+        if [ -f "$dir/color-schemes/$1.colors" ]; then
+            IFS="$old_ifs"; printf '%s\n' "$dir/color-schemes/$1.colors"; return 0
+        fi
+    done
+    IFS="$old_ifs"; return 1
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --mode) [ $# -ge 2 ] || { usage >&2; exit 2; }; mode="$2"; shift 2 ;;
+        --accent) [ $# -ge 2 ] || { usage >&2; exit 2; }; accent="$2"; shift 2 ;;
+        --list)
+            old_ifs="$IFS"; IFS=:
+            for dir in ${XDG_DATA_HOME:-$HOME/.local/share} ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do
+                for file in "$dir"/color-schemes/Nexus*.colors; do
+                    [ -f "$file" ] && basename "$file" .colors
+                done
+            done | sort -u
+            IFS="$old_ifs"; exit 0 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "nexus-apply-appearance: unknown argument '$1'" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+read_key() {
+    # Value of key "$1" in the [Appearance] group of appearance.conf.
+    [ -f "$config/nexus/appearance.conf" ] || return 0
+    awk -F= -v key="$1" '
+        /^\[/ { inside = ($0 == "[Appearance]") ; next }
+        inside && $1 == key { sub(/^[^=]*=/, ""); gsub(/^[ \t]+|[ \t\r]+$/, ""); print; exit }
+    ' "$config/nexus/appearance.conf"
+}
+[ -n "$mode" ] || mode="$(read_key ColorScheme)"
+[ -n "$accent" ] || accent="$(read_key Accent)"
+mode="$(printf '%s' "${mode:-dark}" | tr 'A-Z' 'a-z')"
+accent="$(printf '%s' "$accent" | tr 'A-Z' 'a-z')"
+case "$mode" in dark|light) ;; *) echo "nexus-apply-appearance: unknown mode '$mode' (dark, light)" >&2; exit 2 ;; esac
+case "$accent" in *[!a-z]*) echo "nexus-apply-appearance: invalid accent '$accent'" >&2; exit 2 ;; esac
+
+cap() { printf '%s' "$1" | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }'; }
+scheme="Nexus$(cap "$mode")"
+# The default accent has no suffix; an accent without a scheme of its own
+# is the default accent.
+if [ -n "$accent" ] && find_scheme "$scheme$(cap "$accent")" >/dev/null; then
+    scheme="$scheme$(cap "$accent")"
+elif [ -n "$accent" ] && [ "$accent" != cyan ]; then
+    echo "nexus-apply-appearance: no colour scheme for accent '$accent', using the default accent" >&2
+fi
+scheme_file="$(find_scheme "$scheme")" || { echo "nexus-apply-appearance: colour scheme $scheme is not installed" >&2; exit 1; }
+if [ "$mode" = light ]; then icons=nexus-light; else icons=nexus; fi
+
+# ---- Qt / KDE: ~/.config/kdeglobals ------------------------------------------------
+# Applications take their palette from the colour groups in kdeglobals, so
+# the groups of the scheme replace the ones there; every other setting of
+# the user stays.
+mkdir -p "$config"
+tmp="$(mktemp "$config/.kdeglobals.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+{
+    if [ -f "$config/kdeglobals" ]; then
+        awk -v scheme="$scheme" -v icons="$icons" '
+            function flush_missing() {
+                if (group == "[Icons]" && !seen_icons) { print "Theme=" icons; seen_icons = 1 }
+            }
+            /^\[/ {
+                flush_missing()
+                group = $0
+                skip = (group ~ /^\[Colors:/ || group ~ /^\[ColorEffects:/)
+                if (group == "[Icons]") have_icons = 1
+            }
+            skip { next }
+            group == "[Icons]" && /^Theme=/ { print "Theme=" icons; seen_icons = 1; next }
+            group == "[WM]" && /^(active|inactive)(Background|Blend|Foreground)=/ { next }
+            { print }
+            END {
+                flush_missing()
+                if (!have_icons) print "\n[Icons]\nTheme=" icons
+            }
+        ' "$config/kdeglobals"
+    else
+        printf '[Icons]\nTheme=%s\n' "$icons"
+    fi
+    # The groups of the scheme, except the entries written with a change
+    # notification below.
+    awk '
+        /^\[/ { group = $0; keep = ($0 ~ /^\[Colors:/ || $0 ~ /^\[ColorEffects:/); if (keep) print "" }
+        keep && (group == "[Colors:Header]" || group == "[Colors:Window]") && /^BackgroundNormal=/ { next }
+        keep && !/^#/ && NF { print }
+    ' "$scheme_file"
+} > "$tmp"
+mv "$tmp" "$config/kdeglobals"
+trap - EXIT
+
+# The scheme name, the window-decoration colours and one key of the Header
+# and Window sets are written through KConfig with a change notification:
+# that is what KWin (title bars) and the Breeze style (tool bar area) of
+# running applications listen for; they then re-read the whole file.
+scheme_value() {
+    # Value of key "$2" in group "$1" of the scheme file.
+    awk -v group="$1" -v key="$2" '
+        /^\[/ { inside = ($0 == group); next }
+        inside && index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }
+    ' "$scheme_file"
+}
+write_key() {
+    # write_key <group> <key> <value>
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        kwriteconfig6 --file kdeglobals --group "$1" --key "$2" --notify "$3"
+    else
+        printf '\n[%s]\n%s=%s\n' "$1" "$2" "$3" >> "$config/kdeglobals"
+    fi
+}
+for key in activeBackground activeBlend activeForeground inactiveBackground inactiveBlend inactiveForeground; do
+    write_key WM "$key" "$(scheme_value '[WM]' "$key")"
+done
+write_key Colors:Header BackgroundNormal "$(scheme_value '[Colors:Header]' BackgroundNormal)"
+write_key Colors:Window BackgroundNormal "$(scheme_value '[Colors:Window]' BackgroundNormal)"
+write_key General ColorScheme "$scheme"
+
+# ---- GTK: settings.ini (X11 clients, no portal) --------------------------------------
+for version in 3.0 4.0; do
+    file="$config/gtk-$version/settings.ini"
+    mkdir -p "$config/gtk-$version"
+    [ -f "$file" ] || printf '[Settings]\n' > "$file"
+    dark=true; [ "$mode" = light ] && dark=false
+    awk -v dark="$dark" -v icons="$icons" '
+        function flush_missing() {
+            if (group == "[Settings]") {
+                if (!seen_dark) print "gtk-application-prefer-dark-theme=" dark
+                if (!seen_icons) print "gtk-icon-theme-name=" icons
+                seen_dark = seen_icons = 1
+            }
+        }
+        /^\[/ { flush_missing(); group = $0; if (group == "[Settings]") have = 1 }
+        group == "[Settings]" && /^gtk-application-prefer-dark-theme[ ]*=/ { print "gtk-application-prefer-dark-theme=" dark; seen_dark = 1; next }
+        group == "[Settings]" && /^gtk-icon-theme-name[ ]*=/ { print "gtk-icon-theme-name=" icons; seen_icons = 1; next }
+        { print }
+        END {
+            flush_missing()
+            if (!have) print "[Settings]\ngtk-application-prefer-dark-theme=" dark "\ngtk-icon-theme-name=" icons
+        }
+    ' "$file" > "$file.new" && mv "$file.new" "$file"
+done
+
+# ---- GTK / libadwaita on Wayland: GSettings -------------------------------------------
+if command -v gsettings >/dev/null 2>&1 && gsettings list-keys org.gnome.desktop.interface >/dev/null 2>&1; then
+    if [ "$mode" = light ]; then
+        gsettings set org.gnome.desktop.interface color-scheme prefer-light || true
+        gsettings set org.gnome.desktop.interface gtk-theme Adwaita || true
+    else
+        gsettings set org.gnome.desktop.interface color-scheme prefer-dark || true
+        gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark || true
+    fi
+    gsettings set org.gnome.desktop.interface icon-theme "$icons" || true
+fi
+
+# ---- tell running applications ---------------------------------------------------------
+# KGlobalSettings.notifyChange: 0 = palette, 4 = icons. Qt applications with
+# the KDE platform theme reload; xdg-desktop-portal-kde recomputes
+# org.freedesktop.appearance color-scheme (which libadwaita follows) and
+# accent-color from the new palette. KWin re-reads the decoration colours.
+if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-send >/dev/null 2>&1; then
+    dbus-send --session --type=signal /KGlobalSettings org.kde.KGlobalSettings.notifyChange int32:0 int32:0 || true
+    dbus-send --session --type=signal /KGlobalSettings org.kde.KGlobalSettings.notifyChange int32:4 int32:0 || true
+    dbus-send --session --type=method_call --dest=org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1 || true
+fi
+
+printf '%s\n' "$scheme"

@@ -1,0 +1,279 @@
+#!/usr/bin/python3 -I
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Privileged helper of NEXUS Network Center.
+
+Started by the application through pkexec (polkit actions
+org.nexus.networkcenter.sockets and org.nexus.networkcenter.capture, see
+org.nexus.networkcenter.policy). It accepts a closed set of sub-commands,
+validates every argument, never invokes a shell and never opens a file on
+behalf of the caller. Before it runs a tool it removes from the capability
+bounding set every capability that tool does not need, so the child is root
+in name only:
+
+    network-helper sockets
+        Run `ss -H -O -t -u -n -a -p` as root, so that the owning process of
+        every TCP/UDP socket is visible, and print one JSON document:
+        {"ok": true, "lines": ["tcp LISTEN 0 128 ...", ...]}
+
+    network-helper capture --interface NAME [--filter EXPRESSION] [--snaplen BYTES]
+        Run `tcpdump -Z USER -i NAME -U -w - [-s BYTES] [-- EXPRESSION]` and
+        stream the capture (classic pcap format) to standard output. NAME must
+        be an existing interface (or "any"); EXPRESSION is restricted to the
+        characters of the pcap filter language and is handed to tcpdump as one
+        argument after "--", so it can never be read as an option (such as -w,
+        -r, -F or -z, which name files and commands). tcpdump gives up root
+        for USER ("tcpdump", else "nobody") once the device is open. The unprivileged
+        application writes the capture file itself, so no privileged process
+        ever touches a path chosen by the user. The capture stops when
+        standard input reaches end-of-file (the application closes the pipe,
+        or exits) or when tcpdump ends on its own. tcpdump's own messages and
+        finally one JSON status document go to standard error:
+        {"ok": true, "exitCode": 0}
+
+`capture` is the one sub-command whose standard output is not JSON: it is the
+packet stream. Errors of every sub-command are reported as a JSON document
+({"ok": false, "error": "..."}) on standard output for `sockets` and on
+standard error for `capture`, with a non-zero exit status.
+"""
+
+import json
+import os
+import pwd
+import re
+import select
+import signal
+import subprocess
+import sys
+
+TOOL_DIRS = ("/usr/bin", "/usr/sbin", "/bin", "/sbin")
+CHILD_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
+
+INTERFACE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,14}\Z")
+# The pcap filter language (pcap-filter(7)): words, numbers, addresses and
+# the operators of its expressions, plus the backslash that escapes a keyword
+# used as a name ("ether proto \ip"). No quotes, "$", ";", "#" or control
+# characters.
+FILTER_RE = re.compile(r"^[A-Za-z0-9 .:/()\[\]&|!=<>*+%^,_\\-]{1,1024}\Z")
+MAX_SNAPLEN = 262144
+
+# Linux capability numbers (linux/capability.h).
+CAP_DAC_READ_SEARCH = 2
+CAP_SETGID = 6
+CAP_SETUID = 7
+CAP_NET_ADMIN = 12
+CAP_NET_RAW = 13
+CAP_SYS_PTRACE = 19
+PR_CAPBSET_READ = 23
+PR_CAPBSET_DROP = 24
+PR_SET_NO_NEW_PRIVS = 38
+
+
+def find_tool(name):
+    for directory in TOOL_DIRS:
+        path = os.path.join(directory, name)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def reply(document, stream):
+    stream.write(json.dumps(document) + "\n")
+    stream.flush()
+
+
+def fail(message, stream, code=1):
+    reply({"ok": False, "error": message}, stream)
+    sys.exit(code)
+
+
+def restrict_capabilities(keep, stream):
+    """Limit what this process and its children can ever hold to 'keep'.
+
+    A capability removed from the bounding set is not regained by executing a
+    program as root, so the tool started next has only the listed ones. Fails
+    closed: if the restriction cannot be applied, nothing is run.
+    """
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        for capability in range(0, 64):
+            if capability in keep:
+                continue
+            if libc.prctl(PR_CAPBSET_READ, capability, 0, 0, 0) <= 0:
+                continue                    # not in the set, or unknown to this kernel
+            if libc.prctl(PR_CAPBSET_DROP, capability, 0, 0, 0) != 0:
+                raise OSError(ctypes.get_errno(), os.strerror(ctypes.get_errno()))
+        # No setuid program or file capability may add privileges later on.
+        if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), os.strerror(ctypes.get_errno()))
+    except (ImportError, OSError, AttributeError) as error:
+        fail("could not drop privileges: %s" % error, stream)
+
+
+def cmd_sockets(arguments):
+    out = sys.stdout
+    if arguments:
+        fail("'sockets' takes no arguments", out, 2)
+    ss = find_tool("ss")
+    if ss is None:
+        fail("the ss tool is not installed (package iproute2)", out)
+    # ss asks the kernel for all sockets (CAP_NET_ADMIN) and reads the file
+    # descriptor tables of other users' processes under /proc.
+    restrict_capabilities({CAP_NET_ADMIN, CAP_DAC_READ_SEARCH, CAP_SYS_PTRACE}, out)
+    try:
+        result = subprocess.run(
+            [ss, "-H", "-O", "-t", "-u", "-n", "-a", "-p"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=CHILD_ENV, cwd="/", close_fds=True, timeout=20, check=False)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        fail("running ss failed: %s" % error, out)
+    lines = result.stdout.decode("utf-8", "replace").splitlines()
+    if result.returncode != 0:
+        fail("ss failed: %s" % result.stderr.decode("utf-8", "replace").strip(), out)
+    reply({"ok": True, "lines": lines}, out)
+
+
+def parse_capture_arguments(arguments, err):
+    options = {"interface": None, "filter": None, "snaplen": None}
+    index = 0
+    while index < len(arguments):
+        name = arguments[index]
+        if name not in ("--interface", "--filter", "--snaplen"):
+            fail("unknown argument %r" % name, err, 2)
+        if index + 1 >= len(arguments):
+            fail("%s needs a value" % name, err, 2)
+        key = name[2:]
+        if options[key] is not None:
+            fail("%s given twice" % name, err, 2)
+        options[key] = arguments[index + 1]
+        index += 2
+
+    interface = options["interface"]
+    if interface is None:
+        fail("--interface is required", err, 2)
+    if not INTERFACE_RE.match(interface):
+        fail("invalid interface name", err, 2)
+    # "any" is libpcap's pseudo-device for all interfaces.
+    if interface != "any" and not os.path.isdir(os.path.join("/sys/class/net", interface)):
+        fail("no such network interface: %s" % interface, err, 2)
+
+    expression = options["filter"]
+    if expression is not None:
+        if not FILTER_RE.match(expression) or expression.lstrip().startswith("-"):
+            fail("the capture filter may only contain the characters of the pcap filter language "
+                 "(at most 1024) and must not begin with '-'", err, 2)
+
+    snaplen = options["snaplen"]
+    if snaplen is not None:
+        if not re.match(r"^[0-9]{1,6}\Z", snaplen) or not 64 <= int(snaplen) <= MAX_SNAPLEN:
+            fail("--snaplen must be a number from 64 to %d" % MAX_SNAPLEN, err, 2)
+    return interface, expression, snaplen
+
+
+def cmd_capture(arguments):
+    err = sys.stderr
+    interface, expression, snaplen = parse_capture_arguments(arguments, err)
+    tcpdump = find_tool("tcpdump")
+    if tcpdump is None:
+        fail("tcpdump is not installed (package tcpdump)", err)
+    if os.isatty(1):
+        fail("refusing to write a binary capture to a terminal", err, 2)
+
+    # The account tcpdump switches to once the device is open.
+    unprivileged = None
+    for name in ("tcpdump", "nobody"):
+        try:
+            pwd.getpwnam(name)
+            unprivileged = name
+            break
+        except KeyError:
+            continue
+    if unprivileged is None:
+        fail("no unprivileged account (tcpdump, nobody) to run the capture as", err)
+
+    # Opening the device needs CAP_NET_RAW (and CAP_NET_ADMIN for promiscuous
+    # mode); changing to the unprivileged account needs the two set-id ones.
+    restrict_capabilities({CAP_NET_RAW, CAP_NET_ADMIN, CAP_SETUID, CAP_SETGID}, err)
+
+    # -Z: drop root; -U: hand every packet on as soon as it is captured;
+    # -w -: pcap on stdout.
+    argv = [tcpdump, "-Z", unprivileged, "-i", interface, "-U", "-w", "-"]
+    if snaplen is not None:
+        argv += ["-s", snaplen]
+    if expression is not None:
+        # Everything after "--" is the filter expression, never an option.
+        argv += ["--", expression]
+
+    stop = {"requested": False}
+
+    def on_signal(_signum, _frame):
+        stop["requested"] = True
+
+    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(signum, on_signal)
+    # A reader that went away must end the capture, not kill the helper silently.
+    signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
+    try:
+        child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, env=CHILD_ENV, cwd="/",
+                                 close_fds=True, restore_signals=True)
+    except OSError as error:
+        fail("starting tcpdump failed: %s" % error, err)
+
+    # Wait for the child to end or for the caller to close our standard input.
+    watch_stdin = True
+    while child.poll() is None and not stop["requested"]:
+        if not watch_stdin:
+            try:
+                child.wait(0.2)
+            except subprocess.TimeoutExpired:
+                pass
+            continue
+        try:
+            readable, _, _ = select.select([0], [], [], 0.2)
+        except InterruptedError:
+            continue
+        except (OSError, ValueError):
+            watch_stdin = False
+            continue
+        if readable:
+            try:
+                data = os.read(0, 4096)
+            except OSError:
+                data = b""
+            # End-of-file or any input at all means "stop now".
+            stop["requested"] = True
+            del data
+
+    if child.poll() is None:
+        child.send_signal(signal.SIGINT)        # tcpdump flushes and prints its counters
+        try:
+            child.wait(5)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()
+    code = child.returncode
+    reply({"ok": code == 0, "exitCode": code}, err)
+    sys.exit(0 if code == 0 else 1)
+
+
+def main():
+    if os.geteuid() != 0:
+        fail("this helper must run as root (it is started through pkexec)", sys.stdout, 77)
+    os.umask(0o077)
+    arguments = sys.argv[1:]
+    if any("\x00" in argument for argument in arguments):
+        fail("invalid argument", sys.stdout, 2)
+    if not arguments:
+        fail("missing sub-command (sockets | capture)", sys.stdout, 2)
+    command, rest = arguments[0], arguments[1:]
+    if command == "sockets":
+        cmd_sockets(rest)
+    elif command == "capture":
+        cmd_capture(rest)
+    else:
+        fail("unknown sub-command %r" % command, sys.stdout, 2)
+
+
+if __name__ == "__main__":
+    main()

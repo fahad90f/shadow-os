@@ -1,0 +1,7 @@
+# <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
+nexus-updater
+nexus-updater history
+nexus-updater recovery
+nexus-updater log
+nexus-updater sources
+nexus-updater settings

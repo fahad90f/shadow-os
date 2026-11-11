@@ -61,3 +61,11 @@ fonts-noto-mono
 
 # Everyday applications that are not NEXUS's own
 firefox-esr
+
+# Tools the NEXUS applications call
+traceroute
+bind9-dnsutils
+tcpdump
+libkscreen-bin
+pulseaudio-utils
+os-prober

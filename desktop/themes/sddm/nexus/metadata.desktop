@@ -1,0 +1,13 @@
+[SddmGreeterTheme]
+Name=NEXUS
+Description=Login screen of NEXUS OS
+Author=NEXUS OS
+License=GPL-3.0-or-later
+Type=sddm-theme
+Version=1.0
+Website=https://github.com/fahad90fa/Custom-OS
+MainScript=Main.qml
+ConfigFile=theme.conf
+Theme-Id=nexus
+Theme-API=2.0
+QtVersion=6

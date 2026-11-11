@@ -1,0 +1,166 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# @@GENERATED@@
+#
+# NEXUS colour scheme for Qt/KDE applications and KWin window decorations
+# (KColorScheme format). One template yields every variant:
+#   Nexus{Dark,Light}.colors            default accent
+#   Nexus{Dark,Light}<Accent>.colors    the other accents of the design system
+#
+# How the design tokens map to KDE's colour sets
+#   Window         application chrome (menu bar, tool bars, dialogs, side panels) → bgSurface
+#   View           content (lists, editors, input fields)                         → bgBase
+#   Button         push buttons, combo boxes                                      → bgOverlay
+#   Selection      highlight, progress, checked controls                          → accent
+#   Tooltip        tool tips                                                      → bgOverlay
+#   Header         title bar and the tool area merged with it                     → bgSurface
+#   Complementary  dark "over the wallpaper" surfaces, in both modes              → dark bgBase
+# so a third-party window has the same three levels as a NEXUS application:
+# header and side areas on bgSurface, content on bgBase, raised controls above.
+
+[ColorEffects:Disabled]
+Color=@{bgSurface}
+ColorAmount=0
+ColorEffect=0
+ContrastAmount=0.7
+ContrastEffect=1
+IntensityAmount=0
+IntensityEffect=0
+
+[ColorEffects:Inactive]
+ChangeSelectionColor=true
+Color=@{textMuted}
+ColorAmount=0.025
+ColorEffect=2
+ContrastAmount=0.1
+ContrastEffect=2
+Enable=false
+IntensityAmount=0
+IntensityEffect=0
+
+[Colors:Button]
+BackgroundAlternate=@{mix:bgOverlay:accent:0.25}
+BackgroundNormal=@{bgOverlay}
+DecorationFocus=@{accent}
+DecorationHover=@{accent}
+ForegroundActive=@{accent}
+ForegroundInactive=@{textSecondary}
+ForegroundLink=@{accent.blue}
+ForegroundNegative=@{danger}
+ForegroundNeutral=@{warning}
+ForegroundNormal=@{textPrimary}
+ForegroundPositive=@{success}
+ForegroundVisited=@{accent.violet}
+
+[Colors:Complementary]
+BackgroundAlternate=@{dark:bgSurface}
+BackgroundNormal=@{dark:bgBase}
+DecorationFocus=@{dark:accent}
+DecorationHover=@{dark:accent}
+ForegroundActive=@{dark:accent}
+ForegroundInactive=@{dark:textSecondary}
+ForegroundLink=@{dark:accent.blue}
+ForegroundNegative=@{dark:danger}
+ForegroundNeutral=@{dark:warning}
+ForegroundNormal=@{dark:textPrimary}
+ForegroundPositive=@{dark:success}
+ForegroundVisited=@{dark:accent.violet}
+
+[Colors:Header]
+BackgroundAlternate=@{bgBase}
+BackgroundNormal=@{bgSurface}
+DecorationFocus=@{accent}
+DecorationHover=@{accent}
+ForegroundActive=@{accent}
+ForegroundInactive=@{textSecondary}
+ForegroundLink=@{accent.blue}
+ForegroundNegative=@{danger}
+ForegroundNeutral=@{warning}
+ForegroundNormal=@{textPrimary}
+ForegroundPositive=@{success}
+ForegroundVisited=@{accent.violet}
+
+[Colors:Header][Inactive]
+BackgroundAlternate=@{bgBase}
+BackgroundNormal=@{bgSurface}
+DecorationFocus=@{accent}
+DecorationHover=@{accent}
+ForegroundActive=@{accent}
+ForegroundInactive=@{textMuted}
+ForegroundLink=@{accent.blue}
+ForegroundNegative=@{danger}
+ForegroundNeutral=@{warning}
+ForegroundNormal=@{textMuted}
+ForegroundPositive=@{success}
+ForegroundVisited=@{accent.violet}
+
+[Colors:Selection]
+BackgroundAlternate=@{mix:bgSurface:accent:0.45}
+BackgroundNormal=@{accent}
+DecorationFocus=@{accent}
+DecorationHover=@{accent}
+ForegroundActive=@{textOnAccent}
+ForegroundInactive=@{mix:textOnAccent:accent:0.35}
+ForegroundLink=@{mix:textOnAccent:accent.blue:0.35}
+ForegroundNegative=@{mix:textOnAccent:danger:0.45}
+ForegroundNeutral=@{mix:textOnAccent:warning:0.35}
+ForegroundNormal=@{textOnAccent}
+ForegroundPositive=@{mix:textOnAccent:success:0.35}
+ForegroundVisited=@{mix:textOnAccent:accent.violet:0.35}
+
+[Colors:Tooltip]
+BackgroundAlternate=@{bgRaised}
+BackgroundNormal=@{bgOverlay}
+DecorationFocus=@{accent}
+DecorationHover=@{accent}
+ForegroundActive=@{accent}
+ForegroundInactive=@{textSecondary}
+ForegroundLink=@{accent.blue}
+ForegroundNegative=@{danger}
+ForegroundNeutral=@{warning}
+ForegroundNormal=@{textPrimary}
+ForegroundPositive=@{success}
+ForegroundVisited=@{accent.violet}
+
+[Colors:View]
+BackgroundAlternate=@{bgSurface}
+BackgroundNormal=@{bgBase}
+DecorationFocus=@{accent}
+DecorationHover=@{accent}
+ForegroundActive=@{accent}
+ForegroundInactive=@{textSecondary}
+ForegroundLink=@{accent.blue}
+ForegroundNegative=@{danger}
+ForegroundNeutral=@{warning}
+ForegroundNormal=@{textPrimary}
+ForegroundPositive=@{success}
+ForegroundVisited=@{accent.violet}
+
+[Colors:Window]
+BackgroundAlternate=@{bgRaised}
+BackgroundNormal=@{bgSurface}
+DecorationFocus=@{accent}
+DecorationHover=@{accent}
+ForegroundActive=@{accent}
+ForegroundInactive=@{textSecondary}
+ForegroundLink=@{accent.blue}
+ForegroundNegative=@{danger}
+ForegroundNeutral=@{warning}
+ForegroundNormal=@{textPrimary}
+ForegroundPositive=@{success}
+ForegroundVisited=@{accent.violet}
+
+[General]
+ColorScheme=@@SCHEME_ID@@
+Name=@@SCHEME_NAME@@
+shadeSortColumn=true
+
+[KDE]
+contrast=4
+
+[WM]
+activeBackground=@{bgSurface}
+activeBlend=@{textPrimary}
+activeForeground=@{textPrimary}
+inactiveBackground=@{bgSurface}
+inactiveBlend=@{textMuted}
+inactiveForeground=@{textMuted}

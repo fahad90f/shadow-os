@@ -52,6 +52,21 @@ void Shortcuts::add(const char *name, const QString &description, const QList<QK
     action->setProperty("componentDisplayName", QStringLiteral("NEXUS HORIZON"));
     KGlobalAccel::self()->setDefaultShortcut(action, keys);
     KGlobalAccel::self()->setShortcut(action, keys);      // keeps a binding the user changed
+    // A default key can get lost from the stored binding (it was briefly
+    // taken while another instance registered, or a crash interrupted the
+    // registration). If the stored binding is only a part of the default one
+    // and the missing keys are free, restore the default.
+    const QList<QKeySequence> active = KGlobalAccel::self()->shortcut(action);
+    bool subset = active.size() < keys.size();
+    for (const QKeySequence &k : active)
+        subset = subset && keys.contains(k);
+    if (subset) {
+        bool free = true;
+        for (const QKeySequence &k : keys)
+            free = free && (active.contains(k) || KGlobalAccel::isGlobalShortcutAvailable(k, QStringLiteral("nexus-horizon")));
+        if (free)
+            KGlobalAccel::self()->setShortcut(action, keys, KGlobalAccel::NoAutoloading);
+    }
     const QString id = action->objectName();
     connect(action, &QAction::triggered, this, [this, id] { Q_EMIT triggered(id); });
     m_actions.append(action);

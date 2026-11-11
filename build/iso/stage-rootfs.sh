@@ -50,6 +50,27 @@ EOF
         -o Dpkg::Options::=--force-confnew install $NEXUS_PKGS
     rm -f "$MERGED/etc/apt/sources.list.d/nexus-image-build.list" \
           "$MERGED/etc/apt/keyrings/nexus-image-build.gpg"
+
+    # The NEXUS packages of this release also ship on the system as a signed
+    # local APT repository. It is what makes the nexus-arsenal-* profile
+    # metapackages installable (and NEXUS packages re-installable) on a
+    # machine that has no NEXUS network repository configured. Debug-symbol
+    # packages are left out.
+    if [ -x "$MERGED/usr/bin/horizon-shell" ]; then
+        log "adding the local NEXUS package repository"
+        LOCAL_REPO="$MERGED/usr/share/nexus/repository"
+        mkdir -p "$LOCAL_REPO"
+        rsync -a --exclude '*-dbgsym_*' "$REPO_DIR/dists" "$REPO_DIR/pool" "$LOCAL_REPO/"
+        {
+            echo "# NEXUS OS $NEXUS_VERSION packages that came with this installation"
+            echo "# (/usr/share/nexus/repository), authenticated with the NEXUS archive key."
+            echo "Types: deb"
+            echo "URIs: file:///usr/share/nexus/repository"
+            echo "Suites: $NEXUS_CODENAME"
+            echo "Components: core security community"
+            echo "Signed-By: /usr/share/keyrings/nexus-archive-keyring.gpg"
+        } > "$MERGED/etc/apt/sources.list.d/nexus-local.sources"
+    fi
 fi
 
 # ---- static rootfs overlay ---------------------------------------------------

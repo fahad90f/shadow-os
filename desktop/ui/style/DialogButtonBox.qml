@@ -19,9 +19,10 @@ T.DialogButtonBox {
     alignment: Qt.AlignRight
 
     delegate: Button {
-        highlighted: control.buttonRole(this) === T.DialogButtonBox.AcceptRole
-            || control.buttonRole(this) === T.DialogButtonBox.YesRole
-            || control.buttonRole(this) === T.DialogButtonBox.ApplyRole
+        // The role is an attached property of each button in the box.
+        highlighted: T.DialogButtonBox.buttonRole === T.DialogButtonBox.AcceptRole
+            || T.DialogButtonBox.buttonRole === T.DialogButtonBox.YesRole
+            || T.DialogButtonBox.buttonRole === T.DialogButtonBox.ApplyRole
     }
 
     contentItem: ListView {

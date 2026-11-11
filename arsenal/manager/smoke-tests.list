@@ -1,0 +1,7 @@
+# <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
+nexus-arsenal --profiles-dir /src/arsenal/profiles
+nexus-arsenal --profiles-dir /src/arsenal/profiles --page web
+nexus-arsenal --profiles-dir /src/arsenal/profiles --page tools
+nexus-arsenal --profiles-dir /src/arsenal/profiles --page external
+nexus-arsenal --profiles-dir /src/arsenal/profiles --page responsible-use
+nexus-arsenal

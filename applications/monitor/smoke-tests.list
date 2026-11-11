@@ -1,0 +1,7 @@
+# <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
+nexus-monitor
+nexus-monitor --page processes
+nexus-monitor --page services
+nexus-monitor --page disks
+nexus-monitor --page network
+nexus-monitor --page sensors

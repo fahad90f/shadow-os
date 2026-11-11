@@ -1,0 +1,4 @@
+# <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
+nexus-installer
+nexus-installer --probe-file /src/system/installer/gui/testing/probes/uefi-dualboot.json --step disk
+nexus-installer --probe-file /src/system/installer/gui/testing/probes/uefi-dualboot.json --engine /src/system/installer/gui/testing/test-engine --preset /src/system/installer/gui/testing/presets/erase-encrypted.json --profiles-dir /src/arsenal/profiles --step summary

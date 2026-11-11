@@ -60,7 +60,16 @@ void ShellSettings::load()
     }
 
     // QSettings turns a comma-separated value into a list; a single entry stays a string.
-    const QStringList pinned = s.value(QStringLiteral("Dock/Pinned")).toStringList();
+    // Until the user pins or unpins something, the dock shows the NEXUS
+    // defaults; entries whose application is not installed are skipped by the dock.
+    static const QStringList defaultPins{
+        QStringLiteral("org.nexus.files.desktop"), QStringLiteral("firefox-esr.desktop"),
+        QStringLiteral("org.nexus.terminal.desktop"), QStringLiteral("org.nexus.editor.desktop"),
+        QStringLiteral("org.nexus.store.desktop"), QStringLiteral("org.nexus.arsenal.desktop"),
+        QStringLiteral("org.nexus.securitycenter.desktop"), QStringLiteral("org.nexus.monitor.desktop"),
+        QStringLiteral("org.nexus.controlcenter.desktop")};
+    const QStringList pinned = s.contains(QStringLiteral("Dock/Pinned"))
+        ? s.value(QStringLiteral("Dock/Pinned")).toStringList() : defaultPins;
     QStringList clean;
     for (const QString &id : pinned) {
         const QString t = id.trimmed();

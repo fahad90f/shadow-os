@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# /etc/xdg/plasmashellrc — NEXUS HORIZON does not run plasmashell, but
+# KScreenLocker's greeter reads this key to find the shell package that
+# contains the lock screen (contents/lockscreen/LockScreen.qml of
+# /usr/share/plasma/shells/org.nexus.horizon). Without it the greeter looks
+# for org.kde.plasma.desktop, which NEXUS OS does not install.
+[Shell]
+ShellPackage=org.nexus.horizon

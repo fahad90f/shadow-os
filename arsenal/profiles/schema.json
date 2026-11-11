@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/fahad90fa/Custom-OS/arsenal/profiles/schema.json",
+  "title": "NEXUS Arsenal profile manifest",
+  "description": "One security tool profile. Checked by arsenal/tools/validate.py, which implements the keywords used here and adds the cross-file rules listed in arsenal/docs/adding-tools.md (category ids from categories.json, unique packages, resolvable includes).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "name", "summary", "description", "icon", "metapackage", "tools", "external"],
+  "properties": {
+    "schema": {
+      "description": "Manifest format version.",
+      "const": 1
+    },
+    "id": {
+      "description": "Profile identifier; equals the file name without .json.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{1,23}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 40
+    },
+    "summary": {
+      "description": "One line shown on the profile card.",
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 110
+    },
+    "description": {
+      "description": "A few sentences: what the profile is for and who would install it.",
+      "type": "string",
+      "minLength": 40,
+      "maxLength": 700
+    },
+    "icon": {
+      "description": "Icon-theme name of the profile icon (assets/icons/categories/<name>.svg or assets/icons/apps/<name>.svg).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]+$"
+    },
+    "metapackage": {
+      "description": "Binary package that depends on the tools of this profile; always nexus-arsenal-<id>.",
+      "type": "string",
+      "pattern": "^nexus-arsenal-[a-z][a-z0-9]{1,23}$"
+    },
+    "includes": {
+      "description": "Ids of other profiles whose tools belong to this one as well. The tools are referenced, never copied.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]{1,23}$"
+      }
+    },
+    "tools": {
+      "description": "Tools installed from Debian main (or the NEXUS security repository) through the package manager.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/tool" }
+    },
+    "external": {
+      "description": "Well-known tools that are NOT installable from the configured repositories. The manager lists them with a link; nothing is downloaded or repackaged.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/external" }
+    }
+  },
+  "$defs": {
+    "architecture": {
+      "enum": ["amd64", "arm64"]
+    },
+    "url": {
+      "description": "Upstream/homepage URL. https is preferred; a few upstream sites are http-only.",
+      "type": "string",
+      "pattern": "^https?://[A-Za-z0-9.-]+(/[^\\s]*)?$",
+      "maxLength": 200
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package", "name", "summary", "category", "interface", "homepage"],
+      "properties": {
+        "package": {
+          "description": "Debian binary package name, verified by tools/check-availability.py.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9+.-]+$"
+        },
+        "name": {
+          "description": "Name people know the tool by.",
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "summary": {
+          "description": "One line, no trailing full stop.",
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 100,
+          "pattern": "[^.]$"
+        },
+        "category": {
+          "description": "Category id from categories.json.",
+          "type": "string",
+          "pattern": "^[a-z][a-z-]+$"
+        },
+        "interface": {
+          "enum": ["cli", "gui", "both"]
+        },
+        "homepage": { "$ref": "#/$defs/url" },
+        "architectures": {
+          "description": "Only if the package does not exist on every supported architecture.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/architecture" }
+        },
+        "command": {
+          "description": "Executable shipped by the package, for 'Open in terminal'. Required for cli and both.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9+._-]*$"
+        },
+        "help": {
+          "description": "Argument vector (one element per item) that makes the command print its usage. Default: ['--help'].",
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9 ._=:/-]{0,48}$"
+          }
+        },
+        "desktop-id": {
+          "description": "Desktop entry shipped by the package (without .desktop), for 'Open'. Required for gui and both.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "notes": {
+          "description": "Anything the user should know before installing or running the tool.",
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 300
+        }
+      }
+    },
+    "external": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "summary", "category", "homepage", "license", "why", "how"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 110,
+          "pattern": "[^.]$"
+        },
+        "category": {
+          "type": "string",
+          "pattern": "^[a-z][a-z-]+$"
+        },
+        "homepage": { "$ref": "#/$defs/url" },
+        "packages": {
+          "description": "Optional. Debian binary package names this tool would have. tools/check-availability.py confirms that none of them is in trixie main (if one appears, the tool moves to 'tools').",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9+.-]+$"
+          }
+        },
+        "license": {
+          "description": "Licence of the tool and any restriction that matters for redistribution or use.",
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "why": {
+          "description": "Why NEXUS does not offer a package.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "text"],
+          "properties": {
+            "reason": {
+              "enum": ["not-in-debian", "not-in-debian-main", "proprietary", "vendor-terms"]
+            },
+            "text": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 300
+            }
+          }
+        },
+        "how": {
+          "description": "Where the vendor or upstream project says to get it. Text plus the official URL; never a command that pipes a download into a shell.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "url"],
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 300
+            },
+            "url": { "$ref": "#/$defs/url" }
+          }
+        }
+      }
+    }
+  }
+}

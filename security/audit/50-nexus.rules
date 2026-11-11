@@ -4,6 +4,11 @@
 ## locked (-e 2), so they can be extended without a reboot.
 
 # Identity and authentication databases
+# Some watched paths exist only on some systems (an SSH server, an installed
+# boot loader). Without -i one missing path makes the whole rule set fail to
+# load; with it the remaining rules are loaded and the miss is logged.
+-i
+
 -w /etc/passwd -p wa -k identity
 -w /etc/shadow -p wa -k identity
 -w /etc/group -p wa -k identity

@@ -1,0 +1,231 @@
+{
+  "schema": 1,
+  "id": "forensics",
+  "name": "Forensics",
+  "summary": "Acquisition and analysis tools for disk, memory, file and artifact forensics",
+  "description": "A digital-forensics kit for authorized incident response and investigation: imaging and write-safe acquisition, filesystem and deleted-file analysis, carving, memory and registry artifacts, malware triage and anti-virus scanning. Use these on evidence you are authorized to examine, and keep an auditable chain of custody.",
+  "icon": "nexus-forensics",
+  "metapackage": "nexus-arsenal-forensics",
+  "tools": [
+    {
+      "package": "sleuthkit",
+      "name": "The Sleuth Kit",
+      "summary": "Command-line tools for volume and filesystem forensic analysis",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "fls",
+      "homepage": "https://www.sleuthkit.org",
+      "notes": "Provides fls, icat, mmls, fsstat and more; Autopsy is a graphical front end for the same engine."
+    },
+    {
+      "package": "autopsy",
+      "name": "Autopsy",
+      "summary": "Web front end to The Sleuth Kit for case-based investigation",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "autopsy",
+      "homepage": "https://www.sleuthkit.org/autopsy/",
+      "notes": "Starts a local web server you then open in a browser; this is the classic Perl Autopsy, not the separate Windows Autopsy product."
+    },
+    {
+      "package": "guymager",
+      "name": "Guymager",
+      "summary": "Graphical forensic disk imaging tool (dd, EWF, AFF)",
+      "category": "forensics",
+      "interface": "gui",
+      "desktop-id": "guymager",
+      "homepage": "https://guymager.sourceforge.io",
+      "notes": "Acquiring a device needs root; launch it from a privileged session or via its polkit integration."
+    },
+    {
+      "package": "dc3dd",
+      "name": "dc3dd",
+      "summary": "Patched dd with hashing and logging for forensic imaging",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "dc3dd",
+      "homepage": "https://sourceforge.net/projects/dc3dd/"
+    },
+    {
+      "package": "ewf-tools",
+      "name": "libewf tools",
+      "summary": "Acquire and read Expert Witness Format (E01) evidence images",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "ewfacquire",
+      "homepage": "https://github.com/libyal/libewf"
+    },
+    {
+      "package": "testdisk",
+      "name": "TestDisk and PhotoRec",
+      "summary": "Recover lost partitions and carve files from media",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "photorec",
+      "homepage": "https://www.cgsecurity.org"
+    },
+    {
+      "package": "foremost",
+      "name": "Foremost",
+      "summary": "Carve files from images based on headers and footers",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "foremost",
+      "homepage": "https://github.com/korczis/foremost"
+    },
+    {
+      "package": "scalpel",
+      "name": "Scalpel",
+      "summary": "Fast, filesystem-independent file carver",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "scalpel",
+      "homepage": "https://github.com/sleachim/scalpel"
+    },
+    {
+      "package": "binwalk",
+      "name": "Binwalk",
+      "summary": "Analyse and extract embedded data from firmware and blobs",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "binwalk",
+      "homepage": "https://github.com/ReFirmLabs/binwalk"
+    },
+    {
+      "package": "extundelete",
+      "name": "extundelete",
+      "summary": "Recover deleted files from ext3 and ext4 filesystems",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "extundelete",
+      "homepage": "https://extundelete.sourceforge.net"
+    },
+    {
+      "package": "gddrescue",
+      "name": "GNU ddrescue",
+      "summary": "Copy data from failing drives, retrying bad areas last",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "ddrescue",
+      "homepage": "https://www.gnu.org/software/ddrescue/",
+      "notes": "Package gddrescue ships the ddrescue command (not to be confused with dd_rescue)."
+    },
+    {
+      "package": "yara",
+      "name": "YARA",
+      "summary": "Match files and processes against pattern rules for malware triage",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "yara",
+      "homepage": "https://virustotal.github.io/yara/"
+    },
+    {
+      "package": "clamav",
+      "name": "ClamAV",
+      "summary": "Open-source antivirus engine and command-line scanner",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "clamscan",
+      "homepage": "https://www.clamav.net"
+    },
+    {
+      "package": "chkrootkit",
+      "name": "chkrootkit",
+      "summary": "Check a system or mounted image for signs of a rootkit",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "chkrootkit",
+      "homepage": "https://www.chkrootkit.org"
+    },
+    {
+      "package": "ssdeep",
+      "name": "ssdeep",
+      "summary": "Compute and compare fuzzy (context-triggered) hashes",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "ssdeep",
+      "homepage": "https://ssdeep-project.github.io/ssdeep/"
+    },
+    {
+      "package": "hashdeep",
+      "name": "hashdeep",
+      "summary": "Recursively hash files and audit sets of known hashes",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "hashdeep",
+      "homepage": "https://md5deep.sourceforge.net"
+    },
+    {
+      "package": "libimage-exiftool-perl",
+      "name": "ExifTool",
+      "summary": "Read and write metadata in images, documents and media",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "exiftool",
+      "homepage": "https://exiftool.org"
+    },
+    {
+      "package": "regripper",
+      "name": "RegRipper",
+      "summary": "Extract forensic artifacts from Windows registry hives",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "regripper",
+      "homepage": "https://github.com/keydet89/RegRipper3.0"
+    },
+    {
+      "package": "python3-evtx",
+      "name": "python-evtx",
+      "summary": "Parse Windows Event Log (EVTX) files into XML",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "evtx_dump.py",
+      "homepage": "https://github.com/williballenthin/python-evtx"
+    },
+    {
+      "package": "plaso",
+      "name": "Plaso",
+      "summary": "Build a super-timeline from many forensic artifact sources",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "plaso-log2timeline",
+      "homepage": "https://plaso.readthedocs.io",
+      "notes": "Debian prefixes the tools: plaso-log2timeline builds the timeline and plaso-psort post-processes it."
+    },
+    {
+      "package": "dcfldd",
+      "name": "dcfldd",
+      "summary": "Enhanced dd with on-the-fly hashing for imaging",
+      "category": "forensics",
+      "interface": "cli",
+      "command": "dcfldd",
+      "homepage": "https://dcfldd.sourceforge.net"
+    },
+    {
+      "package": "wxhexeditor",
+      "name": "wxHexEditor",
+      "summary": "Hex editor that handles very large files and devices",
+      "category": "forensics",
+      "interface": "gui",
+      "desktop-id": "wxHexEditor",
+      "homepage": "https://www.wxhexeditor.org"
+    }
+  ],
+  "external": [
+    {
+      "name": "Volatility 3",
+      "summary": "Memory-forensics framework for analysing RAM captures",
+      "category": "forensics",
+      "homepage": "https://github.com/volatilityfoundation/volatility3",
+      "license": "VSL (Volatility Software License, BSD-style); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Volatility 3 is free software but is not packaged in Debian trixie; it is distributed on PyPI and GitHub."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx (pipx install volatility3), or run it from the official git checkout.",
+        "url": "https://volatility3.readthedocs.io/en/latest/getting-started.html"
+      }
+    }
+  ]
+}

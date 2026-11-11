@@ -1,0 +1,16 @@
+#%PAM-1.0
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# /etc/pam.d/kde-fingerprint — second, non-interactive PAM conversation the
+# screen locker runs next to the password one: a successful fingerprint
+# unlocks without typing. Built into kscreenlocker_greet as
+# KSCREENLOCKER_PAM_FINGERPRINT_SERVICE.
+#
+# This service must never ask for a password (nothing could answer it), so
+# it does not include common-auth. The leading "-" makes PAM skip the line
+# silently when libpam-fprintd is not installed; pam_deny then ends the
+# conversation and the locker carries on with the password alone.
+#   success              -> unlocked
+#   no reader / no print -> "unavailable", the locker stops asking
+-auth   [success=done authinfo_unavail=die default=bad]   pam_fprintd.so
+auth    required                                          pam_deny.so

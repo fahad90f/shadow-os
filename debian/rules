@@ -24,6 +24,7 @@ DATA_BUILD := obj-data
 define install_components
 	set -e; for package in $(1); do \
 	    if ! grep -q "^Package: $$package$$" debian/control; then continue; fi; \
+	    case $$package in nexus-arsenal-*) continue ;; esac; \
 	    DESTDIR=$(CURDIR)/debian/$$package cmake --install $(2) --component $$package; \
 	    if [ -z "$$(find debian/$$package -type f -print -quit 2>/dev/null)" ]; then \
 	        echo "error: CMake install component '$$package' installed no files" >&2; exit 1; \

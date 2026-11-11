@@ -1,0 +1,269 @@
+{
+  "schema": 1,
+  "id": "reversing",
+  "name": "Reverse Engineering",
+  "summary": "Disassemblers, debuggers and analysis tools for binaries and firmware",
+  "description": "Static and dynamic analysis of binaries, libraries, firmware and mobile apps: debuggers, decompilers, tracers, hex editors, ELF/PE inspection, emulation and fuzzing. For malware analysis, run samples only inside an isolated lab (see the lab-setup guide). Ghidra, radare2 and Cutter are not in Debian main and are listed as external tools with install links.",
+  "icon": "nexus-reverse-engineering",
+  "metapackage": "nexus-arsenal-reversing",
+  "tools": [
+    {
+      "package": "gdb",
+      "name": "GDB",
+      "summary": "The GNU debugger for native programs",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "gdb",
+      "homepage": "https://www.sourceware.org/gdb/"
+    },
+    {
+      "package": "gdb-multiarch",
+      "name": "GDB (multi-arch)",
+      "summary": "GDB build that debugs many target architectures",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "gdb-multiarch",
+      "homepage": "https://www.sourceware.org/gdb/"
+    },
+    {
+      "package": "ltrace",
+      "name": "ltrace",
+      "summary": "Trace library and system calls of a running program",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "ltrace",
+      "homepage": "https://ltrace.org"
+    },
+    {
+      "package": "strace",
+      "name": "strace",
+      "summary": "Trace system calls and signals of a process",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "strace",
+      "homepage": "https://strace.io"
+    },
+    {
+      "package": "valgrind",
+      "name": "Valgrind",
+      "summary": "Instrumentation framework for memory and threading analysis",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "valgrind",
+      "homepage": "https://valgrind.org"
+    },
+    {
+      "package": "edb-debugger",
+      "name": "edb",
+      "summary": "Graphical debugger focused on reverse engineering x86/x86-64",
+      "category": "reverse-engineering",
+      "interface": "gui",
+      "desktop-id": "edb",
+      "homepage": "https://github.com/eteran/edb-debugger",
+      "architectures": ["amd64"],
+      "notes": "Available on amd64 only in Debian trixie."
+    },
+    {
+      "package": "ht",
+      "name": "HT editor",
+      "summary": "Viewer, editor and analyser for executables (ELF, PE and more)",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "hte",
+      "homepage": "https://hte.sourceforge.net"
+    },
+    {
+      "package": "okteta",
+      "name": "Okteta",
+      "summary": "Graphical hex editor for binary data",
+      "category": "reverse-engineering",
+      "interface": "gui",
+      "desktop-id": "org.kde.okteta",
+      "homepage": "https://apps.kde.org/okteta/"
+    },
+    {
+      "package": "nasm",
+      "name": "NASM",
+      "summary": "The Netwide Assembler for x86 shellcode and stubs",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "nasm",
+      "homepage": "https://www.nasm.us"
+    },
+    {
+      "package": "binutils",
+      "name": "GNU binutils",
+      "summary": "objdump, readelf, nm and friends for binary inspection",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "objdump",
+      "homepage": "https://www.gnu.org/software/binutils/"
+    },
+    {
+      "package": "patchelf",
+      "name": "patchelf",
+      "summary": "Modify the dynamic linker and RPATH of ELF executables",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "patchelf",
+      "homepage": "https://github.com/NixOS/patchelf"
+    },
+    {
+      "package": "capstone-tool",
+      "name": "Capstone (cstool)",
+      "summary": "Command-line disassembler built on the Capstone framework",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "cstool",
+      "homepage": "https://www.capstone-engine.org"
+    },
+    {
+      "package": "python3-pwntools",
+      "name": "pwntools",
+      "summary": "CTF and exploit-development framework for Python",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "pwn",
+      "homepage": "https://github.com/Gallopsled/pwntools"
+    },
+    {
+      "package": "python3-ropgadget",
+      "name": "ROPgadget",
+      "summary": "Find ROP gadgets in binaries for exploit development",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "ROPgadget",
+      "homepage": "https://github.com/JonathanSalwan/ROPgadget"
+    },
+    {
+      "package": "checksec",
+      "name": "checksec",
+      "summary": "Report the exploit-mitigation flags of ELF binaries",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "checksec",
+      "homepage": "https://github.com/slimm609/checksec.sh"
+    },
+    {
+      "package": "python3-unicorn",
+      "name": "Unicorn Engine",
+      "summary": "Lightweight multi-architecture CPU emulator (Python bindings)",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "python3",
+      "help": ["-c", "import unicorn"],
+      "homepage": "https://www.unicorn-engine.org",
+      "notes": "A library used from Python; there is no standalone command, so this opens Python with the module imported."
+    },
+    {
+      "package": "apktool",
+      "name": "Apktool",
+      "summary": "Decode and rebuild Android APK resources and smali",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "apktool",
+      "homepage": "https://apktool.org"
+    },
+    {
+      "package": "androguard",
+      "name": "Androguard",
+      "summary": "Analyse and decompile Android (DEX) applications",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "androguard",
+      "homepage": "https://github.com/androguard/androguard"
+    },
+    {
+      "package": "apksigner",
+      "name": "apksigner",
+      "summary": "Sign and verify Android APK packages",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "apksigner",
+      "homepage": "https://developer.android.com/tools/apksigner"
+    },
+    {
+      "package": "qemu-user",
+      "name": "QEMU user-mode",
+      "summary": "Run binaries of other CPU architectures for analysis",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "qemu-aarch64",
+      "homepage": "https://www.qemu.org"
+    },
+    {
+      "package": "diffoscope",
+      "name": "diffoscope",
+      "summary": "In-depth comparison of files, archives and binaries",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "diffoscope",
+      "homepage": "https://diffoscope.org"
+    },
+    {
+      "package": "yara",
+      "name": "YARA",
+      "summary": "Match files and processes against pattern rules for malware triage",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "yara",
+      "homepage": "https://virustotal.github.io/yara/"
+    },
+    {
+      "package": "upx-ucl",
+      "name": "UPX",
+      "summary": "Pack and unpack executables (useful for unpacking samples)",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "upx-ucl",
+      "homepage": "https://upx.github.io"
+    }
+  ],
+  "external": [
+    {
+      "name": "Ghidra",
+      "summary": "Full-featured software reverse-engineering suite and decompiler",
+      "category": "reverse-engineering",
+      "homepage": "https://ghidra-sre.org",
+      "license": "Apache-2.0 (open source), released by the NSA; not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Ghidra is free and open source but ships as a large self-contained Java release and is not packaged in Debian; it needs a JDK, which NEXUS can install."
+      },
+      "how": {
+        "text": "Download the official release archive from the Ghidra site, extract it, and run ghidraRun; a JDK (e.g. Debian's default-jdk) is required.",
+        "url": "https://github.com/NationalSecurityAgency/ghidra/releases"
+      }
+    },
+    {
+      "name": "radare2 / Cutter",
+      "summary": "Reverse-engineering framework (radare2) and its Qt GUI (Cutter)",
+      "category": "reverse-engineering",
+      "homepage": "https://rada.re",
+      "license": "LGPL-3.0 (radare2) and GPL-3.0 (Cutter); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "radare2 and Cutter are free software but are not in Debian trixie; upstream recommends their own installers for current versions."
+      },
+      "how": {
+        "text": "Install radare2 from its official git checkout (sys/install.sh), and Cutter from the official AppImage or release build.",
+        "url": "https://rada.re/n/radare2.html"
+      }
+    },
+    {
+      "name": "Frida",
+      "summary": "Dynamic instrumentation toolkit for hooking running processes",
+      "category": "reverse-engineering",
+      "homepage": "https://frida.re",
+      "license": "wxWindows/LGPL-style (open source), distributed on PyPI; not in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Frida ships prebuilt native components per platform through PyPI and is not packaged in Debian."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx (pipx install frida-tools); matching gadget/server binaries come from the Frida releases page.",
+        "url": "https://frida.re/docs/installation/"
+      }
+    }
+  ]
+}

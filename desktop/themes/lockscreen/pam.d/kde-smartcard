@@ -1,0 +1,10 @@
+#%PAM-1.0
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# /etc/pam.d/kde-smartcard — third, non-interactive PAM conversation of the
+# screen locker (KSCREENLOCKER_PAM_SMARTCARD_SERVICE): inserting a
+# registered smart card unlocks. Like kde-fingerprint it must not ask for a
+# password. Skipped silently unless libpam-pkcs11 is installed and
+# configured (/etc/pam_pkcs11/); pam_deny then ends the conversation.
+-auth   [success=done authinfo_unavail=die default=bad]   pam_pkcs11.so wait_for_card card_only
+auth    required                                          pam_deny.so

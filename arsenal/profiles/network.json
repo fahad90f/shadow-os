@@ -1,0 +1,248 @@
+{
+  "schema": 1,
+  "id": "network",
+  "name": "Network Security",
+  "summary": "Scanning, enumeration, traffic capture and analysis for network assessments",
+  "description": "A toolkit for assessing networks you are authorized to test: port and service scanning, host discovery, SMB/SNMP/DNS enumeration, packet capture and analysis, traffic generation and bandwidth monitoring. Pairs well with the Sniffing and Spoofing tools and underpins both the Red Team and Blue Team profiles.",
+  "icon": "nexus-network-security",
+  "metapackage": "nexus-arsenal-network",
+  "tools": [
+    {
+      "package": "nmap",
+      "name": "Nmap",
+      "summary": "Network exploration tool and security/port scanner",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "nmap",
+      "homepage": "https://nmap.org"
+    },
+    {
+      "package": "masscan",
+      "name": "MASSCAN",
+      "summary": "Asynchronous TCP port scanner for large address ranges",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "masscan",
+      "homepage": "https://github.com/robertdavidgraham/masscan"
+    },
+    {
+      "package": "zmap",
+      "name": "ZMap",
+      "summary": "Single-packet network scanner for Internet-wide surveys",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "zmap",
+      "homepage": "https://zmap.io"
+    },
+    {
+      "package": "arp-scan",
+      "name": "arp-scan",
+      "summary": "Discover and fingerprint IP hosts on the local network with ARP",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "arp-scan",
+      "homepage": "https://github.com/royhills/arp-scan"
+    },
+    {
+      "package": "netdiscover",
+      "name": "netdiscover",
+      "summary": "Active and passive ARP reconnaissance of local networks",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "netdiscover",
+      "homepage": "https://github.com/netdiscover-scanner/netdiscover"
+    },
+    {
+      "package": "fping",
+      "name": "fping",
+      "summary": "Send ICMP echo requests to many hosts in parallel",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "fping",
+      "homepage": "https://fping.org"
+    },
+    {
+      "package": "hping3",
+      "name": "hping3",
+      "summary": "Assemble and send custom TCP/IP packets, and trace responses",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "hping3",
+      "homepage": "http://www.hping.org"
+    },
+    {
+      "package": "dnsrecon",
+      "name": "DNSRecon",
+      "summary": "Enumerate DNS records, zones and subdomains of a domain",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "dnsrecon",
+      "homepage": "https://github.com/darkoperator/dnsrecon"
+    },
+    {
+      "package": "dnsenum",
+      "name": "dnsenum",
+      "summary": "Enumerate DNS information and attempt zone transfers",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "dnsenum",
+      "homepage": "https://github.com/fwaeytens/dnsenum"
+    },
+    {
+      "package": "fierce",
+      "name": "fierce",
+      "summary": "Locate non-contiguous IP space and hostnames for a domain",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "fierce",
+      "homepage": "https://github.com/mschwager/fierce"
+    },
+    {
+      "package": "bind9-dnsutils",
+      "name": "DNS lookup utilities",
+      "summary": "dig, delv and nslookup DNS query clients from BIND 9",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "dig",
+      "homepage": "https://www.isc.org/bind/"
+    },
+    {
+      "package": "smbmap",
+      "name": "smbmap",
+      "summary": "Enumerate SMB shares and permissions across a network",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "smbmap",
+      "homepage": "https://github.com/ShawnDEvans/smbmap"
+    },
+    {
+      "package": "smbclient",
+      "name": "smbclient",
+      "summary": "Command-line client for SMB/CIFS file and print shares",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "smbclient",
+      "homepage": "https://www.samba.org"
+    },
+    {
+      "package": "nbtscan",
+      "name": "nbtscan",
+      "summary": "Scan networks for NetBIOS name information",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "nbtscan",
+      "homepage": "https://github.com/resurrecting-open-source-projects/nbtscan"
+    },
+    {
+      "package": "onesixtyone",
+      "name": "onesixtyone",
+      "summary": "Fast SNMP scanner that brute-forces community strings",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "onesixtyone",
+      "homepage": "https://github.com/trailofbits/onesixtyone"
+    },
+    {
+      "package": "snmp",
+      "name": "SNMP utilities",
+      "summary": "Net-SNMP command-line tools such as snmpwalk and snmpget",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "snmpwalk",
+      "homepage": "http://www.net-snmp.org"
+    },
+    {
+      "package": "ldap-utils",
+      "name": "LDAP utilities",
+      "summary": "OpenLDAP clients for querying directory services (ldapsearch)",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "ldapsearch",
+      "homepage": "https://www.openldap.org"
+    },
+    {
+      "package": "wireshark",
+      "name": "Wireshark",
+      "summary": "Graphical network protocol analyser",
+      "category": "sniffing-spoofing",
+      "interface": "both",
+      "command": "wireshark",
+      "desktop-id": "org.wireshark.Wireshark",
+      "homepage": "https://www.wireshark.org",
+      "notes": "Capturing needs permission to the interface; Debian's dpkg-reconfigure wireshark-common sets up the 'wireshark' group so you need not run it as root."
+    },
+    {
+      "package": "tshark",
+      "name": "TShark",
+      "summary": "Command-line version of the Wireshark protocol analyser",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "tshark",
+      "homepage": "https://www.wireshark.org"
+    },
+    {
+      "package": "tcpdump",
+      "name": "tcpdump",
+      "summary": "Command-line network packet capture and inspection",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "tcpdump",
+      "homepage": "https://www.tcpdump.org"
+    },
+    {
+      "package": "termshark",
+      "name": "termshark",
+      "summary": "Terminal user interface for tshark, in the style of Wireshark",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "termshark",
+      "homepage": "https://termshark.io"
+    },
+    {
+      "package": "ngrep",
+      "name": "ngrep",
+      "summary": "Grep-like matching across live or captured network traffic",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "ngrep",
+      "homepage": "https://github.com/jpr5/ngrep"
+    },
+    {
+      "package": "netsniff-ng",
+      "name": "netsniff-ng",
+      "summary": "High-performance packet capture and networking toolkit",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "netsniff-ng",
+      "homepage": "http://netsniff-ng.org"
+    },
+    {
+      "package": "iperf3",
+      "name": "iPerf3",
+      "summary": "Measure achievable bandwidth on IP networks",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "iperf3",
+      "homepage": "https://iperf.fr"
+    },
+    {
+      "package": "iftop",
+      "name": "iftop",
+      "summary": "Show bandwidth usage per connection on an interface",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "iftop",
+      "homepage": "https://pdw.ex-parrot.com/iftop/"
+    },
+    {
+      "package": "mtr",
+      "name": "mtr",
+      "summary": "Combined traceroute and ping network diagnostic",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "mtr",
+      "homepage": "https://www.bitwizard.nl/mtr/"
+    }
+  ],
+  "external": []
+}

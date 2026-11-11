@@ -1,0 +1,243 @@
+{
+  "schema": 1,
+  "id": "developer",
+  "name": "Developer",
+  "summary": "Compilers, debuggers, code-security analysers and container tooling",
+  "description": "A software-development and secure-coding toolkit: toolchains for C/C++, Python, Go and Rust, build systems and debuggers, static analysers and secret scanners, container and virtualization tools, and editors. Aimed at developers building and reviewing software securely on NEXUS OS.",
+  "icon": "nexus-development",
+  "metapackage": "nexus-arsenal-developer",
+  "tools": [
+    {
+      "package": "build-essential",
+      "name": "build-essential",
+      "summary": "GCC, g++, make and the headers needed to build C/C++ software",
+      "category": "development",
+      "interface": "cli",
+      "command": "gcc",
+      "homepage": "https://gcc.gnu.org"
+    },
+    {
+      "package": "clang",
+      "name": "Clang",
+      "summary": "LLVM-based C, C++ and Objective-C compiler",
+      "category": "development",
+      "interface": "cli",
+      "command": "clang",
+      "homepage": "https://clang.llvm.org"
+    },
+    {
+      "package": "cmake",
+      "name": "CMake",
+      "summary": "Cross-platform build-system generator",
+      "category": "development",
+      "interface": "cli",
+      "command": "cmake",
+      "homepage": "https://cmake.org"
+    },
+    {
+      "package": "ninja-build",
+      "name": "Ninja",
+      "summary": "Small, fast build system used by CMake and Meson",
+      "category": "development",
+      "interface": "cli",
+      "command": "ninja",
+      "homepage": "https://ninja-build.org"
+    },
+    {
+      "package": "git",
+      "name": "Git",
+      "summary": "Distributed version-control system",
+      "category": "development",
+      "interface": "cli",
+      "command": "git",
+      "homepage": "https://git-scm.com"
+    },
+    {
+      "package": "gdb",
+      "name": "GDB",
+      "summary": "The GNU debugger for native programs",
+      "category": "development",
+      "interface": "cli",
+      "command": "gdb",
+      "homepage": "https://www.sourceware.org/gdb/"
+    },
+    {
+      "package": "python3",
+      "name": "Python 3",
+      "summary": "The Python 3 interpreter",
+      "category": "development",
+      "interface": "cli",
+      "command": "python3",
+      "help": ["--version"],
+      "homepage": "https://www.python.org"
+    },
+    {
+      "package": "pipx",
+      "name": "pipx",
+      "summary": "Install and run Python applications in isolated environments",
+      "category": "development",
+      "interface": "cli",
+      "command": "pipx",
+      "homepage": "https://pipx.pypa.io",
+      "notes": "The recommended way to install security tools that are only on PyPI without touching the system Python."
+    },
+    {
+      "package": "golang",
+      "name": "Go",
+      "summary": "The Go programming language toolchain",
+      "category": "development",
+      "interface": "cli",
+      "command": "go",
+      "help": ["version"],
+      "homepage": "https://go.dev"
+    },
+    {
+      "package": "rustc",
+      "name": "Rust",
+      "summary": "The Rust compiler",
+      "category": "development",
+      "interface": "cli",
+      "command": "rustc",
+      "homepage": "https://www.rust-lang.org"
+    },
+    {
+      "package": "cargo",
+      "name": "Cargo",
+      "summary": "The Rust package manager and build tool",
+      "category": "development",
+      "interface": "cli",
+      "command": "cargo",
+      "homepage": "https://doc.rust-lang.org/cargo/"
+    },
+    {
+      "package": "default-jdk",
+      "name": "Java JDK",
+      "summary": "Default Java Development Kit (needed by tools like Ghidra)",
+      "category": "development",
+      "interface": "cli",
+      "command": "javac",
+      "help": ["-version"],
+      "homepage": "https://openjdk.org"
+    },
+    {
+      "package": "shellcheck",
+      "name": "ShellCheck",
+      "summary": "Static analysis and linting for shell scripts",
+      "category": "development",
+      "interface": "cli",
+      "command": "shellcheck",
+      "homepage": "https://www.shellcheck.net"
+    },
+    {
+      "package": "cppcheck",
+      "name": "Cppcheck",
+      "summary": "Static analysis tool for C and C++ code",
+      "category": "development",
+      "interface": "cli",
+      "command": "cppcheck",
+      "homepage": "https://cppcheck.sourceforge.io"
+    },
+    {
+      "package": "flawfinder",
+      "name": "Flawfinder",
+      "summary": "Scan C/C++ source for likely security weaknesses",
+      "category": "development",
+      "interface": "cli",
+      "command": "flawfinder",
+      "homepage": "https://dwheeler.com/flawfinder/"
+    },
+    {
+      "package": "bandit",
+      "name": "Bandit",
+      "summary": "Find common security issues in Python code",
+      "category": "development",
+      "interface": "cli",
+      "command": "bandit",
+      "homepage": "https://bandit.readthedocs.io"
+    },
+    {
+      "package": "gitleaks",
+      "name": "Gitleaks",
+      "summary": "Detect hardcoded secrets in git repositories",
+      "category": "development",
+      "interface": "cli",
+      "command": "gitleaks",
+      "homepage": "https://github.com/gitleaks/gitleaks"
+    },
+    {
+      "package": "yamllint",
+      "name": "yamllint",
+      "summary": "Linter for YAML configuration files",
+      "category": "development",
+      "interface": "cli",
+      "command": "yamllint",
+      "homepage": "https://github.com/adrienverge/yamllint"
+    },
+    {
+      "package": "pre-commit",
+      "name": "pre-commit",
+      "summary": "Manage and run git pre-commit hooks, including security checks",
+      "category": "development",
+      "interface": "cli",
+      "command": "pre-commit",
+      "homepage": "https://pre-commit.com"
+    },
+    {
+      "package": "jq",
+      "name": "jq",
+      "summary": "Command-line JSON processor",
+      "category": "development",
+      "interface": "cli",
+      "command": "jq",
+      "homepage": "https://jqlang.github.io/jq/"
+    },
+    {
+      "package": "ripgrep",
+      "name": "ripgrep",
+      "summary": "Fast recursive regex search across source trees",
+      "category": "development",
+      "interface": "cli",
+      "command": "rg",
+      "homepage": "https://github.com/BurntSushi/ripgrep"
+    },
+    {
+      "package": "podman",
+      "name": "Podman",
+      "summary": "Daemonless engine for building and running OCI containers",
+      "category": "virtualization",
+      "interface": "cli",
+      "command": "podman",
+      "homepage": "https://podman.io"
+    },
+    {
+      "package": "docker.io",
+      "name": "Docker",
+      "summary": "Container runtime for packaging and running software",
+      "category": "virtualization",
+      "interface": "cli",
+      "command": "docker",
+      "homepage": "https://www.docker.com",
+      "notes": "Using Docker needs the docker service and membership of the docker group; that group effectively grants root, so add users deliberately."
+    },
+    {
+      "package": "qemu-system-x86",
+      "name": "QEMU (x86 system)",
+      "summary": "Full-system emulator for building isolated lab VMs",
+      "category": "virtualization",
+      "interface": "cli",
+      "command": "qemu-system-x86_64",
+      "homepage": "https://www.qemu.org"
+    },
+    {
+      "package": "virt-manager",
+      "name": "Virtual Machine Manager",
+      "summary": "Graphical manager for libvirt/QEMU virtual machines",
+      "category": "virtualization",
+      "interface": "gui",
+      "desktop-id": "virt-manager",
+      "homepage": "https://virt-manager.org",
+      "notes": "Needs the libvirt daemon and membership of the libvirt group to manage VMs."
+    }
+  ],
+  "external": []
+}

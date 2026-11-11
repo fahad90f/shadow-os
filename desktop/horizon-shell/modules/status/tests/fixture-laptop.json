@@ -1,0 +1,92 @@
+{
+    "names": [
+        "org.freedesktop.NetworkManager",
+        "org.freedesktop.UPower",
+        "org.freedesktop.UPower.PowerProfiles"
+    ],
+    "objects": {
+        "/org/freedesktop/NetworkManager": {
+            "org.freedesktop.NetworkManager": {
+                "Version": ["s", "1.52.0-fixture"],
+                "State": ["u", 70],
+                "Connectivity": ["u", 4],
+                "WirelessEnabled": ["b", true],
+                "WirelessHardwareEnabled": ["b", true],
+                "Devices": ["ao", ["/org/freedesktop/NetworkManager/Devices/1", "/org/freedesktop/NetworkManager/Devices/2",
+                                   "/org/freedesktop/NetworkManager/Devices/3"]],
+                "ActiveConnections": ["ao", ["/org/freedesktop/NetworkManager/ActiveConnection/1",
+                                             "/org/freedesktop/NetworkManager/ActiveConnection/9"]],
+                "PrimaryConnection": ["o", "/org/freedesktop/NetworkManager/ActiveConnection/1"],
+                "PrimaryConnectionType": ["s", "802-11-wireless"]
+            }
+        },
+        "/org/freedesktop/NetworkManager/Devices/1": {
+            "org.freedesktop.NetworkManager.Device": {
+                "Interface": ["s", "lo"], "DeviceType": ["u", 32], "State": ["u", 100]
+            }
+        },
+        "/org/freedesktop/NetworkManager/Devices/2": {
+            "org.freedesktop.NetworkManager.Device": {
+                "Interface": ["s", "enp2s0"], "DeviceType": ["u", 1], "State": ["u", 20]
+            }
+        },
+        "/org/freedesktop/NetworkManager/Devices/3": {
+            "org.freedesktop.NetworkManager.Device": {
+                "Interface": ["s", "wlp3s0"], "DeviceType": ["u", 2], "State": ["u", 100]
+            },
+            "org.freedesktop.NetworkManager.Device.Wireless": {
+                "ActiveAccessPoint": ["o", "/org/freedesktop/NetworkManager/AccessPoint/7"]
+            }
+        },
+        "/org/freedesktop/NetworkManager/AccessPoint/7": {
+            "org.freedesktop.NetworkManager.AccessPoint": {
+                "Ssid": ["ay", "Fixture Café"], "Strength": ["y", 82]
+            }
+        },
+        "/org/freedesktop/NetworkManager/ActiveConnection/1": {
+            "org.freedesktop.NetworkManager.Connection.Active": {
+                "Id": ["s", "Fixture Café"], "Type": ["s", "802-11-wireless"], "State": ["u", 2],
+                "Vpn": ["b", false], "Default": ["b", true]
+            }
+        },
+        "/org/freedesktop/NetworkManager/ActiveConnection/2": {
+            "org.freedesktop.NetworkManager.Connection.Active": {
+                "Id": ["s", "Office tunnel"], "Type": ["s", "wireguard"], "State": ["u", 2],
+                "Vpn": ["b", false], "Default": ["b", false]
+            }
+        },
+        "/org/freedesktop/NetworkManager/ActiveConnection/3": {
+            "org.freedesktop.NetworkManager.Connection.Active": {
+                "Id": ["s", "Wired connection 1"], "Type": ["s", "802-3-ethernet"], "State": ["u", 2],
+                "Vpn": ["b", false], "Default": ["b", true]
+            }
+        },
+        "/org/freedesktop/NetworkManager/ActiveConnection/9": {
+            "org.freedesktop.NetworkManager.Connection.Active": {
+                "Id": ["s", "lo"], "Type": ["s", "loopback"], "State": ["u", 2],
+                "Vpn": ["b", false], "Default": ["b", false]
+            }
+        },
+        "/org/freedesktop/UPower": {
+            "org.freedesktop.UPower": {
+                "DaemonVersion": ["s", "1.90.9-fixture"], "OnBattery": ["b", true]
+            }
+        },
+        "/org/freedesktop/UPower/devices/DisplayDevice": {
+            "org.freedesktop.UPower.Device": {
+                "Type": ["u", 2], "IsPresent": ["b", true], "Percentage": ["d", 67.0], "State": ["u", 2],
+                "TimeToEmpty": ["x", 9240], "TimeToFull": ["x", 0], "WarningLevel": ["u", 1]
+            }
+        },
+        "/org/freedesktop/UPower/PowerProfiles": {
+            "org.freedesktop.UPower.PowerProfiles": {
+                "Version": ["s", "0.30-fixture"],
+                "ActiveProfile": ["s", "balanced"],
+                "PerformanceDegraded": ["s", ""],
+                "Profiles": ["aa{sv}", [{"Profile": "power-saver", "Driver": "fixture"},
+                                        {"Profile": "balanced", "Driver": "fixture"},
+                                        {"Profile": "performance", "Driver": "fixture"}]]
+            }
+        }
+    }
+}

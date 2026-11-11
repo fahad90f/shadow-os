@@ -12,7 +12,7 @@
 // (USERNAME_RE, RESERVED_USERS, HOSTNAME_RE, the fullname/password/passphrase
 // checks in parse()). The engine validates everything again; if the two ever
 // disagree, the engine wins and its message is shown on the summary page.
-// tests/check-rules.py compares these functions with the engine's own code.
+// testing/check-rules.py compares these functions with the engine's own code.
 namespace Validation {
 
 // Each returns an empty string when the value is acceptable, otherwise a

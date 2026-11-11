@@ -17,7 +17,11 @@ NxWindow {
     //   section  sidebar group
     //   source   QML file under pages/
     //   keywords extra search terms
-    readonly property var pages: [
+    // Only pages that are part of this build are offered: an entry whose QML
+    // is not compiled in would be a control that does nothing.
+    readonly property var pages: allPages.filter(p => availablePages.indexOf(p.source.split("/").pop()) >= 0)
+
+    readonly property var allPages: [
         { key: "wifi",          title: qsTr("Wi-Fi"),              icon: "wifi",          section: qsTr("Network"),         source: "pages/WifiPage.qml",          keywords: "wireless wlan hotspot" },
         { key: "network",       title: qsTr("Wired & Proxy"),      icon: "ethernet",      section: qsTr("Network"),         source: "pages/NetworkPage.qml",       keywords: "ethernet lan ip dns proxy" },
         { key: "bluetooth",     title: qsTr("Bluetooth"),          icon: "bluetooth",     section: qsTr("Network"),         source: "pages/BluetoothPage.qml",     keywords: "pair device" },

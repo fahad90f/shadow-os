@@ -39,7 +39,13 @@ ShellSurface {
 
     TapHandler {
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-        onTapped: if (!root.modal) { root.hide(); root.dismissed() }
+        // Only a tap on the scrim dismisses: a tap that landed on content is
+        // the content's business, even if the control there did not grab it.
+        onTapped: (eventPoint) => {
+            if (root.modal) return
+            if (host.childAt(eventPoint.position.x, eventPoint.position.y)) return
+            root.hide(); root.dismissed()
+        }
     }
 
     FocusScope {

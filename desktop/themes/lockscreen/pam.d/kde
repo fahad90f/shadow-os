@@ -1,0 +1,20 @@
+#%PAM-1.0
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# /etc/pam.d/kde — PAM service of the screen locker (kscreenlocker_greet is
+# built with KSCREENLOCKER_PAM_SERVICE "kde"). It checks the password of the
+# user who locked the screen; the locker uses the "auth" entries only and
+# calls pam_setcred(PAM_REFRESH_CRED) on success.
+#
+# Without this file PAM uses /etc/pam.d/other.
+
+# The system's password policy (pam_unix, plus whatever pam-auth-update has
+# enabled: faillock, SSSD, ...), exactly as for login.
+@include common-auth
+
+# The remaining types are not used by the locker; they are here so that a
+# program that does call them with this service gets the system policy and
+# not the "other" fallback.
+@include common-account
+@include common-password
+@include common-session-noninteractive

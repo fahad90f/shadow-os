@@ -86,7 +86,8 @@ Item {
     HoverHandler { id: hover; cursorShape: root.interactive ? Qt.PointingHandCursor : Qt.ArrowCursor }
     TapHandler { id: tap; enabled: root.interactive; onTapped: root.clicked() }
 
-    ToolTip.visible: tooltip !== "" && hover.hovered && !checked
+    ToolTip.visible: tooltip !== "" && hover.hovered && !checked && !tap.pressed
+    ToolTip.timeout: 5000
     ToolTip.text: tooltip
     ToolTip.delay: 700
 }

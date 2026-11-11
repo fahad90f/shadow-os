@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=NEXUS Store
+GenericName=Software Store
+Comment=Browse, install, update and remove applications and packages
+Exec=nexus-store %u
+Icon=org.nexus.store
+Terminal=false
+Categories=System;PackageManager;
+Keywords=software;applications;apps;install;remove;uninstall;packages;store;appstream;repository;
+MimeType=x-scheme-handler/appstream;
+StartupNotify=true
+StartupWMClass=org.nexus.store
+X-NEXUS-Component=store

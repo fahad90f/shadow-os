@@ -41,5 +41,30 @@ if [ -n "$XDG_RUNTIME_DIR" ]; then
     mkdir -p "$XDG_RUNTIME_DIR/nexus"
 fi
 
+# Lock screen: KScreenLocker takes its QML from this shell package
+# (also set in /etc/xdg/plasmashellrc).
+export PLASMA_DEFAULT_SHELL="org.nexus.horizon"
+
+# No GPU render node means there is no hardware 3D (a basic virtual machine,
+# a display adapter without a driver). Software OpenGL is slow there and has
+# been seen to crash the compositor, so composite and draw applications with
+# the CPU renderers instead. NEXUS_SOFTWARE_RENDERING=0/1 overrides the test.
+software="${NEXUS_SOFTWARE_RENDERING:-auto}"
+if [ "$software" = "auto" ]; then
+    software=1
+    for node in /dev/dri/renderD*; do
+        [ -e "$node" ] && software=0
+    done
+fi
+if [ "$software" = "1" ]; then
+    export KWIN_COMPOSE="Q"
+    export QT_QUICK_BACKEND="software"
+fi
+
+# Third-party Qt/KDE and GTK applications follow the saved NEXUS appearance.
+if command -v nexus-apply-appearance >/dev/null 2>&1; then
+    nexus-apply-appearance >/dev/null 2>&1 || true
+fi
+
 exec kwin_wayland_wrapper --xwayland \
     --exit-with-session=/usr/libexec/nexus/horizon-session-leader

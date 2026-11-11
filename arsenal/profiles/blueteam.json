@@ -1,0 +1,257 @@
+{
+  "schema": 1,
+  "id": "blueteam",
+  "name": "Blue Team",
+  "summary": "Defensive tooling for intrusion detection, hardening and system auditing",
+  "description": "Tools for defenders and system owners: network and host intrusion detection, file-integrity and rootkit checks, log analysis, security auditing and benchmarking, sandboxing and firewalls. All are open-source packages from Debian; they help you watch, harden and audit systems you administer.",
+  "icon": "nexus-blue-team",
+  "metapackage": "nexus-arsenal-blueteam",
+  "tools": [
+    {
+      "package": "suricata",
+      "name": "Suricata",
+      "summary": "Network intrusion detection, prevention and security monitoring",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "suricata",
+      "homepage": "https://suricata.io"
+    },
+    {
+      "package": "crowdsec",
+      "name": "CrowdSec",
+      "summary": "Behaviour-based intrusion detection with collaborative blocklists",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "cscli",
+      "homepage": "https://www.crowdsec.net",
+      "notes": "Larger download; the engine parses logs and feeds decisions to a firewall bouncer you install separately."
+    },
+    {
+      "package": "fail2ban",
+      "name": "Fail2ban",
+      "summary": "Ban hosts that show repeated authentication failures",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "fail2ban-client",
+      "homepage": "https://github.com/fail2ban/fail2ban"
+    },
+    {
+      "package": "aide",
+      "name": "AIDE",
+      "summary": "Advanced Intrusion Detection Environment for file integrity",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "aide",
+      "homepage": "https://aide.github.io"
+    },
+    {
+      "package": "rkhunter",
+      "name": "Rootkit Hunter",
+      "summary": "Scan for rootkits, backdoors and local exploits",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "rkhunter",
+      "homepage": "https://rkhunter.sourceforge.net"
+    },
+    {
+      "package": "chkrootkit",
+      "name": "chkrootkit",
+      "summary": "Check a system or mounted image for signs of a rootkit",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "chkrootkit",
+      "homepage": "https://www.chkrootkit.org"
+    },
+    {
+      "package": "lynis",
+      "name": "Lynis",
+      "summary": "Security auditing and hardening tool for Unix systems",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "lynis",
+      "homepage": "https://cisofy.com/lynis/"
+    },
+    {
+      "package": "auditd",
+      "name": "Linux Audit daemon",
+      "summary": "Record security-relevant events against the kernel audit subsystem",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "auditctl",
+      "homepage": "https://github.com/linux-audit/audit-userspace"
+    },
+    {
+      "package": "clamav",
+      "name": "ClamAV",
+      "summary": "Open-source antivirus engine and command-line scanner",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "clamscan",
+      "homepage": "https://www.clamav.net"
+    },
+    {
+      "package": "yara",
+      "name": "YARA",
+      "summary": "Match files and processes against pattern rules for malware triage",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "yara",
+      "homepage": "https://virustotal.github.io/yara/"
+    },
+    {
+      "package": "openscap-scanner",
+      "name": "OpenSCAP scanner",
+      "summary": "Evaluate systems against SCAP security policy (oscap)",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "oscap",
+      "homepage": "https://www.open-scap.org"
+    },
+    {
+      "package": "debsecan",
+      "name": "debsecan",
+      "summary": "List known CVEs affecting the installed Debian packages",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "debsecan",
+      "homepage": "https://gitlab.com/fweimer/debsecan"
+    },
+    {
+      "package": "arpwatch",
+      "name": "arpwatch",
+      "summary": "Monitor Ethernet/IP address pairings and alert on changes",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "arpwatch",
+      "homepage": "https://ee.lbl.gov"
+    },
+    {
+      "package": "sshguard",
+      "name": "sshguard",
+      "summary": "Block brute-force attacks against SSH and other services",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "sshguard",
+      "homepage": "https://www.sshguard.net"
+    },
+    {
+      "package": "psad",
+      "name": "psad",
+      "summary": "Detect port scans and suspicious traffic from firewall logs",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "psad",
+      "homepage": "https://github.com/mrash/psad"
+    },
+    {
+      "package": "lnav",
+      "name": "lnav",
+      "summary": "Navigate and query log files from an interactive terminal UI",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "lnav",
+      "homepage": "https://lnav.org"
+    },
+    {
+      "package": "firejail",
+      "name": "Firejail",
+      "summary": "Restrict an application's environment with a security sandbox",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "firejail",
+      "homepage": "https://firejail.wordpress.com"
+    },
+    {
+      "package": "usbguard",
+      "name": "USBGuard",
+      "summary": "Allow or block USB devices by policy to limit attack surface",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "usbguard",
+      "homepage": "https://usbguard.github.io"
+    },
+    {
+      "package": "python3-opensnitch-ui",
+      "name": "OpenSnitch",
+      "summary": "Interactive application firewall that prompts on outbound connections",
+      "category": "defensive-monitoring",
+      "interface": "gui",
+      "desktop-id": "opensnitch_ui",
+      "homepage": "https://github.com/evilsocket/opensnitch",
+      "notes": "This is the GUI that shows prompts and statistics; it pulls in the opensnitch daemon that enforces the rules."
+    },
+    {
+      "package": "wireshark",
+      "name": "Wireshark",
+      "summary": "Graphical network protocol analyser",
+      "category": "sniffing-spoofing",
+      "interface": "both",
+      "command": "wireshark",
+      "desktop-id": "org.wireshark.Wireshark",
+      "homepage": "https://www.wireshark.org",
+      "notes": "Capturing needs permission to the interface; Debian's dpkg-reconfigure wireshark-common sets up the 'wireshark' group so you need not run it as root."
+    }
+  ],
+  "external": [
+    {
+      "name": "Zeek",
+      "summary": "Network security monitor that turns traffic into rich logs",
+      "category": "defensive-monitoring",
+      "homepage": "https://zeek.org",
+      "license": "BSD-3-Clause (open source), not currently packaged in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Zeek is free software but is not in Debian trixie; the project maintains its own repositories and source releases."
+      },
+      "how": {
+        "text": "Install from the official Zeek binary packages for Debian, or build from the source release, per the Zeek documentation.",
+        "url": "https://docs.zeek.org/en/master/install.html"
+      }
+    },
+    {
+      "name": "Wazuh",
+      "summary": "Host-based intrusion detection and security monitoring platform",
+      "category": "defensive-monitoring",
+      "homepage": "https://wazuh.com",
+      "license": "GPL-2.0 (open source), distributed from Wazuh's own repositories.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Wazuh's agent and manager are not in Debian; the project maintains its own APT repository and release packages."
+      },
+      "how": {
+        "text": "Add the official Wazuh APT repository and install the agent or manager following the Wazuh installation guide.",
+        "url": "https://documentation.wazuh.com/current/installation-guide/index.html"
+      }
+    },
+    {
+      "name": "Velociraptor",
+      "summary": "Endpoint visibility and digital-forensics collection at scale",
+      "category": "defensive-monitoring",
+      "homepage": "https://docs.velociraptor.app",
+      "license": "AGPL-3.0 (open source), released as prebuilt binaries by Rapid7.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Velociraptor is distributed as single-file release binaries and is not packaged in Debian."
+      },
+      "how": {
+        "text": "Download the official release binary for Linux from the Velociraptor releases page and verify its signature.",
+        "url": "https://github.com/Velocidex/velociraptor/releases"
+      }
+    },
+    {
+      "name": "Elastic Stack (ELK)",
+      "summary": "Search, log aggregation and visualization for security analytics",
+      "category": "defensive-monitoring",
+      "homepage": "https://www.elastic.co/elastic-stack",
+      "license": "Mixed; recent versions under the Elastic License / SSPL, which are not DFSG-free.",
+      "why": {
+        "reason": "vendor-terms",
+        "text": "Elasticsearch and Kibana are shipped under Elastic's own licences and are not in Debian main; Elastic provides packages from its repositories."
+      },
+      "how": {
+        "text": "Install from Elastic's official APT repository, or run the maintained container images, per the Elastic documentation.",
+        "url": "https://www.elastic.co/downloads/"
+      }
+    }
+  ]
+}

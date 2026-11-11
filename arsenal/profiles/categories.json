@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "comment": "The one definition of the tool categories. Manifests refer to a category by id; tools/validate.py rejects any other value. 'icon' is a glyph of the NEXUS symbolic icon set (desktop/ui/icons).",
+  "categories": [
+    {
+      "id": "information-gathering",
+      "name": "Information Gathering",
+      "icon": "radar",
+      "description": "Discovering hosts, services, names and public information about a target that is in scope."
+    },
+    {
+      "id": "vulnerability-analysis",
+      "name": "Vulnerability Analysis",
+      "icon": "shield-alert",
+      "description": "Checking systems and configurations for known weaknesses."
+    },
+    {
+      "id": "web-application",
+      "name": "Web Application",
+      "icon": "globe",
+      "description": "Testing web applications, their servers and their transport security."
+    },
+    {
+      "id": "password",
+      "name": "Password Auditing",
+      "icon": "key",
+      "description": "Assessing password strength and recovering lost credentials."
+    },
+    {
+      "id": "wireless",
+      "name": "Wireless and Radio",
+      "icon": "wifi",
+      "description": "Auditing Wi-Fi, Bluetooth and other radio links."
+    },
+    {
+      "id": "exploitation",
+      "name": "Exploitation",
+      "icon": "bug",
+      "description": "Demonstrating that a weakness can be used, within an agreed scope."
+    },
+    {
+      "id": "sniffing-spoofing",
+      "name": "Sniffing and Spoofing",
+      "icon": "activity",
+      "description": "Capturing, analysing and crafting network traffic."
+    },
+    {
+      "id": "post-exploitation",
+      "name": "Post-Exploitation and Pivoting",
+      "icon": "share",
+      "description": "Working from a foothold: directory services, remote access and tunnelling."
+    },
+    {
+      "id": "forensics",
+      "name": "Forensics",
+      "icon": "file-search",
+      "description": "Acquiring and examining evidence from disks, memory, files and logs."
+    },
+    {
+      "id": "reverse-engineering",
+      "name": "Reverse Engineering",
+      "icon": "cpu",
+      "description": "Understanding binaries, firmware and mobile applications."
+    },
+    {
+      "id": "hardware",
+      "name": "Hardware and Embedded",
+      "icon": "usb",
+      "description": "Talking to chips, buses and debug interfaces."
+    },
+    {
+      "id": "reporting",
+      "name": "Reporting and Documentation",
+      "icon": "file-text",
+      "description": "Keeping notes and evidence and writing the report."
+    },
+    {
+      "id": "defensive-monitoring",
+      "name": "Defensive and Monitoring",
+      "icon": "shield-check",
+      "description": "Detecting intrusions, hardening systems and watching what they do."
+    },
+    {
+      "id": "development",
+      "name": "Development",
+      "icon": "code",
+      "description": "Compilers, debuggers, analysers and languages for building and reviewing software."
+    },
+    {
+      "id": "virtualization",
+      "name": "Virtualization and Labs",
+      "icon": "layers",
+      "description": "Virtual machines and containers for isolated practice environments."
+    },
+    {
+      "id": "utilities",
+      "name": "Network and System Utilities",
+      "icon": "wrench",
+      "description": "General-purpose tools that the other categories build on."
+    }
+  ]
+}

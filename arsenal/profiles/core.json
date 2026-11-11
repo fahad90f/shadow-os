@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "id": "core",
+  "name": "Core Security",
+  "summary": "The foundational toolkit: discovery, packet analysis, TLS checks and network utilities",
+  "description": "A compact, broadly useful set of command-line and graphical tools for authorized security work: host and service discovery, a packet analyser, TLS checks, a password manager and the common network utilities the other profiles build on. Like every profile it is installed on demand; start here, the specialised profiles add to it.",
+  "icon": "nexus-reconnaissance",
+  "metapackage": "nexus-arsenal-core",
+  "tools": [
+    {
+      "package": "nmap",
+      "name": "Nmap",
+      "summary": "Network exploration tool and security/port scanner",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "nmap",
+      "homepage": "https://nmap.org"
+    },
+    {
+      "package": "zenmap",
+      "name": "Zenmap",
+      "summary": "Graphical front end for the Nmap scanner",
+      "category": "information-gathering",
+      "interface": "gui",
+      "desktop-id": "zenmap",
+      "homepage": "https://nmap.org/zenmap",
+      "notes": "Runs scans as your own user; privileged scan types still need root, which Zenmap asks for when you choose them."
+    },
+    {
+      "package": "masscan",
+      "name": "MASSCAN",
+      "summary": "Asynchronous TCP port scanner for large address ranges",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "masscan",
+      "homepage": "https://github.com/robertdavidgraham/masscan"
+    },
+    {
+      "package": "arp-scan",
+      "name": "arp-scan",
+      "summary": "Discover and fingerprint IP hosts on the local network with ARP",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "arp-scan",
+      "homepage": "https://github.com/royhills/arp-scan"
+    },
+    {
+      "package": "bind9-dnsutils",
+      "name": "DNS lookup utilities",
+      "summary": "dig, delv and nslookup DNS query clients from BIND 9",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "dig",
+      "homepage": "https://www.isc.org/bind/"
+    },
+    {
+      "package": "whois",
+      "name": "whois",
+      "summary": "Query WHOIS registries for domain and network ownership",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "whois",
+      "homepage": "https://github.com/rfc1036/whois"
+    },
+    {
+      "package": "whatweb",
+      "name": "WhatWeb",
+      "summary": "Identify the technologies a website is built with",
+      "category": "web-application",
+      "interface": "cli",
+      "command": "whatweb",
+      "homepage": "https://morningstarsecurity.com/research/whatweb"
+    },
+    {
+      "package": "sslscan",
+      "name": "sslscan",
+      "summary": "Report the TLS versions and ciphers a service accepts",
+      "category": "web-application",
+      "interface": "cli",
+      "command": "sslscan",
+      "homepage": "https://github.com/rbsec/sslscan"
+    },
+    {
+      "package": "wireshark",
+      "name": "Wireshark",
+      "summary": "Graphical network protocol analyser",
+      "category": "sniffing-spoofing",
+      "interface": "both",
+      "command": "wireshark",
+      "desktop-id": "org.wireshark.Wireshark",
+      "homepage": "https://www.wireshark.org",
+      "notes": "Capturing needs permission to the interface; Debian's dpkg-reconfigure wireshark-common sets up the 'wireshark' group so you need not run it as root."
+    },
+    {
+      "package": "tcpdump",
+      "name": "tcpdump",
+      "summary": "Command-line network packet capture and inspection",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "tcpdump",
+      "homepage": "https://www.tcpdump.org"
+    },
+    {
+      "package": "netcat-openbsd",
+      "name": "netcat (OpenBSD)",
+      "summary": "Read and write data across network connections",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "nc",
+      "homepage": "https://www.openbsd.org"
+    },
+    {
+      "package": "socat",
+      "name": "socat",
+      "summary": "Multipurpose relay for bidirectional data between two streams",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "socat",
+      "homepage": "http://www.dest-unreach.org/socat/"
+    },
+    {
+      "package": "curl",
+      "name": "curl",
+      "summary": "Transfer data to or from a server over many protocols",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "curl",
+      "homepage": "https://curl.se"
+    },
+    {
+      "package": "proxychains4",
+      "name": "ProxyChains-NG",
+      "summary": "Force a program's connections through a chain of proxies",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "proxychains4",
+      "homepage": "https://github.com/rofl0r/proxychains-ng"
+    },
+    {
+      "package": "keepassxc",
+      "name": "KeePassXC",
+      "summary": "Offline, encrypted password manager for engagement credentials",
+      "category": "utilities",
+      "interface": "both",
+      "command": "keepassxc-cli",
+      "desktop-id": "org.keepassxc.KeePassXC",
+      "homepage": "https://keepassxc.org",
+      "notes": "Transitional package; it pulls in keepassxc-full. Keep client and scope credentials out of shell history and in a vault like this one."
+    }
+  ],
+  "external": [
+    {
+      "name": "Metasploit Framework",
+      "summary": "Widely used exploitation and payload development framework",
+      "category": "exploitation",
+      "homepage": "https://www.metasploit.com",
+      "license": "BSD-3-Clause for the framework; the Rapid7 installer and some content have their own terms.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "The framework is not packaged in Debian; Rapid7 ships its own cross-distribution installer and nightly builds and expects to be updated from there."
+      },
+      "how": {
+        "text": "Install the official omnibus package or nightly build from Rapid7's documented instructions for Linux, then update with msfupdate.",
+        "url": "https://docs.metasploit.com/docs/using-metasploit/getting-started/nightly-installers.html"
+      }
+    }
+  ]
+}

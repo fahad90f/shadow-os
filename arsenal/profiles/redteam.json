@@ -1,0 +1,334 @@
+{
+  "schema": 1,
+  "id": "redteam",
+  "name": "Red Team",
+  "summary": "Offensive tooling for authorized penetration tests and red-team engagements",
+  "description": "Credential attacks, exploitation helpers, Active Directory and Windows protocol tooling, and pivoting utilities for engagements you have written authorization to perform. Several cornerstone frameworks (Metasploit, Responder, NetExec, BloodHound, Sliver) are not in Debian main and are listed as external tools with vendor install instructions rather than bundled.",
+  "icon": "nexus-red-team",
+  "metapackage": "nexus-arsenal-redteam",
+  "tools": [
+    {
+      "package": "hydra",
+      "name": "THC Hydra",
+      "summary": "Parallelised network login brute-forcer for many protocols",
+      "category": "password",
+      "interface": "cli",
+      "command": "hydra",
+      "help": ["-h"],
+      "homepage": "https://github.com/vanhauser-thc/thc-hydra"
+    },
+    {
+      "package": "medusa",
+      "name": "Medusa",
+      "summary": "Parallel, modular login brute-forcer for network services",
+      "category": "password",
+      "interface": "cli",
+      "command": "medusa",
+      "help": ["-h"],
+      "homepage": "https://github.com/jmk-foofus/medusa"
+    },
+    {
+      "package": "ncrack",
+      "name": "Ncrack",
+      "summary": "High-speed network authentication cracking tool from the Nmap project",
+      "category": "password",
+      "interface": "cli",
+      "command": "ncrack",
+      "homepage": "https://nmap.org/ncrack"
+    },
+    {
+      "package": "patator",
+      "name": "Patator",
+      "summary": "Multi-purpose brute-forcer with fine-grained control",
+      "category": "password",
+      "interface": "cli",
+      "command": "patator",
+      "homepage": "https://github.com/lanjelot/patator"
+    },
+    {
+      "package": "john",
+      "name": "John the Ripper",
+      "summary": "Offline password hash cracker with many formats",
+      "category": "password",
+      "interface": "cli",
+      "command": "john",
+      "homepage": "https://www.openwall.com/john/"
+    },
+    {
+      "package": "hashcat",
+      "name": "hashcat",
+      "summary": "GPU-accelerated password recovery for a wide range of hashes",
+      "category": "password",
+      "interface": "cli",
+      "command": "hashcat",
+      "homepage": "https://hashcat.net/hashcat/",
+      "notes": "GPU acceleration needs the appropriate OpenCL driver for your hardware; without it hashcat falls back to the CPU."
+    },
+    {
+      "package": "hashid",
+      "name": "hashID",
+      "summary": "Identify the type of a given password hash",
+      "category": "password",
+      "interface": "cli",
+      "command": "hashid",
+      "homepage": "https://github.com/psypanda/hashID"
+    },
+    {
+      "package": "crunch",
+      "name": "crunch",
+      "summary": "Generate wordlists from a character set and pattern",
+      "category": "password",
+      "interface": "cli",
+      "command": "crunch",
+      "homepage": "https://github.com/crunchsec/crunch"
+    },
+    {
+      "package": "cewl",
+      "name": "CeWL",
+      "summary": "Build a target-specific wordlist by spidering a website",
+      "category": "password",
+      "interface": "cli",
+      "command": "cewl",
+      "homepage": "https://github.com/digininja/CeWL"
+    },
+    {
+      "package": "python3-impacket",
+      "name": "Impacket",
+      "summary": "Python classes and example scripts for Windows network protocols",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "impacket-secretsdump",
+      "homepage": "https://github.com/fortra/impacket",
+      "notes": "Ships many impacket-* example scripts (secretsdump, wmiexec, psexec, GetUserSPNs and more); the command shown is one of them."
+    },
+    {
+      "package": "python3-ldapdomaindump",
+      "name": "ldapdomaindump",
+      "summary": "Dump Active Directory information over LDAP into readable reports",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "ldapdomaindump",
+      "homepage": "https://github.com/dirkjanm/ldapdomaindump"
+    },
+    {
+      "package": "krb5-user",
+      "name": "Kerberos clients",
+      "summary": "MIT Kerberos tools (kinit, klist) for AD ticket handling",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "kinit",
+      "homepage": "https://web.mit.edu/kerberos/"
+    },
+    {
+      "package": "smbmap",
+      "name": "smbmap",
+      "summary": "Enumerate SMB shares and permissions across a network",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "smbmap",
+      "homepage": "https://github.com/ShawnDEvans/smbmap"
+    },
+    {
+      "package": "polenum",
+      "name": "polenum",
+      "summary": "Retrieve the password policy from a Windows host over SMB",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "polenum",
+      "homepage": "https://github.com/Wh1t3Fox/polenum"
+    },
+    {
+      "package": "freerdp3-x11",
+      "name": "FreeRDP",
+      "summary": "Remote Desktop Protocol client for reaching Windows hosts",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "xfreerdp3",
+      "homepage": "https://www.freerdp.com"
+    },
+    {
+      "package": "weevely",
+      "name": "Weevely",
+      "summary": "Generate and manage a stealthy PHP web shell",
+      "category": "exploitation",
+      "interface": "cli",
+      "command": "weevely",
+      "homepage": "https://github.com/epinna/weevely3"
+    },
+    {
+      "package": "thc-ipv6",
+      "name": "THC-IPv6",
+      "summary": "Toolkit for attacking and testing IPv6 and ICMPv6",
+      "category": "exploitation",
+      "interface": "cli",
+      "command": "atk6-alive6",
+      "homepage": "https://github.com/vanhauser-thc/thc-ipv6",
+      "notes": "Ships many separate programs named atk6-* (e.g. atk6-alive6, atk6-parasite6); see the package's file list for the full set."
+    },
+    {
+      "package": "proxychains4",
+      "name": "ProxyChains-NG",
+      "summary": "Force a program's connections through a chain of proxies",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "proxychains4",
+      "homepage": "https://github.com/rofl0r/proxychains-ng"
+    },
+    {
+      "package": "sshuttle",
+      "name": "sshuttle",
+      "summary": "Transparent proxy and VPN over an SSH connection for pivoting",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "sshuttle",
+      "homepage": "https://github.com/sshuttle/sshuttle"
+    },
+    {
+      "package": "iodine",
+      "name": "iodine",
+      "summary": "Tunnel IPv4 traffic through a DNS server to bypass filtering",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "iodine",
+      "homepage": "https://github.com/yarrick/iodine"
+    },
+    {
+      "package": "aircrack-ng",
+      "name": "Aircrack-ng",
+      "summary": "Suite for monitoring and testing Wi-Fi (WEP/WPA) security",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "aircrack-ng",
+      "homepage": "https://www.aircrack-ng.org",
+      "notes": "Monitor-mode capture needs a wireless adapter and driver that support it."
+    },
+    {
+      "package": "wifite",
+      "name": "Wifite",
+      "summary": "Automate wireless auditing using the aircrack-ng tools",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "wifite",
+      "homepage": "https://github.com/derv82/wifite2"
+    },
+    {
+      "package": "reaver",
+      "name": "Reaver",
+      "summary": "Brute-force Wi-Fi Protected Setup (WPS) PINs",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "reaver",
+      "homepage": "https://github.com/t6x/reaver-wps-fork-t6x"
+    },
+    {
+      "package": "hcxdumptool",
+      "name": "hcxdumptool",
+      "summary": "Capture WPA key material from Wi-Fi devices for offline cracking",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "hcxdumptool",
+      "homepage": "https://github.com/ZerBea/hcxdumptool"
+    },
+    {
+      "package": "hcxtools",
+      "name": "hcxtools",
+      "summary": "Convert Wi-Fi captures into hashcat and John formats",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "hcxpcapngtool",
+      "homepage": "https://github.com/ZerBea/hcxtools"
+    }
+  ],
+  "external": [
+    {
+      "name": "Metasploit Framework",
+      "summary": "Widely used exploitation and payload development framework",
+      "category": "exploitation",
+      "homepage": "https://www.metasploit.com",
+      "license": "BSD-3-Clause for the framework; the Rapid7 installer and some content have their own terms.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "The framework is not packaged in Debian; Rapid7 ships its own cross-distribution installer and nightly builds and expects to be updated from there."
+      },
+      "how": {
+        "text": "Install the official omnibus package or nightly build from Rapid7's documented instructions for Linux, then update with msfupdate.",
+        "url": "https://docs.metasploit.com/docs/using-metasploit/getting-started/nightly-installers.html"
+      }
+    },
+    {
+      "name": "NetExec",
+      "summary": "Network execution and enumeration across SMB, WinRM, LDAP and more",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/Pennyw0rth/NetExec",
+      "license": "BSD-2-Clause (open source), successor to CrackMapExec; not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "NetExec is maintained outside Debian and changes rapidly; upstream recommends installing it with pipx into an isolated environment."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx (pipx is in Debian): pipx install git+https://github.com/Pennyw0rth/NetExec.",
+        "url": "https://www.netexec.wiki/getting-started/installation"
+      }
+    },
+    {
+      "name": "Evil-WinRM",
+      "summary": "WinRM shell for authenticated access to Windows hosts",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/Hackplayers/evil-winrm",
+      "license": "GPL-3.0 (open source), distributed as a Ruby gem; not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Evil-WinRM is published as a Ruby gem and is not packaged in Debian trixie."
+      },
+      "how": {
+        "text": "Install the gem with 'gem install evil-winrm' (Ruby is in Debian), or run it from the official git checkout.",
+        "url": "https://github.com/Hackplayers/evil-winrm"
+      }
+    },
+    {
+      "name": "Responder",
+      "summary": "LLMNR, NBT-NS and MDNS poisoner for credential capture",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/lgandx/Responder",
+      "license": "GPL-3.0 (open source), not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Responder is free software but is not in Debian; it runs directly from a git checkout with Python 3."
+      },
+      "how": {
+        "text": "Clone the official repository and run Responder.py; it uses only the Python 3 standard library.",
+        "url": "https://github.com/lgandx/Responder"
+      }
+    },
+    {
+      "name": "BloodHound",
+      "summary": "Graph-based Active Directory attack-path analysis",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/SpecterOps/BloodHound",
+      "license": "Apache-2.0 (Community Edition) with a separate commercial Enterprise edition.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "BloodHound Community Edition ships as container images and release bundles outside Debian; collectors are distributed with it."
+      },
+      "how": {
+        "text": "Run BloodHound Community Edition from the official Docker Compose deployment, and collect data with SharpHound or BloodHound.py.",
+        "url": "https://bloodhound.specterops.io/get-started/quickstart/community-edition-quickstart"
+      }
+    },
+    {
+      "name": "Sliver",
+      "summary": "Cross-platform adversary-emulation and command-and-control framework",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/BishopFox/sliver",
+      "license": "GPL-3.0 (open source), not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Sliver is released as prebuilt binaries by Bishop Fox and is not packaged in Debian."
+      },
+      "how": {
+        "text": "Download the official server and client release binaries for Linux from the Sliver releases page and verify their signatures.",
+        "url": "https://github.com/BishopFox/sliver/releases"
+      }
+    }
+  ]
+}

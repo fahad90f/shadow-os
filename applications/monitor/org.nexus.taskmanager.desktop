@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Task Manager
+GenericName=Process Manager
+Comment=See running processes and end the ones that stopped responding
+Exec=nexus-monitor --page processes
+Icon=org.nexus.taskmanager
+Terminal=false
+Categories=System;Monitor;
+Keywords=task;process;kill;end;terminate;top;ps;
+StartupNotify=true
+StartupWMClass=org.nexus.monitor
+X-NEXUS-Component=monitor

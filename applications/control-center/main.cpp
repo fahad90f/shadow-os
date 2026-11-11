@@ -3,6 +3,10 @@
 
 #include <nexusapp.h>
 
+#include <QDir>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+
 int main(int argc, char **argv)
 {
     Nexus::AppInfo info;
@@ -24,5 +28,9 @@ int main(int argc, char **argv)
             return app.dumpError(QStringLiteral("unknown dump topic '%1'").arg(app.dumpTopic()));
         return app.finishDump(value);
     }
+    // The page files compiled into this build (see the page table in Main.qml).
+    const QStringList availablePages = QDir(QStringLiteral(":/qt/qml/org/nexus/controlcenter/pages"))
+                                           .entryList({QStringLiteral("*.qml")}, QDir::Files);
+    app.engine().rootContext()->setContextProperty(QStringLiteral("availablePages"), availablePages);
     return app.run(QStringLiteral("org.nexus.controlcenter"));
 }

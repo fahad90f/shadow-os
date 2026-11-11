@@ -97,6 +97,13 @@ QtObject {
         function onTriggered(name) { shell.trigger(name) }
     }
 
+    // Third-party Qt/KDE and GTK applications follow the NEXUS appearance.
+    property Connections appearanceSync: Connections {
+        target: Appearance
+        function onDarkChanged() { session.run("nexus-apply-appearance") }
+        function onAccentChanged() { session.run("nexus-apply-appearance") }
+    }
+
     property Connections sessionErrors: Connections {
         target: session
         function onActionFailed(action, error) { toast.show(error) }

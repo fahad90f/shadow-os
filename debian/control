@@ -185,8 +185,8 @@ Description: NEXUS user-interface library (NexusUI)
 Package: nexus-horizon
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
- nexus-ui (= ${binary:Version}), nexus-artwork,
- kwin-wayland, xwayland, kwin-style-breeze, qml6-module-org-kde-layershell,
+ nexus-ui (= ${binary:Version}), nexus-artwork, nexus-themes,
+ kwin-wayland, xwayland, kwin-style-breeze, qml6-module-org-kde-layershell, layer-shell-qt,
  plasma-integration, breeze-icon-theme, breeze-cursor-theme, hicolor-icon-theme,
  libkf6service-bin, kio6,
  dbus-user-session, polkitd, pkexec,
@@ -207,3 +207,536 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
 Description: NEXUS System Information
  Shows operating system and kernel versions, firmware, processor, memory,
  graphics, storage and virtualisation, read from the running system.
+
+Package: nexus-themes
+Architecture: all
+Depends: ${misc:Depends}, nexus-artwork,
+ plasma-integration, kde-style-breeze, kwin-style-breeze,
+ breeze-icon-theme, breeze-cursor-theme, hicolor-icon-theme,
+ fonts-inter-variable, fonts-jetbrains-mono,
+ qml6-module-qtquick, libkscreenlocker6, plasma-desktoptheme, layer-shell-qt,
+ libpam-modules, libkf6config-bin, dbus-bin
+Recommends: sddm, xdg-desktop-portal-kde, gsettings-desktop-schemas, libglib2.0-bin, adwaita-icon-theme
+Suggests: libpam-fprintd
+Provides: sddm-theme
+Description: NEXUS OS look for the whole system, login and lock screens
+ Colour schemes and defaults that give third-party Qt, KDE and GTK
+ applications and window decorations the NEXUS look, the NEXUS icon themes
+ and application icons, the login screen (SDDM theme) and the lock screen,
+ and nexus-apply-appearance, which switches all of them between dark and
+ light.
+
+Package: nexus-monitor
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ procps, bsdutils, pkexec, polkitd
+Recommends: pci.ids, util-linux, nexus-sysinfo
+Description: NEXUS Monitor and Task Manager
+ Live processor, memory, graphics, disk and network usage with history,
+ sensors and battery, the process list with end, suspend and priority
+ actions, and systemd services — all read from the running system.
+
+Package: nexus-installer-gui
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ nexus-installer (= ${source:Version}),
+ pkexec, polkitd, tzdata, xkb-data, locales, dbus-user-session
+Recommends: os-prober
+Description: NEXUS OS graphical installer
+ The installation wizard of NEXUS OS: language, keyboard, system check, time
+ zone, disk (whole disk, alongside other systems, or manual; optional LUKS2
+ encryption), user account and optional security tool profiles. Nothing is
+ written to a disk before the exact plan was shown and confirmed. It runs
+ unprivileged and starts the installer engine through polkit.
+
+Package: nexus-store
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ packagekit, appstream, polkitd, ca-certificates
+Recommends: qt6-image-formats-plugins
+Description: NEXUS Store
+ Browse, search, install, update and remove software through the system
+ package manager (PackageKit/APT) with AppStream descriptions, real progress
+ and the package trust information the package manager reports.
+
+Package: nexus-updater
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ packagekit, polkitd, apt
+Description: NEXUS Updater
+ Lists and installs system, security, kernel and application updates through
+ the package manager, with change logs, history, restart notices and a
+ repair page for interrupted updates.
+
+Package: nexus-control-center
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ libkscreen-bin, xkb-data, polkitd, pulseaudio-utils
+Recommends: network-manager, bluez, pipewire-pulse, wireplumber, upower, power-profiles-daemon
+Suggests: network-manager-openvpn
+Description: NEXUS Control Center
+ The system settings application of NEXUS OS: Wi-Fi, wired networking and
+ proxy, Bluetooth, VPN, displays, sound, power, keyboard, mouse and
+ touchpad, and system information, each talking to the real system service.
+
+Package: nexus-network-center
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ network-manager, iproute2, iputils-ping, python3, pkexec, polkitd
+Recommends: traceroute, bind9-dnsutils, tcpdump
+Suggests: wireshark, network-manager-openvpn
+Description: NEXUS Network Center
+ Network interfaces, addresses, routes, DNS, sockets and connections, Wi-Fi
+ and VPN management through NetworkManager, diagnostics (ping, traceroute,
+ DNS lookup, port check) and packet capture through a narrowly scoped
+ privileged helper. Packet capture is for networks you are authorised to
+ monitor.
+
+Package: nexus-arsenal
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ nexus-arsenal-data (= ${source:Version}), dpkg, apt
+Recommends: packagekit, polkitd, nexus-terminal
+Description: NEXUS Arsenal - security tool profile manager
+ Browse the NEXUS Arsenal profiles (web, network, red team, blue team,
+ forensics, reverse engineering, development), see which tools are installed
+ and install or remove a whole profile or single tools through PackageKit.
+ Tools that are not available from the NEXUS repositories are listed with a
+ link to their official source; nothing is downloaded behind your back.
+ .
+ The manager installs no tools by itself.
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: nexus-arsenal-data
+Architecture: all
+Multi-Arch: foreign
+Depends: ${misc:Depends}
+Description: NEXUS Arsenal - profile manifests
+ Machine-readable descriptions of the NEXUS Arsenal security tool profiles:
+ which Debian packages belong to a profile, what each tool is for and how it
+ is started, and which well-known tools are not packaged and where their
+ vendors publish them. Used by the Arsenal manager and by the
+ nexus-arsenal-* metapackages.
+ .
+ This package contains manifests only: no tools, exploit code, payloads,
+ word lists or credentials.
+
+Package: nexus-arsenal-core
+Architecture: all
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ nexus-arsenal-data (>= ${source:Version})
+Recommends:
+ arp-scan,
+ bind9-dnsutils,
+ curl,
+ keepassxc,
+ masscan,
+ netcat-openbsd,
+ nmap,
+ proxychains4,
+ socat,
+ sslscan,
+ tcpdump,
+ whatweb,
+ whois,
+ wireshark,
+ zenmap
+Suggests: nexus-arsenal
+Description: NEXUS Arsenal profile - Core Security
+ A compact, broadly useful set of command-line and graphical tools for
+ authorized security work: host and service discovery, a packet analyser, TLS
+ checks, a password manager and the common network utilities the other
+ profiles build on. Like every profile it is installed on demand; start here,
+ the specialised profiles add to it.
+ .
+ This metapackage recommends the 15 tools of the profile, all from Debian
+ main; APT installs them with it. A tool can be removed again without removing
+ the profile.
+ .
+ Not included, because they are not in Debian main: Metasploit Framework. The
+ Arsenal manager lists where their vendors publish them.
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: nexus-arsenal-web
+Architecture: all
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ nexus-arsenal-data (>= ${source:Version})
+Recommends:
+ arjun,
+ cadaver,
+ cutycapt,
+ dirb,
+ dirsearch,
+ ffuf,
+ gobuster,
+ httpie,
+ httrack,
+ paramspider,
+ sqlitebrowser,
+ sqlmap,
+ sslscan,
+ testssl.sh,
+ tinyproxy,
+ wafw00f,
+ wfuzz,
+ whatweb,
+ wig
+Suggests: nexus-arsenal
+Description: NEXUS Arsenal profile - Web Application
+ Scanners, fuzzers, proxies and TLS auditors for assessing web applications
+ you own or are contracted to test. Includes content discovery, parameter
+ mining, a SQL-injection tester, HTTP clients and transport-security checks.
+ Several well-known web scanners (Burp Suite, OWASP ZAP, Nikto, Nuclei) are
+ proprietary or not in Debian and are listed separately with official install
+ links.
+ .
+ This metapackage recommends the 19 tools of the profile, all from Debian
+ main; APT installs them with it. A tool can be removed again without removing
+ the profile.
+ .
+ Not included, because they are not in Debian main: Burp Suite, OWASP ZAP,
+ Nikto, Nuclei. The Arsenal manager lists where their vendors publish them.
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: nexus-arsenal-network
+Architecture: all
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ nexus-arsenal-data (>= ${source:Version})
+Recommends:
+ arp-scan,
+ bind9-dnsutils,
+ dnsenum,
+ dnsrecon,
+ fierce,
+ fping,
+ hping3,
+ iftop,
+ iperf3,
+ ldap-utils,
+ masscan,
+ mtr,
+ nbtscan,
+ netdiscover,
+ netsniff-ng,
+ ngrep,
+ nmap,
+ onesixtyone,
+ smbclient,
+ smbmap,
+ snmp,
+ tcpdump,
+ termshark,
+ tshark,
+ wireshark,
+ zmap
+Suggests: nexus-arsenal
+Description: NEXUS Arsenal profile - Network Security
+ A toolkit for assessing networks you are authorized to test: port and service
+ scanning, host discovery, SMB/SNMP/DNS enumeration, packet capture and
+ analysis, traffic generation and bandwidth monitoring. Pairs well with the
+ Sniffing and Spoofing tools and underpins both the Red Team and Blue Team
+ profiles.
+ .
+ This metapackage recommends the 26 tools of the profile, all from Debian
+ main; APT installs them with it. A tool can be removed again without removing
+ the profile.
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: nexus-arsenal-redteam
+Architecture: all
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ nexus-arsenal-data (>= ${source:Version})
+Recommends:
+ aircrack-ng,
+ cewl,
+ crunch,
+ freerdp3-x11,
+ hashcat,
+ hashid,
+ hcxdumptool,
+ hcxtools,
+ hydra,
+ iodine,
+ john,
+ krb5-user,
+ medusa,
+ ncrack,
+ patator,
+ polenum,
+ proxychains4,
+ python3-impacket,
+ python3-ldapdomaindump,
+ reaver,
+ smbmap,
+ sshuttle,
+ thc-ipv6,
+ weevely,
+ wifite
+Suggests: nexus-arsenal
+Description: NEXUS Arsenal profile - Red Team
+ Credential attacks, exploitation helpers, Active Directory and Windows
+ protocol tooling, and pivoting utilities for engagements you have written
+ authorization to perform. Several cornerstone frameworks (Metasploit,
+ Responder, NetExec, BloodHound, Sliver) are not in Debian main and are listed
+ as external tools with vendor install instructions rather than bundled.
+ .
+ This metapackage recommends the 25 tools of the profile, all from Debian
+ main; APT installs them with it. A tool can be removed again without removing
+ the profile.
+ .
+ Not included, because they are not in Debian main: Metasploit Framework,
+ NetExec, Evil-WinRM, Responder, BloodHound, Sliver. The Arsenal manager lists
+ where their vendors publish them.
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: nexus-arsenal-blueteam
+Architecture: all
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ nexus-arsenal-data (>= ${source:Version})
+Recommends:
+ aide,
+ arpwatch,
+ auditd,
+ chkrootkit,
+ clamav,
+ crowdsec,
+ debsecan,
+ fail2ban,
+ firejail,
+ lnav,
+ lynis,
+ openscap-scanner,
+ psad,
+ python3-opensnitch-ui,
+ rkhunter,
+ sshguard,
+ suricata,
+ usbguard,
+ wireshark,
+ yara
+Suggests: nexus-arsenal
+Description: NEXUS Arsenal profile - Blue Team
+ Tools for defenders and system owners: network and host intrusion detection,
+ file-integrity and rootkit checks, log analysis, security auditing and
+ benchmarking, sandboxing and firewalls. All are open-source packages from
+ Debian; they help you watch, harden and audit systems you administer.
+ .
+ This metapackage recommends the 20 tools of the profile, all from Debian
+ main; APT installs them with it. A tool can be removed again without removing
+ the profile.
+ .
+ Not included, because they are not in Debian main: Zeek, Wazuh, Velociraptor,
+ Elastic Stack (ELK). The Arsenal manager lists where their vendors publish
+ them.
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: nexus-arsenal-forensics
+Architecture: all
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ nexus-arsenal-data (>= ${source:Version})
+Recommends:
+ autopsy,
+ binwalk,
+ chkrootkit,
+ clamav,
+ dc3dd,
+ dcfldd,
+ ewf-tools,
+ extundelete,
+ foremost,
+ gddrescue,
+ guymager,
+ hashdeep,
+ libimage-exiftool-perl,
+ plaso,
+ python3-evtx,
+ regripper,
+ scalpel,
+ sleuthkit,
+ ssdeep,
+ testdisk,
+ wxhexeditor,
+ yara
+Suggests: nexus-arsenal
+Description: NEXUS Arsenal profile - Forensics
+ A digital-forensics kit for authorized incident response and investigation:
+ imaging and write-safe acquisition, filesystem and deleted-file analysis,
+ carving, memory and registry artifacts, malware triage and anti-virus
+ scanning. Use these on evidence you are authorized to examine, and keep an
+ auditable chain of custody.
+ .
+ This metapackage recommends the 22 tools of the profile, all from Debian
+ main; APT installs them with it. A tool can be removed again without removing
+ the profile.
+ .
+ Not included, because they are not in Debian main: Volatility 3. The Arsenal
+ manager lists where their vendors publish them.
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: nexus-arsenal-reversing
+Architecture: any
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ nexus-arsenal-data (>= ${source:Version})
+Recommends:
+ androguard,
+ apksigner,
+ apktool,
+ binutils,
+ capstone-tool,
+ checksec,
+ diffoscope,
+ edb-debugger [amd64],
+ gdb,
+ gdb-multiarch,
+ ht,
+ ltrace,
+ nasm,
+ okteta,
+ patchelf,
+ python3-pwntools,
+ python3-ropgadget,
+ python3-unicorn,
+ qemu-user,
+ strace,
+ upx-ucl,
+ valgrind,
+ yara
+Suggests: nexus-arsenal
+Description: NEXUS Arsenal profile - Reverse Engineering
+ Static and dynamic analysis of binaries, libraries, firmware and mobile apps:
+ debuggers, decompilers, tracers, hex editors, ELF/PE inspection, emulation
+ and fuzzing. For malware analysis, run samples only inside an isolated lab
+ (see the lab-setup guide). Ghidra, radare2 and Cutter are not in Debian main
+ and are listed as external tools with install links.
+ .
+ This metapackage recommends the 23 tools of the profile, all from Debian
+ main; APT installs them with it. A tool can be removed again without removing
+ the profile.
+ .
+ Not included, because they are not in Debian main: Ghidra, radare2 / Cutter,
+ Frida. The Arsenal manager lists where their vendors publish them.
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: nexus-arsenal-developer
+Architecture: all
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ nexus-arsenal-data (>= ${source:Version})
+Recommends:
+ bandit,
+ build-essential,
+ cargo,
+ clang,
+ cmake,
+ cppcheck,
+ default-jdk,
+ docker.io,
+ flawfinder,
+ gdb,
+ git,
+ gitleaks,
+ golang,
+ jq,
+ ninja-build,
+ pipx,
+ podman,
+ pre-commit,
+ python3,
+ qemu-system-x86,
+ ripgrep,
+ rustc,
+ shellcheck,
+ virt-manager,
+ yamllint
+Suggests: nexus-arsenal
+Description: NEXUS Arsenal profile - Developer
+ A software-development and secure-coding toolkit: toolchains for C/C++,
+ Python, Go and Rust, build systems and debuggers, static analysers and secret
+ scanners, container and virtualization tools, and editors. Aimed at
+ developers building and reviewing software securely on NEXUS OS.
+ .
+ This metapackage recommends the 25 tools of the profile, all from Debian
+ main; APT installs them with it. A tool can be removed again without removing
+ the profile.
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: nexus-arsenal-complete
+Architecture: all
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ nexus-arsenal-data (>= ${source:Version}),
+ nexus-arsenal-core (>= ${source:Version}),
+ nexus-arsenal-web (>= ${source:Version}),
+ nexus-arsenal-network (>= ${source:Version}),
+ nexus-arsenal-redteam (>= ${source:Version}),
+ nexus-arsenal-blueteam (>= ${source:Version}),
+ nexus-arsenal-forensics (>= ${source:Version}),
+ nexus-arsenal-reversing (>= ${source:Version}),
+ nexus-arsenal-developer (>= ${source:Version})
+Suggests: nexus-arsenal
+Description: NEXUS Arsenal profile - Complete Arsenal
+ The union of all NEXUS Arsenal profiles. Installing it brings in every tool
+ from Core Security, Web Application, Network Security, Red Team, Blue Team,
+ Forensics, Reverse Engineering and Developer. It is a large installation;
+ most users are better served installing the specific profiles they need. The
+ tools are referenced from the other profiles, not duplicated here.
+ .
+ This metapackage depends on the metapackages of the profiles it combines (159
+ tools in total).
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.

@@ -68,7 +68,7 @@ submenu "Advanced options" --id advanced --class submenu {
         initrd /live/initrd.img
     }
     menuentry "Live session - serial console (ttyS0, 115200 8N1)" --id live-serial --class nexus {
-        linux  /live/vmlinuz boot=live components console=tty0 console=ttyS0,115200n8
+        linux  /live/vmlinuz boot=live components noeject console=tty0 console=ttyS0,115200n8
         initrd /live/initrd.img
     }
     menuentry "Recovery environment" --id recovery --class nexus {
