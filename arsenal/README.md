@@ -31,7 +31,7 @@ arsenal/
 
 | Profile | Tools (trixie main) | External entries |
 |---|---:|---:|
-| core | 27 | 1 |
+| core | 27 | 2 |
 | web | 19 | 18 |
 | network | 36 | 13 |
 | redteam | 35 | 26 |
@@ -39,7 +39,7 @@ arsenal/
 | forensics | 22 | 6 |
 | reversing | 27 (one of them amd64 only) | 16 |
 | developer | 57 | 17 |
-| complete | 230 distinct, by reference | 100 distinct |
+| complete | 230 distinct, by reference | 101 distinct |
 
 Contents: [docs/profiles.md](docs/profiles.md). How to change them:
 [docs/adding-tools.md](docs/adding-tools.md).
@@ -97,7 +97,7 @@ Not tested / known limits:
   "install profile" through the metapackage and "remove profile" are untested;
   `control.in` has not been run through `dpkg-gencontrol`.
 * Only one external entry (Nikto) carries the `packages` field that lets
-  `check-availability.py` prove it is absent from main. The other 99 distinct
+  `check-availability.py` prove it is absent from main. The other 100 distinct
   external tools were verified absent from trixie main by `apt-cache` lookup on
   2026-11-11 (see the generator notes); adding the `packages` field to them is
   open but optional.
