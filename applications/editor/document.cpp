@@ -57,8 +57,9 @@ LoadResult readFile(const QString &path, const QString &encoding)
         return r;
     }
     if (info.size() > EditorLimits::maxFileBytes) {
-        r.decoded.error = EditorDocument::tr("“%1” is %2. This editor keeps the whole file in memory and lays out every "
-                                            "line, which stops being usable above %3, so the file was not opened.")
+        r.decoded.error = EditorDocument::tr("“%1” is %2. This editor loads a file completely into memory (taking several "
+                                            "times its size) and opening would freeze the window for a long time, so files "
+                                            "above %3 are not opened.")
                               .arg(info.fileName(), formatSize(info.size()), formatSize(EditorLimits::maxFileBytes));
         return r;
     }
@@ -414,6 +415,18 @@ void EditorDocument::load(const QString &path, const QString &encoding)
         if (decoded.fragileCharacters)
             notices << tr("This file contains NUL or Unicode paragraph-separator characters that cannot be kept "
                           "exactly; saving will change them.");
+        // A paragraph is laid out as a whole, so one enormous line makes
+        // every keystroke slow, whatever the size of the file.
+        qsizetype longest = 0, lineStart = 0;
+        for (qsizetype i = 0; i <= decoded.text.size(); ++i) {
+            if (i == decoded.text.size() || decoded.text.at(i) == u'\n') {
+                longest = qMax(longest, i - lineStart);
+                lineStart = i + 1;
+            }
+        }
+        if (longest > EditorLimits::slowLineChars)
+            notices << tr("This file has a line of %1 characters. Lines this long make editing slow, "
+                          "because a line is always laid out as a whole.").arg(QLocale().toString(longest));
         if (definitionTooLarge())
             notices << tr("Syntax highlighting is off: the file has more than %1 characters.")
                            .arg(QLocale().toString(EditorLimits::maxHighlightChars));

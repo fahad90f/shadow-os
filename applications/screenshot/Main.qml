@@ -27,9 +27,18 @@ NxWindow {
     onClosing: shot.windowClosed()
     onVisibleChanged: if (visible) { raise(); requestActivate() }
 
+    // Routine feedback ("Saved to …", "Copied") appears in the status line next
+    // to the actions; only failures use a toast, which would otherwise cover
+    // the action buttons at the bottom of the window.
+    property string statusText: ""
+    Timer { id: statusTimer; interval: 8000; onTriggered: window.statusText = "" }
     Connections {
         target: shot
-        function onMessage(text, kind) { window.toaster.show(text, kind) }
+        function onMessage(text, kind) {
+            if (kind === "danger") { window.toaster.show(text, kind); return }
+            window.statusText = text
+            statusTimer.restart()
+        }
     }
 
     // One full-screen selection surface per monitor while a region is chosen.
@@ -268,9 +277,11 @@ NxWindow {
             Label {
                 Layout.fillWidth: true
                 elide: Text.ElideMiddle
-                color: Theme.textSecondary
+                color: window.statusText !== "" ? Theme.success : Theme.textSecondary
                 font.pixelSize: Theme.fontSizeSmall
-                text: shot.savedPath !== "" ? qsTr("Saved: %1").arg(shot.savedPath)
+                Accessible.name: text
+                text: window.statusText !== "" ? window.statusText
+                    : shot.savedPath !== "" ? qsTr("Saved: %1").arg(shot.savedPath)
                     : shot.document.empty ? "" : qsTr("Not saved — Save writes to %1").arg(shot.saveDirectory)
             }
             ComboBox {

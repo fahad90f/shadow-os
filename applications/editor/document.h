@@ -28,6 +28,8 @@ namespace EditorLimits {
 constexpr qint64 maxFileBytes = 64LL * 1024 * 1024;
 // Above this many characters syntax highlighting is switched off.
 constexpr qint64 maxHighlightChars = 4LL * 1024 * 1024;
+// A single line longer than this gets a warning: editing it is slow.
+constexpr qint64 slowLineChars = 100000;
 }
 
 KSyntaxHighlighting::Repository &syntaxRepository();

@@ -144,7 +144,11 @@ class VM:
                "-nodefaults", "-no-user-config"]
         if self.arch == "amd64":
             cmd += ["-machine", "q35" + (",smm=on" if self.firmware == "uefi-secureboot" else "")]
-            cmd += ["-cpu", "host" if self.accel == "kvm" else "max"]
+            # Without KVM the CPU is emulated (TCG). TCG mis-handles fault
+            # suppression of AVX2 masked loads, which crashes Qt's and Mesa's
+            # software rasterisers in the guest; a model without AVX2 avoids
+            # the emulator bug. Real CPUs and KVM guests are not affected.
+            cmd += ["-cpu", "host" if self.accel == "kvm" else "Nehalem"]
             if self.firmware == "uefi-secureboot":
                 cmd += ["-global", "driver=cfi.pflash01,property=secure,value=on"]
         else:
