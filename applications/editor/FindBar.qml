@@ -146,7 +146,7 @@ Rectangle {
                     : searchField.text === "" ? ""
                     : bar.matchCount === 0 ? qsTr("No matches")
                     : bar.currentIndex > 0 ? qsTr("%1 of %2").arg(bar.currentIndex).arg(bar.matchCount)
-                    : qsTr("%n matches", "", bar.matchCount)
+                    : (bar.matchCount === 1 ? qsTr("1 match") : qsTr("%1 matches").arg(bar.matchCount))
                 color: (bar.document && bar.document.searchError !== "") || (searchField.text !== "" && bar.matchCount === 0)
                     ? Theme.danger : Theme.textSecondary
                 elide: Text.ElideRight

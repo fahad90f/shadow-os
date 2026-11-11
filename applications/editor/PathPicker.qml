@@ -248,7 +248,7 @@ Dialog {
             }
             Label {
                 visible: root.multiple
-                text: qsTr("%n selected", "", root.checkedCount)
+                text: qsTr("%1 selected").arg(root.checkedCount)
                 color: Theme.textMuted
             }
             Item { Layout.fillWidth: true }

@@ -492,7 +492,7 @@ NxWindow {
             id: findBar
             Layout.fillWidth: true
             view: window.currentView
-            onReplacedAll: (count) => window.toaster.show(qsTr("%n occurrences replaced", "", count), "success")
+            onReplacedAll: (count) => window.toaster.show(qsTr("Replaced: %1").arg(count), "success")
             onClosed: window.focusEditor()
         }
 
@@ -529,13 +529,13 @@ NxWindow {
                     readonly property int selected: window.currentView
                         ? window.currentView.editor.selectionEnd - window.currentView.editor.selectionStart : 0
                     visible: selected > 0
-                    text: qsTr("%n selected", "", selected)
+                    text: qsTr("%1 selected").arg(selected)
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSizeSmall
                 }
                 Label {
                     visible: window.currentDocument !== null
-                    text: window.currentDocument ? qsTr("%n lines", "", window.currentDocument.lineCount) : ""
+                    text: window.currentDocument ? (window.currentDocument.lineCount === 1 ? qsTr("1 line") : qsTr("%1 lines").arg(window.currentDocument.lineCount)) : ""
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSizeSmall
                     leftPadding: Theme.spaceSm
