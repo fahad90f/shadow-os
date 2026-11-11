@@ -740,3 +740,15 @@ Description: NEXUS Arsenal profile - Complete Arsenal
  education only: use them on systems you own or have explicit written
  permission to test, and follow the law that applies to you. They come with no
  warranty.
+
+Package: nexus-files
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ kio6, libarchive-tools, breeze-icon-theme, shared-mime-info
+Recommends: udisks2, kio-extras, nexus-terminal
+Suggests: nexus-archive-manager
+Description: NEXUS Files
+ The file manager of NEXUS OS: grid and list views, tabs and split view,
+ search, previews, trash with restore, permissions, archives, removable
+ drives and network locations, with file operations that report progress
+ and ask before replacing or deleting.

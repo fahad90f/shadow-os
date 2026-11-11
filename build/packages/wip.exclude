@@ -3,7 +3,6 @@
 # build/packages/build.sh leaves them out of the exported source tree.
 # Remove a line when the component is integrated (debian/control stanza added,
 # tests passed).
-applications/files
 applications/terminal
 applications/editor
 applications/archive-manager

@@ -1,0 +1,212 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Privileged helper of the Control Center's Users page.
+
+Run through pkexec (action org.nexus.controlcenter.users.manage):
+
+    users-helper set-password        reads one line "<user>:<password>" on stdin
+    users-helper set-autologin <user>
+    users-helper clear-autologin
+
+set-password hands the line to chpasswd(8) on its standard input, so the
+password never appears on a command line or in the environment. Creating and
+removing accounts, names, the administrator role and avatars are not done
+here: the page asks AccountsService for those.
+
+set-autologin / clear-autologin maintain the [Autologin] User of SDDM in
+/etc/sddm.conf.d/20-autologin.conf (the file the NEXUS installer writes) and
+remove competing User= entries from the other SDDM files under /etc, so the
+result is what SDDM will really do.
+
+Only existing human accounts (UID_MIN ≤ uid ≤ UID_MAX of /etc/login.defs)
+are accepted. Prints one JSON document on stdout; exit status 0 on success.
+"""
+
+import glob
+import json
+import os
+import pwd
+import re
+import subprocess
+import sys
+import tempfile
+
+CHPASSWD = "/usr/sbin/chpasswd"
+SDDM_DIR = "/etc/sddm.conf.d"
+SDDM_MAIN = "/etc/sddm.conf"
+SDDM_VENDOR_DIR = "/usr/lib/sddm/sddm.conf.d"
+AUTOLOGIN_FILE = SDDM_DIR + "/20-autologin.conf"
+SESSION = "nexus-horizon"
+SESSION_FILE = "/usr/share/wayland-sessions/nexus-horizon.desktop"
+USER_NAME = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+MAX_PASSWORD_BYTES = 512
+
+
+def finish(ok, **fields):
+    fields["ok"] = ok
+    json.dump(fields, sys.stdout)
+    sys.stdout.write("\n")
+    sys.exit(0 if ok else 1)
+
+
+def uid_range():
+    low, high = 1000, 60000
+    try:
+        with open("/etc/login.defs", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) == 2 and parts[1].isdigit():
+                    if parts[0] == "UID_MIN":
+                        low = int(parts[1])
+                    elif parts[0] == "UID_MAX":
+                        high = int(parts[1])
+    except OSError:
+        pass
+    return low, high
+
+
+def human_account(name):
+    """The passwd entry of 'name' if it is an ordinary login account, else exit."""
+    if not USER_NAME.match(name):
+        finish(False, error="'%s' is not a valid user name" % name[:64])
+    try:
+        entry = pwd.getpwnam(name)
+    except KeyError:
+        finish(False, error="there is no user named '%s'" % name)
+    low, high = uid_range()
+    if not low <= entry.pw_uid <= high:
+        finish(False, error="'%s' is a system account and cannot be changed here" % name)
+    return entry
+
+
+def set_password():
+    data = sys.stdin.buffer.read(MAX_PASSWORD_BYTES + 64)
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        finish(False, error="the password is not valid UTF-8")
+    if text.endswith("\n"):
+        text = text[:-1]
+    name, separator, password = text.partition(":")
+    if not separator:
+        finish(False, error="expected '<user>:<password>' on standard input")
+    human_account(name)
+    if not password:
+        finish(False, error="the password is empty")
+    if len(password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        finish(False, error="the password is too long")
+    if any(ord(c) < 32 or ord(c) == 127 for c in password):
+        finish(False, error="the password contains control characters")
+    environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C.UTF-8"}
+    try:
+        result = subprocess.run([CHPASSWD], input=("%s:%s\n" % (name, password)).encode("utf-8"),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        finish(False, error="chpasswd could not be run: %s" % error)
+    if result.returncode != 0:
+        message = result.stderr.decode("utf-8", "replace").strip() or "chpasswd failed"
+        finish(False, error=message)
+    finish(True, user=name)
+
+
+# ---- SDDM ---------------------------------------------------------------------
+
+def sddm_files():
+    """SDDM configuration files in the order SDDM reads them (later wins)."""
+    return sorted(glob.glob(SDDM_VENDOR_DIR + "/*.conf")) + sorted(glob.glob(SDDM_DIR + "/*.conf")) + [SDDM_MAIN]
+
+
+def autologin_user_in(path):
+    """Value of [Autologin] User in one file: None if not set there."""
+    value, section = None, ""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for raw in handle:
+                line = raw.strip()
+                if line.startswith("[") and line.endswith("]"):
+                    section = line[1:-1].strip()
+                elif section == "Autologin" and re.match(r"^User\s*=", line):
+                    value = line.split("=", 1)[1].strip()
+    except OSError:
+        return None
+    return value
+
+
+def effective_autologin():
+    user = ""
+    for path in sddm_files():
+        value = autologin_user_in(path)
+        if value is not None:
+            user = value
+    return user
+
+
+def write_file(path, text):
+    os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+    handle_fd, temporary = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".nexus-users.")
+    with os.fdopen(handle_fd, "w", encoding="utf-8", errors="surrogateescape") as handle:
+        handle.write(text)
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, path)
+
+
+def strip_autologin_user(path):
+    """Remove 'User=' lines of the [Autologin] section from one file under /etc."""
+    try:
+        with open(path, encoding="utf-8", errors="surrogateescape") as handle:
+            lines = handle.read().split("\n")
+    except OSError:
+        return
+    kept, section, changed = [], "", False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section = stripped[1:-1].strip()
+        if section == "Autologin" and re.match(r"^User\s*=", stripped):
+            changed = True
+            continue
+        kept.append(line)
+    if changed:
+        write_file(path, "\n".join(kept))
+
+
+def set_autologin(name):
+    """name: account to log in automatically, or '' for nobody."""
+    if not os.path.isdir("/usr/share/sddm") and not os.path.exists("/usr/bin/sddm"):
+        finish(False, error="SDDM is not installed, so there is no automatic login to configure")
+    try:
+        for path in sorted(glob.glob(SDDM_DIR + "/*.conf")) + [SDDM_MAIN]:
+            if path != AUTOLOGIN_FILE and os.path.isfile(path):
+                strip_autologin_user(path)
+        if name:
+            session = "Session=%s\n" % SESSION if os.path.exists(SESSION_FILE) else ""
+            write_file(AUTOLOGIN_FILE, "[Autologin]\nUser=%s\n%sRelogin=false\n" % (name, session))
+        else:
+            if os.path.exists(AUTOLOGIN_FILE):
+                os.unlink(AUTOLOGIN_FILE)
+            if effective_autologin():
+                # A vendor file under /usr/lib still names a user: override it.
+                write_file(AUTOLOGIN_FILE, "[Autologin]\nUser=\n")
+    except OSError as error:
+        finish(False, error="cannot update the SDDM configuration: %s" % error)
+    effective = effective_autologin()
+    if effective != name:
+        finish(False, error="the SDDM configuration still names '%s'" % effective, autologinUser=effective)
+    finish(True, autologinUser=effective, file=AUTOLOGIN_FILE)
+
+
+def main():
+    if os.geteuid() != 0:
+        finish(False, error="this helper must run as root (through pkexec)")
+    arguments = sys.argv[1:]
+    if arguments == ["set-password"]:
+        set_password()
+    if len(arguments) == 2 and arguments[0] == "set-autologin":
+        set_autologin(human_account(arguments[1]).pw_name)
+    if arguments == ["clear-autologin"]:
+        set_autologin("")
+    finish(False, error="usage: users-helper set-password | set-autologin <user> | clear-autologin")
+
+
+if __name__ == "__main__":
+    main()

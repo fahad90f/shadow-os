@@ -109,7 +109,12 @@ scripts/dev.sh exec --dir files -- bash /src/applications/files/tests/devices-ud
 
 The scenarios (`tests/ui/*.sh`) drive the real window with xdotool, print the
 state of the scratch directories under `/tmp/files-test-*` after every step
-and save screenshots as `build/work/shots/files-<scenario>-*.png`.
+and save screenshots as `build/work/shots/files-<scenario>-*.png`. Clicks use
+fixed window coordinates (1600x900 screen, default window size, dark theme),
+so a layout change needs the coordinates in the scenario adjusted; always look
+at the screenshots as well as the printed state. A nested session is ended
+after 180 seconds, and copy speed in the chroot varies a lot with the load of
+the machine: `large` may need a second run when it is slow.
 
 ### Tested (build chroot, results of the last run)
 
@@ -118,7 +123,8 @@ and save screenshots as `build/work/shots/files-<scenario>-*.png`.
 | smoke (`tests/desktop/smoke.sh --dir files files`) | Both launch lines pass with no QML warnings. |
 | `ops` | Copy+paste of a tree, inline rename, new folder, Delete → Trash (`.trashinfo` with `Path` and `DeletionDate`), undo restores it, cut+paste moves a folder, Shift+Delete asks first; Escape keeps the file, "Delete" removes it without touching the Trash; the source tree is unchanged. |
 | `conflict` | Keep both (`a (1).txt`), Replace, Skip, Rename…, Stop, Replace for all, Skip for all — each with the expected file contents; folder-onto-folder offers Merge. |
-| `large` | 900 MiB file plus 3072 small files: progress indicator and operations list while copying, view switching and a new tab during the copy, SHA-256 of the big file and `diff -r` of the tree identical; a second copy cancelled from the list stops. |
+| `large` | 600 MiB file plus 2000 small files: progress indicator and operations list (item, amounts, speed) while copying, switching views and opening/closing a tab during the copy, then SHA-256 of the big file and `diff -r` of the tree identical. |
+| `cancel` | A copy of 4096 files cancelled from the operations list stops (file count no longer grows), silently; what was already copied stays. |
 | `trash` | Three items trashed, `trash:/` view, Restore of one item to its original folder, Empty the Trash (confirmation) leaves `files/` and `info/` empty. |
 | `archive` | tar.gz of two items and zip of a folder (member lists checked with `bsdtar -tf`, a file name starting with `-` included), an existing archive name is refused in the dialog, Extract here for both (multi-entry archive → folder named after it, taken name → `docs (1)`), `diff -r` against the originals, a file that is not an archive reports bsdtar's error and leaves nothing behind. |
 | `views` | Grid, hidden files, details view, preview panel for an image, a text file and a binary file, filter, recursive search and opening a result, two tabs, split view, closing a tab. |

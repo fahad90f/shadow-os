@@ -7,12 +7,12 @@
 #
 # Scenarios are tests/ui/<scenario>.sh; they drive the real window with
 # xdotool, print the on-disk state after every step and save screenshots to
-# build/work/shots/files-*.png. Nothing here is installed.
+# build/work/shots/files-*.png. A nested session is ended after 180 seconds,
+# so every scenario has to fit into that. Nothing here is installed.
 set -e
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 scn="${1:?usage: run-ui.sh <scenario> [build-dir]}"
 dir="${2:-files}"
 [ -f "$root/applications/files/tests/ui/$scn.sh" ] || { echo "no such scenario: $scn" >&2; exit 2; }
-export NEXUS_RUN_TIMEOUT="${NEXUS_RUN_TIMEOUT:-600}"
 exec "$root/scripts/dev.sh" nested --dir "$dir" --size 1600x900 --wait 1 -- \
     "SCN=$scn; . /src/applications/files/tests/ui/lib.sh; . /src/applications/files/tests/ui/$scn.sh"

@@ -120,6 +120,7 @@ in_chroot() {
             DEBIAN_FRONTEND=noninteractive \
             SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-}" \
             NEXUS_JOBS="${NEXUS_JOBS:-1}" \
+            ${NEXUS_RUN_TIMEOUT:+NEXUS_RUN_TIMEOUT="$NEXUS_RUN_TIMEOUT"} \
             chroot "$root" "$@"
     ' nexus-chroot "$root" "${#binds[@]}" "${binds[@]}" "$@"
 }

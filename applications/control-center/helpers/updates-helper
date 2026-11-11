@@ -1,0 +1,78 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Privileged helper of the Control Center's Updates page.
+
+Run through pkexec (action org.nexus.controlcenter.updates.configure):
+
+    updates-helper set-auto-upgrades <update-lists: 0|1> <unattended-upgrade: 0|1>
+
+Sets APT::Periodic::Update-Package-Lists and APT::Periodic::Unattended-Upgrade
+in /etc/apt/apt.conf.d/20auto-upgrades — the file the unattended-upgrades
+package itself uses. Other lines of the file are kept. The two arguments are
+the only input and each must be exactly "0" or "1". Prints one JSON document
+on stdout; exit status 0 on success.
+"""
+
+import json
+import os
+import re
+import sys
+import tempfile
+
+TARGET = "/etc/apt/apt.conf.d/20auto-upgrades"
+KEYS = ("APT::Periodic::Update-Package-Lists", "APT::Periodic::Unattended-Upgrade")
+
+
+def finish(ok, **fields):
+    fields["ok"] = ok
+    json.dump(fields, sys.stdout)
+    sys.stdout.write("\n")
+    sys.exit(0 if ok else 1)
+
+
+def set_auto_upgrades(values):
+    try:
+        with open(TARGET, encoding="utf-8", errors="surrogateescape") as handle:
+            lines = handle.read().split("\n")
+    except FileNotFoundError:
+        lines = []
+    except OSError as error:
+        finish(False, error="cannot read %s: %s" % (TARGET, error.strerror))
+    while lines and lines[-1] == "":
+        lines.pop()
+    for key, value in zip(KEYS, values):
+        pattern = re.compile(r"^\s*" + re.escape(key) + r"\s")
+        wanted = '%s "%s";' % (key, value)
+        kept, placed = [], False
+        for line in lines:
+            if pattern.match(line):
+                if not placed:
+                    kept.append(wanted)
+                    placed = True
+            else:
+                kept.append(line)
+        if not placed:
+            kept.append(wanted)
+        lines = kept
+    try:
+        handle_fd, temporary = tempfile.mkstemp(dir=os.path.dirname(TARGET), prefix=".20auto-upgrades.")
+        with os.fdopen(handle_fd, "w", encoding="utf-8", errors="surrogateescape") as handle:
+            handle.write("\n".join(lines) + "\n")
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, TARGET)
+    except OSError as error:
+        finish(False, error="cannot write %s: %s" % (TARGET, error.strerror))
+    finish(True, file=TARGET, updatePackageLists=values[0], unattendedUpgrade=values[1])
+
+
+def main():
+    if os.geteuid() != 0:
+        finish(False, error="this helper must run as root (through pkexec)")
+    arguments = sys.argv[1:]
+    if len(arguments) == 3 and arguments[0] == "set-auto-upgrades" and all(a in ("0", "1") for a in arguments[1:]):
+        set_auto_upgrades(arguments[1:])
+    finish(False, error="usage: updates-helper set-auto-upgrades <0|1> <0|1>")
+
+
+if __name__ == "__main__":
+    main()

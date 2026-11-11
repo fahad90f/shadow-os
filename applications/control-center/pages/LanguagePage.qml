@@ -79,7 +79,7 @@ NxPage {
             NxButton {
                 anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("Change…")
-                enabled: !lang.busy
+                enabled: lang.available && !lang.busy
                 onClicked: picker.openFor("LANG", qsTr("Choose the language"), lang.language)
             }
         }
@@ -121,7 +121,7 @@ NxPage {
                 NxButton {
                     anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("Change…")
-                    enabled: !lang.busy
+                    enabled: lang.available && !lang.busy
                     onClicked: picker.openFor(formatRow.modelData.category,
                                               qsTr("Region for %1").arg(formatRow.modelData.title), formatRow.modelData.effective)
                 }
