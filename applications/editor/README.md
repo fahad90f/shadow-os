@@ -23,7 +23,7 @@ NEXUS_EDITOR_BENCH=1 nexus-editor <file>   time loading/rendering/editing of <fi
 | Binary files | Files containing NUL bytes that are not UTF-16/32 are refused, with the reason. |
 | Line endings | LF / CRLF / CR are detected, kept on save and can be converted from the status bar. Mixed files are flagged and the user is told what saving will write. |
 | External changes | `QFileSystemWatcher` plus a size/mtime check whenever the window is activated. A bar offers "Reload"; saving over a newer file asks first. Deleted files are reported. |
-| Syntax highlighting | KSyntaxHighlighting definitions (about 400 languages), chosen from the file name, then the MIME type; changeable from the status bar. Colours: two themes shipped with the application, `themes/nexus-dark.theme` and `themes/nexus-light.theme`, built from the NEXUS design tokens; they follow the light/dark appearance live. |
+| Syntax highlighting | KSyntaxHighlighting definitions (about 400 languages), chosen from the file name, then the MIME type; changeable from the status bar. Colours: two themes shipped with the application, `themes/nexus-dark.theme` and `themes/nexus-light.theme`, built from the NEXUS design tokens; they follow the light/dark appearance. |
 | Editing | Line numbers, current-line highlight, word wrap (Alt+Z), undo/redo, auto-indent (keeps the indentation; one level more after `{ [ (` and, in Python/YAML, after `:`), Tab/Shift+Tab indent the selected lines, Backspace steps back one level in leading spaces, tabs or spaces with a width of 1–16. Ligatures are switched off. |
 | Find / replace | Ctrl+F / Ctrl+H, F3 / Shift+F3. Plain or regular expression (PCRE, `^`/`$` per line), match case, whole words, "n of m" counter, all visible matches highlighted, replace one / all (`\1` or `$1` insert groups; "replace all" is one undo step). Invalid expressions show the error. |
 | Go to line | Ctrl+G, `line` or `line:column`; also `file:line` on the command line. |
@@ -134,7 +134,9 @@ Commands are relative to the repository root; `arced` is the build directory.
   working directory with `sample.cpp:42` → new tab in the running window at
   line 42; quit with unsaved changes → Save → file written and process ended;
   restart without arguments → previous tabs restored; binary file → refusal
-  dialog; Tab / Shift+Tab on a selection; line-ending menu.
+  dialog and 70 MiB file → refusal dialog; Tab / Shift+Tab on a selection
+  (file content verified); line-ending menu LF → CRLF (file verified);
+  encoding dialog; word wrap.
 * Large files: the table above (`NEXUS_EDITOR_BENCH=1`).
 * Light and dark theme screenshots.
 
@@ -143,8 +145,11 @@ Commands are relative to the repository root; `arced` is the build directory.
 * Drag and drop of files from another application (no drag source could be
   driven in the test session).
 * Input methods, touch screens, high-DPI scaling other than 1×.
-* Launching through the `.desktop` file's `MimeType=` association (needs the
-  installed package and a file manager); the command line it results in
-  (`nexus-editor <files>`) was tested.
+* Switching between light and dark while the editor is running (both were
+  only tested from start-up).
+* Launching from a file manager. The association itself was exercised once:
+  with `text/plain=org.nexus.editor.desktop` in `mimeapps.list`, `gio open
+  file.txt` (issued by the Archive Manager's preview) started `nexus-editor`
+  with the file through the `.desktop` entry.
 * Behaviour on a hardware-accelerated display; all timings are from software
   rendering.

@@ -806,3 +806,22 @@ Description: NEXUS Recovery
  encrypted ones, re-installs the boot loader and initramfs, completes
  interrupted package operations, checks file systems, resets a password and
  collects logs. Every step explains what it changes before it runs.
+
+Package: nexus-editor
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ fonts-jetbrains-mono
+Description: NEXUS Text Editor
+ A programmer's text editor: tabs, syntax highlighting, find and replace
+ with regular expressions, encoding and line-ending handling that never
+ corrupts a file, atomic saves and a warning when a file changed on disk.
+
+Package: nexus-archive-manager
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ libarchive-tools, 7zip, xdg-utils
+Description: NEXUS Archive Manager
+ Browse, extract, create and test archives (tar and its compressed forms,
+ zip, 7z, cpio; ISO and RAR read-only). Extraction never writes outside the
+ chosen folder, drops device nodes and setuid bits, and warns before
+ unpacking archives that expand implausibly.

@@ -64,6 +64,15 @@ App::App(int &argc, char **argv, const AppInfo &info)
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE"))
         qputenv("QT_QUICK_CONTROLS_STYLE", "org.nexus.style");
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+    // File, folder, colour, font and message dialogs: never the "native" ones.
+    // In a NEXUS session the platform theme plugin that answers for
+    // XDG_CURRENT_DESKTOP=…:KDE would otherwise put up its own widget dialogs,
+    // which know nothing of the NEXUS theme (white, different controls). With
+    // this attribute Qt Quick Dialogs uses its Qt Quick implementation, which
+    // org.nexus.style draws (desktop/ui/style/dialogs/).
+    // NEXUS_NATIVE_DIALOGS=1 restores the platform's dialogs for comparison.
+    if (qEnvironmentVariableIntValue("NEXUS_NATIVE_DIALOGS") != 1)
+        QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 
     m_app = std::make_unique<QApplication>(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("nexus"));

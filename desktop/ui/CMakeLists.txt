@@ -68,6 +68,21 @@ qt_add_qml_module(nexusstyle
     DEPENDENCIES QtQuick QtQuick.Templates org.nexus.ui
 )
 target_link_libraries(nexusstyle PRIVATE Qt6::Quick Qt6::QuickControls2)
+
+# NEXUS look for Qt Quick Dialogs (FileDialog, FolderDialog). The Qt Quick
+# implementation of those dialogs loads its QML from Qt's own resource
+# directory through a file selector named after the active Controls style, so
+# files placed in "+org.nexus.style" below that directory replace the built-in
+# ones whenever org.nexus.style is the style. They are deliberately not part
+# of the org.nexus.style QML module (their names would become style types).
+qt_add_resources(nexusstyle nexus_quick_dialogs
+    PREFIX "/qt-project.org/imports/QtQuick/Dialogs/quickimpl/qml/+org.nexus.style"
+    BASE style/dialogs
+    FILES
+        style/dialogs/FileDialog.qml
+        style/dialogs/FolderDialog.qml
+        style/dialogs/NxFileRow.qml
+        style/dialogs/NxPathBar.qml)
 add_dependencies(nexusstyle nexusui)
 
 # ---- Nexus::App -----------------------------------------------------------------

@@ -4,5 +4,3 @@
 # Remove a line when the component is integrated (debian/control stanza added,
 # tests passed).
 applications/terminal
-applications/editor
-applications/archive-manager
