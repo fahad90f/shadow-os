@@ -240,6 +240,8 @@ NxPage {
             NxRow {
                 id: rec
                 required property var modelData
+                required property int index
+                Layout.topMargin: index === 0 ? -1 : 0      // hides NxRow's divider on the first visible row
                 readonly property string severity: modelData.severity || ""
                 readonly property string action: modelData.action || ""
                 icon: severity === "high" ? "shield-alert" : severity === "medium" ? "alert-triangle" : "info"

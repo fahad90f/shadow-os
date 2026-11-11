@@ -293,7 +293,7 @@ NxPage {
     NxConfirmDialog {
         id: resetDialog
         title: qsTr("Close all open ports?")
-        message: qsTr("All %n opened port(s) are removed from the firewall. Services on this computer can then no longer be reached from the network.", "", firewall.rules.length)
+        message: qsTr("Every opened port (%1 at the moment) is removed from the firewall. Services on this computer can then no longer be reached from the network.").arg(firewall.rules.length)
         confirmText: qsTr("Close all")
         destructive: true
         onConfirmed: firewall.reset()

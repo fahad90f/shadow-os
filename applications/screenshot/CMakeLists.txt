@@ -30,3 +30,9 @@ endif()
 # application does and writes the picture it finds to a file.
 qt_add_executable(nexus-screenshot-cliptest tests/cliptest.cpp)
 target_link_libraries(nexus-screenshot-cliptest PRIVATE Qt6::Gui)
+
+# Test double (not installed) of the compositor's org.kde.KWin.ScreenShot2
+# interface, for environments where KWin cannot provide it; see tests/README
+# section in README.md.
+qt_add_executable(nexus-screenshot-fakekwin tests/fakekwin.cpp)
+target_link_libraries(nexus-screenshot-fakekwin PRIVATE Qt6::Gui Qt6::DBus)

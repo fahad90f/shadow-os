@@ -157,7 +157,7 @@ Q_SIGNALS:
 
 private:
     QTextDocument *doc() const;
-    void applyDefinition();
+    void applyDefinition(qint64 characters = -1);
     void applyTheme();
     void watch();
     void rememberDiskState();

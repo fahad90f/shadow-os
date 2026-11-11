@@ -165,6 +165,8 @@ SectionPage {
             NxRow {
                 id: portRow
                 required property var modelData
+                required property int index
+                Layout.topMargin: index === 0 ? -1 : 0      // hides NxRow's divider on the first visible row
                 icon: "plug"
                 title: modelData.port + "/" + modelData.protocol
                 subtitle: modelData.name !== undefined && modelData.name !== "" ? modelData.name : ""
@@ -290,6 +292,8 @@ SectionPage {
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.textPrimary
                 background: null
+                tabStopDistance: rulesetMetrics.averageCharacterWidth * 4
+                FontMetrics { id: rulesetMetrics; font: rulesetArea.font }
                 Accessible.name: qsTr("Active nftables ruleset")
             }
         }
@@ -303,9 +307,11 @@ SectionPage {
         anchors.centerIn: Overlay.overlay
         title: qsTr("Enable the firewall?")
         message: qsTr("The NEXUS ruleset is loaded now and at every start. Inbound connections are dropped, except replies "
-                      + "to connections this computer started, loopback traffic, essential ICMP and the %1 opened port(s). "
+                      + "to connections this computer started, loopback traffic and essential ICMP. %1 "
                       + "Services that other computers use on this machine stop being reachable until their port is opened here. "
-                      + "If you administer this computer remotely, open that port first.").arg(page.allowed.length)
+                      + "If you administer this computer remotely, open that port first.")
+            .arg(page.allowed.length === 0 ? qsTr("No port is opened.")
+                 : qsTr("Opened ports stay reachable: %1.").arg(page.allowed.map(r => r.port + "/" + r.protocol).join(", ")))
         confirmText: qsTr("Enable firewall")
         onConfirmed: page.center.firewallEnable()
     }

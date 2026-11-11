@@ -277,16 +277,22 @@ void EditorDocument::setSyntax(const QString &name)
     applyDefinition();
 }
 
-void EditorDocument::applyDefinition()
+void EditorDocument::applyDefinition(qint64 characters)
 {
     QTextDocument *d = doc();
     if (!d || !m_highlighter)
         return;
+    if (characters < 0)
+        characters = d->characterCount();
     KSyntaxHighlighting::Definition definition;
     if (m_syntax != QLatin1String("None"))
         definition = syntaxRepository().definitionForName(m_syntax);
-    const bool tooLarge = d->characterCount() > EditorLimits::maxHighlightChars;
-    const bool active = definition.isValid() && !tooLarge;
+    const bool active = definition.isValid() && characters <= EditorLimits::maxHighlightChars;
+    // The highlighter re-queues every block whose stored state differs from
+    // the new one — one event (and one repaint) per line of the file. Blocks
+    // without stored state are simply highlighted once, so drop it first.
+    for (QTextBlock block = d->begin(); block.isValid(); block = block.next())
+        block.setUserData(nullptr);
     m_highlighter->setDefinition(active ? definition : KSyntaxHighlighting::Definition());
     m_highlighting = active;
     if (!definition.isValid())
@@ -360,16 +366,25 @@ void EditorDocument::load(const QString &path, const QString &encoding)
         }
         const TextFile::Decoded &decoded = result.decoded;
 
-        // Highlighting is decided before the text goes in, so a huge file is
-        // never highlighted first and switched off afterwards.
-        if (m_highlighter)
-            m_highlighter->setDefinition(KSyntaxHighlighting::Definition());
+        m_filePath = absolute;
+        if (!m_syntaxChosenByUser) {
+            auto &repository = syntaxRepository();
+            KSyntaxHighlighting::Definition definition = repository.definitionForFileName(QFileInfo(absolute).fileName());
+            if (!definition.isValid()) {
+                const QMimeType mime = QMimeDatabase().mimeTypeForFileNameAndData(absolute, decoded.text.left(4096).toUtf8());
+                definition = repository.definitionForMimeType(mime.name());
+            }
+            m_syntax = definition.isValid() ? definition.name() : QStringLiteral("None");
+        }
+        // The definition is in place before the text goes in, so every line
+        // is highlighted exactly once — and a huge file never is.
         d->setUndoRedoEnabled(false);
+        d->clear();
+        applyDefinition(decoded.text.size());
         d->setPlainText(decoded.text);
         d->setUndoRedoEnabled(true);
         d->setModified(false);
 
-        m_filePath = absolute;
         m_encoding = decoded.encoding;
         m_bom = decoded.bom;
         m_lineEnding = decoded.lineEnding;
@@ -380,17 +395,6 @@ void EditorDocument::load(const QString &path, const QString &encoding)
         m_changedOnDisk = false;
         m_deletedOnDisk = false;
         watch();
-
-        if (!m_syntaxChosenByUser) {
-            auto &repository = syntaxRepository();
-            KSyntaxHighlighting::Definition definition = repository.definitionForFileName(QFileInfo(absolute).fileName());
-            if (!definition.isValid()) {
-                const QMimeType mime = QMimeDatabase().mimeTypeForFileNameAndData(absolute, decoded.text.left(4096).toUtf8());
-                definition = repository.definitionForMimeType(mime.name());
-            }
-            m_syntax = definition.isValid() ? definition.name() : QStringLiteral("None");
-        }
-        applyDefinition();
 
         QStringList notices;
         if (decoded.guessed)
@@ -483,9 +487,9 @@ void EditorDocument::writeFile(const QString &path)
         m_formatEdited = false;
         m_mixedLineEndings = false;
         watch();
-        QTextDocument *d = doc();
-        if (d && d->revision() == revision)
-            d->setModified(false);
+        QTextDocument *current = doc();
+        if (current && current->revision() == revision)
+            current->setModified(false);
         if (renamed) {
             Q_EMIT filePathChanged();
             if (!m_syntaxChosenByUser) {

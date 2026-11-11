@@ -2,3 +2,5 @@ debian/generated/os-release usr/lib
 debian/generated/issue etc
 debian/generated/issue.net etc
 debian/generated/nexus-release usr/share/nexus
+system/services/nexus-sulogin.conf usr/lib/systemd/system/rescue.service.d
+system/services/nexus-sulogin.conf usr/lib/systemd/system/emergency.service.d

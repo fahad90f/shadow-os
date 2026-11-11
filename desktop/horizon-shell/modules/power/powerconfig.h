@@ -6,6 +6,8 @@
 #include <QObject>
 #include <QTimer>
 
+class QFileSystemWatcher;
+
 namespace PowerModule {
 
 // Idle timeouts in minutes; 0 = never.
@@ -64,6 +66,7 @@ private:
     bool m_autoCheck = true;
     int m_intervalHours = 24;
     QTimer m_reloadTimer;
+    QFileSystemWatcher *m_watcher = nullptr;
 };
 
 } // namespace PowerModule

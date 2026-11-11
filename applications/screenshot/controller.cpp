@@ -19,6 +19,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
+#include <QWindow>
 
 #ifdef NEXUS_HAVE_KGUIADDONS
 #include <KSystemClipboard>
@@ -66,6 +67,45 @@ Controller::Controller(QObject *parent)
     connect(qGuiApp, &QGuiApplication::screenRemoved, this, &Controller::screensChanged);
     if (const QScreen *primary = QGuiApplication::primaryScreen())
         m_monitor = primary->name();
+
+    // Notice when another application takes the clipboard over: from then on
+    // this process no longer has to stay around to serve the picture.
+#ifdef NEXUS_HAVE_KGUIADDONS
+    connect(KSystemClipboard::instance(), &KSystemClipboard::changed, this, [this](QClipboard::Mode mode) {
+        if (mode == QClipboard::Clipboard && m_holdsClipboard
+            && KSystemClipboard::instance()->mimeData(QClipboard::Clipboard) != m_clipboardData)
+            clipboardLost();
+    });
+#else
+    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, [this] {
+        if (m_holdsClipboard && !QGuiApplication::clipboard()->ownsClipboard())
+            clipboardLost();
+    });
+#endif
+}
+
+void Controller::clipboardLost()
+{
+    m_holdsClipboard = false;
+    m_clipboardData = nullptr;
+    Q_EMIT clipboardChanged();
+    if (m_cli.nonInteractive || m_windowClosed)
+        QCoreApplication::quit();
+}
+
+void Controller::assignScreen(QObject *window, const QString &screenName)
+{
+    auto *w = qobject_cast<QWindow *>(window);
+    if (!w)
+        return;
+    const auto screens = QGuiApplication::screens();
+    for (QScreen *s : screens) {
+        if (s->name() == screenName) {
+            w->setScreen(s);
+            w->setGeometry(s->geometry());
+            return;
+        }
+    }
 }
 
 QStringList Controller::writableFormats()
@@ -391,14 +431,8 @@ bool Controller::setClipboard(const QImage &image)
 #else
     QGuiApplication::clipboard()->setMimeData(mime);
 #endif
-    // The clipboard owns the data and deletes it when another application
-    // takes the clipboard over — that is how we learn we are no longer needed.
     m_clipboardData = mime;
-    connect(mime, &QObject::destroyed, this, [this] {
-        Q_EMIT clipboardChanged();
-        if (m_cli.nonInteractive || m_windowClosed)
-            QCoreApplication::quit();
-    });
+    m_holdsClipboard = true;
     Q_EMIT clipboardChanged();
     return true;
 }

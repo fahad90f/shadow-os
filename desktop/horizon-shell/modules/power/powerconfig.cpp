@@ -39,9 +39,12 @@ Config::Config(QObject *parent)
     // The directory may not exist before the first settings change; creating
     // it (empty) is what lets us notice that change.
     QDir().mkpath(configDir());
-    auto *watcher = new QFileSystemWatcher(this);
-    watcher->addPath(configDir());
-    connect(watcher, &QFileSystemWatcher::directoryChanged, &m_reloadTimer, qOverload<>(&QTimer::start));
+    // The directory tells about files that are created or replaced (the
+    // writers replace atomically); the files themselves about edits in place.
+    m_watcher = new QFileSystemWatcher(this);
+    m_watcher->addPath(configDir());
+    connect(m_watcher, &QFileSystemWatcher::directoryChanged, &m_reloadTimer, qOverload<>(&QTimer::start));
+    connect(m_watcher, &QFileSystemWatcher::fileChanged, &m_reloadTimer, qOverload<>(&QTimer::start));
 
     reload();
 }
@@ -66,6 +69,12 @@ qint64 Config::scaled(qint64 ms)
 
 void Config::reload()
 {
+    // A replaced file is a new inode: watch it again.
+    for (const QString &file : {powerFile(), updaterFile()}) {
+        if (QFileInfo::exists(file) && !m_watcher->files().contains(file))
+            m_watcher->addPath(file);
+    }
+
     // QSettings falls back, per key, to /etc/xdg/nexus/<name>.conf.
     const QSettings power(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("power"));
     IdleMinutes ac, battery;

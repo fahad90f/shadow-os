@@ -24,7 +24,14 @@
 using namespace Qt::StringLiterals;
 
 namespace {
-const QString kKWinService = u"org.kde.KWin"_s;
+// The compositor's bus name. NEXUS_SCREENSHOT_KWIN_SERVICE redirects the
+// calls to another provider of the same interface — used by the tests, which
+// run where KWin cannot offer ScreenShot2 (no OpenGL compositing).
+QString kwinService()
+{
+    const QString override = qEnvironmentVariable("NEXUS_SCREENSHOT_KWIN_SERVICE");
+    return override.isEmpty() ? u"org.kde.KWin"_s : override;
+}
 const QString kKWinPath = u"/org/kde/KWin/ScreenShot2"_s;
 const QString kKWinInterface = u"org.kde.KWin.ScreenShot2"_s;
 const QString kPortalService = u"org.freedesktop.portal.Desktop"_s;
@@ -98,7 +105,7 @@ QJsonObject ScreenGrabber::probe()
     bool portal = false;
     int version = 0;
     if (bus.isConnected()) {
-        QDBusMessage get = QDBusMessage::createMethodCall(kKWinService, kKWinPath, u"org.freedesktop.DBus.Properties"_s, u"Get"_s);
+        QDBusMessage get = QDBusMessage::createMethodCall(kwinService(), kKWinPath, u"org.freedesktop.DBus.Properties"_s, u"Get"_s);
         get << kKWinInterface << u"Version"_s;
         const QDBusMessage reply = bus.call(get, QDBus::Block, 2000);
         if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()) {
@@ -110,6 +117,7 @@ QJsonObject ScreenGrabber::probe()
         const QDBusMessage preply = bus.call(pget, QDBus::Block, 2000);
         portal = preply.type() == QDBusMessage::ReplyMessage;
     }
+    o["kwinService"_L1] = kwinService();
     o["kwinScreenShot2"_L1] = kwin;
     o["kwinScreenShot2Version"_L1] = version;
     o["portalScreenshot"_L1] = portal;
@@ -173,7 +181,7 @@ void ScreenGrabber::callKWin(const QString &method, const QVariantList &leadingA
 
     QDBusPendingCallWatcher *watcher = nullptr;
     {
-        QDBusMessage call = QDBusMessage::createMethodCall(kKWinService, kKWinPath, kKWinInterface, method);
+        QDBusMessage call = QDBusMessage::createMethodCall(kwinService(), kKWinPath, kKWinInterface, method);
         QVariantList arguments = leadingArguments;
         arguments << options << QVariant::fromValue(QDBusUnixFileDescriptor(fds[1]));
         call.setArguments(arguments);
@@ -209,7 +217,7 @@ void ScreenGrabber::kwinReply(QDBusPendingCallWatcher *watcher, int readFd, bool
         }
         QString why;
         if (isUnavailableError(error))
-            why = tr("The compositor does not offer the org.kde.KWin.ScreenShot2 interface (%1).").arg(error.message());
+            why = tr("The compositor does not offer the org.kde.KWin.ScreenShot2 interface (%1). KWin provides it only while it composites with OpenGL.").arg(error.message());
         else if (error.name().endsWith(".NoAuthorized"_L1))
             why = tr("The compositor refused the request: this application is not authorised to take screenshots (%1).").arg(error.message());
         else

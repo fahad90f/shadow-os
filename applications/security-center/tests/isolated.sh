@@ -6,7 +6,7 @@
 #   * a new network namespace  → its own, empty nftables ruleset
 #   * a new mount namespace with a private copy of /etc bound over /etc
 #     → /etc/nexus/firewall.json, /etc/nftables.d/ and the "systemctl enable"
-#       symlink are written to the copy, which is discarded afterwards
+#       symlink are written to the copy (on a tmpfs), which is discarded afterwards
 #
 #   tests/isolated.sh <command> [args...]          (as root, e.g. in the build chroot)
 #
@@ -18,7 +18,12 @@ if [ "${NEXUS_SC_ISOLATED:-}" != 1 ]; then
     [ "$(id -u)" = 0 ] || { echo "isolated.sh: must run as root" >&2; exit 1; }
     NEXUS_SC_ISOLATED=1 exec unshare --net --mount --propagation unchanged "$0" "$@"
 fi
+# The copy lives on a tmpfs of this mount namespace: it disappears with the
+# namespace even when this script is killed.
 copy="$(mktemp -d /tmp/nexus-sc-etc.XXXXXX)"
+trap 'umount /etc 2>/dev/null; umount "$copy" 2>/dev/null; rmdir "$copy" 2>/dev/null' EXIT
+trap 'exit 143' TERM INT HUP
+mount -t tmpfs -o mode=755 tmpfs "$copy"
 cp -a /etc/. "$copy/"
 mount --bind "$copy" /etc
 # The NEXUS ruleset from the source tree, when the package is not installed.
@@ -27,7 +32,8 @@ if [ -f /src/security/firewall/nftables.conf ] && ! grep -q nexus_filter /etc/nf
 fi
 mkdir -p /etc/nexus /etc/nftables.d
 rc=0
-"$@" || rc=$?
-umount /etc 2>/dev/null || true
-rm -rf "$copy"
+"$@" &
+child=$!
+trap 'kill "$child" 2>/dev/null; exit 143' TERM INT HUP
+wait "$child" || rc=$?
 exit "$rc"

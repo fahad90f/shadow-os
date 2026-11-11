@@ -14,6 +14,7 @@ SectionPage {
     readonly property var journalProblem: Fmt.has(lg.journal) && lg.journal.available === false ? lg.journal : null
     readonly property var au: center.report.audit
     readonly property bool auLoaded: Fmt.has(au)
+    readonly property var aud: auLoaded ? au : ({})
     readonly property bool auReady: auLoaded && au.available !== false
     readonly property var auService: auLoaded && Fmt.has(au.service) ? au.service : ({})
     readonly property var eventRows: {
@@ -46,6 +47,8 @@ SectionPage {
             model: page.sessions
             NxRow {
                 required property var modelData
+                required property int index
+                Layout.topMargin: index === 0 ? -1 : 0      // hides NxRow's divider on the first visible row
                 icon: "user"
                 title: modelData.user || qsTr("unknown user")
                 subtitle: [modelData.class ? qsTr("class %1").arg(modelData.class) : "",
@@ -120,7 +123,7 @@ SectionPage {
             icon: "alert-triangle"
             iconColor: Theme.warning
             title: qsTr("The audit state could not be determined")
-            subtitle: page.auLoaded ? (page.au.reason || qsTr("The status tool gave no reason.")) : ""
+            subtitle: page.auLoaded ? (page.aud.reason || qsTr("The status tool gave no reason.")) : ""
         }
         NxRow {
             title: qsTr("auditd.service")
@@ -138,20 +141,20 @@ SectionPage {
             visible: page.auReady
             title: qsTr("Kernel auditing")
             subtitle: qsTr("“enabled” flag of auditctl -s: 0 off, 1 on, 2 on and locked until restart.")
-            value: !Fmt.has(page.au.enabled) ? qsTr("not reported")
-                : page.au.enabled === 0 ? qsTr("0 — off") : page.au.enabled === 1 ? qsTr("1 — on")
-                : page.au.enabled === 2 ? qsTr("2 — on, locked") : String(page.au.enabled)
+            value: !Fmt.has(page.aud.enabled) ? qsTr("not reported")
+                : page.aud.enabled === 0 ? qsTr("0 — off") : page.aud.enabled === 1 ? qsTr("1 — on")
+                : page.aud.enabled === 2 ? qsTr("2 — on, locked") : String(page.aud.enabled)
         }
         NxRow {
             visible: page.auReady
             title: qsTr("Loaded audit rules")
-            value: Fmt.has(page.au.rules) ? String(page.au.rules) : qsTr("not determined")
+            value: Fmt.has(page.aud.rules) ? String(page.aud.rules) : qsTr("not determined")
         }
         NxRow {
             visible: page.auReady
             title: qsTr("Lost events")
             subtitle: qsTr("Events the kernel dropped because the audit queue was full; backlog is the current queue length.")
-            value: (Fmt.has(page.au.lost) ? String(page.au.lost) : "—") + qsTr(" lost · backlog ") + (Fmt.has(page.au.backlog) ? String(page.au.backlog) : "—")
+            value: (Fmt.has(page.aud.lost) ? String(page.aud.lost) : "—") + qsTr(" lost · backlog ") + (Fmt.has(page.aud.backlog) ? String(page.aud.backlog) : "—")
         }
     }
 
@@ -160,13 +163,13 @@ SectionPage {
         title: qsTr("Audit events by rule")
         description: qsTr("Events of the last 7 days, counted per rule key (aureport --key --summary).")
         NxRow {
-            visible: !Fmt.has(page.au ? page.au.events_by_key_7d : null)
+            visible: !Fmt.has(page.aud.events_by_key_7d)
             icon: "info"
             title: qsTr("No event summary is available")
             subtitle: qsTr("aureport is not installed or could not read the audit log (/var/log/audit).")
         }
         TableCard {
-            visible: page.auReady && Fmt.has(page.au.events_by_key_7d)
+            visible: page.auReady && Fmt.has(page.aud.events_by_key_7d)
             Layout.margins: Theme.spaceXs
             color: "transparent"
             border.width: 0
@@ -182,17 +185,17 @@ SectionPage {
         }
     }
     Note {
-        visible: page.auReady && !Array.isArray(page.au.recent_events)
+        visible: page.auReady && !Array.isArray(page.aud.recent_events)
         text: qsTr("The status tool reports audit events as counts per rule, not as individual events. In a terminal: sudo ausearch -ts recent -i")
     }
     NxSection {
-        visible: page.auReady && Array.isArray(page.au.recent_events)
+        visible: page.auReady && Array.isArray(page.aud.recent_events)
         title: qsTr("Recent audit events")
         TableCard {
             Layout.margins: Theme.spaceXs
             color: "transparent"
             border.width: 0
-            rows: page.auReady ? page.withTime(page.au.recent_events) : []
+            rows: page.auReady ? page.withTime(page.aud.recent_events) : []
             sortRole: "time"
             sortAscending: false
             columns: [

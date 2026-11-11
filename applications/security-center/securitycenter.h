@@ -26,7 +26,7 @@ class SecurityCenter : public QObject
     QML_ELEMENT
 
     // The merged report: one key per section, exactly as the tool printed it.
-    Q_PROPERTY(QVariantMap report READ report NOTIFY reportChanged)
+    Q_PROPERTY(QJsonObject report READ report NOTIFY reportChanged)
     // section name → ISO time (UTC) of the run that produced it
     Q_PROPERTY(QVariantMap sectionTimes READ sectionTimes NOTIFY reportChanged)
     Q_PROPERTY(QString generated READ generated NOTIFY reportChanged)        // last complete report
@@ -58,7 +58,7 @@ public:
     static QStringList sectionNames();          // the tool's sections, in display order
     static QJsonObject toolsJson();             // for --dump tools
 
-    QVariantMap report() const { return m_report.toVariantMap(); }
+    QJsonObject report() const { return m_report; }
     QJsonObject reportJson() const { return m_report; }
     QVariantMap sectionTimes() const { return m_sectionTimes; }
     QString generated() const { return m_generated; }

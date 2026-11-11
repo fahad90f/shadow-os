@@ -2,6 +2,8 @@
 #include "powernotifier.h"
 #include "powerdbus.h"
 
+#include <QDBusPendingCall>
+
 namespace PowerModule {
 
 namespace {

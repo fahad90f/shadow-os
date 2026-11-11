@@ -8,7 +8,10 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include <QMap>
+
 #include <atomic>
+#include <functional>
 #include <memory>
 
 class QThread;
@@ -61,6 +64,8 @@ public:
     ~StorageBackend() override;
 
     bool ready() const { return m_ready; }
+    // Enumerated, and no smartctl query is still running (for --dump).
+    bool settled() const { return m_ready && m_smartctlRunning == 0; }
     // "udisks", "lsblk" or "none"
     QString source() const { return m_source; }
     QString statusMessage() const { return m_statusMessage; }
@@ -136,6 +141,7 @@ private:
     QSocketNotifier *m_mountNotifier = nullptr;
     int m_mountsFd = -1;
     bool m_smartUpdateRequested = false;
+    int m_smartctlRunning = 0;
     QMap<QString, QVariantMap> m_smartctl;      // device → smart map read with smartctl
 
     QString m_homeState = QStringLiteral("idle");

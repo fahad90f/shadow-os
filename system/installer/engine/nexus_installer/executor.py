@@ -515,7 +515,10 @@ class Executor:
             self.chroot(["apt-get", "-q", "update"])
             self._progress(0.15)
             pkgs = [f"nexus-arsenal-{name}" for name in self.plan["profiles"]["names"]]
-            self.chroot(["apt-get", "-y", "-q", "--no-install-recommends", "install"] + pkgs)
+            # The profile metapackages list their tools as Recommends (so a
+            # single tool can be removed later without removing the profile):
+            # recommended packages must be installed here.
+            self.chroot(["apt-get", "-y", "-q", "--install-recommends", "install"] + pkgs)
             self.chroot(["apt-get", "-q", "clean"])
         except InstallError as exc:
             # Tool profiles are optional and need the network: do not fail the

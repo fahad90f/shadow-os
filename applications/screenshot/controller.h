@@ -80,7 +80,7 @@ public:
     void setFormat(const QString &format);
     QString savedPath() const { return m_savedPath; }
     QString saveDirectory() const;
-    bool holdsClipboard() const { return !m_clipboardData.isNull(); }
+    bool holdsClipboard() const { return m_holdsClipboard; }
     const QImage &frozen() const { return m_frozen; }
 
     void setCli(const CliOptions &cli) { m_cli = cli; }
@@ -106,6 +106,8 @@ public:
     // The result window was closed: quit, unless this process still has to
     // serve the clipboard content to other applications.
     Q_INVOKABLE void windowClosed();
+    // Put a (not yet shown) selection window on the monitor with this name.
+    Q_INVOKABLE void assignScreen(QObject *window, const QString &screenName);
 
 Q_SIGNALS:
     void stateChanged();
@@ -123,6 +125,7 @@ private:
     void fail(const QString &error, int exitCode);
     void exitCli(int code);
     bool setClipboard(const QImage &image);
+    void clipboardLost();
 
     static Controller *s_instance;
     Document m_document;
@@ -142,7 +145,8 @@ private:
     QStringList m_formats;
     QString m_format = QStringLiteral("png");
     QString m_savedPath;
-    QPointer<QMimeData> m_clipboardData;
+    const QMimeData *m_clipboardData = nullptr;    // only compared, never dereferenced
+    bool m_holdsClipboard = false;
 };
 
 // One screen's part of the frozen capture, shown full-screen while the user

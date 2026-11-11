@@ -33,6 +33,8 @@ SectionPage {
             model: page.failed
             NxRow {
                 required property var modelData
+                required property int index
+                Layout.topMargin: index === 0 ? -1 : 0      // hides NxRow's divider on the first visible row
                 icon: "x-circle"
                 iconColor: Theme.danger
                 title: String(modelData)

@@ -33,4 +33,10 @@ NxCard {
         emptyText: root.filterText !== "" && Fmt.list(root.rows).length > 0 ? qsTr("Nothing matches “%1”").arg(root.filterText) : root.emptyText
         onSortRequested: (role, ascending) => { root.sortRole = role; root.sortAscending = ascending }
     }
+
+    // These tables only display: a new model must not come up with its first
+    // row marked as selected (ListView makes row 0 current by itself).
+    function clearSelection() { table.currentRow = -1; table.view.currentIndex = -1 }
+    onShownRowsChanged: Qt.callLater(clearSelection)
+    Component.onCompleted: Qt.callLater(clearSelection)
 }

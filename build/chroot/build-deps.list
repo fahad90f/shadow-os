@@ -81,3 +81,11 @@ xvfb
 xauth
 dbus-daemon
 libgl1-mesa-dri
+# Further KDE Frameworks used by applications and shell modules
+libkf6networkmanagerqt-dev
+libkf6dbusaddons-dev
+libkf6iconthemes-dev
+libkf6notifications-dev
+libkf6i18n-dev
+libkf6crash-dev
+libkf6statusnotifieritem-dev

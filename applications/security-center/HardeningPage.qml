@@ -122,9 +122,8 @@ SectionPage {
             color: "transparent"
             border.width: 0
             maxVisibleRows: 30
-            rows: page.mitigations
-            sortRole: "vulnerable"
-            sortAscending: false
+            // Unmitigated ones first.
+            rows: page.mitigations.filter(m => m.vulnerable).concat(page.mitigations.filter(m => !m.vulnerable))
             columns: [
                 { title: qsTr("Vulnerability"), role: "name", width: 240, mono: true },
                 { title: qsTr("Kernel status"), role: "status", fill: true,

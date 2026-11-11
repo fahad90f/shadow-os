@@ -37,9 +37,7 @@ NxWindow {
         model: shot.selectingRegion ? shot.screens : []
         delegate: RegionOverlay {
             required property var modelData
-            required property int index
             screenInfo: modelData
-            screenIndex: index
         }
     }
 

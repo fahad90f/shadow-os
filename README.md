@@ -39,10 +39,11 @@ verified end to end.
 | Desktop live ISO | partly verified | QEMU, UEFI: SDDM auto-login, KWin + shell running, panel/dock/wallpaper/launcher drawn, System Information started from the launcher | Secure Boot and BIOS boot of the desktop ISO, lock screen, login screen without auto-login |
 | NEXUS HORIZON shell | partly verified | nested KWin session: launcher, search, dock, context menu, session menu, global shortcuts | real GPU, multiple screens, HiDPI |
 | Shell modules (notifications, tray, status) | implemented | each module's README lists its tests (nested session, fixtures) | the booted image; real hardware services |
-| Applications (Monitor, Store, Updater, Network Center, Control Center, Arsenal manager) | implemented | each README lists its tests (build chroot; real daemons on a private bus where possible, otherwise fixtures) | polkit prompts, real hardware, most of them inside the booted image |
+| Applications (Monitor, Files, Store, Updater, Network Center, Control Center, Arsenal manager) | implemented | each README lists its tests (build chroot; real daemons on a private bus where possible, otherwise fixtures) | polkit prompts, real hardware, most of them inside the booted image |
 | Security baseline (`nexus-hardening`) | implemented | `nexus-firewall` functional test in an isolated network namespace | every other setting as a working whole on an installed system; real hardware |
 | NEXUS kernel | configuration only | `kernel/build.sh --configure-only` | a complete build; the image does not contain it |
 | Hosted package repository | does not exist | — | — |
+| CI workflow (`.github/workflows/build.yml`) | implemented | — | no run of it is on record |
 | arm64 | not built, not booted | package names resolve; `Architecture: all` packages are published for arm64 | everything else |
 
 ## Quick start: from a clone to an ISO
@@ -55,14 +56,19 @@ or Ubuntu amd64 host is assumed; nothing else has been tried. You need root
 for two chroots, the image work tree and the outputs (not measured; the
 desktop ISO alone is about 1 GB), and network access to `deb.debian.org`.
 
-Commands the scripts call on the host: `mmdebstrap`, `mksquashfs`, `xorriso`,
-`mcopy`/`mformat`/`mmd`, `gpg`, `rsync`, `git`, `cpio`, `dpkg`, `unshare`,
-`sha256sum`, and Debian's archive keyring. On Debian/Ubuntu:
+Install the host tools with the script provided:
 
 ```sh
-sudo apt install mmdebstrap squashfs-tools xorriso mtools gnupg rsync git cpio \
-                 debian-archive-keyring
+sudo scripts/host-setup.sh                   # build tools and QEMU test tools
+sudo scripts/host-setup.sh --no-test-tools   # build tools only
 ```
+
+It installs with `apt-get`: `mmdebstrap`, `arch-test`,
+`debian-archive-keyring`, `squashfs-tools`, `xorriso`, `mtools`,
+`dosfstools`, `cpio`, `zstd`, `xz-utils`, `rsync`, `reprepro`, `gnupg`,
+`git`, `python3`, `ca-certificates`, `curl`, and for the tests
+`qemu-system-x86`, `qemu-utils`, `ovmf`, `python3-pil`, `imagemagick`.
+Everything that is compiled runs inside a Debian chroot, not on the host.
 
 ### Build
 
@@ -186,9 +192,10 @@ Installation guide: [docs/installation/installing.md](docs/installation/installi
 | `arsenal/` | security tool profiles (manifests), their tools and docs, the Arsenal manager |
 | `assets/` | wallpapers, logos, boot themes and the generators that produce them (`assets/src`) |
 | `tests/` | QEMU boot, installation and desktop tests; GUI smoke test; test harness (`tests/lib`) |
-| `scripts/` | developer loop (`dev.sh`) and generators (`gen-identity.sh`, `gen-apt-source.sh`, `gen-tokens.py`) |
+| `scripts/` | host set-up (`host-setup.sh`), developer loop (`dev.sh`) and generators (`gen-identity.sh`, `gen-apt-source.sh`, `gen-tokens.py`) |
 | `debian/` | the single source package `nexus-os` that builds every NEXUS binary package |
 | `cmake/`, `CMakeLists.txt` | CMake project of all compiled and data components |
+| `.github/workflows/` | CI workflow: build packages and the desktop ISO, boot-test it, upload it |
 | `docs/` | this documentation |
 
 ## Documentation

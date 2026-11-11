@@ -49,7 +49,8 @@ NxPage {
     function cleanupValue(item) {
         if (item.bytes < 0) return qsTr("Measuring…")
         if (item.files === 0) return qsTr("Empty")
-        return qsTr("%1 in %n file(s)", "", item.files).arg(Theme.formatBytes(item.bytes))
+        return item.files === 1 ? qsTr("%1 in 1 file").arg(Theme.formatBytes(item.bytes))
+                                : qsTr("%1 in %2 files").arg(Theme.formatBytes(item.bytes)).arg(item.files)
     }
     function cleanupConfirm(id) {
         return id === "trash" ? qsTr("Everything in the trash is deleted permanently. This cannot be undone.")
@@ -182,7 +183,7 @@ NxPage {
             title: qsTr("Recently used files")
             subtitle: privacy.recentFilesPresent ? qsTr("The list applications and file dialogs offer under “Recent” (%1)").arg(privacy.recentFilesPath)
                                                  : qsTr("No list exists yet (%1)").arg(privacy.recentFilesPath)
-            value: qsTr("%n entry(ies)", "", privacy.recentFilesCount)
+            value: privacy.recentFilesCount === 1 ? qsTr("1 entry") : qsTr("%1 entries").arg(privacy.recentFilesCount)
             NxButton {
                 anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("Clear…")
@@ -194,7 +195,7 @@ NxPage {
             icon: "apps"
             title: qsTr("Launcher usage")
             subtitle: qsTr("How often each application was started; the launcher sorts by it (%1)").arg(privacy.launcherUsagePath)
-            value: qsTr("%n application(s)", "", privacy.launcherUsageCount)
+            value: privacy.launcherUsageCount === 1 ? qsTr("1 application") : qsTr("%1 applications").arg(privacy.launcherUsageCount)
             NxButton {
                 anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("Clear…")
@@ -277,7 +278,8 @@ NxPage {
     }
     NxConfirmDialog {
         id: cleanDialog
-        title: page.cleanId === "trash" ? qsTr("Empty the trash?") : qsTr("Delete %1?").arg(page.cleanupTitle(page.cleanId).toLowerCase())
+        title: page.cleanId === "trash" ? qsTr("Empty the trash?")
+             : page.cleanId === "thumbnails" ? qsTr("Delete the thumbnail cache?") : qsTr("Delete old temporary files?")
         message: page.cleanupConfirm(page.cleanId)
         confirmText: page.cleanId === "trash" ? qsTr("Empty trash") : qsTr("Delete")
         destructive: true

@@ -143,7 +143,7 @@ NxPage {
 
     NxSection {
         title: qsTr("Automatic installation")
-        description: qsTr("Done by the unattended-upgrades service of the system, for all users. Changing it asks for an administrator password.")
+        description: qsTr("Done by the unattended-upgrades service of the system, for all users. Which updates it installs is set in /etc/apt/apt.conf.d/50unattended-upgrades (Debian's default: security updates). Changing these switches asks for an administrator password.")
 
         NxRow {
             visible: updates.systemReady && !updates.unattendedInstalled
@@ -179,7 +179,7 @@ NxPage {
         NxRow {
             visible: updates.periodicKnown
             icon: "shield-check"
-            title: qsTr("Install security updates automatically")
+            title: qsTr("Install updates automatically")
             subtitle: {
                 const parts = [qsTr("APT::Periodic::Unattended-Upgrade: %1").arg(page.periodicText(updates.unattendedUpgrade))]
                 if (!updates.unattendedInstalled) parts.push(qsTr("has no effect until unattended-upgrades is installed"))
@@ -191,7 +191,7 @@ NxPage {
                 anchors.verticalCenter: parent.verticalCenter
                 enabled: !updates.busy && (updates.unattendedInstalled || updates.unattendedEnabled)
                 checked: (page.revision, updates.unattendedEnabled)
-                Accessible.name: qsTr("Install security updates automatically")
+                Accessible.name: qsTr("Install updates automatically")
                 onToggled: {
                     const wanted = checked
                     checked = Qt.binding(() => (page.revision, updates.unattendedEnabled))

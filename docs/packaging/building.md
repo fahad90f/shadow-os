@@ -7,6 +7,13 @@ on one component. Image building is in [iso.md](iso.md); publishing in
 Everything on this page was used to produce the packages and images on the
 build machine (Ubuntu 24.04, amd64). No other host has been tried.
 
+## Build host
+
+`sudo scripts/host-setup.sh [--no-test-tools]` installs what a Debian or
+Ubuntu host needs: the tools that create chroots and assemble images, and
+(unless `--no-test-tools`) QEMU, OVMF and the Python imaging library for the
+tests. The package list is in the script.
+
 ## Principles
 
 * Packages are compiled **inside a pristine Debian trixie chroot** of the
@@ -139,7 +146,7 @@ From `debian/control` (source package `nexus-os`):
 | `nexus-themes` | all | colour schemes, icon themes, SDDM theme, lock screen, `nexus-apply-appearance` |
 | `nexus-ui` | any | NexusUI library, style and icons |
 | `nexus-horizon` | any | shell and session |
-| `nexus-sysinfo`, `nexus-monitor`, `nexus-store`, `nexus-updater`, `nexus-control-center`, `nexus-network-center` | any | applications |
+| `nexus-sysinfo`, `nexus-monitor`, `nexus-files`, `nexus-store`, `nexus-updater`, `nexus-control-center`, `nexus-network-center` | any | applications |
 | `nexus-arsenal` | any | Arsenal manager |
 | `nexus-arsenal-data` | all | profile manifests |
 | `nexus-arsenal-core`, `-web`, `-network`, `-redteam`, `-blueteam`, `-forensics`, `-developer`, `-complete` | all | profile metapackages |

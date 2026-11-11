@@ -12,7 +12,6 @@ Window {
     id: overlay
 
     required property var screenInfo        // {name, x, y, width, height}
-    required property int screenIndex
 
     readonly property real selX: Math.min(drag.startX, drag.endX)
     readonly property real selY: Math.min(drag.startY, drag.endY)
@@ -21,16 +20,17 @@ Window {
     readonly property bool hasSelection: drag.active && selW >= 1 && selH >= 1
 
     title: qsTr("Select a region")
-    screen: Qt.application.screens[screenIndex]
-    x: screenInfo.x
-    y: screenInfo.y
     width: screenInfo.width
     height: screenInfo.height
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     color: Theme.bgBase
-    visibility: Window.FullScreen
+    visible: false
 
-    Component.onCompleted: requestActivate()
+    Component.onCompleted: {
+        shot.assignScreen(overlay, screenInfo.name)
+        showFullScreen()
+        requestActivate()
+    }
 
     FrozenView {
         anchors.fill: parent

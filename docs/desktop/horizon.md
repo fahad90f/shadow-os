@@ -120,7 +120,7 @@ KDE's global-shortcut service, your binding is kept.
 |---|---|---|
 | **Meta** (tapped alone), **Alt+F1** | Open the application launcher | toggles the launcher |
 | **Ctrl+Alt+T**, **Meta+Return** | Open a terminal | starts `nexus-terminal` |
-| **Meta+E** | Open the file manager | starts `nexus-files` |
+| **Meta+E** | Open the file manager | starts `nexus-files` (NEXUS Files) |
 | **Meta+I** | Open the Control Center | starts `nexus-control-center` |
 | **Meta+A** | Show quick settings | toggles the quick settings (status module) |
 | **Meta+N** | Show notifications | toggles the notification centre (notifications module) |
@@ -135,8 +135,8 @@ KDE's global-shortcut service, your binding is kept.
 
 When a shortcut names a program that is not installed, the shell shows a
 short message such as "nexus-terminal is not installed." This currently
-applies to `nexus-terminal`, `nexus-files` and `nexus-screenshot`, which are
-not part of the image yet.
+applies to `nexus-terminal` and `nexus-screenshot`, which are not part of
+the image yet.
 
 The shortcuts need KDE's global-shortcut service on the session bus; in the
 NEXUS HORIZON session KWin provides it.
@@ -291,6 +291,7 @@ programs watch them and follow changes immediately.
 | `power.conf` | Control Center, Power page | `[Power]` idle time-outs in minutes. **Nothing reads this file yet**: the shell part that would act on it is not integrated |
 | `updater.conf` | Updater | `Updates/AutoCheck`, `Updates/CheckIntervalHours`, last check result |
 | `arsenal.conf` | Arsenal manager | `[ResponsibleUse]` acknowledgement |
+| `files.conf` | Files | `[View]`, `[Bookmarks]`, `[Servers]` |
 | `terminal.conf` | Terminal (not in the image yet) | profiles, shortcuts, saved session |
 
 Example — auto-hide the dock, larger icons, 12-hour clock with seconds:

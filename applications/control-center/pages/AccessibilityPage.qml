@@ -151,7 +151,7 @@ NxPage {
                     icon: effect.modelData.icon
                     title: effect.modelData.title
                     subtitle: effect.modelData.supported ? effect.modelData.description
-                        : qsTr("%1 Not supported by the compositor on this hardware.").arg(effect.modelData.description)
+                        : qsTr("%1 Not available: the compositor reports that it cannot run this effect with its current renderer.").arg(effect.modelData.description)
                     Switch {
                         anchors.verticalCenter: parent.verticalCenter
                         enabled: effect.modelData.supported || effect.modelData.loaded

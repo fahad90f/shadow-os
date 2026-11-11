@@ -279,8 +279,9 @@ guarantee that nothing is displayed and no input reaches clients.
    not installed) and `pam_deny`, so they can never ask for a password.
 5. On success the greeter exits and KWin unlocks.
 
-If the greeter crashes or cannot start, KWin keeps the screen locked; that
-is the safe failure mode. Recovery is described in
+KScreenLocker is designed to keep the screen locked if the greeter crashes
+or cannot start (the safe failure mode); this has not been exercised here.
+Recovery is described in
 [../troubleshooting/README.md](../troubleshooting/README.md).
 
 Verified: the lock-screen QML with the real `kscreenlocker_greet --testing`

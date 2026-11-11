@@ -9,6 +9,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVariantList>
+#include <functional>
 
 // Users page.
 //

@@ -56,6 +56,8 @@ struct Check
     QString key, icon, title, state, tone = QStringLiteral("neutral");
     QStringList evidence;
 
+    Check(const QString &k, const QString &i, const QString &t) : key(k), icon(i), title(t) {}
+
     QVariantMap toMap() const
     {
         return {{QStringLiteral("key"), key}, {QStringLiteral("icon"), icon}, {QStringLiteral("title"), title},

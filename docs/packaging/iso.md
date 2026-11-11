@@ -34,7 +34,7 @@ The first desktop image built was 1.03 GB.
 
 | Variant | Package lists | NEXUS packages | Purpose |
 |---|---|---|---|
-| `desktop` | `10-core 15-firmware 20-boot 30-live 40-desktop` | `nexus-base-files nexus-archive-keyring nexus-boot nexus-installer nexus-live nexus-hardening nexus-artwork nexus-themes nexus-ui nexus-horizon nexus-sysinfo nexus-monitor nexus-installer-gui nexus-store nexus-updater nexus-control-center nexus-network-center nexus-arsenal nexus-arsenal-data` | the release image |
+| `desktop` | `10-core 15-firmware 20-boot 30-live 40-desktop` | `nexus-base-files nexus-archive-keyring nexus-boot nexus-installer nexus-live nexus-hardening nexus-artwork nexus-themes nexus-ui nexus-horizon nexus-sysinfo nexus-monitor nexus-installer-gui nexus-store nexus-updater nexus-control-center nexus-network-center nexus-arsenal nexus-arsenal-data nexus-files` | the release image |
 | `minimal` | `10-core 20-boot 30-live` | `nexus-base-files nexus-archive-keyring nexus-boot nexus-installer nexus-live` | console-only image with the installer engine, for build-system bring-up and fast automated boot and installer tests. Not a release artefact |
 
 Note that `minimal` contains neither `nexus-hardening` nor the firmware

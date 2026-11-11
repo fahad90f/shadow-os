@@ -3,6 +3,7 @@
 
 #include "dumpregistry.h"
 
+#include <QCoreApplication>
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -235,8 +236,8 @@ void AccessibilityBackend::fetchShortcuts()
         m_shortcutKeys.clear();
         m_shortcutsAvailable = reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty();
         if (m_shortcutsAvailable) {
-            // a(ssssssaiai): context, context name, component, component name,
-            // action, action name, keys, default keys
+            // a(ssssssaiai): action, action name, component, component name,
+            // context, context name, keys, default keys
             const QDBusArgument argument = reply.arguments().constFirst().value<QDBusArgument>();
             argument.beginArray();
             while (!argument.atEnd()) {
@@ -252,7 +253,7 @@ void AccessibilityBackend::fetchShortcuts()
                     if (key != 0)
                         sequences << QKeySequence(key).toString(QKeySequence::NativeText);
                 }
-                m_shortcutKeys.insert(text[4], sequences.join(QStringLiteral(", ")));
+                m_shortcutKeys.insert(text[0], sequences.join(QStringLiteral(", ")));
             }
             argument.endArray();
         }

@@ -73,7 +73,7 @@ SectionPage {
             Layout.fillWidth: true
             label: qsTr("Not loopback")
             value: String(page.ls.exposed_count || 0)
-            detail: qsTr("all interfaces or one network address")
+            detail: qsTr("any non-loopback address")
             icon: "network"
         }
         NxStatTile {
