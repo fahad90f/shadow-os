@@ -11,7 +11,7 @@
 # maintains for the stable release.
 #
 # Steps:
-#   1. dedicated build chroot (amd64 host; arm64 is cross-compiled)
+#   1. dedicated build chroot of the host architecture (an arm64 kernel can be cross-compiled on amd64)
 #   2. unpack linux-source, apply the patch series
 #   3. Debian config + NEXUS fragments → .config; verify config/required.list
 #   4. make bindeb-pkg  → linux-image / linux-headers packages
@@ -70,7 +70,7 @@ DEPS="build-essential,bc,bison,flex,libssl-dev,libelf-dev,libdw-dev,dwarves,cpio
 if [ ! -e "$CHROOT/.nexus-bootstrap-complete" ]; then
     [ -d "$CHROOT" ] && safe_rmtree "$CHROOT"
     log "bootstrapping kernel build chroot"
-    mmdebstrap --variant=buildd --architectures=amd64 --keyring="$(debian_keyring)" \
+    mmdebstrap --variant=buildd --architectures="$HOST_ARCH" --keyring="$(debian_keyring)" \
         --include="$DEPS" --aptopt='APT::Install-Recommends "false"' --aptopt='Acquire::Retries "5"' \
         --dpkgopt='force-unsafe-io' \
         "$NEXUS_DEBIAN_SUITE" "$CHROOT" - < <(build_sources)
