@@ -5,6 +5,8 @@
 #   dpkg-buildpackage -b   → both
 # Normally invoked through build/packages/build.sh inside the build chroot.
 
+include /usr/share/dpkg/architecture.mk
+
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export QT_QPA_PLATFORM = offscreen
 
@@ -13,16 +15,41 @@ GEN := debian/generated
 %:
 	dh $@ --buildsystem=cmake+ninja
 
+# Every package built from CMake corresponds to one CMake install component
+# of the same name (see the top-level CMakeLists.txt).
+ARCH_PACKAGES := $(shell dh_listpackages -a)
+DATA_PACKAGES := nexus-artwork nexus-themes
+DATA_BUILD := obj-data
+
+define install_components
+	set -e; for package in $(1); do \
+	    if ! grep -q "^Package: $$package$$" debian/control; then continue; fi; \
+	    DESTDIR=$(CURDIR)/debian/$$package cmake --install $(2) --component $$package; \
+	    if [ -z "$$(find debian/$$package -type f -print -quit 2>/dev/null)" ]; then \
+	        echo "error: CMake install component '$$package' installed no files" >&2; exit 1; \
+	    fi; \
+	done
+endef
+
 # ---- compiled components (CMake) — architecture-dependent builds only -------
 override_dh_auto_configure-arch:
 	dh_auto_configure -- -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+override_dh_auto_install-arch:
+	$(call install_components,$(ARCH_PACKAGES),obj-$(DEB_HOST_GNU_TYPE))
 
 override_dh_auto_test-arch:
 	@echo "GUI smoke tests run from tests/desktop/smoke.sh, not during package build"
 
 # ---- architecture-independent packages: nothing to compile ------------------
-override_dh_auto_configure-indep override_dh_auto_install-indep override_dh_auto_test-indep:
+override_dh_auto_configure-indep override_dh_auto_test-indep:
 	@true
+
+# Data packages (artwork, themes) come from the same CMake project configured
+# without a compiler; the others are assembled by their debian/*.install files.
+override_dh_auto_install-indep:
+	cmake -S . -B $(DATA_BUILD) -DNEXUS_DATA_ONLY=ON -DCMAKE_INSTALL_PREFIX=/usr
+	$(call install_components,$(DATA_PACKAGES),$(DATA_BUILD))
 
 override_dh_auto_build-indep:
 	mkdir -p $(GEN)
@@ -34,7 +61,7 @@ override_dh_auto_build-indep:
 
 override_dh_auto_clean:
 	dh_auto_clean
-	rm -rf $(GEN)
+	rm -rf $(GEN) $(DATA_BUILD)
 
 # The dpkg trigger of nexus-boot must not make package installation wait.
 override_dh_installdeb:

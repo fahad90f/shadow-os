@@ -7,7 +7,8 @@ Standards-Version: 4.7.2
 Homepage: https://github.com/fahad90fa/Custom-OS
 Build-Depends:
  debhelper-compat (= 13),
- python3
+ python3,
+ cmake (>= 3.25)
 Build-Depends-Arch:
  cmake (>= 3.25),
  ninja-build,
@@ -56,7 +57,14 @@ Build-Depends-Arch:
  libappstreamqt-dev,
  libqtermwidget-dev,
  libpam0g-dev,
- libudev-dev
+ libudev-dev,
+ libkf6networkmanagerqt-dev,
+ libkf6dbusaddons-dev,
+ libkf6iconthemes-dev,
+ libkf6notifications-dev,
+ libkf6i18n-dev,
+ libkf6crash-dev,
+ libkf6statusnotifieritem-dev
 
 Package: nexus-base-files
 Architecture: all
@@ -150,3 +158,52 @@ Description: NEXUS OS security baseline
  .
  Every setting is documented with what it protects against and what it can
  affect; none of them disables a security mechanism to make software work.
+
+Package: nexus-artwork
+Architecture: all
+Multi-Arch: foreign
+Depends: ${misc:Depends}
+Description: NEXUS OS wallpapers and logos
+ The original NEXUS OS artwork: the default wallpapers (Horizon, Lattice,
+ Aurora and Daylight) and the NEXUS logo family in SVG.
+
+Package: nexus-ui
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts,
+ qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtquick-effects,
+ qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtqml-models,
+ qml6-module-qtqml-workerscript, qml6-module-qtcore, qml6-module-qtqml,
+ qt6-svg-plugins, qt6-wayland,
+ fonts-inter-variable, fonts-jetbrains-mono
+Recommends: qt6-image-formats-plugins
+Description: NEXUS user-interface library (NexusUI)
+ The shared foundation of the NEXUS HORIZON desktop and every NEXUS
+ application: the design tokens as a QML theme, the NEXUS Qt Quick Controls
+ style, the NexusUI component set and the symbolic icon set.
+
+Package: nexus-horizon
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ nexus-ui (= ${binary:Version}), nexus-artwork,
+ kwin-wayland, xwayland, kwin-style-breeze, qml6-module-org-kde-layershell,
+ plasma-integration, breeze-icon-theme, breeze-cursor-theme, hicolor-icon-theme,
+ libkf6service-bin, kio6,
+ dbus-user-session, polkitd, pkexec,
+ xdg-desktop-portal, xdg-desktop-portal-kde, xdg-user-dirs, xdg-utils,
+ shared-mime-info, desktop-file-utils
+Recommends: xdg-desktop-portal-gtk, sddm, pipewire, pipewire-pulse, wireplumber,
+ network-manager, bluez, upower, power-profiles-daemon, udisks2, accountsservice
+Description: NEXUS HORIZON desktop shell and session
+ The desktop of NEXUS OS: top panel, dock, application launcher, wallpaper,
+ session menu and the polkit authentication dialog, running as a Wayland
+ session on the KWin compositor. Also provides the "NEXUS HORIZON" entry for
+ the login screen and the compositor defaults.
+
+Package: nexus-sysinfo
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ util-linux, pciutils
+Description: NEXUS System Information
+ Shows operating system and kernel versions, firmware, processor, memory,
+ graphics, storage and virtualisation, read from the running system.

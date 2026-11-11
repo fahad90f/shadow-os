@@ -79,6 +79,18 @@ target_link_libraries(horizon-shell PRIVATE
 
 install(TARGETS horizon-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+# ---- the session --------------------------------------------------------------------
+# /usr/libexec/nexus is hard-wired in the session scripts.
+install(PROGRAMS session/nexus-horizon-session DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS session/horizon-session-leader DESTINATION ${NEXUS_LIBEXEC_DIR})
+install(FILES session/nexus-horizon.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)
+install(FILES session/org.nexus.horizon.shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES session/nexus-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
+install(FILES session/nexus-horizon-session.target DESTINATION lib/systemd/user)
+# System-wide defaults; a user's own files in ~/.config take precedence.
+install(FILES session/nexus-applications.menu DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/menus)
+install(FILES session/kwinrc session/kscreenlockerrc DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg)
+
 # Per-module build additions (extra packages, link libraries, generated
 # sources). The target "horizon-shell" exists at this point.
 foreach(module_cmake IN LISTS HORIZON_MODULE_CMAKE)

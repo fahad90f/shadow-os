@@ -44,7 +44,14 @@ SRC="/build/pkg/nexus-os-$VERSION"
 log "exporting source tree to chroot:$SRC"
 rm -rf "$CHROOT/build/pkg"
 mkdir -p "$CHROOT$SRC"
-(cd "$NEXUS_ROOT" && git ls-files -co --exclude-standard -z) \
+# Tracked files with their working-tree content. Untracked files are left
+# out so unfinished work cannot break a package build;
+# NEXUS_EXPORT_UNTRACKED=1 includes them.
+ls_flags="-c"
+[ -n "${NEXUS_EXPORT_UNTRACKED:-}" ] && ls_flags="-co --exclude-standard"
+# shellcheck disable=SC2086
+(cd "$NEXUS_ROOT" && git ls-files $ls_flags -z) \
+    | (cd "$NEXUS_ROOT" && while IFS= read -r -d "" f; do [ -e "$f" ] && printf '%s\0' "$f"; done) \
     | rsync -a --from0 --files-from=- "$NEXUS_ROOT/" "$CHROOT$SRC/"
 
 # The archive public key ships in nexus-archive-keyring.
