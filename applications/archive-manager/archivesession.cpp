@@ -948,14 +948,14 @@ void ArchiveSession::finishExtract(const ExtractRequest &request, const QStringL
             }, 20000);
             return;
         }
-        QString message = tr("%n item(s) extracted to “%1”", "", report.files + report.links + report.directories).arg(request.destination);
+        QString message = tr("Extracted to “%1”: %2 files and folders").arg(request.destination).arg(report.files + report.links + report.directories);
         message += tr(" (%1).").arg(formatSize(report.bytes));
         if (report.skippedExisting > 0)
-            message += QLatin1Char(' ') + tr("%n existing file(s) were kept.", "", report.skippedExisting);
+            message += QLatin1Char(' ') + tr("Existing files kept: %1.").arg(report.skippedExisting);
         if (report.renamed > 0)
-            message += QLatin1Char(' ') + tr("%n file(s) were saved under a new name next to existing ones.", "", report.renamed);
+            message += QLatin1Char(' ') + tr("Saved under a new name next to existing files: %1.").arg(report.renamed);
         if (!details.isEmpty())
-            message += QLatin1Char(' ') + tr("%n entry(ies) were not extracted for safety — see the details.", "", int(details.size()));
+            message += QLatin1Char(' ') + tr("Not extracted for safety: %1 — see the details.").arg(details.size());
         finish(kind, true, message, details);
     });
     const QString subPath = request.subPath;
@@ -1045,7 +1045,7 @@ void ArchiveSession::runTest()
             return;
         }
         if (code == 0) {
-            finish(kind, true, tr("No errors found: all %n entries were read and verified.", "", int(m_entries.size())));
+            finish(kind, true, tr("No errors found. Entries read and verified: %1.").arg(m_entries.size()));
         } else {
             finish(kind, false, tr("The archive is damaged."), errorLines(m_err.isEmpty() ? m_out : m_err));
         }
@@ -1122,7 +1122,7 @@ void ArchiveSession::runDelete(const QStringList &selection)
     if (rawPaths.isEmpty())
         return;
     setBusy(kind);
-    const QString message = tr("%n entry(ies) deleted from the archive.", "", count);
+    const QString message = tr("Deleted from the archive: %1 entries (folders counted with their contents).").arg(count);
     ToolRun run;
     if (m_format.engine == Formats::Engine::SevenZip) {
         run.program = QStringLiteral("7z");
@@ -1218,7 +1218,7 @@ void ArchiveSession::runAdd(const QStringList &paths)
         return;
     }
     setBusy(kind);
-    const QString message = tr("%n item(s) added to the archive.", "", int(absolute.size()));
+    const QString message = tr("Added to the archive: %1.").arg(absolute.size());
     ToolRun run;
     if (sevenZip) {
         run.program = QStringLiteral("7z");

@@ -290,7 +290,7 @@ NxWindow {
             Notice {
                 visible: session.hazardCount > 0
                 kind: "warning"
-                title: qsTr("%n entries are not extracted as stored", "", session.hazardCount)
+                title: qsTr("Entries that are not extracted as stored: %1").arg(session.hazardCount)
                 message: qsTr("They use absolute paths, “..”, links that leave the archive, device nodes or set-user-ID bits. "
                               + "Nothing is ever written outside the folder you extract to; the marked entries are skipped or made safe.")
             }
@@ -506,7 +506,8 @@ NxWindow {
                                 Layout.preferredWidth: 96
                                 horizontalAlignment: Text.AlignRight
                                 text: rowItem.modelData.directory
-                                    ? qsTr("%n items", "", rowItem.modelData.items) : Theme.formatBytes(rowItem.modelData.size)
+                                    ? (rowItem.modelData.items === 1 ? qsTr("1 item") : qsTr("%1 items").arg(rowItem.modelData.items))
+                                    : Theme.formatBytes(rowItem.modelData.size)
                                 color: Theme.textSecondary
                                 font.pixelSize: Theme.fontSizeSmall
                             }
@@ -602,8 +603,8 @@ NxWindow {
                 spacing: Theme.spaceLg
                 Label {
                     visible: session.isOpen
-                    text: window.selectedCount > 0 ? qsTr("%n selected", "", window.selectedCount)
-                        : qsTr("%n entries", "", session.entryCount)
+                    text: window.selectedCount > 0 ? qsTr("%1 selected").arg(window.selectedCount)
+                        : session.entryCount === 1 ? qsTr("1 entry") : qsTr("%1 entries").arg(session.entryCount)
                     color: Theme.textSecondary
                     font.pixelSize: Theme.fontSizeSmall
                 }
@@ -691,8 +692,8 @@ NxWindow {
     NxConfirmDialog {
         id: deleteConfirm
         title: qsTr("Delete from the archive?")
-        message: qsTr("%n selected entries (folders with everything inside) will be removed from “%1”. This cannot be undone.", "", window.selectedCount)
-            .arg(session.archiveName)
+        message: qsTr("Selected entries: %1. They are removed from “%2”, folders with everything inside. This cannot be undone.")
+            .arg(window.selectedCount).arg(session.archiveName)
         confirmText: qsTr("Delete")
         destructive: true
         onConfirmed: session.deleteEntries(window.selectedPaths)
@@ -701,7 +702,7 @@ NxWindow {
         id: addConfirm
         property var paths: []
         title: qsTr("Add to the archive?")
-        message: qsTr("%n dropped items will be added to the top level of “%1”.", "", paths.length).arg(session.archiveName)
+        message: qsTr("Dropped items: %1. They are added to the top level of “%2”.").arg(paths.length).arg(session.archiveName)
         confirmText: qsTr("Add")
         onConfirmed: session.addFiles(paths)
     }
@@ -823,7 +824,8 @@ NxWindow {
         readonly property bool ready: destination !== "" && estimate.enough === true && estimate.writable === true
             && (!estimate.suspicious || acknowledged)
 
-        title: selection.length > 0 ? qsTr("Extract %n selected entries", "", selection.length) : qsTr("Extract everything")
+        title: selection.length === 1 ? qsTr("Extract the selected entry")
+            : selection.length > 1 ? qsTr("Extract %1 selected entries").arg(selection.length) : qsTr("Extract everything")
         width: Math.min(600, window.width - Theme.spaceXxl)
         closePolicy: Popup.CloseOnEscape
         footer: null
@@ -887,7 +889,7 @@ NxWindow {
             Label {
                 Layout.fillWidth: true
                 text: extractDialog.estimate.entries === undefined ? ""
-                    : qsTr("%n entries, %1 unpacked. Free space in the destination: %2.", "", extractDialog.estimate.entries)
+                    : qsTr("Entries: %1 (%2 unpacked). Free space in the destination: %3.").arg(extractDialog.estimate.entries)
                         .arg(Theme.formatBytes(extractDialog.estimate.expanded))
                         .arg(extractDialog.estimate.free >= 0 ? Theme.formatBytes(extractDialog.estimate.free) : qsTr("unknown"))
                 color: Theme.textMuted
@@ -992,7 +994,7 @@ NxWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                Label { Layout.fillWidth: true; text: qsTr("Contents (%n items)", "", createDialog.inputs.length); color: Theme.textSecondary }
+                Label { Layout.fillWidth: true; text: qsTr("Contents: %1").arg(createDialog.inputs.length); color: Theme.textSecondary }
                 NxButton {
                     text: qsTr("Add files or folders…")
                     iconName: "plus"
