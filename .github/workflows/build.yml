@@ -1,16 +1,20 @@
-# Builds the NEXUS OS packages and the amd64 desktop ISO, boots the ISO in
-# QEMU and publishes it as a workflow artifact (and as a release asset for
-# version tags).
+# NEXUS OS build and test pipeline.
 #
-# The ISO is signed with a development archive key generated during the run
-# unless a release key is provided through the NEXUS_SIGNING_KEY secret (an
-# ASCII-armoured private key without passphrase). Private keys never live in
-# the repository.
+#   iso-amd64      packages + desktop ISO, boot tests (UEFI, Secure Boot, BIOS,
+#                  graphical session), uploads the ISO
+#   install-amd64  the installer scenario matrix against that ISO, each one
+#                  followed by booting the installed disk
+#   kernel         the NEXUS kernel packages for amd64 and arm64
+#   iso-arm64      packages + ISO on a native arm64 runner, UEFI boot test
+#
+# Signing: a development archive key is generated per run unless the
+# NEXUS_SIGNING_KEY secret holds an ASCII-armoured release key. Private keys
+# never live in the repository.
 name: build
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -18,28 +22,35 @@ on:
 permissions:
   contents: write
 
+# A newer push supersedes a running build of the same branch.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXUS_JOBS: "4"
+
 jobs:
   iso-amd64:
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
-    env:
-      NEXUS_JOBS: "4"
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
           df -h /
 
       - name: Host tools
         run: sudo scripts/host-setup.sh
 
-      - name: Enable KVM for the runner user
+      - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm
 
       - name: Import release signing key
         env:
@@ -71,29 +82,41 @@ jobs:
       - name: Verify ISO checksum
         run: cd build/out/iso && sha256sum -c nexus-os-*-amd64.iso.sha256
 
-      - name: Boot test (UEFI, graphical session)
-        run: |
-          sudo -E python3 -u tests/desktop/test_desktop_boot.py \
-            --iso "$(ls build/out/iso/nexus-os-*-amd64.iso)" --shots build/out/shots
-
-      - name: Boot test (UEFI Secure Boot, BIOS)
-        run: |
-          iso="$(ls build/out/iso/nexus-os-*-amd64.iso)"
-          sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware uefi-secureboot
-          sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware bios
-
       - name: Upload ISO
-        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nexus-os-amd64
+          name: nexus-os-amd64-iso
           path: |
             build/out/iso/nexus-os-*-amd64.iso
             build/out/iso/nexus-os-*-amd64.iso.sha256
             build/out/iso/nexus-os-*-amd64.manifest
-            build/out/shots/*.png
-          retention-days: 14
+          retention-days: 30
           compression-level: 0
+
+      - name: Boot test — UEFI, graphical session
+        run: |
+          sudo -E python3 -u tests/desktop/test_desktop_boot.py \
+            --iso "$(ls build/out/iso/nexus-os-*-amd64.iso)" --shots build/out/shots --keys
+
+      - name: Boot test — UEFI Secure Boot (CD and USB)
+        run: |
+          iso="$(ls build/out/iso/nexus-os-*-amd64.iso)"
+          sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware uefi-secureboot --media cdrom
+          sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware uefi-secureboot --media usb
+
+      - name: Boot test — legacy BIOS (CD and USB)
+        run: |
+          iso="$(ls build/out/iso/nexus-os-*-amd64.iso)"
+          sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware bios --media cdrom
+          sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware bios --media usb
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-os-amd64-screenshots
+          path: build/out/shots/*.png
+          if-no-files-found: ignore
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -103,3 +126,119 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" --title "NEXUS OS ${GITHUB_REF_NAME}" --generate-notes \
             build/out/iso/nexus-os-*-amd64.iso build/out/iso/nexus-os-*-amd64.iso.sha256 \
             build/out/iso/nexus-os-*-amd64.manifest
+
+  install-amd64:
+    needs: iso-amd64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        combo:
+          - erase:uefi
+          - erase-luks:uefi
+          - erase:uefi-secureboot
+          - erase:bios
+          - alongside:uefi
+          - manual:uefi
+          - manual:bios
+          - erase-home:uefi
+          - refuse:uefi
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf python3-pil imagemagick
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+      - uses: actions/download-artifact@v4
+        with:
+          name: nexus-os-amd64-iso
+          path: iso
+      - name: Install scenario ${{ matrix.combo }}
+        run: |
+          combo='${{ matrix.combo }}'
+          sudo python3 -u tests/installation/test_install.py --iso "$(ls iso/nexus-os-*-amd64.iso)" \
+            --scenario "${combo%%:*}" --firmware "${combo##*:}" --workdir "$PWD/work"
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-logs-${{ strategy.job-index }}
+          path: work/**/*.log
+          if-no-files-found: ignore
+
+  kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+          df -h /
+      - name: Host tools
+        run: sudo scripts/host-setup.sh --no-test-tools
+      - name: Build the NEXUS kernel (${{ matrix.arch }})
+        env:
+          NEXUS_KERNEL_DEBUGINFO: none
+        run: sudo -E kernel/build.sh --arch ${{ matrix.arch }} --jobs 4
+      - name: Upload kernel packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-kernel-${{ matrix.arch }}
+          path: |
+            build/out/packages/linux-*.deb
+            build/out/kernel/config-*
+          retention-days: 30
+
+  iso-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache || true
+          df -h /
+      - name: Host tools
+        run: |
+          sudo scripts/host-setup.sh --no-test-tools
+          sudo apt-get install -y --no-install-recommends qemu-system-arm qemu-efi-aarch64 qemu-utils
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm || echo "no KVM on this runner: the boot test runs emulated"
+      - name: Build chroot
+        run: sudo -E build/chroot/create.sh --arch arm64
+      - name: Build packages
+        run: sudo -E build/packages/build.sh --arch arm64
+      - name: Publish repository
+        run: sudo -E build/packages/repo.sh
+      - name: Build desktop ISO
+        run: sudo -E build/iso/build.sh --arch arm64 --variant desktop
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-os-arm64-iso
+          path: |
+            build/out/iso/nexus-os-*-arm64.iso
+            build/out/iso/nexus-os-*-arm64.iso.sha256
+            build/out/iso/nexus-os-*-arm64.manifest
+          retention-days: 30
+          compression-level: 0
+      - name: Boot test — UEFI (AAVMF)
+        run: |
+          sudo -E python3 -u tests/boot/test_live_boot.py --arch arm64 \
+            --iso "$(ls build/out/iso/nexus-os-*-arm64.iso)" --firmware uefi

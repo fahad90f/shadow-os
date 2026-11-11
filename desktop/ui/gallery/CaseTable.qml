@@ -14,7 +14,8 @@ NxWindow {
 
     property var columns: [
         { title: "Unit", role: "unit", fill: true },
-        { title: "State", role: "state", width: 90 },
+        { title: "State", role: "state", width: 120 },
+        { title: "Memory", role: "mem", width: 110, align: Qt.AlignRight, mono: true, format: (v) => Theme.formatBytes(v) },
     ]
     function rows(n, tag) {
         const out = []
