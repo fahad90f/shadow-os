@@ -38,6 +38,7 @@ const QString kInterface = QStringLiteral("org.freedesktop.locale1");
 const QString kProperties = QStringLiteral("org.freedesktop.DBus.Properties");
 const QString kHelper = QStringLiteral("/usr/libexec/nexus/language-helper");
 const QString kSupported = QStringLiteral("/usr/share/i18n/SUPPORTED");
+const QString kReadOnlyPolicy = QStringLiteral("/usr/share/dbus-1/system.d/systemd-localed-read-only.conf");
 const QString kLang = QStringLiteral("LANG");
 const int kChangeTimeoutMs = 5 * 60 * 1000;
 
@@ -115,6 +116,7 @@ LanguageBackend::LanguageBackend(QObject *parent)
     : QObject(parent)
 {
     loadLocales();
+    m_localedReadOnly = QFileInfo::exists(kReadOnlyPolicy);
     QDBusConnection bus = QDBusConnection::systemBus();
     if (bus.isConnected()) {
         bus.connect(kService, kPath, kProperties, QStringLiteral("PropertiesChanged"), this,
@@ -449,51 +451,33 @@ void LanguageBackend::apply()
         return;
     }
     const QStringList missing = toGenerate();
-    if (missing.isEmpty()) {
-        sendSetLocale();
-        return;
-    }
     for (const QString &name : missing) {
         if (!validName(name) || name == QLatin1String("C.UTF-8")) {
             Q_EMIT failed(tr("“%1” cannot be generated on this system.").arg(name));
             return;
         }
     }
-    if (!helperAvailable()) {
-        Q_EMIT failed(tr("%1 must be generated first, but the helper %2 or pkexec is not installed.")
-                          .arg(missing.join(QStringLiteral(", ")), kHelper));
+    if ((!missing.isEmpty() || m_localedReadOnly) && !helperAvailable()) {
+        Q_EMIT failed(missing.isEmpty()
+                          ? tr("On this system the locale is written by the helper %1 through pkexec, which is not installed.").arg(kHelper)
+                          : tr("%1 must be generated first, but the helper %2 or pkexec is not installed.")
+                                .arg(missing.join(QStringLiteral(", ")), kHelper));
         return;
     }
-    setBusy(true, tr("Generating %1 — this can take a minute…").arg(missing.join(QStringLiteral(", "))));
-    Nexus::Command::run(this, QStringLiteral("pkexec"), QStringList{kHelper, QStringLiteral("generate")} + missing,
-                        [this, missing](const Nexus::CommandResult &result) {
-        const QJsonObject reply = QJsonDocument::fromJson(result.out).object();
-        if (!result.ok() || !reply.value(QStringLiteral("ok")).toBool()) {
-            setBusy(false);
-            QString reason = reply.value(QStringLiteral("error")).toString();
-            if (result.exitCode == 126 || result.exitCode == 127)
-                reason = tr("The change was not authorised.");       // pkexec: dismissed / not authorised
-            else if (result.exitCode == -2)
-                reason = tr("locale-gen did not finish in time.");
-            else if (reason.isEmpty())
-                reason = result.errText().trimmed().isEmpty() ? tr("The helper failed (exit status %1).").arg(result.exitCode)
-                                                              : result.errText().trimmed();
-            Q_EMIT failed(tr("%1 could not be generated: %2").arg(missing.join(QStringLiteral(", ")), reason));
-            loadLocales();
-            Q_EMIT selectionChanged();
-            return;
-        }
-        loadLocales();
-        Q_EMIT selectionChanged();
+    if (m_localedReadOnly)
+        runHelper(missing, assignments());      // one authentication for both steps
+    else if (!missing.isEmpty())
+        runHelper(missing, {});                 // then SetLocale
+    else
         sendSetLocale();
-    }, 16 * 60 * 1000);
 }
 
-void LanguageBackend::sendSetLocale()
+// The complete set to store. SetLocale and "update-locale --reset" both
+// replace everything: keep what this page does not manage (LC_PAPER,
+// LC_ADDRESS, …). LANGUAGE would override the message language chosen here,
+// so it does not survive a language change.
+QStringList LanguageBackend::assignments() const
 {
-    // SetLocale replaces the whole set: keep what this page does not manage
-    // (LC_PAPER, LC_ADDRESS, …). LANGUAGE would override the message language
-    // chosen here, so it does not survive a language change.
     QMap<QString, QString> next = m_system;
     const QString lang = m_selected.value(kLang);
     if (next.value(kLang) != lang)
@@ -506,21 +490,85 @@ void LanguageBackend::sendSetLocale()
         else
             next.insert(category, value);
     }
-    QStringList assignments;
+    QStringList out;
     for (auto it = next.constBegin(); it != next.constEnd(); ++it) {
         if (!it.value().isEmpty())
-            assignments << it.key() + QLatin1Char('=') + it.value();
+            out << it.key() + QLatin1Char('=') + it.value();
     }
+    return out;
+}
 
+// pkexec language-helper [generate <locale>...] [set <assignment>...]
+void LanguageBackend::runHelper(const QStringList &generate, const QStringList &set)
+{
+    QStringList arguments{kHelper};
+    if (!generate.isEmpty())
+        arguments << QStringLiteral("generate") << generate;
+    if (!set.isEmpty())
+        arguments << QStringLiteral("set") << set;
+    setBusy(true, generate.isEmpty() ? tr("Applying…")
+                                     : tr("Generating %1 — this can take a minute…").arg(generate.join(QStringLiteral(", "))));
+    Nexus::Command::run(this, QStringLiteral("pkexec"), arguments, [this, generate, set](const Nexus::CommandResult &result) {
+        const QJsonObject reply = QJsonDocument::fromJson(result.out).object();
+        if (!generate.isEmpty()) {
+            loadLocales();
+            Q_EMIT selectionChanged();
+        }
+        if (!result.ok() || !reply.value(QStringLiteral("ok")).toBool()) {
+            setBusy(false);
+            QString reason = reply.value(QStringLiteral("error")).toString();
+            if (result.exitCode == 126 || result.exitCode == 127)
+                reason = tr("The change was not authorised.");       // pkexec: dismissed / not authorised
+            else if (result.exitCode == -2)
+                reason = tr("The helper did not finish in time.");
+            else if (reason.isEmpty())
+                reason = result.errText().trimmed().isEmpty() ? tr("The helper failed (exit status %1).").arg(result.exitCode)
+                                                              : result.errText().trimmed();
+            const QString detail = reply.value(QStringLiteral("output")).toString().trimmed();
+            if (!detail.isEmpty())
+                reason += QStringLiteral(" — ") + detail.section(QLatin1Char('\n'), -1);
+            Q_EMIT failed(tr("The language settings could not be changed: %1").arg(reason));
+            refresh();
+            return;
+        }
+        if (set.isEmpty()) {
+            sendSetLocale();
+            return;
+        }
+        setBusy(false);
+        m_selectionTouched = false;
+        Q_EMIT applied(tr("Saved. The new language and formats are used from your next login."));
+        refresh();
+    }, 16 * 60 * 1000);
+}
+
+void LanguageBackend::sendSetLocale()
+{
     setBusy(true, tr("Applying…"));
     QDBusMessage message = QDBusMessage::createMethodCall(kService, kPath, kInterface, QStringLiteral("SetLocale"));
-    message << assignments << true;
+    message << assignments() << true;
     message.setInteractiveAuthorizationAllowed(true);
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(message, kChangeTimeoutMs), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
         w->deleteLater();
-        setBusy(false);
         const QDBusPendingReply<> reply = *w;
+        // The bus itself refusing to deliver the call ("Rejected send
+        // message, … matched rules") is the distribution's policy, not a
+        // missing authorisation: the helper writes the locale instead.
+        if (reply.isError() && reply.error().name() == QLatin1String("org.freedesktop.DBus.Error.AccessDenied")
+            && reply.error().message().contains(QLatin1String("matched rules"))) {
+            m_localedReadOnly = true;
+            Q_EMIT stateChanged();
+            if (helperAvailable()) {
+                runHelper({}, assignments());
+            } else {
+                setBusy(false);
+                Q_EMIT failed(tr("This system does not allow systemd-localed to change the locale, and the helper %1 "
+                                 "that writes it instead is not installed.").arg(kHelper));
+            }
+            return;
+        }
+        setBusy(false);
         if (reply.isError()) {
             Q_EMIT failed(errorText(reply.error()));
         } else {
@@ -553,5 +601,6 @@ QJsonObject LanguageBackend::toJson() const
         {QStringLiteral("offeredCount"), offered.size()},
         {QStringLiteral("generated"), generated},
         {QStringLiteral("helperAvailable"), helperAvailable()},
+        {QStringLiteral("usesHelperToApply"), m_localedReadOnly},
     };
 }

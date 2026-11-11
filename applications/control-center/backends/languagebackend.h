@@ -21,10 +21,16 @@
 // Without the service the page is read-only and shows /etc/locale.conf or
 // /etc/default/locale.
 //
+// Debian's systemd package forbids SetLocale to everybody through D-Bus policy
+// (/usr/share/dbus-1/system.d/systemd-localed-read-only.conf: there the
+// locale is set with update-locale). Where that file exists, or when the bus
+// rejects the call for that reason, the locale is written by the helper below
+// instead ("set", which runs update-locale).
+//
 // Offered locales: the UTF-8 entries of /usr/share/i18n/SUPPORTED (glibc) plus
 // whatever "locale -a" reports as generated. A locale that is not generated
 // yet is generated first by /usr/libexec/nexus/language-helper, run through
-// pkexec (polkit action org.nexus.controlcenter.language.generate), which
+// pkexec (polkit action org.nexus.controlcenter.language.configure), which
 // enables its line in /etc/locale.gen and runs locale-gen.
 //
 // The page works on a selection (language plus the LC_TIME, LC_NUMERIC,
@@ -49,6 +55,7 @@ class LanguageBackend : public QObject
     Q_PROPERTY(bool dirty READ dirty NOTIFY selectionChanged)
     Q_PROPERTY(QStringList toGenerate READ toGenerate NOTIFY selectionChanged)
     Q_PROPERTY(bool helperAvailable READ helperAvailable CONSTANT)
+    Q_PROPERTY(bool usesHelperToApply READ usesHelperToApply NOTIFY stateChanged)
     Q_PROPERTY(bool loginPending READ loginPending NOTIFY stateChanged)
 
 public:
@@ -72,6 +79,8 @@ public:
     bool dirty() const;
     QStringList toGenerate() const;
     bool helperAvailable() const;
+    // SetLocale of systemd-localed is closed on this system; the helper writes the locale.
+    bool usesHelperToApply() const { return m_localedReadOnly; }
     // The system setting differs from what this session was started with.
     bool loginPending() const;
 
@@ -103,10 +112,13 @@ private:
     void setSystem(const QStringList &assignments);
     void setBusy(bool busy, const QString &text = QString());
     void sendSetLocale();
+    QStringList assignments() const;
+    void runHelper(const QStringList &generate, const QStringList &set);
     QString example(const QString &category, const QString &locale) const;
 
     bool m_ready = false, m_available = false, m_busy = false, m_supportedRead = false;
     bool m_selectionTouched = false;
+    bool m_localedReadOnly = false;
     QString m_statusMessage, m_source, m_busyText;
     QVariantList m_locales;
     QStringList m_known;                 // ids offered

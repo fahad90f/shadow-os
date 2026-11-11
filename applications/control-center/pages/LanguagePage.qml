@@ -22,7 +22,7 @@ NxPage {
             kind: "primary"
             visible: lang.dirty
             busy: lang.busy
-            enabled: lang.available && !lang.busy
+            enabled: lang.available && !lang.busy && (lang.helperAvailable || (!lang.usesHelperToApply && lang.toGenerate.length === 0))
             onClicked: lang.apply()
         }
     ]
@@ -48,6 +48,12 @@ NxPage {
             ? qsTr("The system is set to %1, but this session was started with %2. Running applications keep the language they started with.")
                   .arg(lang.systemLanguage).arg(lang.sessionLanguage)
             : qsTr("The language and formats are set for the whole computer. Applications that are already running, including this one, keep the settings they started with until you log out and back in.")
+    }
+    NxBanner {
+        visible: lang.ready && lang.available && lang.usesHelperToApply && !lang.helperAvailable
+        kind: "warning"
+        title: qsTr("Language settings cannot be changed")
+        message: qsTr("This system does not let systemd-localed change the locale (Debian policy); it is written by /usr/libexec/nexus/language-helper through pkexec instead, and that helper or pkexec is not installed.")
     }
     NxBanner {
         visible: lang.busy || (lang.dirty && lang.toGenerate.length > 0)
