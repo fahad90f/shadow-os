@@ -48,7 +48,11 @@ CONFIG_MITIGATION_RETPOLINE=y [amd64]
 CONFIG_MITIGATION_SLS=y [amd64]
 CONFIG_INTEL_IOMMU=y [amd64]
 CONFIG_ARM64_PTR_AUTH_KERNEL=y [arm64]
-CONFIG_ARM64_BTI_KERNEL=y [arm64]
+# CONFIG_ARM64_BTI_KERNEL is not required: Linux 6.12 allows it only when the
+# kernel is built with clang ("depends on !CC_IS_GCC", GCC bug 106671), and
+# Debian's kernel is built with GCC. Pointer authentication (above) and BTI
+# for user space (CONFIG_ARM64_BTI) still apply.
+CONFIG_ARM64_BTI=y [arm64]
 CONFIG_ARM64_MTE=y [arm64]
 CONFIG_UNMAP_KERNEL_AT_EL0=y [arm64]
 
@@ -67,7 +71,9 @@ CONFIG_VFAT_FS=m
 CONFIG_NF_TABLES=m
 CONFIG_USER_NS=y
 CONFIG_CGROUPS=y
-CONFIG_KVM=m
+CONFIG_KVM=m [amd64]
+# On arm64 KVM cannot be a module.
+CONFIG_KVM=y [arm64]
 CONFIG_DRM=m
 CONFIG_SND=m
 CONFIG_WLAN=y
