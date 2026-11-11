@@ -38,6 +38,7 @@ FAMILIES = {
     "files":       (ACC["blue"], ACC["cyan"]),
     "development": (ACC["violet"], ACC["rose"]),
     "maintenance": (ACC["amber"], ACC["rose"]),
+    "assistant":   (ACC["cyan"], ACC["violet"]),
 }
 
 APPS = {
@@ -60,6 +61,7 @@ APPS = {
     "org.shadow.arsenal":          ("target",         "security"),
     "org.shadow.networkcenter":    ("globe",          "network"),
     "org.shadow.gallery":          ("layers",         "development"),
+    "org.shadow.assistant":        ("zap",            "assistant"),
 }
 
 CATEGORIES = {

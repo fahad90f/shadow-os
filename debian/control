@@ -912,3 +912,15 @@ Provides: x-terminal-emulator
 Description: SHADOW Terminal
  The terminal of Shadow OS: tabs, split panes, profiles with SHADOW colour
  schemes, search, and a confirmation before closing a running program.
+
+Package: shadow-assistant
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version})
+Recommends: libgtk-3-bin
+Suggests: speech-dispatcher
+Description: Shadow Assistant
+ A personal AI assistant for Shadow OS: a conversation that can answer
+ questions and carry out tasks on the computer through NVIDIA Nemotron
+ models. Actions that change the system or reach the network are shown and
+ require explicit confirmation before they run. The NVIDIA API key is read
+ from a private per-user configuration file and is never stored in the system.
