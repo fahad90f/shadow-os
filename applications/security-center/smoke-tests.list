@@ -1,0 +1,16 @@
+# <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
+# Without the override the tools are looked for in /usr/sbin (absent in the
+# build chroot): the honest "not installed" state.
+nexus-security-center
+nexus-security-center --page firewall
+# With the developer override the real tools from the source tree are run.
+nexus-security-center --tools-dir /src/security
+nexus-security-center --tools-dir /src/security --page firewall
+nexus-security-center --tools-dir /src/security --page apparmor
+nexus-security-center --tools-dir /src/security --page encryption
+nexus-security-center --tools-dir /src/security --page secureboot
+nexus-security-center --tools-dir /src/security --page updates
+nexus-security-center --tools-dir /src/security --page hardening
+nexus-security-center --tools-dir /src/security --page network
+nexus-security-center --tools-dir /src/security --page services
+nexus-security-center --tools-dir /src/security --page logins

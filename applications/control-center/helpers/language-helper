@@ -1,0 +1,127 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Privileged helper of the Control Center's Region & Language page.
+
+Run through pkexec (action org.nexus.controlcenter.language.generate):
+
+    language-helper generate <locale> [<locale>...]
+
+Makes the named locales available on this system: enables their lines in
+/etc/locale.gen and runs locale-gen. A locale is accepted only if it is
+listed with the UTF-8 character set in /usr/share/i18n/SUPPORTED, so nothing
+the caller sends ends up in the file unchecked. Prints one JSON document on
+stdout; exit status 0 on success.
+
+Setting the system locale itself is not done here: the page asks
+systemd-localed (org.freedesktop.locale1) for that.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+SUPPORTED = "/usr/share/i18n/SUPPORTED"
+LOCALE_GEN = "/etc/locale.gen"
+LOCALE_GEN_TOOL = "/usr/sbin/locale-gen"
+NAME = re.compile(r"^[A-Za-z]{2,3}(_[A-Z]{2})?(\.UTF-8)?(@[a-z0-9]{1,16})?$")
+MAX_LOCALES = 8
+
+
+def finish(ok, **fields):
+    fields["ok"] = ok
+    json.dump(fields, sys.stdout)
+    sys.stdout.write("\n")
+    sys.exit(0 if ok else 1)
+
+
+def supported_utf8():
+    names = set()
+    try:
+        with open(SUPPORTED, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) == 2 and not parts[0].startswith("#") and parts[1] == "UTF-8":
+                    names.add(parts[0])
+    except OSError as error:
+        finish(False, error="cannot read %s: %s" % (SUPPORTED, error.strerror))
+    return names
+
+
+def enable_lines(wanted):
+    """Enable '<name> UTF-8' for every name in 'wanted'. Returns True if the file changed."""
+    try:
+        with open(LOCALE_GEN, encoding="utf-8", errors="surrogateescape") as handle:
+            lines = handle.read().split("\n")
+        mode = os.stat(LOCALE_GEN).st_mode & 0o777
+    except FileNotFoundError:
+        lines, mode = [], 0o644
+    except OSError as error:
+        finish(False, error="cannot read %s: %s" % (LOCALE_GEN, error.strerror))
+    if lines and lines[-1] == "":
+        lines.pop()
+
+    changed = False
+    for name in wanted:
+        target = "%s UTF-8" % name
+        if any(line.split() == [name, "UTF-8"] for line in lines):
+            continue                                    # already enabled
+        for index, line in enumerate(lines):
+            stripped = line.lstrip()
+            if stripped.startswith("#") and stripped.lstrip("#").split() == [name, "UTF-8"]:
+                lines[index] = target                   # commented out: enable in place
+                break
+        else:
+            lines.append(target)
+        changed = True
+
+    if changed:
+        directory = os.path.dirname(LOCALE_GEN)
+        try:
+            fd, temporary = tempfile.mkstemp(prefix=".locale.gen.", dir=directory)
+            with os.fdopen(fd, "w", encoding="utf-8", errors="surrogateescape") as handle:
+                handle.write("\n".join(lines) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary, mode)
+            os.replace(temporary, LOCALE_GEN)
+        except OSError as error:
+            finish(False, error="cannot write %s: %s" % (LOCALE_GEN, error.strerror))
+    return changed
+
+
+def generate(names):
+    if not names or len(names) > MAX_LOCALES:
+        finish(False, error="between 1 and %d locale names are expected" % MAX_LOCALES)
+    known = supported_utf8()
+    for name in names:
+        if not NAME.match(name) or name not in known:
+            finish(False, error="'%s' is not a UTF-8 locale listed in %s" % (name[:64], SUPPORTED))
+    if os.geteuid() != 0:
+        finish(False, error="administrator rights are required")
+    if not os.access(LOCALE_GEN_TOOL, os.X_OK):
+        finish(False, error="%s is not installed (package locales)" % LOCALE_GEN_TOOL)
+
+    changed = enable_lines(names)
+    environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C.UTF-8"}
+    try:
+        result = subprocess.run([LOCALE_GEN_TOOL], env=environment, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=900, check=False)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        finish(False, error="locale-gen could not be run: %s" % error, fileChanged=changed)
+    output = result.stdout.decode("utf-8", "replace")[-2000:]
+    if result.returncode != 0:
+        finish(False, error="locale-gen failed with status %d" % result.returncode, output=output, fileChanged=changed)
+    finish(True, generated=names, fileChanged=changed, output=output)
+
+
+def main(arguments):
+    if len(arguments) >= 2 and arguments[0] == "generate":
+        generate(arguments[1:])
+    finish(False, error="usage: language-helper generate <locale> [<locale>...]")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

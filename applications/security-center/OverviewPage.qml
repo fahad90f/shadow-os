@@ -45,10 +45,11 @@ NxPage {
 
     actions: [
         NxButton {
+            id: copyButton
             text: qsTr("Copy report")
             iconName: "copy"
             enabled: page.center.hasReport
-            onClicked: copyMenu.popup(this, 0, height + Theme.spaceXs)
+            onClicked: copyMenu.popup(copyButton, 0, copyButton.height + Theme.spaceXs)
             Menu {
                 id: copyMenu
                 MenuItem { text: qsTr("Copy as text"); onTriggered: page.copyRequested("text") }
@@ -113,8 +114,8 @@ NxPage {
             evidence: !Fmt.has(s) ? "" : page.unavailable(s) ? (s.reason || "")
                 : s.active ? page.join([
                       qsTr("Inbound policy: %1").arg(s.input_policy || qsTr("not reported")),
-                      qsTr("%n rule(s) loaded", "", s.rule_count || 0),
-                      qsTr("%n opened port(s)", "", Fmt.list(s.allowed).length),
+                      qsTr("Rules loaded: %1").arg(s.rule_count || 0),
+                      qsTr("Opened ports: %1").arg(Fmt.list(s.allowed).length),
                       s.enabled_at_boot ? qsTr("starts at boot") : qsTr("does NOT start at boot")])
                 : page.join([
                       qsTr("The table inet nexus_filter is not loaded: inbound connections are not filtered."),
@@ -132,30 +133,30 @@ NxPage {
             tone: !Fmt.has(s) || page.unavailable(s) ? "neutral" : s.enabled ? "success" : "danger"
             evidence: !Fmt.has(s) ? "" : !s.enabled || page.unavailable(s) ? (s.reason || "")
                 : Fmt.has(s.profiles) ? page.join([
-                      qsTr("%n profile(s) enforcing", "", s.profiles.enforce),
-                      qsTr("%1 complaining").arg(s.profiles.complain),
-                      Fmt.has(s.confined_processes) ? qsTr("%n confined process(es)", "", s.confined_processes) : ""])
+                      qsTr("Profiles enforcing: %1").arg(s.profiles.enforce),
+                      qsTr("complaining: %1").arg(s.profiles.complain),
+                      Fmt.has(s.confined_processes) ? qsTr("confined processes: %1").arg(s.confined_processes) : ""])
                 : (s.reason || "")
             onClicked: page.openPage("apparmor")
         }
         StateTile {
             readonly property var s: page.report.encryption
-            readonly property var root: Fmt.has(s) && Fmt.has(s.root) ? s.root : ({})
+            readonly property var sys: Fmt.has(s) && Fmt.has(s.root) ? s.root : ({})
             label: qsTr("Disk encryption")
             icon: "disk-lock"
             loading: page.waiting
             linkText: qsTr("Open Encryption")
             stateText: !Fmt.has(s) ? qsTr("Not checked") : page.unavailable(s) ? qsTr("Not determined")
                 : s.live_session ? qsTr("Live session")
-                : Fmt.tri(root.encrypted, qsTr("System disk encrypted"), qsTr("Not encrypted"), qsTr("Not determined"))
+                : Fmt.tri(sys.encrypted, qsTr("System disk encrypted"), qsTr("Not encrypted"), qsTr("Not determined"))
             tone: !Fmt.has(s) || page.unavailable(s) || s.live_session ? "neutral"
-                : Fmt.tri(root.encrypted, "success", "warning", "neutral")
+                : Fmt.tri(sys.encrypted, "success", "warning", "neutral")
             evidence: !Fmt.has(s) ? "" : page.unavailable(s) ? (s.reason || "")
                 : page.join([
                       s.live_session ? qsTr("Started from live media; nothing is installed on a disk yet.") : "",
-                      Fmt.has(root.device) ? qsTr("/ is on %1").arg(root.device)
+                      Fmt.has(sys.device) ? qsTr("/ is on %1").arg(sys.device)
                                            : qsTr("lsblk shows no block device mounted at /, so the tool cannot tell whether it is encrypted."),
-                      qsTr("%n LUKS device(s)", "", Fmt.list(s.luks_devices).length),
+                      qsTr("LUKS devices: %1").arg(Fmt.list(s.luks_devices).length),
                       Fmt.has(s.swap) && s.swap.present
                           ? Fmt.tri(s.swap.encrypted, qsTr("swap encrypted"), qsTr("swap NOT encrypted"), qsTr("swap encryption not determined"))
                           : qsTr("no swap")])
@@ -188,14 +189,14 @@ NxPage {
             loading: page.waiting
             linkText: qsTr("Open Updates")
             stateText: !Fmt.has(s) ? qsTr("Not checked") : page.unavailable(s) ? qsTr("Not determined")
-                : s.security > 0 ? qsTr("%n security update(s)", "", s.security)
-                : s.upgradable > 0 ? qsTr("%n update(s) waiting", "", s.upgradable)
+                : s.security > 0 ? qsTr("Security updates: %1").arg(s.security)
+                : s.upgradable > 0 ? qsTr("Updates waiting: %1").arg(s.upgradable)
                 : !s.lists_present ? qsTr("No update information") : qsTr("No updates waiting")
             tone: !Fmt.has(s) || page.unavailable(s) ? "neutral"
                 : s.security > 0 ? "danger" : s.upgradable > 0 || !s.lists_present || s.reboot_required ? "warning" : "success"
             evidence: !Fmt.has(s) ? "" : page.unavailable(s) ? (s.reason || "")
                 : page.join([
-                      s.security > 0 ? qsTr("%n update(s) in total", "", s.upgradable) : "",
+                      s.security > 0 ? qsTr("Updates in total: %1").arg(s.upgradable) : "",
                       s.lists_present ? qsTr("package lists refreshed %1 (%2 days ago)")
                                             .arg(page.center.localTime(s.last_refresh || "")).arg(s.last_refresh_age_days)
                                       : qsTr("the package lists have never been downloaded"),
@@ -209,13 +210,13 @@ NxPage {
             loading: page.waiting
             linkText: qsTr("Open Network exposure")
             stateText: !Fmt.has(s) ? qsTr("Not checked") : page.unavailable(s) ? qsTr("Not determined")
-                : qsTr("%n listening socket(s)", "", s.count)
+                : qsTr("Listening sockets: %1").arg(s.count)
             tone: "neutral"
             evidence: !Fmt.has(s) ? "" : page.unavailable(s) ? (s.reason || "")
                 : page.join([
-                      qsTr("%1 not bound to loopback").arg(s.exposed_count),
+                      qsTr("Not bound to loopback: %1").arg(s.exposed_count),
                       Fmt.has(page.report.connections) && page.report.connections.available !== false
-                          ? qsTr("%n established connection(s)", "", page.report.connections.count) : ""])
+                          ? qsTr("Established connections: %1").arg(page.report.connections.count) : ""])
             onClicked: page.openPage("network")
         }
     }
