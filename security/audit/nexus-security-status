@@ -994,7 +994,8 @@ def _vulnerable_parts(status):
     "Mitigation: Retpolines; IBPB: conditional; BHI: Vulnerable" → ["BHI: Vulnerable"]
     "Mitigation: Clear CPU buffers; SMT vulnerable"              → ["SMT vulnerable"]
     """
-    return [part.strip() for part in re.split(r"[;,]", status) if re.search(r"\bvulnerable\b", part, re.I)]
+    return [part.strip() for part in re.split(r"[;,]", status) if re.search(r"\bvulnerable\b", part, re.I)
+            and not re.search(r"\bnot\s+vulnerable\b", part, re.I)]
 
 
 def section_hardening():
