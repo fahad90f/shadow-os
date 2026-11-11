@@ -825,3 +825,13 @@ Description: NEXUS Archive Manager
  zip, 7z, cpio; ISO and RAR read-only). Extraction never writes outside the
  chosen folder, drops device nodes and setuid bits, and warns before
  unpacking archives that expand implausibly.
+
+Package: nexus-terminal
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ qt6-wayland, fonts-jetbrains-mono, bash
+Recommends: openssh-client, xdg-utils
+Provides: x-terminal-emulator
+Description: NEXUS Terminal
+ The terminal of NEXUS OS: tabs, split panes, profiles with NEXUS colour
+ schemes, search, and a confirmation before closing a running program.

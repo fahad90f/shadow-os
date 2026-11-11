@@ -157,3 +157,24 @@ file is absent.
 * **Remote directories**: the working directory is that of the local process;
   inside ssh it is the directory ssh was started in.
 * Text is in English; strings go through `tr()` but no translations ship yet.
+
+## Testing
+
+Run on 2026-11-11 in the build chroot:
+
+* `NEXUS_JOBS=2 scripts/dev.sh build --dir terminal --only terminal`: builds.
+* `tests/desktop/smoke.sh --dir terminal terminal`: 2 passed, 0 failed
+  (`nexus-terminal`; `nexus-terminal --workdir /tmp -e /bin/sh`).
+* Nested KWin session (`scripts/dev.sh nested --dir terminal ...`), screenshots
+  in `build/work/shots/`:
+  * `terminal-n1-type.png`: started with `--no-restore --workdir /usr/share`;
+    typed `pwd; echo HELLO-$((6*7))` and it printed `/usr/share` and `HELLO-42`.
+  * `terminal-n2-newtab.png`: `Ctrl+Shift+T` opened a second tab in the same directory.
+  * `terminal-n3-split.png`: `Ctrl+Shift+R` split right; the new pane started in `/usr/share`.
+  * `terminal-n4-confirm.png`: `sleep 300` running, `Ctrl+Shift+W` shows
+    "Close this tab? sleep (PID …) is still running", with Cancel and Close.
+  * `terminal-n5-e.png`: `nexus-terminal -e /bin/sh -c "echo …; sleep 4"` ran
+    the command. After it ended, the window was gone (checked with `pgrep`).
+
+Not tested: SSH connections, preferences dialog, session restore, search,
+paste confirmation, signals menu, light theme.
