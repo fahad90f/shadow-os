@@ -14,7 +14,9 @@
       "category": "password",
       "interface": "cli",
       "command": "hydra",
-      "help": ["-h"],
+      "help": [
+        "-h"
+      ],
       "homepage": "https://github.com/vanhauser-thc/thc-hydra"
     },
     {
@@ -24,7 +26,9 @@
       "category": "password",
       "interface": "cli",
       "command": "medusa",
-      "help": ["-h"],
+      "help": [
+        "-h"
+      ],
       "homepage": "https://github.com/jmk-foofus/medusa"
     },
     {
@@ -237,6 +241,98 @@
       "interface": "cli",
       "command": "hcxpcapngtool",
       "homepage": "https://github.com/ZerBea/hcxtools"
+    },
+    {
+      "package": "cupp",
+      "name": "CUPP",
+      "summary": "Build targeted password dictionaries from personal data",
+      "category": "password",
+      "interface": "cli",
+      "command": "cupp",
+      "homepage": "https://github.com/Mebus/cupp"
+    },
+    {
+      "package": "ophcrack",
+      "name": "Ophcrack",
+      "summary": "Crack Windows LM/NTLM passwords using rainbow tables",
+      "category": "password",
+      "interface": "gui",
+      "desktop-id": "ophcrack",
+      "homepage": "https://ophcrack.sourceforge.io",
+      "notes": "Rainbow tables are downloaded separately; the package ships the cracker, not the tables."
+    },
+    {
+      "package": "smbclient",
+      "name": "smbclient",
+      "summary": "Command-line client for SMB/CIFS file and print shares",
+      "category": "post-exploitation",
+      "interface": "cli",
+      "command": "smbclient",
+      "homepage": "https://www.samba.org",
+      "notes": "The smbclient package also ships rpcclient and nmblookup, handy for Windows/Samba enumeration over MS-RPC and NetBIOS."
+    },
+    {
+      "package": "bully",
+      "name": "Bully",
+      "summary": "Brute-force Wi-Fi Protected Setup (WPS) PINs",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "bully",
+      "homepage": "https://github.com/aanarchyy/bully"
+    },
+    {
+      "package": "pixiewps",
+      "name": "Pixiewps",
+      "summary": "Offline WPS PIN recovery (pixie-dust attack)",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "pixiewps",
+      "homepage": "https://github.com/wiire-a/pixiewps"
+    },
+    {
+      "package": "hostapd",
+      "name": "hostapd",
+      "summary": "Access-point and authentication daemon for rogue-AP testing",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "hostapd",
+      "homepage": "https://w1.fi/hostapd/"
+    },
+    {
+      "package": "iw",
+      "name": "iw",
+      "summary": "Configure Linux wireless devices and monitor mode",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "iw",
+      "homepage": "https://wireless.wiki.kernel.org/en/users/documentation/iw"
+    },
+    {
+      "package": "wavemon",
+      "name": "wavemon",
+      "summary": "Ncurses monitor for wireless signal and link quality",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "wavemon",
+      "homepage": "https://github.com/uoaerg/wavemon"
+    },
+    {
+      "package": "wireless-tools",
+      "name": "Wireless Tools",
+      "summary": "Classic iwconfig/iwlist utilities for wireless interfaces",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "iwconfig",
+      "homepage": "https://hewlettpackard.github.io/wireless-tools/"
+    },
+    {
+      "package": "rfkill",
+      "name": "rfkill",
+      "summary": "Enable and disable wireless (Wi-Fi, Bluetooth) radios",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "rfkill",
+      "homepage": "https://git.kernel.org/pub/scm/linux/kernel/git/jberg/rfkill.git"
     }
   ],
   "external": [
@@ -328,6 +424,306 @@
       "how": {
         "text": "Download the official server and client release binaries for Linux from the Sliver releases page and verify their signatures.",
         "url": "https://github.com/BishopFox/sliver/releases"
+      }
+    },
+    {
+      "name": "Exploit-DB (searchsploit)",
+      "summary": "Local copy of the Exploit Database with the searchsploit CLI",
+      "category": "exploitation",
+      "homepage": "https://gitlab.com/exploit-database/exploitdb",
+      "license": "GPL-2.0 for the tooling; exploit entries carry their own terms. Not in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "The exploitdb archive and its searchsploit client are maintained by OffSec outside Debian."
+      },
+      "how": {
+        "text": "Clone the official exploitdb repository and link searchsploit onto PATH; update with 'searchsploit -u'.",
+        "url": "https://gitlab.com/exploit-database/exploitdb"
+      }
+    },
+    {
+      "name": "RouterSploit",
+      "summary": "Exploitation framework for embedded and router devices",
+      "category": "exploitation",
+      "homepage": "https://github.com/threat9/routersploit",
+      "license": "BSD-3-Clause (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "RouterSploit is a Python framework on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx, or run from the official git checkout.",
+        "url": "https://github.com/threat9/routersploit"
+      }
+    },
+    {
+      "name": "pwncat",
+      "summary": "Post-exploitation platform and upgraded reverse-shell handler",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/calebstewart/pwncat",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "pwncat is published on PyPI/GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install pwncat-cs').",
+        "url": "https://github.com/calebstewart/pwncat"
+      }
+    },
+    {
+      "name": "Ropper",
+      "summary": "Display information about and find ROP gadgets in binaries",
+      "category": "exploitation",
+      "homepage": "https://github.com/sashs/Ropper",
+      "license": "BSD-3-Clause (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Ropper is published on PyPI and is not in Debian trixie (ROPgadget, which is, covers similar ground)."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install ropper').",
+        "url": "https://github.com/sashs/Ropper"
+      }
+    },
+    {
+      "name": "enum4linux-ng",
+      "summary": "Enumerate Windows and Samba hosts over SMB/RPC",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/cddmp/enum4linux-ng",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "enum4linux-ng is a Python rewrite on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx, or run from the official git checkout; it uses the Samba client tools.",
+        "url": "https://github.com/cddmp/enum4linux-ng"
+      }
+    },
+    {
+      "name": "CrackMapExec",
+      "summary": "Swiss-army knife for assessing Active Directory networks",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/byt3bl33d3r/CrackMapExec",
+      "license": "BSD-2-Clause (open source); not in Debian. Succeeded by NetExec.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "CrackMapExec is unmaintained in favour of NetExec and is not in Debian; prefer NetExec."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx, or use its successor NetExec.",
+        "url": "https://www.netexec.wiki/getting-started/installation"
+      }
+    },
+    {
+      "name": "Certipy",
+      "summary": "Enumerate and abuse Active Directory Certificate Services",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/ly4k/Certipy",
+      "license": "MIT (open source); not in Debian (Debian's 'certipy' is an unrelated tool).",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "The AD-CS tool Certipy is on PyPI/GitHub and is not in Debian; Debian's python3-certipy is a different certificate utility."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install certipy-ad').",
+        "url": "https://github.com/ly4k/Certipy"
+      }
+    },
+    {
+      "name": "Kerbrute",
+      "summary": "Brute-force and enumerate Active Directory accounts via Kerberos",
+      "category": "password",
+      "homepage": "https://github.com/ropnop/kerbrute",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Kerbrute is a Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download the release binary for your architecture, or build with 'go install' (Go is in Debian).",
+        "url": "https://github.com/ropnop/kerbrute/releases"
+      }
+    },
+    {
+      "name": "PingCastle",
+      "summary": "Audit the security posture of an Active Directory domain",
+      "category": "post-exploitation",
+      "homepage": "https://www.pingcastle.com",
+      "license": "Proprietary (free Basic edition, commercial licences).",
+      "why": {
+        "reason": "proprietary",
+        "text": "PingCastle is closed-source .NET software and cannot be redistributed by Shadow OS."
+      },
+      "how": {
+        "text": "Download the official release from PingCastle and run it on Windows or under Mono/.NET.",
+        "url": "https://www.pingcastle.com/download/"
+      }
+    },
+    {
+      "name": "BloodHound.py",
+      "summary": "Python data collector (ingestor) for BloodHound",
+      "category": "post-exploitation",
+      "homepage": "https://github.com/dirkjanm/BloodHound.py",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "The BloodHound.py ingestor is on PyPI/GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install bloodhound').",
+        "url": "https://github.com/dirkjanm/BloodHound.py"
+      }
+    },
+    {
+      "name": "Social-Engineer Toolkit (SET)",
+      "summary": "Framework for social-engineering attack simulations",
+      "category": "exploitation",
+      "homepage": "https://github.com/trustedsec/social-engineer-toolkit",
+      "license": "TrustedSec SET licence (source-available); not in Debian.",
+      "why": {
+        "reason": "vendor-terms",
+        "text": "SET ships under TrustedSec's own licence and depends on Metasploit, and is not in Debian."
+      },
+      "how": {
+        "text": "Clone the official repository and run setup.py per the SET documentation; it expects Metasploit to be present.",
+        "url": "https://github.com/trustedsec/social-engineer-toolkit"
+      }
+    },
+    {
+      "name": "Gophish",
+      "summary": "Open-source phishing campaign framework",
+      "category": "exploitation",
+      "homepage": "https://getgophish.com",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Gophish is a Go application distributed as release archives outside Debian."
+      },
+      "how": {
+        "text": "Download the official release archive for Linux and run the gophish binary.",
+        "url": "https://github.com/gophish/gophish/releases"
+      }
+    },
+    {
+      "name": "King Phisher",
+      "summary": "Phishing campaign toolkit with a graphical client",
+      "category": "exploitation",
+      "homepage": "https://github.com/rsmusllp/king-phisher",
+      "license": "BSD-3-Clause (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "King Phisher is a client/server Python application on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install from the official repository using its documented install script.",
+        "url": "https://github.com/rsmusllp/king-phisher"
+      }
+    },
+    {
+      "name": "Evilginx",
+      "summary": "Man-in-the-middle framework for phishing with session capture",
+      "category": "exploitation",
+      "homepage": "https://github.com/kgretzky/evilginx2",
+      "license": "BSD-3-Clause (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Evilginx is a Go application distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download the official release for Linux, or build with Go per the Evilginx documentation.",
+        "url": "https://github.com/kgretzky/evilginx2/releases"
+      }
+    },
+    {
+      "name": "Modlishka",
+      "summary": "Reverse-proxy framework for phishing and 2FA bypass research",
+      "category": "exploitation",
+      "homepage": "https://github.com/drk1wi/Modlishka",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Modlishka is a Go application distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download the release binary for your architecture, or build with 'go install' (Go is in Debian).",
+        "url": "https://github.com/drk1wi/Modlishka/releases"
+      }
+    },
+    {
+      "name": "BeEF",
+      "summary": "Browser Exploitation Framework for client-side assessment",
+      "category": "exploitation",
+      "homepage": "https://beefproject.com",
+      "license": "MIT-like (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "BeEF is a Ruby application distributed on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Clone the official repository and run ./install then ./beef; Ruby is in Debian.",
+        "url": "https://github.com/beefproject/beef"
+      }
+    },
+    {
+      "name": "airgeddon",
+      "summary": "Menu-driven multi-use wireless auditing script",
+      "category": "wireless",
+      "homepage": "https://github.com/v1s1t0r1sh3r3/airgeddon",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "airgeddon is a large Bash script on GitHub and is not in Debian; it drives the aircrack-ng suite (in Debian)."
+      },
+      "how": {
+        "text": "Clone the official repository and run ./airgeddon.sh; it uses tools such as aircrack-ng and hostapd.",
+        "url": "https://github.com/v1s1t0r1sh3r3/airgeddon"
+      }
+    },
+    {
+      "name": "Wifiphisher",
+      "summary": "Rogue-AP framework for Wi-Fi phishing assessments",
+      "category": "wireless",
+      "homepage": "https://github.com/wifiphisher/wifiphisher",
+      "license": "GPL-3.0 (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Wifiphisher is a Python tool on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Clone the official repository and run 'python setup.py install'; it needs a capable wireless adapter.",
+        "url": "https://github.com/wifiphisher/wifiphisher"
+      }
+    },
+    {
+      "name": "Fern Wifi Cracker",
+      "summary": "GUI wireless security auditing tool",
+      "category": "wireless",
+      "homepage": "https://github.com/savio-code/fern-wifi-cracker",
+      "license": "GPL-3.0 (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Fern Wifi Cracker is a Python/Qt GUI on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Clone the official repository and run it per its docs; it wraps the aircrack-ng suite.",
+        "url": "https://github.com/savio-code/fern-wifi-cracker"
+      }
+    },
+    {
+      "name": "Kismet",
+      "summary": "Wireless network and device detector, sniffer and IDS",
+      "category": "wireless",
+      "homepage": "https://www.kismetwireless.net",
+      "license": "GPL-2.0 (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Kismet is distributed via the project's own APT repository and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Add the official Kismet APT repository and install it per the Kismet documentation.",
+        "url": "https://www.kismetwireless.net/packages/"
       }
     }
   ]

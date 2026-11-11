@@ -68,7 +68,9 @@
       "category": "development",
       "interface": "cli",
       "command": "python3",
-      "help": ["--version"],
+      "help": [
+        "--version"
+      ],
       "homepage": "https://www.python.org"
     },
     {
@@ -88,7 +90,9 @@
       "category": "development",
       "interface": "cli",
       "command": "go",
-      "help": ["version"],
+      "help": [
+        "version"
+      ],
       "homepage": "https://go.dev"
     },
     {
@@ -116,7 +120,9 @@
       "category": "development",
       "interface": "cli",
       "command": "javac",
-      "help": ["-version"],
+      "help": [
+        "-version"
+      ],
       "homepage": "https://openjdk.org"
     },
     {
@@ -237,7 +243,552 @@
       "desktop-id": "virt-manager",
       "homepage": "https://virt-manager.org",
       "notes": "Needs the libvirt daemon and membership of the libvirt group to manage VMs."
+    },
+    {
+      "package": "kubectl",
+      "name": "kubectl",
+      "summary": "Command-line client for controlling Kubernetes clusters",
+      "category": "virtualization",
+      "interface": "cli",
+      "command": "kubectl",
+      "homepage": "https://kubernetes.io/docs/reference/kubectl/"
+    },
+    {
+      "package": "zsh",
+      "name": "Zsh",
+      "summary": "Feature-rich interactive shell",
+      "category": "development",
+      "interface": "cli",
+      "command": "zsh",
+      "homepage": "https://www.zsh.org"
+    },
+    {
+      "package": "fish",
+      "name": "fish",
+      "summary": "Friendly interactive shell with sane defaults",
+      "category": "development",
+      "interface": "cli",
+      "command": "fish",
+      "homepage": "https://fishshell.com"
+    },
+    {
+      "package": "neovim",
+      "name": "Neovim",
+      "summary": "Extensible, modern Vim-based text editor",
+      "category": "development",
+      "interface": "cli",
+      "command": "nvim",
+      "homepage": "https://neovim.io"
+    },
+    {
+      "package": "vim",
+      "name": "Vim",
+      "summary": "Highly configurable improved vi text editor",
+      "category": "development",
+      "interface": "cli",
+      "command": "vim",
+      "homepage": "https://www.vim.org"
+    },
+    {
+      "package": "nano",
+      "name": "GNU nano",
+      "summary": "Small, friendly terminal text editor",
+      "category": "development",
+      "interface": "cli",
+      "command": "nano",
+      "homepage": "https://www.nano-editor.org"
+    },
+    {
+      "package": "tmux",
+      "name": "tmux",
+      "summary": "Terminal multiplexer for persistent sessions",
+      "category": "development",
+      "interface": "cli",
+      "command": "tmux",
+      "homepage": "https://github.com/tmux/tmux"
+    },
+    {
+      "package": "htop",
+      "name": "htop",
+      "summary": "Interactive process and resource viewer",
+      "category": "development",
+      "interface": "cli",
+      "command": "htop",
+      "homepage": "https://htop.dev"
+    },
+    {
+      "package": "btop",
+      "name": "btop",
+      "summary": "Colourful terminal resource monitor",
+      "category": "development",
+      "interface": "cli",
+      "command": "btop",
+      "homepage": "https://github.com/aristocratos/btop"
+    },
+    {
+      "package": "nethogs",
+      "name": "NetHogs",
+      "summary": "Show bandwidth usage grouped by process",
+      "category": "development",
+      "interface": "cli",
+      "command": "nethogs",
+      "homepage": "https://github.com/raboof/nethogs"
+    },
+    {
+      "package": "lsof",
+      "name": "lsof",
+      "summary": "List open files, sockets and the processes using them",
+      "category": "development",
+      "interface": "cli",
+      "command": "lsof",
+      "homepage": "https://github.com/lsof-org/lsof"
+    },
+    {
+      "package": "rsync",
+      "name": "rsync",
+      "summary": "Fast incremental file transfer and synchronisation",
+      "category": "development",
+      "interface": "cli",
+      "command": "rsync",
+      "homepage": "https://rsync.samba.org"
+    },
+    {
+      "package": "wget",
+      "name": "Wget",
+      "summary": "Retrieve files from the web over HTTP, HTTPS and FTP",
+      "category": "development",
+      "interface": "cli",
+      "command": "wget",
+      "homepage": "https://www.gnu.org/software/wget/"
+    },
+    {
+      "package": "zip",
+      "name": "zip",
+      "summary": "Create and update ZIP archives",
+      "category": "development",
+      "interface": "cli",
+      "command": "zip",
+      "homepage": "http://infozip.sourceforge.net"
+    },
+    {
+      "package": "unzip",
+      "name": "unzip",
+      "summary": "Extract and list ZIP archives",
+      "category": "development",
+      "interface": "cli",
+      "command": "unzip",
+      "homepage": "http://infozip.sourceforge.net"
+    },
+    {
+      "package": "xz-utils",
+      "name": "XZ Utils",
+      "summary": "Compress and decompress .xz and .lzma files",
+      "category": "development",
+      "interface": "cli",
+      "command": "xz",
+      "homepage": "https://tukaani.org/xz/"
+    },
+    {
+      "package": "lshw",
+      "name": "lshw",
+      "summary": "Report detailed hardware configuration",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "lshw",
+      "homepage": "https://ezix.org/project/wiki/HardwareLiSter"
+    },
+    {
+      "package": "pciutils",
+      "name": "PCI utilities",
+      "summary": "Inspect PCI buses and devices (lspci)",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "lspci",
+      "homepage": "https://mj.ucw.cz/sw/pciutils/"
+    },
+    {
+      "package": "usbutils",
+      "name": "USB utilities",
+      "summary": "List and inspect USB devices (lsusb)",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "lsusb",
+      "homepage": "https://github.com/gregkh/usbutils"
+    },
+    {
+      "package": "dmidecode",
+      "name": "dmidecode",
+      "summary": "Decode the system's SMBIOS/DMI hardware tables",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "dmidecode",
+      "homepage": "https://www.nongnu.org/dmidecode/"
+    },
+    {
+      "package": "inxi",
+      "name": "inxi",
+      "summary": "Full-featured command-line system information script",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "inxi",
+      "homepage": "https://smxi.org/docs/inxi.htm"
+    },
+    {
+      "package": "hardinfo2",
+      "name": "HardInfo2",
+      "summary": "Graphical system information and benchmark tool",
+      "category": "hardware",
+      "interface": "gui",
+      "desktop-id": "hardinfo2",
+      "homepage": "https://github.com/hardinfo2/hardinfo2"
+    },
+    {
+      "package": "fwupd",
+      "name": "fwupd",
+      "summary": "Update device firmware from the Linux Vendor Firmware Service",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "fwupdmgr",
+      "homepage": "https://fwupd.org"
+    },
+    {
+      "package": "smartmontools",
+      "name": "smartmontools",
+      "summary": "Monitor storage-device health with S.M.A.R.T. (smartctl)",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "smartctl",
+      "homepage": "https://www.smartmontools.org"
+    },
+    {
+      "package": "hdparm",
+      "name": "hdparm",
+      "summary": "Query and tune SATA/IDE disk parameters",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "hdparm",
+      "homepage": "https://sourceforge.net/projects/hdparm/"
+    },
+    {
+      "package": "memtester",
+      "name": "memtester",
+      "summary": "Stress-test RAM for faults from userspace",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "memtester",
+      "homepage": "https://pyropus.ca/software/memtester/"
+    },
+    {
+      "package": "stress-ng",
+      "name": "stress-ng",
+      "summary": "Load and stress CPU, memory, I/O and more",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "stress-ng",
+      "homepage": "https://github.com/ColinIanKing/stress-ng"
+    },
+    {
+      "package": "bluez",
+      "name": "BlueZ",
+      "summary": "Linux Bluetooth stack tools (bluetoothctl)",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "bluetoothctl",
+      "homepage": "http://www.bluez.org"
+    },
+    {
+      "package": "blueman",
+      "name": "Blueman",
+      "summary": "Graphical Bluetooth device manager",
+      "category": "hardware",
+      "interface": "gui",
+      "desktop-id": "blueman-manager",
+      "homepage": "https://github.com/blueman-project/blueman"
+    },
+    {
+      "package": "lm-sensors",
+      "name": "lm-sensors",
+      "summary": "Read temperature, voltage and fan sensors",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "sensors",
+      "homepage": "https://github.com/lm-sensors/lm-sensors"
+    },
+    {
+      "package": "parted",
+      "name": "GNU parted",
+      "summary": "Create, resize and inspect disk partitions",
+      "category": "hardware",
+      "interface": "cli",
+      "command": "parted",
+      "homepage": "https://www.gnu.org/software/parted/"
+    },
+    {
+      "package": "gparted",
+      "name": "GParted",
+      "summary": "Graphical partition editor",
+      "category": "hardware",
+      "interface": "gui",
+      "desktop-id": "gparted",
+      "homepage": "https://gparted.org",
+      "notes": "Editing partitions needs root; GParted asks for authentication when launched."
     }
   ],
-  "external": []
+  "external": [
+    {
+      "name": "Trivy",
+      "summary": "Scan containers, filesystems and repos for vulns and secrets",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/aquasecurity/trivy",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Trivy is distributed via Aqua Security's own APT repository and release binaries, and is not in Debian."
+      },
+      "how": {
+        "text": "Add the official Trivy APT repository, or download a release binary.",
+        "url": "https://trivy.dev/latest/getting-started/installation/"
+      }
+    },
+    {
+      "name": "Grype",
+      "summary": "Vulnerability scanner for container images and filesystems",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/anchore/grype",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Grype is an Anchore Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download a release binary from the Grype releases page, or install with the official script.",
+        "url": "https://github.com/anchore/grype/releases"
+      }
+    },
+    {
+      "name": "Syft",
+      "summary": "Generate SBOMs from container images and filesystems",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/anchore/syft",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Syft is an Anchore Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download a release binary from the Syft releases page, or install with the official script.",
+        "url": "https://github.com/anchore/syft/releases"
+      }
+    },
+    {
+      "name": "Helm",
+      "summary": "The package manager for Kubernetes",
+      "category": "virtualization",
+      "homepage": "https://helm.sh",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Helm is distributed via its own APT repository and release binaries, and is not in Debian."
+      },
+      "how": {
+        "text": "Add the official Helm APT repository, or download a release binary.",
+        "url": "https://helm.sh/docs/intro/install/"
+      }
+    },
+    {
+      "name": "Falco",
+      "summary": "Runtime security and anomaly detection for containers",
+      "category": "defensive-monitoring",
+      "homepage": "https://falco.org",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Falco is distributed via its own APT repository and containers, and is not in Debian."
+      },
+      "how": {
+        "text": "Add the official Falco APT repository and install the package per the Falco docs.",
+        "url": "https://falco.org/docs/setup/"
+      }
+    },
+    {
+      "name": "kube-bench",
+      "summary": "Check Kubernetes against the CIS benchmark",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/aquasecurity/kube-bench",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "kube-bench is an Aqua Security Go tool distributed as release binaries and containers."
+      },
+      "how": {
+        "text": "Download a release binary, run the official container, or deploy it as a Job in-cluster.",
+        "url": "https://github.com/aquasecurity/kube-bench/releases"
+      }
+    },
+    {
+      "name": "kube-hunter",
+      "summary": "Hunt for security weaknesses in Kubernetes clusters",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/aquasecurity/kube-hunter",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "kube-hunter is an Aqua Security Python tool distributed on PyPI and as containers."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx, or run the official container.",
+        "url": "https://github.com/aquasecurity/kube-hunter"
+      }
+    },
+    {
+      "name": "Checkov",
+      "summary": "Static analysis for infrastructure-as-code",
+      "category": "vulnerability-analysis",
+      "homepage": "https://www.checkov.io",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Checkov is a Bridgecrew/Prisma Python tool on PyPI and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install checkov').",
+        "url": "https://www.checkov.io/2.Basics/Installing%20Checkov.html"
+      }
+    },
+    {
+      "name": "Terrascan",
+      "summary": "Detect compliance and security violations in IaC",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/tenable/terrascan",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Terrascan is a Tenable Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download a release binary from the Terrascan releases page.",
+        "url": "https://github.com/tenable/terrascan/releases"
+      }
+    },
+    {
+      "name": "ScoutSuite",
+      "summary": "Multi-cloud security auditing tool",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/nccgroup/ScoutSuite",
+      "license": "GPL-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "ScoutSuite is an NCC Group Python tool on PyPI/GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install scoutsuite').",
+        "url": "https://github.com/nccgroup/ScoutSuite"
+      }
+    },
+    {
+      "name": "Prowler",
+      "summary": "Security assessment and compliance for cloud accounts",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/prowler-cloud/prowler",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Prowler is a Python tool on PyPI/GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install prowler').",
+        "url": "https://docs.prowler.com"
+      }
+    },
+    {
+      "name": "Pacu",
+      "summary": "Offensive AWS exploitation framework",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/RhinoSecurityLabs/pacu",
+      "license": "BSD-3-Clause (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Pacu is a Rhino Security Labs Python tool on PyPI/GitHub and is not in Debian."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install pacu').",
+        "url": "https://github.com/RhinoSecurityLabs/pacu"
+      }
+    },
+    {
+      "name": "CloudFox",
+      "summary": "Find exploitable attack paths in cloud infrastructure",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/BishopFox/cloudfox",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "CloudFox is a Bishop Fox Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download a release binary from the CloudFox releases page.",
+        "url": "https://github.com/BishopFox/cloudfox/releases"
+      }
+    },
+    {
+      "name": "Steampipe",
+      "summary": "Query cloud and SaaS APIs with SQL for posture checks",
+      "category": "vulnerability-analysis",
+      "homepage": "https://steampipe.io",
+      "license": "AGPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Steampipe is distributed via its own APT repository and installer, and is not in Debian."
+      },
+      "how": {
+        "text": "Install from the official Steampipe APT repository or installer script.",
+        "url": "https://steampipe.io/downloads"
+      }
+    },
+    {
+      "name": "osv-scanner",
+      "summary": "Find known vulnerabilities in project dependencies (OSV)",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/google/osv-scanner",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "osv-scanner is a Google Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download a release binary, or build with 'go install github.com/google/osv-scanner/cmd/osv-scanner@latest'.",
+        "url": "https://github.com/google/osv-scanner/releases"
+      }
+    },
+    {
+      "name": "Semgrep",
+      "summary": "Fast, rule-based static analysis across many languages",
+      "category": "vulnerability-analysis",
+      "homepage": "https://semgrep.dev",
+      "license": "LGPL-2.1 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Semgrep is distributed on PyPI and as container images, and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install semgrep'), or run the official container.",
+        "url": "https://semgrep.dev/docs/getting-started/"
+      }
+    },
+    {
+      "name": "OWASP Dependency-Check",
+      "summary": "Detect project dependencies with known CVEs",
+      "category": "vulnerability-analysis",
+      "homepage": "https://owasp.org/www-project-dependency-check/",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Dependency-Check is a Java tool released as archives and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Download the official release archive and run bin/dependency-check.sh; a JDK (in Debian) is required.",
+        "url": "https://github.com/jeremylong/DependencyCheck/releases"
+      }
+    }
+  ]
 }

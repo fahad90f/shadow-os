@@ -21,7 +21,8 @@ Item {
     readonly property bool isError: kind === "error"
     readonly property bool isToolResult: kind === "tool"
 
-    width: ListView.view ? ListView.view.width : parent.width
+    width: ListView.view ? ListView.view.width - ListView.view.leftMargin - ListView.view.rightMargin
+                         : (parent ? parent.width : implicitWidth)
     visible: !isToolResult
     implicitHeight: visible ? col.implicitHeight : 0
 
@@ -40,16 +41,16 @@ Item {
         }
 
         // ---- user / assistant text ----
-        RowLayout {
-            Layout.fillWidth: true
+        // A bubble that fills the row for the assistant and hugs the right for
+        // the user. Widths derive from the stable delegate width (bubble.width)
+        // rather than the parent layout, to avoid a rearrange feedback loop.
+        NxCard {
+            id: textCard
             visible: (bubble.isUser || bubble.isAssistant) && (bubble.content !== "" || bubble.streaming)
-            Item { visible: bubble.isUser; Layout.fillWidth: true }
-
-            NxCard {
-                id: textCard
-                Layout.maximumWidth: Math.round(parent.width * (bubble.isUser ? 0.82 : 1.0))
-                Layout.fillWidth: !bubble.isUser
-                padding: Theme.spaceMd
+            Layout.fillWidth: true
+            Layout.maximumWidth: bubble.isUser ? Math.round(bubble.width * 0.82) : bubble.width
+            Layout.alignment: bubble.isUser ? Qt.AlignRight : Qt.AlignLeft
+            padding: Theme.spaceMd
                 // Accent tint for the user; glass surface for the assistant.
                 property color tint: bubble.isUser ? Theme.alpha(Theme.accent, 0.16) : Theme.bgRaised
 
@@ -107,8 +108,6 @@ Item {
                     }
                 }
             }
-            Item { visible: bubble.isAssistant; Layout.fillWidth: true; Layout.maximumWidth: 1 }
-        }
 
         // ---- tool calls ----
         Repeater {

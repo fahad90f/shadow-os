@@ -60,7 +60,9 @@
       "interface": "gui",
       "desktop-id": "edb",
       "homepage": "https://github.com/eteran/edb-debugger",
-      "architectures": ["amd64"],
+      "architectures": [
+        "amd64"
+      ],
       "notes": "Available on amd64 only in Debian trixie."
     },
     {
@@ -151,7 +153,10 @@
       "category": "reverse-engineering",
       "interface": "cli",
       "command": "python3",
-      "help": ["-c", "import unicorn"],
+      "help": [
+        "-c",
+        "import unicorn"
+      ],
       "homepage": "https://www.unicorn-engine.org",
       "notes": "A library used from Python; there is no standalone command, so this opens Python with the module imported."
     },
@@ -217,6 +222,43 @@
       "interface": "cli",
       "command": "upx-ucl",
       "homepage": "https://upx.github.io"
+    },
+    {
+      "package": "lldb",
+      "name": "LLDB",
+      "summary": "The LLVM debugger for native programs",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "lldb",
+      "homepage": "https://lldb.llvm.org"
+    },
+    {
+      "package": "afl++",
+      "name": "AFL++",
+      "summary": "Coverage-guided fuzzer for finding bugs in binaries",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "afl-fuzz",
+      "homepage": "https://aflplus.plus",
+      "notes": "For best results fuzz instrumented targets; see the AFL++ docs for building harnesses."
+    },
+    {
+      "package": "adb",
+      "name": "adb",
+      "summary": "Android Debug Bridge for talking to Android devices",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "adb",
+      "homepage": "https://developer.android.com/tools/adb"
+    },
+    {
+      "package": "fastboot",
+      "name": "fastboot",
+      "summary": "Flash and boot Android devices over the fastboot protocol",
+      "category": "reverse-engineering",
+      "interface": "cli",
+      "command": "fastboot",
+      "homepage": "https://developer.android.com/tools/releases/platform-tools"
     }
   ],
   "external": [
@@ -263,6 +305,201 @@
       "how": {
         "text": "Install into an isolated environment with pipx (pipx install frida-tools); matching gadget/server binaries come from the Frida releases page.",
         "url": "https://frida.re/docs/installation/"
+      }
+    },
+    {
+      "name": "IDA Free",
+      "summary": "Freeware edition of the IDA interactive disassembler",
+      "category": "reverse-engineering",
+      "homepage": "https://hex-rays.com/ida-free",
+      "license": "Proprietary (Hex-Rays), free for non-commercial use.",
+      "why": {
+        "reason": "proprietary",
+        "text": "IDA Free is closed-source and cannot be redistributed by Shadow OS."
+      },
+      "how": {
+        "text": "Download the installer for Linux from Hex-Rays and accept the licence.",
+        "url": "https://hex-rays.com/ida-free"
+      }
+    },
+    {
+      "name": "x64dbg",
+      "summary": "Open-source x64/x32 debugger for Windows binaries",
+      "category": "reverse-engineering",
+      "homepage": "https://x64dbg.com",
+      "license": "GPL-3.0 (open source); Windows-only, not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "x64dbg is a Windows application; on Shadow OS it runs under Wine and is not in Debian."
+      },
+      "how": {
+        "text": "Download the official snapshot and run it under Wine (wine is in Debian).",
+        "url": "https://github.com/x64dbg/x64dbg/releases"
+      }
+    },
+    {
+      "name": "jadx",
+      "summary": "Decompile Android DEX/APK to readable Java source",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/skylot/jadx",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "jadx is a Java/Gradle application released as archives and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Download the official release archive and run bin/jadx or bin/jadx-gui; a JDK (in Debian) is required.",
+        "url": "https://github.com/skylot/jadx/releases"
+      }
+    },
+    {
+      "name": "objection",
+      "summary": "Runtime mobile exploration powered by Frida",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/sensepost/objection",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "objection is published on PyPI/GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install objection').",
+        "url": "https://github.com/sensepost/objection"
+      }
+    },
+    {
+      "name": "MobSF",
+      "summary": "Mobile Security Framework for static and dynamic app analysis",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/MobSF/Mobile-Security-Framework-MobSF",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "MobSF is a Django web application usually deployed with Docker and is not in Debian."
+      },
+      "how": {
+        "text": "Run the official Docker image, or set it up from the git checkout per the MobSF docs.",
+        "url": "https://github.com/MobSF/Mobile-Security-Framework-MobSF"
+      }
+    },
+    {
+      "name": "drozer",
+      "summary": "Android security assessment and IPC testing framework",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/WithSecureLabs/drozer",
+      "license": "BSD-3-Clause (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "drozer is published as release packages on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install the official release package or use pipx; pair it with the drozer agent APK.",
+        "url": "https://github.com/WithSecureLabs/drozer/releases"
+      }
+    },
+    {
+      "name": "capa",
+      "summary": "Identify capabilities in executable files",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/mandiant/capa",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "capa is published on PyPI and as standalone binaries by Mandiant, and is not in Debian."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install flare-capa'), or download a standalone binary.",
+        "url": "https://github.com/mandiant/capa/releases"
+      }
+    },
+    {
+      "name": "FLOSS",
+      "summary": "Automatically extract obfuscated strings from malware",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/mandiant/flare-floss",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "FLOSS is published on PyPI and as standalone binaries by Mandiant, and is not in Debian."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install flare-floss'), or download a standalone binary.",
+        "url": "https://github.com/mandiant/flare-floss/releases"
+      }
+    },
+    {
+      "name": "PE-bear",
+      "summary": "Reversing-oriented viewer and editor for PE files",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/hasherezade/pe-bear",
+      "license": "BSD-2-Clause (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "PE-bear is distributed as release builds on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Download the official Linux release build from the PE-bear releases page.",
+        "url": "https://github.com/hasherezade/pe-bear/releases"
+      }
+    },
+    {
+      "name": "Detect It Easy",
+      "summary": "Identify file types, packers and compilers",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/horsicq/Detect-It-Easy",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Detect It Easy (DIE) is distributed as release builds on GitHub and is not in Debian."
+      },
+      "how": {
+        "text": "Download the official Linux release (AppImage or package) from the DIE releases page.",
+        "url": "https://github.com/horsicq/Detect-It-Easy/releases"
+      }
+    },
+    {
+      "name": "GEF",
+      "summary": "GDB Enhanced Features for exploit development",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/hugsy/gef",
+      "license": "MIT (open source); a GDB extension script, not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "GEF is a single Python script that extends GDB and is not packaged in Debian."
+      },
+      "how": {
+        "text": "Download gef.py into your home and source it from ~/.gdbinit per the GEF install docs; GDB is in Debian.",
+        "url": "https://github.com/hugsy/gef"
+      }
+    },
+    {
+      "name": "pwndbg",
+      "summary": "Exploit-development and reversing plugin for GDB",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/pwndbg/pwndbg",
+      "license": "MIT (open source); a GDB plugin, not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "pwndbg is a GDB plugin installed from its own setup and is not in Debian."
+      },
+      "how": {
+        "text": "Clone the official repository and run ./setup.sh, which wires it into ~/.gdbinit; GDB is in Debian.",
+        "url": "https://github.com/pwndbg/pwndbg"
+      }
+    },
+    {
+      "name": "honggfuzz",
+      "summary": "Security-oriented, feedback-driven fuzzer",
+      "category": "reverse-engineering",
+      "homepage": "https://github.com/google/honggfuzz",
+      "license": "Apache-2.0 (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "honggfuzz is maintained on GitHub and is not in Debian trixie (AFL++, which is, is an alternative)."
+      },
+      "how": {
+        "text": "Build from the official source release with 'make'; its build dependencies (binutils, libunwind) are in Debian.",
+        "url": "https://github.com/google/honggfuzz"
       }
     }
   ]

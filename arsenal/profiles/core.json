@@ -146,6 +146,114 @@
       "desktop-id": "org.keepassxc.KeePassXC",
       "homepage": "https://keepassxc.org",
       "notes": "Transitional package; it pulls in keepassxc-full. Keep client and scope credentials out of shell history and in a vault like this one."
+    },
+    {
+      "package": "traceroute",
+      "name": "traceroute",
+      "summary": "Trace the route IPv4/IPv6 packets take to a host",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "traceroute",
+      "homepage": "https://traceroute.sourceforge.net"
+    },
+    {
+      "package": "gnupg",
+      "name": "GnuPG",
+      "summary": "OpenPGP encryption and signing of files and email",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "gpg",
+      "homepage": "https://gnupg.org"
+    },
+    {
+      "package": "openssl",
+      "name": "OpenSSL",
+      "summary": "TLS/SSL and general-purpose cryptography command-line tool",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "openssl",
+      "homepage": "https://www.openssl.org"
+    },
+    {
+      "package": "cryptsetup",
+      "name": "cryptsetup",
+      "summary": "Manage LUKS and dm-crypt encrypted volumes",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "cryptsetup",
+      "homepage": "https://gitlab.com/cryptsetup/cryptsetup"
+    },
+    {
+      "package": "age",
+      "name": "age",
+      "summary": "Simple, modern file-encryption tool",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "age",
+      "homepage": "https://age-encryption.org"
+    },
+    {
+      "package": "tor",
+      "name": "Tor",
+      "summary": "Route traffic through the Tor anonymity overlay network",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "tor",
+      "homepage": "https://www.torproject.org"
+    },
+    {
+      "package": "openvpn",
+      "name": "OpenVPN",
+      "summary": "Establish SSL/TLS virtual private network tunnels",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "openvpn",
+      "homepage": "https://openvpn.net"
+    },
+    {
+      "package": "wireguard-tools",
+      "name": "WireGuard tools",
+      "summary": "Configure WireGuard VPN tunnels (wg, wg-quick)",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "wg",
+      "homepage": "https://www.wireguard.com"
+    },
+    {
+      "package": "openssh-client",
+      "name": "OpenSSH client",
+      "summary": "Secure shell client for remote access and tunnelling",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "ssh",
+      "homepage": "https://www.openssh.com"
+    },
+    {
+      "package": "steghide",
+      "name": "Steghide",
+      "summary": "Hide and extract data in image and audio files",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "steghide",
+      "homepage": "https://steghide.sourceforge.net"
+    },
+    {
+      "package": "secure-delete",
+      "name": "secure-delete",
+      "summary": "Securely wipe files, free space, swap and memory",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "srm",
+      "homepage": "https://packages.debian.org/trixie/secure-delete"
+    },
+    {
+      "package": "kleopatra",
+      "name": "Kleopatra",
+      "summary": "Graphical certificate and OpenPGP/S-MIME key manager",
+      "category": "utilities",
+      "interface": "gui",
+      "desktop-id": "org.kde.kleopatra",
+      "homepage": "https://apps.kde.org/kleopatra/"
     }
   ],
   "external": [
@@ -162,6 +270,21 @@
       "how": {
         "text": "Install the official omnibus package or nightly build from Rapid7's documented instructions for Linux, then update with msfupdate.",
         "url": "https://docs.metasploit.com/docs/using-metasploit/getting-started/nightly-installers.html"
+      }
+    },
+    {
+      "name": "VeraCrypt",
+      "summary": "On-the-fly disk and volume encryption with hidden volumes",
+      "category": "utilities",
+      "homepage": "https://www.veracrypt.fr",
+      "license": "Apache-2.0 plus the TrueCrypt License 3.0; the latter is not DFSG-free, so VeraCrypt is not in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "VeraCrypt carries the non-free TrueCrypt licence terms and is not in Debian; the project publishes its own installers and packages."
+      },
+      "how": {
+        "text": "Download the official Debian/Ubuntu package or generic installer from the VeraCrypt site and install it; cryptsetup (in Debian) covers LUKS/dm-crypt natively.",
+        "url": "https://www.veracrypt.fr/en/Downloads.html"
       }
     }
   ]

@@ -40,21 +40,32 @@ Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- shadow-arsenal-data (>= ${source:Version})
-Recommends:
+ shadow-arsenal-data (>= ${source:Version}),
+ age,
  arp-scan,
  bind9-dnsutils,
+ cryptsetup,
  curl,
+ gnupg,
  keepassxc,
+ kleopatra,
  masscan,
  netcat-openbsd,
  nmap,
+ openssh-client,
+ openssl,
+ openvpn,
  proxychains4,
+ secure-delete,
  socat,
  sslscan,
+ steghide,
  tcpdump,
+ tor,
+ traceroute,
  whatweb,
  whois,
+ wireguard-tools,
  wireshark,
  zenmap
 Suggests: shadow-arsenal
@@ -65,12 +76,11 @@ Description: SHADOW Arsenal profile - Core Security
  profiles build on. Like every profile it is installed on demand; start here,
  the specialised profiles add to it.
  .
- This metapackage recommends the 15 tools of the profile, all from Debian
- main; APT installs them with it. A tool can be removed again without removing
- the profile.
+ This metapackage depends on the 27 tools of the profile, all from Debian
+ main; APT installs every one of them with it.
  .
- Not included, because they are not in Debian main: Metasploit Framework. The
- Arsenal manager lists where their vendors publish them.
+ Not included, because they are not in Debian main: Metasploit Framework,
+ VeraCrypt. The Arsenal manager lists where their vendors publish them.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written
@@ -82,8 +92,7 @@ Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- shadow-arsenal-data (>= ${source:Version})
-Recommends:
+ shadow-arsenal-data (>= ${source:Version}),
  arjun,
  cadaver,
  cutycapt,
@@ -112,12 +121,13 @@ Description: SHADOW Arsenal profile - Web Application
  proprietary or not in Debian and are listed separately with official install
  links.
  .
- This metapackage recommends the 19 tools of the profile, all from Debian
- main; APT installs them with it. A tool can be removed again without removing
- the profile.
+ This metapackage depends on the 19 tools of the profile, all from Debian
+ main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Burp Suite, OWASP ZAP,
- Nikto, Nuclei. The Arsenal manager lists where their vendors publish them.
+ Nikto, Nuclei, feroxbuster, DirBuster, Dalfox, XSStrike, Commix, Ghauri,
+ Jaeles, Kiterunner, Skipfish, Wapiti, Arachni, retire.js, Wappalyzer, WPScan.
+ The Arsenal manager lists where their vendors publish them.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written
@@ -129,12 +139,14 @@ Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- shadow-arsenal-data (>= ${source:Version})
-Recommends:
+ shadow-arsenal-data (>= ${source:Version}),
  arp-scan,
+ assetfinder,
+ bettercap,
  bind9-dnsutils,
  dnsenum,
  dnsrecon,
+ ettercap-graphical,
  fierce,
  fping,
  hping3,
@@ -144,16 +156,23 @@ Recommends:
  masscan,
  mtr,
  nbtscan,
+ ncat,
  netdiscover,
  netsniff-ng,
  ngrep,
  nmap,
  onesixtyone,
+ python3-scapy,
+ python3-shodan,
+ recon-ng,
+ sherlock,
  smbclient,
  smbmap,
  snmp,
  tcpdump,
+ tcpflow,
  termshark,
+ traceroute,
  tshark,
  wireshark,
  zmap
@@ -165,9 +184,13 @@ Description: SHADOW Arsenal profile - Network Security
  Sniffing and Spoofing tools and underpins both the Red Team and Blue Team
  profiles.
  .
- This metapackage recommends the 26 tools of the profile, all from Debian
- main; APT installs them with it. A tool can be removed again without removing
- the profile.
+ This metapackage depends on the 36 tools of the profile, all from Debian
+ main; APT installs every one of them with it.
+ .
+ Not included, because they are not in Debian main: Amass, subfinder, httpx
+ (ProjectDiscovery), naabu, gowitness, Aquatone, RustScan, theHarvester,
+ mitmproxy, Snort, NetworkMiner, Maltego, SpiderFoot. The Arsenal manager
+ lists where their vendors publish them.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written
@@ -179,33 +202,42 @@ Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- shadow-arsenal-data (>= ${source:Version})
-Recommends:
+ shadow-arsenal-data (>= ${source:Version}),
  aircrack-ng,
+ bully,
  cewl,
  crunch,
+ cupp,
  freerdp3-x11,
  hashcat,
  hashid,
  hcxdumptool,
  hcxtools,
+ hostapd,
  hydra,
  iodine,
+ iw,
  john,
  krb5-user,
  medusa,
  ncrack,
+ ophcrack,
  patator,
+ pixiewps,
  polenum,
  proxychains4,
  python3-impacket,
  python3-ldapdomaindump,
  reaver,
+ rfkill,
+ smbclient,
  smbmap,
  sshuttle,
  thc-ipv6,
+ wavemon,
  weevely,
- wifite
+ wifite,
+ wireless-tools
 Suggests: shadow-arsenal
 Description: SHADOW Arsenal profile - Red Team
  Credential attacks, exploitation helpers, Active Directory and Windows
@@ -214,13 +246,16 @@ Description: SHADOW Arsenal profile - Red Team
  Responder, NetExec, BloodHound, Sliver) are not in Debian main and are listed
  as external tools with vendor install instructions rather than bundled.
  .
- This metapackage recommends the 25 tools of the profile, all from Debian
- main; APT installs them with it. A tool can be removed again without removing
- the profile.
+ This metapackage depends on the 35 tools of the profile, all from Debian
+ main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Metasploit Framework,
- NetExec, Evil-WinRM, Responder, BloodHound, Sliver. The Arsenal manager lists
- where their vendors publish them.
+ NetExec, Evil-WinRM, Responder, BloodHound, Sliver, Exploit-DB
+ (searchsploit), RouterSploit, pwncat, Ropper, enum4linux-ng, CrackMapExec,
+ Certipy, Kerbrute, PingCastle, BloodHound.py, Social-Engineer Toolkit (SET),
+ Gophish, King Phisher, Evilginx, Modlishka, BeEF, airgeddon, Wifiphisher,
+ Fern Wifi Cracker, Kismet. The Arsenal manager lists where their vendors
+ publish them.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written
@@ -232,9 +267,9 @@ Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- shadow-arsenal-data (>= ${source:Version})
-Recommends:
+ shadow-arsenal-data (>= ${source:Version}),
  aide,
+ apparmor,
  arpwatch,
  auditd,
  chkrootkit,
@@ -243,14 +278,18 @@ Recommends:
  debsecan,
  fail2ban,
  firejail,
+ firewalld,
  lnav,
  lynis,
+ nftables,
  openscap-scanner,
  psad,
  python3-opensnitch-ui,
  rkhunter,
  sshguard,
  suricata,
+ timeshift,
+ ufw,
  usbguard,
  wireshark,
  yara
@@ -261,13 +300,13 @@ Description: SHADOW Arsenal profile - Blue Team
  benchmarking, sandboxing and firewalls. All are open-source packages from
  Debian; they help you watch, harden and audit systems you administer.
  .
- This metapackage recommends the 20 tools of the profile, all from Debian
- main; APT installs them with it. A tool can be removed again without removing
- the profile.
+ This metapackage depends on the 25 tools of the profile, all from Debian
+ main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Zeek, Wazuh, Velociraptor,
- Elastic Stack (ELK). The Arsenal manager lists where their vendors publish
- them.
+ Elastic Stack (ELK), Trivy, Grype, Chainsaw, Hayabusa, Falco, OpenVAS /
+ Greenbone (GVM), Semgrep, osv-scanner. The Arsenal manager lists where their
+ vendors publish them.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written
@@ -279,8 +318,7 @@ Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- shadow-arsenal-data (>= ${source:Version})
-Recommends:
+ shadow-arsenal-data (>= ${source:Version}),
  autopsy,
  binwalk,
  chkrootkit,
@@ -311,12 +349,12 @@ Description: SHADOW Arsenal profile - Forensics
  scanning. Use these on evidence you are authorized to examine, and keep an
  auditable chain of custody.
  .
- This metapackage recommends the 22 tools of the profile, all from Debian
- main; APT installs them with it. A tool can be removed again without removing
- the profile.
+ This metapackage depends on the 22 tools of the profile, all from Debian
+ main; APT installs every one of them with it.
  .
- Not included, because they are not in Debian main: Volatility 3. The Arsenal
- manager lists where their vendors publish them.
+ Not included, because they are not in Debian main: Volatility 3,
+ bulk_extractor, Chainsaw, Hayabusa, Volatility (2.x), NetworkMiner. The
+ Arsenal manager lists where their vendors publish them.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written
@@ -328,8 +366,9 @@ Architecture: any
 Section: metapackages
 Depends:
  ${misc:Depends},
- shadow-arsenal-data (>= ${source:Version})
-Recommends:
+ shadow-arsenal-data (>= ${source:Version}),
+ adb,
+ afl++,
  androguard,
  apksigner,
  apktool,
@@ -338,9 +377,11 @@ Recommends:
  checksec,
  diffoscope,
  edb-debugger [amd64],
+ fastboot,
  gdb,
  gdb-multiarch,
  ht,
+ lldb,
  ltrace,
  nasm,
  okteta,
@@ -361,12 +402,13 @@ Description: SHADOW Arsenal profile - Reverse Engineering
  (see the lab-setup guide). Ghidra, radare2 and Cutter are not in Debian main
  and are listed as external tools with install links.
  .
- This metapackage recommends the 23 tools of the profile, all from Debian
- main; APT installs them with it. A tool can be removed again without removing
- the profile.
+ This metapackage depends on the 27 tools of the profile, all from Debian
+ main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Ghidra, radare2 / Cutter,
- Frida. The Arsenal manager lists where their vendors publish them.
+ Frida, IDA Free, x64dbg, jadx, objection, MobSF, drozer, capa, FLOSS, PE-
+ bear, Detect It Easy, GEF, pwndbg, honggfuzz. The Arsenal manager lists where
+ their vendors publish them.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written
@@ -378,33 +420,64 @@ Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- shadow-arsenal-data (>= ${source:Version})
-Recommends:
+ shadow-arsenal-data (>= ${source:Version}),
  bandit,
+ blueman,
+ bluez,
+ btop,
  build-essential,
  cargo,
  clang,
  cmake,
  cppcheck,
  default-jdk,
+ dmidecode,
  docker.io,
+ fish,
  flawfinder,
+ fwupd,
  gdb,
  git,
  gitleaks,
  golang,
+ gparted,
+ hardinfo2,
+ hdparm,
+ htop,
+ inxi,
  jq,
+ kubectl,
+ lm-sensors,
+ lshw,
+ lsof,
+ memtester,
+ nano,
+ neovim,
+ nethogs,
  ninja-build,
+ parted,
+ pciutils,
  pipx,
  podman,
  pre-commit,
  python3,
  qemu-system-x86,
  ripgrep,
+ rsync,
  rustc,
  shellcheck,
+ smartmontools,
+ stress-ng,
+ tmux,
+ unzip,
+ usbutils,
+ vim,
  virt-manager,
- yamllint
+ wget,
+ xz-utils,
+ yamllint,
+ zip,
+ zsh
 Suggests: shadow-arsenal
 Description: SHADOW Arsenal profile - Developer
  A software-development and secure-coding toolkit: toolchains for C/C++,
@@ -412,9 +485,13 @@ Description: SHADOW Arsenal profile - Developer
  scanners, container and virtualization tools, and editors. Aimed at
  developers building and reviewing software securely on Shadow OS.
  .
- This metapackage recommends the 25 tools of the profile, all from Debian
- main; APT installs them with it. A tool can be removed again without removing
- the profile.
+ This metapackage depends on the 57 tools of the profile, all from Debian
+ main; APT installs every one of them with it.
+ .
+ Not included, because they are not in Debian main: Trivy, Grype, Syft, Helm,
+ Falco, kube-bench, kube-hunter, Checkov, Terrascan, ScoutSuite, Prowler,
+ Pacu, CloudFox, Steampipe, osv-scanner, Semgrep, OWASP Dependency-Check. The
+ Arsenal manager lists where their vendors publish them.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written
@@ -443,7 +520,7 @@ Description: SHADOW Arsenal profile - Complete Arsenal
  most users are better served installing the specific profiles they need. The
  tools are referenced from the other profiles, not duplicated here.
  .
- This metapackage depends on the metapackages of the profiles it combines (159
+ This metapackage depends on the metapackages of the profiles it combines (230
  tools in total).
  .
  These tools are for authorised security testing, research, defence and

@@ -226,6 +226,81 @@
         "text": "Install into an isolated environment with pipx (pipx install volatility3), or run it from the official git checkout.",
         "url": "https://volatility3.readthedocs.io/en/latest/getting-started.html"
       }
+    },
+    {
+      "name": "bulk_extractor",
+      "summary": "Scan disk images for emails, URLs and other features",
+      "category": "forensics",
+      "homepage": "https://github.com/simsong/bulk_extractor",
+      "license": "MIT/public-domain (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "bulk_extractor is maintained on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Build from the official source release with the standard autotools steps; its dependencies are in Debian.",
+        "url": "https://github.com/simsong/bulk_extractor"
+      }
+    },
+    {
+      "name": "Chainsaw",
+      "summary": "Fast triage of Windows event logs with Sigma support",
+      "category": "forensics",
+      "homepage": "https://github.com/WithSecureLabs/chainsaw",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Chainsaw is a Rust tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download the official release binary for Linux, or build with 'cargo install chainsaw'.",
+        "url": "https://github.com/WithSecureLabs/chainsaw/releases"
+      }
+    },
+    {
+      "name": "Hayabusa",
+      "summary": "Windows event-log timeline and threat hunting",
+      "category": "forensics",
+      "homepage": "https://github.com/Yamato-Security/hayabusa",
+      "license": "AGPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Hayabusa is a Rust tool distributed as release archives outside Debian."
+      },
+      "how": {
+        "text": "Download the official release archive for Linux and run the hayabusa binary.",
+        "url": "https://github.com/Yamato-Security/hayabusa/releases"
+      }
+    },
+    {
+      "name": "Volatility (2.x)",
+      "summary": "Legacy Python 2 memory-forensics framework",
+      "category": "forensics",
+      "homepage": "https://github.com/volatilityfoundation/volatility",
+      "license": "VSL (BSD-style); not in Debian. Superseded by Volatility 3.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "The original Volatility 2 targets Python 2 and is not in Debian; use Volatility 3 unless a profile forces 2.x."
+      },
+      "how": {
+        "text": "Run from the official git checkout with a Python 2 environment, per the Volatility docs.",
+        "url": "https://github.com/volatilityfoundation/volatility"
+      }
+    },
+    {
+      "name": "NetworkMiner",
+      "summary": "Passive network forensic analysis of PCAP files",
+      "category": "forensics",
+      "homepage": "https://www.netresec.com/?page=NetworkMiner",
+      "license": "Proprietary freeware (free and Professional editions).",
+      "why": {
+        "reason": "proprietary",
+        "text": "NetworkMiner is closed-source .NET software and cannot be redistributed by Shadow OS."
+      },
+      "how": {
+        "text": "Download the free edition from Netresec and run it under Mono/.NET on Linux.",
+        "url": "https://www.netresec.com/?page=NetworkMiner"
+      }
     }
   ]
 }

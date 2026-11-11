@@ -11,15 +11,15 @@ permission to test — see [legal-use.md](legal-use.md).
 
 | Profile | Metapackage | Tools | Not packaged | Download | Installed |
 |---|---|---:|---:|---:|---:|
-| [Core Security](#core) | `shadow-arsenal-core` | 15 | 1 | 108.0 MB | 483.7 MB |
-| [Web Application](#web) | `shadow-arsenal-web` | 19 | 4 | 98.5 MB | 360.8 MB |
-| [Network Security](#network) | `shadow-arsenal-network` | 26 | 0 | 106.3 MB | 467.6 MB |
-| [Red Team](#redteam) | `shadow-arsenal-redteam` | 25 | 6 | 215.4 MB | 1.1 GB |
-| [Blue Team](#blueteam) | `shadow-arsenal-blueteam` | 20 | 4 | 159.9 MB | 701.4 MB |
-| [Forensics](#forensics) | `shadow-arsenal-forensics` | 22 | 1 | 91.4 MB | 411.4 MB |
-| [Reverse Engineering](#reversing) | `shadow-arsenal-reversing` | 23 | 3 | 376.8 MB | 1.8 GB |
-| [Developer](#developer) | `shadow-arsenal-developer` | 25 | 0 | 409.7 MB | 1.6 GB |
-| [Complete Arsenal](#complete) | `shadow-arsenal-complete` | 159 | 18 | 1.1 GB | 4.9 GB |
+| [Core Security](#core) | `shadow-arsenal-core` | 27 | 2 | 121.8 MB | 541.6 MB |
+| [Web Application](#web) | `shadow-arsenal-web` | 19 | 18 | 98.5 MB | 360.8 MB |
+| [Network Security](#network) | `shadow-arsenal-network` | 36 | 13 | 145.2 MB | 647.3 MB |
+| [Red Team](#redteam) | `shadow-arsenal-redteam` | 35 | 26 | 233.2 MB | 1.2 GB |
+| [Blue Team](#blueteam) | `shadow-arsenal-blueteam` | 25 | 12 | 172.1 MB | 777.3 MB |
+| [Forensics](#forensics) | `shadow-arsenal-forensics` | 22 | 6 | 91.4 MB | 411.4 MB |
+| [Reverse Engineering](#reversing) | `shadow-arsenal-reversing` | 27 | 16 | 386.7 MB | 1.8 GB |
+| [Developer](#developer) | `shadow-arsenal-developer` | 57 | 17 | 489.9 MB | 1.9 GB |
+| [Complete Arsenal](#complete) | `shadow-arsenal-complete` | 230 | 101 | 1.3 GB | 5.4 GB |
 
 Sizes: what APT would download and install for the whole profile, dependencies and
 Recommends included, in the SHADOW build chroot (amd64; computed 2026-11-11 by `tools/profile-size.py`). A desktop installation
@@ -43,6 +43,7 @@ Install: `sudo apt install shadow-arsenal-core`
 | [arp-scan](https://github.com/royhills/arp-scan) | `arp-scan` | CLI | amd64, arm64 | Discover and fingerprint IP hosts on the local network with ARP |
 | [DNS lookup utilities](https://www.isc.org/bind/) | `bind9-dnsutils` | CLI | amd64, arm64 | dig, delv and nslookup DNS query clients from BIND 9 |
 | [whois](https://github.com/rfc1036/whois) | `whois` | CLI | amd64, arm64 | Query WHOIS registries for domain and network ownership |
+| [traceroute](https://traceroute.sourceforge.net) | `traceroute` | CLI | amd64, arm64 | Trace the route IPv4/IPv6 packets take to a host |
 
 ### Web Application
 
@@ -67,6 +68,17 @@ Install: `sudo apt install shadow-arsenal-core`
 | [curl](https://curl.se) | `curl` | CLI | amd64, arm64 | Transfer data to or from a server over many protocols |
 | [ProxyChains-NG](https://github.com/rofl0r/proxychains-ng) | `proxychains4` | CLI | amd64, arm64 | Force a program's connections through a chain of proxies |
 | [KeePassXC](https://keepassxc.org) | `keepassxc` | GUI + CLI | amd64, arm64 | Offline, encrypted password manager for engagement credentials |
+| [GnuPG](https://gnupg.org) | `gnupg` | CLI | amd64, arm64 | OpenPGP encryption and signing of files and email |
+| [OpenSSL](https://www.openssl.org) | `openssl` | CLI | amd64, arm64 | TLS/SSL and general-purpose cryptography command-line tool |
+| [cryptsetup](https://gitlab.com/cryptsetup/cryptsetup) | `cryptsetup` | CLI | amd64, arm64 | Manage LUKS and dm-crypt encrypted volumes |
+| [age](https://age-encryption.org) | `age` | CLI | amd64, arm64 | Simple, modern file-encryption tool |
+| [Tor](https://www.torproject.org) | `tor` | CLI | amd64, arm64 | Route traffic through the Tor anonymity overlay network |
+| [OpenVPN](https://openvpn.net) | `openvpn` | CLI | amd64, arm64 | Establish SSL/TLS virtual private network tunnels |
+| [WireGuard tools](https://www.wireguard.com) | `wireguard-tools` | CLI | amd64, arm64 | Configure WireGuard VPN tunnels (wg, wg-quick) |
+| [OpenSSH client](https://www.openssh.com) | `openssh-client` | CLI | amd64, arm64 | Secure shell client for remote access and tunnelling |
+| [Steghide](https://steghide.sourceforge.net) | `steghide` | CLI | amd64, arm64 | Hide and extract data in image and audio files |
+| [secure-delete](https://packages.debian.org/trixie/secure-delete) | `secure-delete` | CLI | amd64, arm64 | Securely wipe files, free space, swap and memory |
+| [Kleopatra](https://apps.kde.org/kleopatra/) | `kleopatra` | GUI | amd64, arm64 | Graphical certificate and OpenPGP/S-MIME key manager |
 
 ### Not installable from SHADOW repositories
 
@@ -76,6 +88,7 @@ repackage them; follow the official instructions.
 | Tool | Why there is no package | Licence | Official source |
 |---|---|---|---|
 | [Metasploit Framework](https://www.metasploit.com) | not packaged in Debian: The framework is not packaged in Debian; Rapid7 ships its own cross-distribution installer and nightly builds and expects to be updated from there. | BSD-3-Clause for the framework; the Rapid7 installer and some content have their own terms. | <https://docs.metasploit.com/docs/using-metasploit/getting-started/nightly-installers.html> |
+| [VeraCrypt](https://www.veracrypt.fr) | not packaged in Debian: VeraCrypt carries the non-free TrueCrypt licence terms and is not in Debian; the project publishes its own installers and packages. | Apache-2.0 plus the TrueCrypt License 3.0; the latter is not DFSG-free, so VeraCrypt is not in Debian. | <https://www.veracrypt.fr/en/Downloads.html> |
 
 <a id="web"></a>
 ## Web Application
@@ -119,6 +132,20 @@ repackage them; follow the official instructions.
 | [OWASP ZAP](https://www.zaproxy.org) | not packaged in Debian: ZAP is free and open source but is not currently packaged in Debian; the project ships cross-platform installers and a container image. | Apache-2.0 (open source), but no current package in Debian. | <https://www.zaproxy.org/download/> |
 | [Nikto](https://github.com/sullo/nikto) | not in Debian main: Debian trixie carries Nikto only in the non-free component. Shadow OS uses Debian main only, so no package is offered; upstream recommends running it from a git checkout. | GPL-2.0 for the program; Debian files the package under non-free because of the terms of its bundled databases. | <https://github.com/sullo/nikto> |
 | [Nuclei](https://github.com/projectdiscovery/nuclei) | not packaged in Debian: Nuclei and its templates are released on a rapid cadence outside Debian; ProjectDiscovery publishes binaries and an installer. | MIT (open source), not packaged in Debian. | <https://github.com/projectdiscovery/nuclei/releases> |
+| [feroxbuster](https://github.com/epi052/feroxbuster) | not packaged in Debian: feroxbuster is distributed as release binaries and a crate, and is not in Debian. | MIT (open source); not packaged in Debian. | <https://github.com/epi052/feroxbuster/releases> |
+| [DirBuster](https://gitlab.com/kalilinux/packages/dirbuster) | not packaged in Debian: DirBuster is an OWASP Java application packaged downstream (Kali) but not in Debian trixie; ffuf and gobuster, which are in Debian, cover the same need. | Apache-2.0 (open source); not in Debian (packaged by Kali, not Debian). | <https://sourceforge.net/projects/dirbuster/> |
+| [Dalfox](https://github.com/hahwul/dalfox) | not packaged in Debian: Dalfox is a Go tool distributed as release binaries outside Debian. | MIT (open source); not packaged in Debian. | <https://github.com/hahwul/dalfox/releases> |
+| [XSStrike](https://github.com/s0md3v/XSStrike) | not packaged in Debian: XSStrike is a Python tool on GitHub and is not in Debian trixie. | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/s0md3v/XSStrike> |
+| [Commix](https://github.com/commixproject/commix) | not packaged in Debian: Commix is maintained on GitHub and is not in Debian trixie. | GPL-3.0 (open source); not currently in Debian trixie. | <https://github.com/commixproject/commix> |
+| [Ghauri](https://github.com/r0oth3x49/ghauri) | not packaged in Debian: Ghauri is published on PyPI/GitHub and is not in Debian trixie. | MIT (open source); not packaged in Debian. | <https://github.com/r0oth3x49/ghauri> |
+| [Jaeles](https://github.com/jaeles-project/jaeles) | not packaged in Debian: Jaeles is a Go tool distributed as release binaries outside Debian. | MIT (open source); not packaged in Debian. | <https://github.com/jaeles-project/jaeles/releases> |
+| [Kiterunner](https://github.com/assetnote/kiterunner) | not packaged in Debian: Kiterunner is a Go tool distributed as release binaries outside Debian. | MIT (open source); not packaged in Debian. | <https://github.com/assetnote/kiterunner/releases> |
+| [Skipfish](https://code.google.com/archive/p/skipfish/) | not packaged in Debian: Skipfish is unmaintained upstream and was removed from Debian; build it from the archived source if needed. | Apache-2.0 (open source); not currently in Debian trixie. | <https://code.google.com/archive/p/skipfish/> |
+| [Wapiti](https://wapiti-scanner.github.io) | not packaged in Debian: Wapiti is published on PyPI and is not in Debian trixie. | GPL-2.0 (open source); not currently in Debian trixie. | <https://wapiti-scanner.github.io> |
+| [Arachni](https://www.arachni-scanner.com) | vendor licence terms: Arachni ships under its own source-available licence and as self-contained bundles, and is not in Debian main. | Arachni Public Source License (source-available); not packaged in Debian. | <https://www.arachni-scanner.com/download/> |
+| [retire.js](https://retirejs.github.io/retire.js/) | not packaged in Debian: retire.js is distributed on npm and is not in Debian trixie. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/RetireJS/retire.js> |
+| [Wappalyzer](https://www.wappalyzer.com) | not packaged in Debian: Wappalyzer's current CLI and dataset are distributed via npm and the vendor, not Debian; WhatWeb (in Debian) covers much of the same ground. | Proprietary/open-core; the CLI and data are not packaged in Debian. | <https://www.wappalyzer.com/apps/> |
+| [WPScan](https://wpscan.com) | vendor licence terms: WPScan ships under its own source-available licence as a Ruby gem and is not in Debian trixie. | Dual-licensed (WPScan Public Source License); not currently in Debian trixie. | <https://github.com/wpscanteam/wpscan> |
 
 <a id="network"></a>
 ## Network Security
@@ -148,6 +175,11 @@ Install: `sudo apt install shadow-arsenal-network`
 | [onesixtyone](https://github.com/trailofbits/onesixtyone) | `onesixtyone` | CLI | amd64, arm64 | Fast SNMP scanner that brute-forces community strings |
 | [SNMP utilities](http://www.net-snmp.org) | `snmp` | CLI | amd64, arm64 | Net-SNMP command-line tools such as snmpwalk and snmpget |
 | [LDAP utilities](https://www.openldap.org) | `ldap-utils` | CLI | amd64, arm64 | OpenLDAP clients for querying directory services (ldapsearch) |
+| [traceroute](https://traceroute.sourceforge.net) | `traceroute` | CLI | amd64, arm64 | Trace the route IPv4/IPv6 packets take to a host |
+| [assetfinder](https://github.com/tomnomnom/assetfinder) | `assetfinder` | CLI | amd64, arm64 | Find domains and subdomains related to a given domain |
+| [Recon-ng](https://github.com/lanmaster53/recon-ng) | `recon-ng` | CLI | amd64, arm64 | Full-featured web reconnaissance framework |
+| [Sherlock](https://github.com/sherlock-project/sherlock) | `sherlock` | CLI | amd64, arm64 | Hunt down social-media accounts by username across sites |
+| [Shodan CLI](https://github.com/achillean/shodan-python) | `python3-shodan` | CLI | amd64, arm64 | Command-line client and library for the Shodan search engine |
 
 ### Sniffing and Spoofing
 
@@ -159,6 +191,10 @@ Install: `sudo apt install shadow-arsenal-network`
 | [termshark](https://termshark.io) | `termshark` | CLI | amd64, arm64 | Terminal user interface for tshark, in the style of Wireshark |
 | [ngrep](https://github.com/jpr5/ngrep) | `ngrep` | CLI | amd64, arm64 | Grep-like matching across live or captured network traffic |
 | [netsniff-ng](http://netsniff-ng.org) | `netsniff-ng` | CLI | amd64, arm64 | High-performance packet capture and networking toolkit |
+| [bettercap](https://www.bettercap.org) | `bettercap` | CLI | amd64, arm64 | Modular network attack and monitoring (MITM) framework |
+| [Ettercap (GUI)](https://www.ettercap-project.org) | `ettercap-graphical` | GUI + CLI | amd64, arm64 | Sniffer, interceptor and logger for switched LANs |
+| [Scapy](https://scapy.net) | `python3-scapy` | CLI | amd64, arm64 | Interactive packet manipulation, crafting and sniffing in Python |
+| [tcpflow](https://github.com/simsong/tcpflow) | `tcpflow` | CLI | amd64, arm64 | Capture and reconstruct the data streams of TCP connections |
 
 ### Network and System Utilities
 
@@ -167,6 +203,28 @@ Install: `sudo apt install shadow-arsenal-network`
 | [iPerf3](https://iperf.fr) | `iperf3` | CLI | amd64, arm64 | Measure achievable bandwidth on IP networks |
 | [iftop](https://pdw.ex-parrot.com/iftop/) | `iftop` | CLI | amd64, arm64 | Show bandwidth usage per connection on an interface |
 | [mtr](https://www.bitwizard.nl/mtr/) | `mtr` | CLI | amd64, arm64 | Combined traceroute and ping network diagnostic |
+| [Ncat](https://nmap.org/ncat) | `ncat` | CLI | amd64, arm64 | Nmap's netcat with SSL, proxy and broker support |
+
+### Not installable from SHADOW repositories
+
+Well-known tools of this field that are not in Debian main. SHADOW does not download or
+repackage them; follow the official instructions.
+
+| Tool | Why there is no package | Licence | Official source |
+|---|---|---|---|
+| [Amass](https://github.com/owasp-amass/amass) | not packaged in Debian: OWASP Amass is a Go tool released on its own cadence and is not in Debian trixie. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/owasp-amass/amass/releases> |
+| [subfinder](https://github.com/projectdiscovery/subfinder) | not packaged in Debian: ProjectDiscovery's subfinder is distributed as Go release binaries outside Debian. | MIT (open source); not packaged in Debian. | <https://github.com/projectdiscovery/subfinder/releases> |
+| [httpx (ProjectDiscovery)](https://github.com/projectdiscovery/httpx) | not packaged in Debian: The ProjectDiscovery httpx prober is a Go binary not in Debian; Debian's python3-httpx is a different project. | MIT (open source); not packaged in Debian (the Debian 'httpx' name is an unrelated Python library). | <https://github.com/projectdiscovery/httpx/releases> |
+| [naabu](https://github.com/projectdiscovery/naabu) | not packaged in Debian: naabu is a Go tool released outside Debian and needs libpcap at build time. | MIT (open source); not packaged in Debian. | <https://github.com/projectdiscovery/naabu/releases> |
+| [gowitness](https://github.com/sensepost/gowitness) | not packaged in Debian: gowitness is a Go tool distributed as release binaries; it drives headless Chrome. | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/sensepost/gowitness/releases> |
+| [Aquatone](https://github.com/michenriksen/aquatone) | not packaged in Debian: Aquatone is a Go tool distributed as release archives outside Debian. | MIT (open source); not packaged in Debian. | <https://github.com/michenriksen/aquatone/releases> |
+| [RustScan](https://github.com/bee-san/RustScan) | not packaged in Debian: RustScan is distributed as a .deb on its releases page and as a crate, but is not in Debian itself. | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/bee-san/RustScan/releases> |
+| [theHarvester](https://github.com/laramies/theHarvester) | not packaged in Debian: theHarvester is maintained on PyPI/GitHub and is not in Debian trixie. | GPL-2.0 (open source); not currently in Debian trixie. | <https://github.com/laramies/theHarvester> |
+| [mitmproxy](https://mitmproxy.org) | not packaged in Debian: mitmproxy ships prebuilt bundles and PyPI wheels on a fast cadence and is not in Debian trixie. | MIT (open source); not currently in Debian trixie. | <https://mitmproxy.org> |
+| [Snort](https://www.snort.org) | not packaged in Debian: Snort 3 is distributed by Cisco/Snort.org outside Debian; Suricata, which is in Debian, is an alternative. | GPL-2.0 (open source); Snort 3 is not in Debian trixie. | <https://www.snort.org/downloads> |
+| [NetworkMiner](https://www.netresec.com/?page=NetworkMiner) | proprietary: NetworkMiner is closed-source .NET software and cannot be redistributed by Shadow OS. | Proprietary freeware (free and Professional editions). | <https://www.netresec.com/?page=NetworkMiner> |
+| [Maltego](https://www.maltego.com) | proprietary: Maltego is closed-source commercial software and cannot be redistributed by Shadow OS. | Proprietary (Community and commercial editions). | <https://www.maltego.com/downloads/> |
+| [SpiderFoot](https://github.com/smicallef/spiderfoot) | not packaged in Debian: SpiderFoot is a Python application distributed on GitHub and not in Debian trixie. | MIT (open source); not packaged in Debian. | <https://github.com/smicallef/spiderfoot> |
 
 <a id="redteam"></a>
 ## Red Team
@@ -188,6 +246,8 @@ Install: `sudo apt install shadow-arsenal-redteam`
 | [hashID](https://github.com/psypanda/hashID) | `hashid` | CLI | amd64, arm64 | Identify the type of a given password hash |
 | [crunch](https://github.com/crunchsec/crunch) | `crunch` | CLI | amd64, arm64 | Generate wordlists from a character set and pattern |
 | [CeWL](https://github.com/digininja/CeWL) | `cewl` | CLI | amd64, arm64 | Build a target-specific wordlist by spidering a website |
+| [CUPP](https://github.com/Mebus/cupp) | `cupp` | CLI | amd64, arm64 | Build targeted password dictionaries from personal data |
+| [Ophcrack](https://ophcrack.sourceforge.io) | `ophcrack` | GUI | amd64, arm64 | Crack Windows LM/NTLM passwords using rainbow tables |
 
 ### Wireless and Radio
 
@@ -198,6 +258,13 @@ Install: `sudo apt install shadow-arsenal-redteam`
 | [Reaver](https://github.com/t6x/reaver-wps-fork-t6x) | `reaver` | CLI | amd64, arm64 | Brute-force Wi-Fi Protected Setup (WPS) PINs |
 | [hcxdumptool](https://github.com/ZerBea/hcxdumptool) | `hcxdumptool` | CLI | amd64, arm64 | Capture WPA key material from Wi-Fi devices for offline cracking |
 | [hcxtools](https://github.com/ZerBea/hcxtools) | `hcxtools` | CLI | amd64, arm64 | Convert Wi-Fi captures into hashcat and John formats |
+| [Bully](https://github.com/aanarchyy/bully) | `bully` | CLI | amd64, arm64 | Brute-force Wi-Fi Protected Setup (WPS) PINs |
+| [Pixiewps](https://github.com/wiire-a/pixiewps) | `pixiewps` | CLI | amd64, arm64 | Offline WPS PIN recovery (pixie-dust attack) |
+| [hostapd](https://w1.fi/hostapd/) | `hostapd` | CLI | amd64, arm64 | Access-point and authentication daemon for rogue-AP testing |
+| [iw](https://wireless.wiki.kernel.org/en/users/documentation/iw) | `iw` | CLI | amd64, arm64 | Configure Linux wireless devices and monitor mode |
+| [wavemon](https://github.com/uoaerg/wavemon) | `wavemon` | CLI | amd64, arm64 | Ncurses monitor for wireless signal and link quality |
+| [Wireless Tools](https://hewlettpackard.github.io/wireless-tools/) | `wireless-tools` | CLI | amd64, arm64 | Classic iwconfig/iwlist utilities for wireless interfaces |
+| [rfkill](https://git.kernel.org/pub/scm/linux/kernel/git/jberg/rfkill.git) | `rfkill` | CLI | amd64, arm64 | Enable and disable wireless (Wi-Fi, Bluetooth) radios |
 
 ### Exploitation
 
@@ -219,6 +286,7 @@ Install: `sudo apt install shadow-arsenal-redteam`
 | [ProxyChains-NG](https://github.com/rofl0r/proxychains-ng) | `proxychains4` | CLI | amd64, arm64 | Force a program's connections through a chain of proxies |
 | [sshuttle](https://github.com/sshuttle/sshuttle) | `sshuttle` | CLI | amd64, arm64 | Transparent proxy and VPN over an SSH connection for pivoting |
 | [iodine](https://github.com/yarrick/iodine) | `iodine` | CLI | amd64, arm64 | Tunnel IPv4 traffic through a DNS server to bypass filtering |
+| [smbclient](https://www.samba.org) | `smbclient` | CLI | amd64, arm64 | Command-line client for SMB/CIFS file and print shares |
 
 ### Not installable from SHADOW repositories
 
@@ -233,6 +301,26 @@ repackage them; follow the official instructions.
 | [Responder](https://github.com/lgandx/Responder) | not packaged in Debian: Responder is free software but is not in Debian; it runs directly from a git checkout with Python 3. | GPL-3.0 (open source), not packaged in Debian. | <https://github.com/lgandx/Responder> |
 | [BloodHound](https://github.com/SpecterOps/BloodHound) | not packaged in Debian: BloodHound Community Edition ships as container images and release bundles outside Debian; collectors are distributed with it. | Apache-2.0 (Community Edition) with a separate commercial Enterprise edition. | <https://bloodhound.specterops.io/get-started/quickstart/community-edition-quickstart> |
 | [Sliver](https://github.com/BishopFox/sliver) | not packaged in Debian: Sliver is released as prebuilt binaries by Bishop Fox and is not packaged in Debian. | GPL-3.0 (open source), not packaged in Debian. | <https://github.com/BishopFox/sliver/releases> |
+| [Exploit-DB (searchsploit)](https://gitlab.com/exploit-database/exploitdb) | not packaged in Debian: The exploitdb archive and its searchsploit client are maintained by OffSec outside Debian. | GPL-2.0 for the tooling; exploit entries carry their own terms. Not in Debian. | <https://gitlab.com/exploit-database/exploitdb> |
+| [RouterSploit](https://github.com/threat9/routersploit) | not packaged in Debian: RouterSploit is a Python framework on GitHub and is not in Debian trixie. | BSD-3-Clause (open source); not packaged in Debian. | <https://github.com/threat9/routersploit> |
+| [pwncat](https://github.com/calebstewart/pwncat) | not packaged in Debian: pwncat is published on PyPI/GitHub and is not in Debian trixie. | MIT (open source); not packaged in Debian. | <https://github.com/calebstewart/pwncat> |
+| [Ropper](https://github.com/sashs/Ropper) | not packaged in Debian: Ropper is published on PyPI and is not in Debian trixie (ROPgadget, which is, covers similar ground). | BSD-3-Clause (open source); not packaged in Debian. | <https://github.com/sashs/Ropper> |
+| [enum4linux-ng](https://github.com/cddmp/enum4linux-ng) | not packaged in Debian: enum4linux-ng is a Python rewrite on GitHub and is not in Debian trixie. | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/cddmp/enum4linux-ng> |
+| [CrackMapExec](https://github.com/byt3bl33d3r/CrackMapExec) | not packaged in Debian: CrackMapExec is unmaintained in favour of NetExec and is not in Debian; prefer NetExec. | BSD-2-Clause (open source); not in Debian. Succeeded by NetExec. | <https://www.netexec.wiki/getting-started/installation> |
+| [Certipy](https://github.com/ly4k/Certipy) | not packaged in Debian: The AD-CS tool Certipy is on PyPI/GitHub and is not in Debian; Debian's python3-certipy is a different certificate utility. | MIT (open source); not in Debian (Debian's 'certipy' is an unrelated tool). | <https://github.com/ly4k/Certipy> |
+| [Kerbrute](https://github.com/ropnop/kerbrute) | not packaged in Debian: Kerbrute is a Go tool distributed as release binaries outside Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/ropnop/kerbrute/releases> |
+| [PingCastle](https://www.pingcastle.com) | proprietary: PingCastle is closed-source .NET software and cannot be redistributed by Shadow OS. | Proprietary (free Basic edition, commercial licences). | <https://www.pingcastle.com/download/> |
+| [BloodHound.py](https://github.com/dirkjanm/BloodHound.py) | not packaged in Debian: The BloodHound.py ingestor is on PyPI/GitHub and is not in Debian trixie. | MIT (open source); not packaged in Debian. | <https://github.com/dirkjanm/BloodHound.py> |
+| [Social-Engineer Toolkit (SET)](https://github.com/trustedsec/social-engineer-toolkit) | vendor licence terms: SET ships under TrustedSec's own licence and depends on Metasploit, and is not in Debian. | TrustedSec SET licence (source-available); not in Debian. | <https://github.com/trustedsec/social-engineer-toolkit> |
+| [Gophish](https://getgophish.com) | not packaged in Debian: Gophish is a Go application distributed as release archives outside Debian. | MIT (open source); not packaged in Debian. | <https://github.com/gophish/gophish/releases> |
+| [King Phisher](https://github.com/rsmusllp/king-phisher) | not packaged in Debian: King Phisher is a client/server Python application on GitHub and is not in Debian trixie. | BSD-3-Clause (open source); not packaged in Debian. | <https://github.com/rsmusllp/king-phisher> |
+| [Evilginx](https://github.com/kgretzky/evilginx2) | not packaged in Debian: Evilginx is a Go application distributed as release binaries outside Debian. | BSD-3-Clause (open source); not packaged in Debian. | <https://github.com/kgretzky/evilginx2/releases> |
+| [Modlishka](https://github.com/drk1wi/Modlishka) | not packaged in Debian: Modlishka is a Go application distributed as release binaries outside Debian. | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/drk1wi/Modlishka/releases> |
+| [BeEF](https://beefproject.com) | not packaged in Debian: BeEF is a Ruby application distributed on GitHub and is not in Debian trixie. | MIT-like (open source); not packaged in Debian. | <https://github.com/beefproject/beef> |
+| [airgeddon](https://github.com/v1s1t0r1sh3r3/airgeddon) | not packaged in Debian: airgeddon is a large Bash script on GitHub and is not in Debian; it drives the aircrack-ng suite (in Debian). | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/v1s1t0r1sh3r3/airgeddon> |
+| [Wifiphisher](https://github.com/wifiphisher/wifiphisher) | not packaged in Debian: Wifiphisher is a Python tool on GitHub and is not in Debian trixie. | GPL-3.0 (open source); not currently in Debian trixie. | <https://github.com/wifiphisher/wifiphisher> |
+| [Fern Wifi Cracker](https://github.com/savio-code/fern-wifi-cracker) | not packaged in Debian: Fern Wifi Cracker is a Python/Qt GUI on GitHub and is not in Debian trixie. | GPL-3.0 (open source); not currently in Debian trixie. | <https://github.com/savio-code/fern-wifi-cracker> |
+| [Kismet](https://www.kismetwireless.net) | not packaged in Debian: Kismet is distributed via the project's own APT repository and is not in Debian trixie. | GPL-2.0 (open source); not currently in Debian trixie. | <https://www.kismetwireless.net/packages/> |
 
 <a id="blueteam"></a>
 ## Blue Team
@@ -270,6 +358,11 @@ Install: `sudo apt install shadow-arsenal-blueteam`
 | [Firejail](https://firejail.wordpress.com) | `firejail` | CLI | amd64, arm64 | Restrict an application's environment with a security sandbox |
 | [USBGuard](https://usbguard.github.io) | `usbguard` | CLI | amd64, arm64 | Allow or block USB devices by policy to limit attack surface |
 | [OpenSnitch](https://github.com/evilsocket/opensnitch) | `python3-opensnitch-ui` | GUI | amd64, arm64 | Interactive application firewall that prompts on outbound connections |
+| [UFW](https://launchpad.net/ufw) | `ufw` | CLI | amd64, arm64 | Uncomplicated front end for the netfilter firewall |
+| [nftables](https://netfilter.org/projects/nftables/) | `nftables` | CLI | amd64, arm64 | Configure packet-filtering and NAT rules via nftables |
+| [firewalld](https://firewalld.org) | `firewalld` | CLI | amd64, arm64 | Dynamically managed firewall with network zones |
+| [AppArmor](https://apparmor.net) | `apparmor` | CLI | amd64, arm64 | Mandatory-access-control confinement for programs |
+| [Timeshift](https://github.com/linuxmint/timeshift) | `timeshift` | GUI + CLI | amd64, arm64 | Create and restore filesystem snapshots |
 
 ### Not installable from SHADOW repositories
 
@@ -282,6 +375,14 @@ repackage them; follow the official instructions.
 | [Wazuh](https://wazuh.com) | not packaged in Debian: Wazuh's agent and manager are not in Debian; the project maintains its own APT repository and release packages. | GPL-2.0 (open source), distributed from Wazuh's own repositories. | <https://documentation.wazuh.com/current/installation-guide/index.html> |
 | [Velociraptor](https://docs.velociraptor.app) | not packaged in Debian: Velociraptor is distributed as single-file release binaries and is not packaged in Debian. | AGPL-3.0 (open source), released as prebuilt binaries by Rapid7. | <https://github.com/Velocidex/velociraptor/releases> |
 | [Elastic Stack (ELK)](https://www.elastic.co/elastic-stack) | vendor licence terms: Elasticsearch and Kibana are shipped under Elastic's own licences and are not in Debian main; Elastic provides packages from its repositories. | Mixed; recent versions under the Elastic License / SSPL, which are not DFSG-free. | <https://www.elastic.co/downloads/> |
+| [Trivy](https://github.com/aquasecurity/trivy) | not packaged in Debian: Trivy is distributed via Aqua Security's own APT repository and release binaries, and is not in Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://trivy.dev/latest/getting-started/installation/> |
+| [Grype](https://github.com/anchore/grype) | not packaged in Debian: Grype is an Anchore Go tool distributed as release binaries outside Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/anchore/grype/releases> |
+| [Chainsaw](https://github.com/WithSecureLabs/chainsaw) | not packaged in Debian: Chainsaw is a Rust tool distributed as release binaries outside Debian. | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/WithSecureLabs/chainsaw/releases> |
+| [Hayabusa](https://github.com/Yamato-Security/hayabusa) | not packaged in Debian: Hayabusa is a Rust tool distributed as release archives outside Debian. | AGPL-3.0 (open source); not packaged in Debian. | <https://github.com/Yamato-Security/hayabusa/releases> |
+| [Falco](https://falco.org) | not packaged in Debian: Falco is distributed via its own APT repository and containers, and is not in Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://falco.org/docs/setup/> |
+| [OpenVAS / Greenbone (GVM)](https://www.greenbone.net) | not packaged in Debian: The Greenbone Vulnerability Management stack is distributed by Greenbone and via containers, and is not in Debian trixie. | GPL-2.0 (open source); the current GVM stack is not in Debian trixie. | <https://greenbone.github.io/docs/> |
+| [Semgrep](https://semgrep.dev) | not packaged in Debian: Semgrep is distributed on PyPI and as container images, and is not in Debian trixie. | LGPL-2.1 (open source); not packaged in Debian. | <https://semgrep.dev/docs/getting-started/> |
+| [osv-scanner](https://github.com/google/osv-scanner) | not packaged in Debian: osv-scanner is a Google Go tool distributed as release binaries outside Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/google/osv-scanner/releases> |
 
 <a id="forensics"></a>
 ## Forensics
@@ -325,6 +426,11 @@ repackage them; follow the official instructions.
 | Tool | Why there is no package | Licence | Official source |
 |---|---|---|---|
 | [Volatility 3](https://github.com/volatilityfoundation/volatility3) | not packaged in Debian: Volatility 3 is free software but is not packaged in Debian trixie; it is distributed on PyPI and GitHub. | VSL (Volatility Software License, BSD-style); not currently in Debian trixie. | <https://volatility3.readthedocs.io/en/latest/getting-started.html> |
+| [bulk_extractor](https://github.com/simsong/bulk_extractor) | not packaged in Debian: bulk_extractor is maintained on GitHub and is not in Debian trixie. | MIT/public-domain (open source); not currently in Debian trixie. | <https://github.com/simsong/bulk_extractor> |
+| [Chainsaw](https://github.com/WithSecureLabs/chainsaw) | not packaged in Debian: Chainsaw is a Rust tool distributed as release binaries outside Debian. | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/WithSecureLabs/chainsaw/releases> |
+| [Hayabusa](https://github.com/Yamato-Security/hayabusa) | not packaged in Debian: Hayabusa is a Rust tool distributed as release archives outside Debian. | AGPL-3.0 (open source); not packaged in Debian. | <https://github.com/Yamato-Security/hayabusa/releases> |
+| [Volatility (2.x)](https://github.com/volatilityfoundation/volatility) | not packaged in Debian: The original Volatility 2 targets Python 2 and is not in Debian; use Volatility 3 unless a profile forces 2.x. | VSL (BSD-style); not in Debian. Superseded by Volatility 3. | <https://github.com/volatilityfoundation/volatility> |
+| [NetworkMiner](https://www.netresec.com/?page=NetworkMiner) | proprietary: NetworkMiner is closed-source .NET software and cannot be redistributed by Shadow OS. | Proprietary freeware (free and Professional editions). | <https://www.netresec.com/?page=NetworkMiner> |
 
 <a id="reversing"></a>
 ## Reverse Engineering
@@ -360,6 +466,10 @@ Install: `sudo apt install shadow-arsenal-reversing`
 | [diffoscope](https://diffoscope.org) | `diffoscope` | CLI | amd64, arm64 | In-depth comparison of files, archives and binaries |
 | [YARA](https://virustotal.github.io/yara/) | `yara` | CLI | amd64, arm64 | Match files and processes against pattern rules for malware triage |
 | [UPX](https://upx.github.io) | `upx-ucl` | CLI | amd64, arm64 | Pack and unpack executables (useful for unpacking samples) |
+| [LLDB](https://lldb.llvm.org) | `lldb` | CLI | amd64, arm64 | The LLVM debugger for native programs |
+| [AFL++](https://aflplus.plus) | `afl++` | CLI | amd64, arm64 | Coverage-guided fuzzer for finding bugs in binaries |
+| [adb](https://developer.android.com/tools/adb) | `adb` | CLI | amd64, arm64 | Android Debug Bridge for talking to Android devices |
+| [fastboot](https://developer.android.com/tools/releases/platform-tools) | `fastboot` | CLI | amd64, arm64 | Flash and boot Android devices over the fastboot protocol |
 
 ### Not installable from SHADOW repositories
 
@@ -371,6 +481,19 @@ repackage them; follow the official instructions.
 | [Ghidra](https://ghidra-sre.org) | not packaged in Debian: Ghidra is free and open source but ships as a large self-contained Java release and is not packaged in Debian; it needs a JDK, which SHADOW can install. | Apache-2.0 (open source), released by the NSA; not packaged in Debian. | <https://github.com/NationalSecurityAgency/ghidra/releases> |
 | [radare2 / Cutter](https://rada.re) | not packaged in Debian: radare2 and Cutter are free software but are not in Debian trixie; upstream recommends their own installers for current versions. | LGPL-3.0 (radare2) and GPL-3.0 (Cutter); not currently in Debian trixie. | <https://rada.re/n/radare2.html> |
 | [Frida](https://frida.re) | not packaged in Debian: Frida ships prebuilt native components per platform through PyPI and is not packaged in Debian. | wxWindows/LGPL-style (open source), distributed on PyPI; not in Debian. | <https://frida.re/docs/installation/> |
+| [IDA Free](https://hex-rays.com/ida-free) | proprietary: IDA Free is closed-source and cannot be redistributed by Shadow OS. | Proprietary (Hex-Rays), free for non-commercial use. | <https://hex-rays.com/ida-free> |
+| [x64dbg](https://x64dbg.com) | not packaged in Debian: x64dbg is a Windows application; on Shadow OS it runs under Wine and is not in Debian. | GPL-3.0 (open source); Windows-only, not packaged in Debian. | <https://github.com/x64dbg/x64dbg/releases> |
+| [jadx](https://github.com/skylot/jadx) | not packaged in Debian: jadx is a Java/Gradle application released as archives and is not in Debian trixie. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/skylot/jadx/releases> |
+| [objection](https://github.com/sensepost/objection) | not packaged in Debian: objection is published on PyPI/GitHub and is not in Debian trixie. | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/sensepost/objection> |
+| [MobSF](https://github.com/MobSF/Mobile-Security-Framework-MobSF) | not packaged in Debian: MobSF is a Django web application usually deployed with Docker and is not in Debian. | GPL-3.0 (open source); not packaged in Debian. | <https://github.com/MobSF/Mobile-Security-Framework-MobSF> |
+| [drozer](https://github.com/WithSecureLabs/drozer) | not packaged in Debian: drozer is published as release packages on GitHub and is not in Debian trixie. | BSD-3-Clause (open source); not packaged in Debian. | <https://github.com/WithSecureLabs/drozer/releases> |
+| [capa](https://github.com/mandiant/capa) | not packaged in Debian: capa is published on PyPI and as standalone binaries by Mandiant, and is not in Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/mandiant/capa/releases> |
+| [FLOSS](https://github.com/mandiant/flare-floss) | not packaged in Debian: FLOSS is published on PyPI and as standalone binaries by Mandiant, and is not in Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/mandiant/flare-floss/releases> |
+| [PE-bear](https://github.com/hasherezade/pe-bear) | not packaged in Debian: PE-bear is distributed as release builds on GitHub and is not in Debian trixie. | BSD-2-Clause (open source); not packaged in Debian. | <https://github.com/hasherezade/pe-bear/releases> |
+| [Detect It Easy](https://github.com/horsicq/Detect-It-Easy) | not packaged in Debian: Detect It Easy (DIE) is distributed as release builds on GitHub and is not in Debian. | MIT (open source); not packaged in Debian. | <https://github.com/horsicq/Detect-It-Easy/releases> |
+| [GEF](https://github.com/hugsy/gef) | not packaged in Debian: GEF is a single Python script that extends GDB and is not packaged in Debian. | MIT (open source); a GDB extension script, not packaged in Debian. | <https://github.com/hugsy/gef> |
+| [pwndbg](https://github.com/pwndbg/pwndbg) | not packaged in Debian: pwndbg is a GDB plugin installed from its own setup and is not in Debian. | MIT (open source); a GDB plugin, not packaged in Debian. | <https://github.com/pwndbg/pwndbg> |
+| [honggfuzz](https://github.com/google/honggfuzz) | not packaged in Debian: honggfuzz is maintained on GitHub and is not in Debian trixie (AFL++, which is, is an alternative). | Apache-2.0 (open source); not currently in Debian trixie. | <https://github.com/google/honggfuzz> |
 
 <a id="developer"></a>
 ## Developer
@@ -378,6 +501,27 @@ repackage them; follow the official instructions.
 A software-development and secure-coding toolkit: toolchains for C/C++, Python, Go and Rust, build systems and debuggers, static analysers and secret scanners, container and virtualization tools, and editors. Aimed at developers building and reviewing software securely on Shadow OS.
 
 Install: `sudo apt install shadow-arsenal-developer`
+
+### Hardware and Embedded
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [lshw](https://ezix.org/project/wiki/HardwareLiSter) | `lshw` | CLI | amd64, arm64 | Report detailed hardware configuration |
+| [PCI utilities](https://mj.ucw.cz/sw/pciutils/) | `pciutils` | CLI | amd64, arm64 | Inspect PCI buses and devices (lspci) |
+| [USB utilities](https://github.com/gregkh/usbutils) | `usbutils` | CLI | amd64, arm64 | List and inspect USB devices (lsusb) |
+| [dmidecode](https://www.nongnu.org/dmidecode/) | `dmidecode` | CLI | amd64, arm64 | Decode the system's SMBIOS/DMI hardware tables |
+| [inxi](https://smxi.org/docs/inxi.htm) | `inxi` | CLI | amd64, arm64 | Full-featured command-line system information script |
+| [HardInfo2](https://github.com/hardinfo2/hardinfo2) | `hardinfo2` | GUI | amd64, arm64 | Graphical system information and benchmark tool |
+| [fwupd](https://fwupd.org) | `fwupd` | CLI | amd64, arm64 | Update device firmware from the Linux Vendor Firmware Service |
+| [smartmontools](https://www.smartmontools.org) | `smartmontools` | CLI | amd64, arm64 | Monitor storage-device health with S.M.A.R.T. (smartctl) |
+| [hdparm](https://sourceforge.net/projects/hdparm/) | `hdparm` | CLI | amd64, arm64 | Query and tune SATA/IDE disk parameters |
+| [memtester](https://pyropus.ca/software/memtester/) | `memtester` | CLI | amd64, arm64 | Stress-test RAM for faults from userspace |
+| [stress-ng](https://github.com/ColinIanKing/stress-ng) | `stress-ng` | CLI | amd64, arm64 | Load and stress CPU, memory, I/O and more |
+| [BlueZ](http://www.bluez.org) | `bluez` | CLI | amd64, arm64 | Linux Bluetooth stack tools (bluetoothctl) |
+| [Blueman](https://github.com/blueman-project/blueman) | `blueman` | GUI | amd64, arm64 | Graphical Bluetooth device manager |
+| [lm-sensors](https://github.com/lm-sensors/lm-sensors) | `lm-sensors` | CLI | amd64, arm64 | Read temperature, voltage and fan sensors |
+| [GNU parted](https://www.gnu.org/software/parted/) | `parted` | CLI | amd64, arm64 | Create, resize and inspect disk partitions |
+| [GParted](https://gparted.org) | `gparted` | GUI | amd64, arm64 | Graphical partition editor |
 
 ### Development
 
@@ -404,6 +548,21 @@ Install: `sudo apt install shadow-arsenal-developer`
 | [pre-commit](https://pre-commit.com) | `pre-commit` | CLI | amd64, arm64 | Manage and run git pre-commit hooks, including security checks |
 | [jq](https://jqlang.github.io/jq/) | `jq` | CLI | amd64, arm64 | Command-line JSON processor |
 | [ripgrep](https://github.com/BurntSushi/ripgrep) | `ripgrep` | CLI | amd64, arm64 | Fast recursive regex search across source trees |
+| [Zsh](https://www.zsh.org) | `zsh` | CLI | amd64, arm64 | Feature-rich interactive shell |
+| [fish](https://fishshell.com) | `fish` | CLI | amd64, arm64 | Friendly interactive shell with sane defaults |
+| [Neovim](https://neovim.io) | `neovim` | CLI | amd64, arm64 | Extensible, modern Vim-based text editor |
+| [Vim](https://www.vim.org) | `vim` | CLI | amd64, arm64 | Highly configurable improved vi text editor |
+| [GNU nano](https://www.nano-editor.org) | `nano` | CLI | amd64, arm64 | Small, friendly terminal text editor |
+| [tmux](https://github.com/tmux/tmux) | `tmux` | CLI | amd64, arm64 | Terminal multiplexer for persistent sessions |
+| [htop](https://htop.dev) | `htop` | CLI | amd64, arm64 | Interactive process and resource viewer |
+| [btop](https://github.com/aristocratos/btop) | `btop` | CLI | amd64, arm64 | Colourful terminal resource monitor |
+| [NetHogs](https://github.com/raboof/nethogs) | `nethogs` | CLI | amd64, arm64 | Show bandwidth usage grouped by process |
+| [lsof](https://github.com/lsof-org/lsof) | `lsof` | CLI | amd64, arm64 | List open files, sockets and the processes using them |
+| [rsync](https://rsync.samba.org) | `rsync` | CLI | amd64, arm64 | Fast incremental file transfer and synchronisation |
+| [Wget](https://www.gnu.org/software/wget/) | `wget` | CLI | amd64, arm64 | Retrieve files from the web over HTTP, HTTPS and FTP |
+| [zip](http://infozip.sourceforge.net) | `zip` | CLI | amd64, arm64 | Create and update ZIP archives |
+| [unzip](http://infozip.sourceforge.net) | `unzip` | CLI | amd64, arm64 | Extract and list ZIP archives |
+| [XZ Utils](https://tukaani.org/xz/) | `xz-utils` | CLI | amd64, arm64 | Compress and decompress .xz and .lzma files |
 
 ### Virtualization and Labs
 
@@ -413,6 +572,32 @@ Install: `sudo apt install shadow-arsenal-developer`
 | [Docker](https://www.docker.com) | `docker.io` | CLI | amd64, arm64 | Container runtime for packaging and running software |
 | [QEMU (x86 system)](https://www.qemu.org) | `qemu-system-x86` | CLI | amd64, arm64 | Full-system emulator for building isolated lab VMs |
 | [Virtual Machine Manager](https://virt-manager.org) | `virt-manager` | GUI | amd64, arm64 | Graphical manager for libvirt/QEMU virtual machines |
+| [kubectl](https://kubernetes.io/docs/reference/kubectl/) | `kubectl` | CLI | amd64, arm64 | Command-line client for controlling Kubernetes clusters |
+
+### Not installable from SHADOW repositories
+
+Well-known tools of this field that are not in Debian main. SHADOW does not download or
+repackage them; follow the official instructions.
+
+| Tool | Why there is no package | Licence | Official source |
+|---|---|---|---|
+| [Trivy](https://github.com/aquasecurity/trivy) | not packaged in Debian: Trivy is distributed via Aqua Security's own APT repository and release binaries, and is not in Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://trivy.dev/latest/getting-started/installation/> |
+| [Grype](https://github.com/anchore/grype) | not packaged in Debian: Grype is an Anchore Go tool distributed as release binaries outside Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/anchore/grype/releases> |
+| [Syft](https://github.com/anchore/syft) | not packaged in Debian: Syft is an Anchore Go tool distributed as release binaries outside Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/anchore/syft/releases> |
+| [Helm](https://helm.sh) | not packaged in Debian: Helm is distributed via its own APT repository and release binaries, and is not in Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://helm.sh/docs/intro/install/> |
+| [Falco](https://falco.org) | not packaged in Debian: Falco is distributed via its own APT repository and containers, and is not in Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://falco.org/docs/setup/> |
+| [kube-bench](https://github.com/aquasecurity/kube-bench) | not packaged in Debian: kube-bench is an Aqua Security Go tool distributed as release binaries and containers. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/aquasecurity/kube-bench/releases> |
+| [kube-hunter](https://github.com/aquasecurity/kube-hunter) | not packaged in Debian: kube-hunter is an Aqua Security Python tool distributed on PyPI and as containers. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/aquasecurity/kube-hunter> |
+| [Checkov](https://www.checkov.io) | not packaged in Debian: Checkov is a Bridgecrew/Prisma Python tool on PyPI and is not in Debian trixie. | Apache-2.0 (open source); not packaged in Debian. | <https://www.checkov.io/2.Basics/Installing%20Checkov.html> |
+| [Terrascan](https://github.com/tenable/terrascan) | not packaged in Debian: Terrascan is a Tenable Go tool distributed as release binaries outside Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/tenable/terrascan/releases> |
+| [ScoutSuite](https://github.com/nccgroup/ScoutSuite) | not packaged in Debian: ScoutSuite is an NCC Group Python tool on PyPI/GitHub and is not in Debian trixie. | GPL-2.0 (open source); not packaged in Debian. | <https://github.com/nccgroup/ScoutSuite> |
+| [Prowler](https://github.com/prowler-cloud/prowler) | not packaged in Debian: Prowler is a Python tool on PyPI/GitHub and is not in Debian trixie. | Apache-2.0 (open source); not packaged in Debian. | <https://docs.prowler.com> |
+| [Pacu](https://github.com/RhinoSecurityLabs/pacu) | not packaged in Debian: Pacu is a Rhino Security Labs Python tool on PyPI/GitHub and is not in Debian. | BSD-3-Clause (open source); not packaged in Debian. | <https://github.com/RhinoSecurityLabs/pacu> |
+| [CloudFox](https://github.com/BishopFox/cloudfox) | not packaged in Debian: CloudFox is a Bishop Fox Go tool distributed as release binaries outside Debian. | MIT (open source); not packaged in Debian. | <https://github.com/BishopFox/cloudfox/releases> |
+| [Steampipe](https://steampipe.io) | not packaged in Debian: Steampipe is distributed via its own APT repository and installer, and is not in Debian. | AGPL-3.0 (open source); not packaged in Debian. | <https://steampipe.io/downloads> |
+| [osv-scanner](https://github.com/google/osv-scanner) | not packaged in Debian: osv-scanner is a Google Go tool distributed as release binaries outside Debian. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/google/osv-scanner/releases> |
+| [Semgrep](https://semgrep.dev) | not packaged in Debian: Semgrep is distributed on PyPI and as container images, and is not in Debian trixie. | LGPL-2.1 (open source); not packaged in Debian. | <https://semgrep.dev/docs/getting-started/> |
+| [OWASP Dependency-Check](https://owasp.org/www-project-dependency-check/) | not packaged in Debian: Dependency-Check is a Java tool released as archives and is not in Debian trixie. | Apache-2.0 (open source); not packaged in Debian. | <https://github.com/jeremylong/DependencyCheck/releases> |
 
 <a id="complete"></a>
 ## Complete Arsenal

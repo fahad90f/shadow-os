@@ -31,15 +31,15 @@ arsenal/
 
 | Profile | Tools (trixie main) | External entries |
 |---|---:|---:|
-| core | 15 | 1 |
-| web | 19 | 4 |
-| network | 26 | 0 |
-| redteam | 25 | 6 |
-| blueteam | 20 | 4 |
-| forensics | 22 | 1 |
-| reversing | 23 (one of them amd64 only) | 3 |
-| developer | 25 | 0 |
-| complete | 159 distinct, by reference | 18 distinct |
+| core | 27 | 1 |
+| web | 19 | 18 |
+| network | 36 | 13 |
+| redteam | 35 | 26 |
+| blueteam | 25 | 12 |
+| forensics | 22 | 6 |
+| reversing | 27 (one of them amd64 only) | 16 |
+| developer | 57 | 17 |
+| complete | 230 distinct, by reference | 100 distinct |
 
 Contents: [docs/profiles.md](docs/profiles.md). How to change them:
 [docs/adding-tools.md](docs/adding-tools.md).
@@ -63,7 +63,8 @@ Exact commands: [docs/adding-tools.md](docs/adding-tools.md), section *Verify*.
   application; recommended `packagekit`, `polkitd` (with a polkit agent in the
   session), `shadow-terminal`.
 * `shadow-arsenal-data`: none.
-* `shadow-arsenal-<id>`: `shadow-arsenal-data`; Recommends the tools.
+* `shadow-arsenal-<id>`: `shadow-arsenal-data`; **Depends** on the tools (Shadow
+  OS installs every tool of a profile, so they are hard dependencies).
 * The scripts in `tools/` are build-time only: `python3`, `apt`, `dpkg`.
 
 ## Packaging
@@ -76,11 +77,13 @@ why tools are Recommends and not Depends, and what `debian/` has to do.
 
 Tested (build chroot, amd64, Debian trixie; details in manager/README.md):
 
-* `validate.py`: 9 profiles, 159 packages, valid.
-* `check-availability.py --require-arm64 --require-contents`: 159 packages in
-  main on amd64 and arm64; 175 tool entries with their command and desktop
+* `validate.py`: 9 profiles, 230 packages, 16 categories, valid.
+* `check-availability.py --require-arm64 --require-contents`: 230 packages in
+  main on amd64 and arm64; 248 tool entries with their command and desktop
   entry found in the Contents indices.
-* `profile-size.py`: all nine profiles resolve with `apt-get --simulate`.
+* `profile-size.py`: all nine profiles resolve with `apt-get --simulate`; the
+  `complete` profile pulls in 1204 packages (≈1.3 GB download, ≈5.4 GB
+  installed) in the minimal chroot.
 * Manager: builds, smoke test passes without QML warnings, dumps match
   `dpkg-query`, first-start acknowledgement, navigation, tool details, the apt
   fallback, and starting tools in SHADOW Terminal exercised in a nested session.
@@ -94,9 +97,10 @@ Not tested / known limits:
   "install profile" through the metapackage and "remove profile" are untested;
   `control.in` has not been run through `dpkg-gencontrol`.
 * Only one external entry (Nikto) carries the `packages` field that lets
-  `check-availability.py` prove it is absent from main. The other seventeen
-  were looked up by hand on 2026-11-11 (none found in trixie main); adding the
-  field to them is open.
-* The tool selection is the previous engineer's and was verified, not
-  extended.
+  `check-availability.py` prove it is absent from main. The other 99 distinct
+  external tools were verified absent from trixie main by `apt-cache` lookup on
+  2026-11-11 (see the generator notes); adding the `packages` field to them is
+  open but optional.
+* The tool set was expanded on 2026-11-11 to cover the full 18-category tool
+  list the distribution aims to bundle; every package was re-verified in main.
 * arm64 was checked against the package index only; nothing was run on arm64.

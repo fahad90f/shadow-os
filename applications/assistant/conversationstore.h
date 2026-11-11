@@ -105,8 +105,8 @@ public:
     void saveMessages(const QString &id, const QJsonArray &messages);
 
     QString storageDir() const;
-    int indexOfId(const QString &id) const;
-    QString titleOf(const QString &id) const;
+    Q_INVOKABLE int indexOfId(const QString &id) const;
+    Q_INVOKABLE QString titleOf(const QString &id) const;
 
 Q_SIGNALS:
     void countChanged();

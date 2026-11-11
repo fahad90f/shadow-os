@@ -215,7 +215,9 @@
       "summary": "Web server scanner for known issues and dangerous files",
       "category": "web-application",
       "homepage": "https://github.com/sullo/nikto",
-      "packages": ["nikto"],
+      "packages": [
+        "nikto"
+      ],
       "license": "GPL-2.0 for the program; Debian files the package under non-free because of the terms of its bundled databases.",
       "why": {
         "reason": "not-in-debian-main",
@@ -239,6 +241,216 @@
       "how": {
         "text": "Download the release binary for your architecture from the Nuclei releases page, or install with Go; then run nuclei -update-templates.",
         "url": "https://github.com/projectdiscovery/nuclei/releases"
+      }
+    },
+    {
+      "name": "feroxbuster",
+      "summary": "Fast recursive content discovery written in Rust",
+      "category": "web-application",
+      "homepage": "https://github.com/epi052/feroxbuster",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "feroxbuster is distributed as release binaries and a crate, and is not in Debian."
+      },
+      "how": {
+        "text": "Download the official release binary, install the published .deb, or build with 'cargo install feroxbuster'.",
+        "url": "https://github.com/epi052/feroxbuster/releases"
+      }
+    },
+    {
+      "name": "DirBuster",
+      "summary": "Classic Java directory and file brute-forcer",
+      "category": "web-application",
+      "homepage": "https://gitlab.com/kalilinux/packages/dirbuster",
+      "license": "Apache-2.0 (open source); not in Debian (packaged by Kali, not Debian).",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "DirBuster is an OWASP Java application packaged downstream (Kali) but not in Debian trixie; ffuf and gobuster, which are in Debian, cover the same need."
+      },
+      "how": {
+        "text": "Run the official OWASP ZAP forced-browse add-on, or download DirBuster from the OWASP project.",
+        "url": "https://sourceforge.net/projects/dirbuster/"
+      }
+    },
+    {
+      "name": "Dalfox",
+      "summary": "Powerful XSS scanning and parameter-analysis tool",
+      "category": "web-application",
+      "homepage": "https://github.com/hahwul/dalfox",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Dalfox is a Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download the release binary for your architecture, or build with 'go install' (Go is in Debian).",
+        "url": "https://github.com/hahwul/dalfox/releases"
+      }
+    },
+    {
+      "name": "XSStrike",
+      "summary": "Advanced XSS detection and fuzzing suite",
+      "category": "web-application",
+      "homepage": "https://github.com/s0md3v/XSStrike",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "XSStrike is a Python tool on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Clone the official repository and run xsstrike.py with its Python requirements installed.",
+        "url": "https://github.com/s0md3v/XSStrike"
+      }
+    },
+    {
+      "name": "Commix",
+      "summary": "Automated command-injection detection and exploitation",
+      "category": "web-application",
+      "homepage": "https://github.com/commixproject/commix",
+      "license": "GPL-3.0 (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Commix is maintained on GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Clone the official repository and run commix.py; it uses only the Python standard library.",
+        "url": "https://github.com/commixproject/commix"
+      }
+    },
+    {
+      "name": "Ghauri",
+      "summary": "Automated SQL-injection detection and exploitation",
+      "category": "web-application",
+      "homepage": "https://github.com/r0oth3x49/ghauri",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Ghauri is published on PyPI/GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install ghauri').",
+        "url": "https://github.com/r0oth3x49/ghauri"
+      }
+    },
+    {
+      "name": "Jaeles",
+      "summary": "Scriptable, signature-based web vulnerability scanner",
+      "category": "web-application",
+      "homepage": "https://github.com/jaeles-project/jaeles",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Jaeles is a Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download the release binary for your architecture, or build with 'go install' (Go is in Debian).",
+        "url": "https://github.com/jaeles-project/jaeles/releases"
+      }
+    },
+    {
+      "name": "Kiterunner",
+      "summary": "Content discovery tuned for API routes and endpoints",
+      "category": "web-application",
+      "homepage": "https://github.com/assetnote/kiterunner",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Kiterunner is a Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download the release archive for Linux and place the kr binary on PATH.",
+        "url": "https://github.com/assetnote/kiterunner/releases"
+      }
+    },
+    {
+      "name": "Skipfish",
+      "summary": "Active web-application reconnaissance scanner",
+      "category": "web-application",
+      "homepage": "https://code.google.com/archive/p/skipfish/",
+      "license": "Apache-2.0 (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Skipfish is unmaintained upstream and was removed from Debian; build it from the archived source if needed."
+      },
+      "how": {
+        "text": "Build from the archived upstream source release; its dependencies (libidn, zlib, pcre) are in Debian.",
+        "url": "https://code.google.com/archive/p/skipfish/"
+      }
+    },
+    {
+      "name": "Wapiti",
+      "summary": "Black-box web-application vulnerability scanner",
+      "category": "web-application",
+      "homepage": "https://wapiti-scanner.github.io",
+      "license": "GPL-2.0 (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Wapiti is published on PyPI and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install wapiti3').",
+        "url": "https://wapiti-scanner.github.io"
+      }
+    },
+    {
+      "name": "Arachni",
+      "summary": "Feature-rich web-application security scanner framework",
+      "category": "web-application",
+      "homepage": "https://www.arachni-scanner.com",
+      "license": "Arachni Public Source License (source-available); not packaged in Debian.",
+      "why": {
+        "reason": "vendor-terms",
+        "text": "Arachni ships under its own source-available licence and as self-contained bundles, and is not in Debian main."
+      },
+      "how": {
+        "text": "Download the official self-contained package for Linux from the Arachni site.",
+        "url": "https://www.arachni-scanner.com/download/"
+      }
+    },
+    {
+      "name": "retire.js",
+      "summary": "Detect JavaScript libraries with known vulnerabilities",
+      "category": "web-application",
+      "homepage": "https://retirejs.github.io/retire.js/",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "retire.js is distributed on npm and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install with npm ('npm install -g retire'); Node.js and npm are in Debian.",
+        "url": "https://github.com/RetireJS/retire.js"
+      }
+    },
+    {
+      "name": "Wappalyzer",
+      "summary": "Identify the technologies a website uses",
+      "category": "web-application",
+      "homepage": "https://www.wappalyzer.com",
+      "license": "Proprietary/open-core; the CLI and data are not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Wappalyzer's current CLI and dataset are distributed via npm and the vendor, not Debian; WhatWeb (in Debian) covers much of the same ground."
+      },
+      "how": {
+        "text": "Use the maintained npm package or the browser extension per the Wappalyzer documentation.",
+        "url": "https://www.wappalyzer.com/apps/"
+      }
+    },
+    {
+      "name": "WPScan",
+      "summary": "WordPress security scanner",
+      "category": "web-application",
+      "homepage": "https://wpscan.com",
+      "license": "Dual-licensed (WPScan Public Source License); not currently in Debian trixie.",
+      "why": {
+        "reason": "vendor-terms",
+        "text": "WPScan ships under its own source-available licence as a Ruby gem and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install the gem with 'gem install wpscan' (Ruby is in Debian); a free API token raises the vulnerability-data limit.",
+        "url": "https://github.com/wpscanteam/wpscan"
       }
     }
   ]

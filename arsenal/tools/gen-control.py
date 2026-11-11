@@ -28,20 +28,24 @@ Architecture
     that happened to build it, and arm64 systems would get an uninstallable
     (Depends) or silently wrong (Recommends) package.
 
-Depends / Recommends
+Depends
     Depends:    shadow-arsenal-data — the manifest that says what the profile is,
-                so every front end can show it; and, for a profile that
-                "includes" others (complete), the metapackages of those
-                profiles: such a profile is defined as "all of these".
-    Recommends: the tools. APT and PackageKit install Recommends by default,
-                so installing the metapackage installs the profile. Unlike
-                Depends this (a) lets a user remove one tool — several start a
-                system service when installed — without APT removing the
-                metapackage and then offering every other tool for autoremoval;
-                (b) keeps the profile installable when Debian temporarily drops
-                or breaks one tool in a point release.
+                so every front end can show it; for a profile that "includes"
+                others (complete), the metapackages of those profiles (such a
+                profile is defined as "all of these"); and the tools of the
+                profile themselves. Shadow OS is a maximum-coverage security
+                distribution: a profile is meant to install every one of its
+                tools, so the tools are hard dependencies, not Recommends.
+                Installing shadow-arsenal-<id> therefore pulls in the whole
+                profile, and APT will refuse to leave it half-installed.
     Suggests:   shadow-arsenal (the manager). Never the other way round: the
                 manager must not pull tools in.
+
+    Because the tools are Depends, removing a single tool makes APT want to
+    remove the metapackage too (the profile is no longer complete). That is the
+    intended contract here; a user who wants an a-la-carte selection installs
+    the individual tool packages, or the Arsenal manager, instead of the
+    metapackage.
 
 Tools are never Pre-Depends, and nothing here is Essential or Priority above
 optional: no tool is installed unless a user asks for a profile.
@@ -139,12 +143,12 @@ def profile_stanza(profiles, ident):
 
     depends = ["${misc:Depends}", "shadow-arsenal-data (>= ${source:Version})"]
     depends += [f"{profiles[other]['metapackage']} (>= ${{source:Version}})" for other in includes]
+    depends += [tool_relation(tool) for tool in own]
 
     lines = [f"Package: {manifest['metapackage']}",
              f"Architecture: {'any' if arch_specific else 'all'}",
              "Section: metapackages"]
     lines += relation_field("Depends", depends)
-    lines += relation_field("Recommends", [tool_relation(tool) for tool in own])
     lines += ["Suggests: shadow-arsenal"]
     lines.append(f"Description: SHADOW Arsenal profile - {manifest['name']}")
     count = len(am.effective_tools(profiles, ident))
@@ -153,8 +157,8 @@ def profile_stanza(profiles, ident):
         body += (f"\n\nThis metapackage depends on the metapackages of the profiles it combines "
                  f"({count} tools in total).")
     else:
-        body += (f"\n\nThis metapackage recommends the {count} tools of the profile, all from Debian main; "
-                 f"APT installs them with it. A tool can be removed again without removing the profile.")
+        body += (f"\n\nThis metapackage depends on the {count} tools of the profile, all from Debian main; "
+                 f"APT installs every one of them with it.")
     external = am.effective_external(profiles, ident)
     if external and not includes:
         body += ("\n\nNot included, because they are not in Debian main: "

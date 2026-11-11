@@ -51,7 +51,6 @@ Item {
                     Text {
                         text: {
                             if (!page.agent || page.agent.activeId === "") return qsTr("New conversation")
-                            const idx = page.agent.conversations.count
                             return page.agent.conversations.titleOf(page.agent.activeId) || qsTr("Conversation")
                         }
                         color: Theme.textPrimary

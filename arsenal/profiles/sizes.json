@@ -6,10 +6,10 @@
   "generated": "2026-11-11",
   "profiles": {
     "core": {
-      "tools": 15,
-      "packagesToInstall": 134,
-      "downloadBytes": 108035016,
-      "installedBytes": 483740672
+      "tools": 27,
+      "packagesToInstall": 171,
+      "downloadBytes": 121842432,
+      "installedBytes": 541557760
     },
     "web": {
       "tools": 19,
@@ -18,22 +18,22 @@
       "installedBytes": 360762368
     },
     "network": {
-      "tools": 26,
-      "packagesToInstall": 166,
-      "downloadBytes": 106284956,
-      "installedBytes": 467632128
+      "tools": 36,
+      "packagesToInstall": 229,
+      "downloadBytes": 145249280,
+      "installedBytes": 647322624
     },
     "redteam": {
-      "tools": 25,
-      "packagesToInstall": 218,
-      "downloadBytes": 215359600,
-      "installedBytes": 1108250624
+      "tools": 35,
+      "packagesToInstall": 244,
+      "downloadBytes": 233235320,
+      "installedBytes": 1176062976
     },
     "blueteam": {
-      "tools": 20,
-      "packagesToInstall": 199,
-      "downloadBytes": 159867796,
-      "installedBytes": 701444096
+      "tools": 25,
+      "packagesToInstall": 233,
+      "downloadBytes": 172144096,
+      "installedBytes": 777282560
     },
     "forensics": {
       "tools": 22,
@@ -42,22 +42,22 @@
       "installedBytes": 411442176
     },
     "reversing": {
-      "tools": 23,
-      "packagesToInstall": 356,
-      "downloadBytes": 376801136,
-      "installedBytes": 1789926400
+      "tools": 27,
+      "packagesToInstall": 373,
+      "downloadBytes": 386726352,
+      "installedBytes": 1840613376
     },
     "developer": {
-      "tools": 25,
-      "packagesToInstall": 202,
-      "downloadBytes": 409712364,
-      "installedBytes": 1591989248
+      "tools": 57,
+      "packagesToInstall": 294,
+      "downloadBytes": 489936676,
+      "installedBytes": 1948655616
     },
     "complete": {
-      "tools": 159,
-      "packagesToInstall": 1030,
-      "downloadBytes": 1138312424,
-      "installedBytes": 4909372416
+      "tools": 230,
+      "packagesToInstall": 1204,
+      "downloadBytes": 1257014704,
+      "installedBytes": 5448055808
     }
   }
 }

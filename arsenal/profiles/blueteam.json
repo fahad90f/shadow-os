@@ -190,6 +190,52 @@
       "desktop-id": "org.wireshark.Wireshark",
       "homepage": "https://www.wireshark.org",
       "notes": "Capturing needs permission to the interface; Debian's dpkg-reconfigure wireshark-common sets up the 'wireshark' group so you need not run it as root."
+    },
+    {
+      "package": "ufw",
+      "name": "UFW",
+      "summary": "Uncomplicated front end for the netfilter firewall",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "ufw",
+      "homepage": "https://launchpad.net/ufw"
+    },
+    {
+      "package": "nftables",
+      "name": "nftables",
+      "summary": "Configure packet-filtering and NAT rules via nftables",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "nft",
+      "homepage": "https://netfilter.org/projects/nftables/"
+    },
+    {
+      "package": "firewalld",
+      "name": "firewalld",
+      "summary": "Dynamically managed firewall with network zones",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "firewall-cmd",
+      "homepage": "https://firewalld.org"
+    },
+    {
+      "package": "apparmor",
+      "name": "AppArmor",
+      "summary": "Mandatory-access-control confinement for programs",
+      "category": "defensive-monitoring",
+      "interface": "cli",
+      "command": "aa-status",
+      "homepage": "https://apparmor.net"
+    },
+    {
+      "package": "timeshift",
+      "name": "Timeshift",
+      "summary": "Create and restore filesystem snapshots",
+      "category": "defensive-monitoring",
+      "interface": "both",
+      "command": "timeshift",
+      "desktop-id": "timeshift-gtk",
+      "homepage": "https://github.com/linuxmint/timeshift"
     }
   ],
   "external": [
@@ -251,6 +297,126 @@
       "how": {
         "text": "Install from Elastic's official APT repository, or run the maintained container images, per the Elastic documentation.",
         "url": "https://www.elastic.co/downloads/"
+      }
+    },
+    {
+      "name": "Trivy",
+      "summary": "Scan containers, filesystems and repos for vulns and secrets",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/aquasecurity/trivy",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Trivy is distributed via Aqua Security's own APT repository and release binaries, and is not in Debian."
+      },
+      "how": {
+        "text": "Add the official Trivy APT repository, or download a release binary.",
+        "url": "https://trivy.dev/latest/getting-started/installation/"
+      }
+    },
+    {
+      "name": "Grype",
+      "summary": "Vulnerability scanner for container images and filesystems",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/anchore/grype",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Grype is an Anchore Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download a release binary from the Grype releases page, or install with the official script.",
+        "url": "https://github.com/anchore/grype/releases"
+      }
+    },
+    {
+      "name": "Chainsaw",
+      "summary": "Fast triage of Windows event logs with Sigma support",
+      "category": "forensics",
+      "homepage": "https://github.com/WithSecureLabs/chainsaw",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Chainsaw is a Rust tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download the official release binary for Linux, or build with 'cargo install chainsaw'.",
+        "url": "https://github.com/WithSecureLabs/chainsaw/releases"
+      }
+    },
+    {
+      "name": "Hayabusa",
+      "summary": "Windows event-log timeline and threat hunting",
+      "category": "forensics",
+      "homepage": "https://github.com/Yamato-Security/hayabusa",
+      "license": "AGPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Hayabusa is a Rust tool distributed as release archives outside Debian."
+      },
+      "how": {
+        "text": "Download the official release archive for Linux and run the hayabusa binary.",
+        "url": "https://github.com/Yamato-Security/hayabusa/releases"
+      }
+    },
+    {
+      "name": "Falco",
+      "summary": "Runtime security and anomaly detection for containers",
+      "category": "defensive-monitoring",
+      "homepage": "https://falco.org",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Falco is distributed via its own APT repository and containers, and is not in Debian."
+      },
+      "how": {
+        "text": "Add the official Falco APT repository and install the package per the Falco docs.",
+        "url": "https://falco.org/docs/setup/"
+      }
+    },
+    {
+      "name": "OpenVAS / Greenbone (GVM)",
+      "summary": "Full-featured network vulnerability scanner",
+      "category": "vulnerability-analysis",
+      "homepage": "https://www.greenbone.net",
+      "license": "GPL-2.0 (open source); the current GVM stack is not in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "The Greenbone Vulnerability Management stack is distributed by Greenbone and via containers, and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Deploy the Greenbone Community containers, or build the GVM stack from source per the Greenbone docs.",
+        "url": "https://greenbone.github.io/docs/"
+      }
+    },
+    {
+      "name": "Semgrep",
+      "summary": "Fast, rule-based static analysis across many languages",
+      "category": "vulnerability-analysis",
+      "homepage": "https://semgrep.dev",
+      "license": "LGPL-2.1 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Semgrep is distributed on PyPI and as container images, and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install semgrep'), or run the official container.",
+        "url": "https://semgrep.dev/docs/getting-started/"
+      }
+    },
+    {
+      "name": "osv-scanner",
+      "summary": "Find known vulnerabilities in project dependencies (OSV)",
+      "category": "vulnerability-analysis",
+      "homepage": "https://github.com/google/osv-scanner",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "osv-scanner is a Google Go tool distributed as release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download a release binary, or build with 'go install github.com/google/osv-scanner/cmd/osv-scanner@latest'.",
+        "url": "https://github.com/google/osv-scanner/releases"
       }
     }
   ]

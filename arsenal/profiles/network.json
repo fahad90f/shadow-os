@@ -242,7 +242,297 @@
       "interface": "cli",
       "command": "mtr",
       "homepage": "https://www.bitwizard.nl/mtr/"
+    },
+    {
+      "package": "traceroute",
+      "name": "traceroute",
+      "summary": "Trace the route IPv4/IPv6 packets take to a host",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "traceroute",
+      "homepage": "https://traceroute.sourceforge.net"
+    },
+    {
+      "package": "assetfinder",
+      "name": "assetfinder",
+      "summary": "Find domains and subdomains related to a given domain",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "assetfinder",
+      "homepage": "https://github.com/tomnomnom/assetfinder"
+    },
+    {
+      "package": "bettercap",
+      "name": "bettercap",
+      "summary": "Modular network attack and monitoring (MITM) framework",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "bettercap",
+      "homepage": "https://www.bettercap.org",
+      "notes": "Many modules need root and a capable interface; run only on networks you are authorized to test."
+    },
+    {
+      "package": "ettercap-graphical",
+      "name": "Ettercap (GUI)",
+      "summary": "Sniffer, interceptor and logger for switched LANs",
+      "category": "sniffing-spoofing",
+      "interface": "both",
+      "command": "ettercap",
+      "desktop-id": "ettercap",
+      "homepage": "https://www.ettercap-project.org",
+      "notes": "Active interception (ARP poisoning) needs root and authorization; the command is the same binary as the console build."
+    },
+    {
+      "package": "python3-scapy",
+      "name": "Scapy",
+      "summary": "Interactive packet manipulation, crafting and sniffing in Python",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "scapy",
+      "homepage": "https://scapy.net"
+    },
+    {
+      "package": "ncat",
+      "name": "Ncat",
+      "summary": "Nmap's netcat with SSL, proxy and broker support",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "ncat",
+      "homepage": "https://nmap.org/ncat"
+    },
+    {
+      "package": "tcpflow",
+      "name": "tcpflow",
+      "summary": "Capture and reconstruct the data streams of TCP connections",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "tcpflow",
+      "homepage": "https://github.com/simsong/tcpflow"
+    },
+    {
+      "package": "recon-ng",
+      "name": "Recon-ng",
+      "summary": "Full-featured web reconnaissance framework",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "recon-ng",
+      "homepage": "https://github.com/lanmaster53/recon-ng"
+    },
+    {
+      "package": "sherlock",
+      "name": "Sherlock",
+      "summary": "Hunt down social-media accounts by username across sites",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "sherlock",
+      "homepage": "https://github.com/sherlock-project/sherlock"
+    },
+    {
+      "package": "python3-shodan",
+      "name": "Shodan CLI",
+      "summary": "Command-line client and library for the Shodan search engine",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "shodan",
+      "homepage": "https://github.com/achillean/shodan-python",
+      "notes": "Needs a Shodan API key (shodan init <key>); queries use your own account's credits."
     }
   ],
-  "external": []
+  "external": [
+    {
+      "name": "Amass",
+      "summary": "In-depth attack-surface mapping and subdomain enumeration",
+      "category": "information-gathering",
+      "homepage": "https://github.com/owasp-amass/amass",
+      "license": "Apache-2.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "OWASP Amass is a Go tool released on its own cadence and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install the release binary from the Amass releases page, or build with 'go install github.com/owasp-amass/amass/v4/...@master'.",
+        "url": "https://github.com/owasp-amass/amass/releases"
+      }
+    },
+    {
+      "name": "subfinder",
+      "summary": "Passive subdomain discovery from many data sources",
+      "category": "information-gathering",
+      "homepage": "https://github.com/projectdiscovery/subfinder",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "ProjectDiscovery's subfinder is distributed as Go release binaries outside Debian."
+      },
+      "how": {
+        "text": "Download the release binary for your architecture, or build with 'go install' (Go is in Debian). See the ProjectDiscovery install docs.",
+        "url": "https://github.com/projectdiscovery/subfinder/releases"
+      }
+    },
+    {
+      "name": "httpx (ProjectDiscovery)",
+      "summary": "Fast, multi-purpose HTTP toolkit and prober",
+      "category": "information-gathering",
+      "homepage": "https://github.com/projectdiscovery/httpx",
+      "license": "MIT (open source); not packaged in Debian (the Debian 'httpx' name is an unrelated Python library).",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "The ProjectDiscovery httpx prober is a Go binary not in Debian; Debian's python3-httpx is a different project."
+      },
+      "how": {
+        "text": "Install with 'go install github.com/projectdiscovery/httpx/cmd/httpx@latest', or download a release binary.",
+        "url": "https://github.com/projectdiscovery/httpx/releases"
+      }
+    },
+    {
+      "name": "naabu",
+      "summary": "Fast SYN/CONNECT port scanner from ProjectDiscovery",
+      "category": "information-gathering",
+      "homepage": "https://github.com/projectdiscovery/naabu",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "naabu is a Go tool released outside Debian and needs libpcap at build time."
+      },
+      "how": {
+        "text": "Install with 'go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest', or download a release binary.",
+        "url": "https://github.com/projectdiscovery/naabu/releases"
+      }
+    },
+    {
+      "name": "gowitness",
+      "summary": "Screenshot web pages and services from the command line",
+      "category": "information-gathering",
+      "homepage": "https://github.com/sensepost/gowitness",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "gowitness is a Go tool distributed as release binaries; it drives headless Chrome."
+      },
+      "how": {
+        "text": "Download the release binary for your architecture, or build with 'go install' (Go is in Debian).",
+        "url": "https://github.com/sensepost/gowitness/releases"
+      }
+    },
+    {
+      "name": "Aquatone",
+      "summary": "Visual inspection of websites across many hosts",
+      "category": "information-gathering",
+      "homepage": "https://github.com/michenriksen/aquatone",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Aquatone is a Go tool distributed as release archives outside Debian."
+      },
+      "how": {
+        "text": "Download the release archive for Linux and place the binary on PATH; a Chromium/Chrome is required.",
+        "url": "https://github.com/michenriksen/aquatone/releases"
+      }
+    },
+    {
+      "name": "RustScan",
+      "summary": "Very fast port scanner that hands results to Nmap",
+      "category": "information-gathering",
+      "homepage": "https://github.com/bee-san/RustScan",
+      "license": "GPL-3.0 (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "RustScan is distributed as a .deb on its releases page and as a crate, but is not in Debian itself."
+      },
+      "how": {
+        "text": "Install the official .deb from the RustScan releases page, or build with 'cargo install rustscan'.",
+        "url": "https://github.com/bee-san/RustScan/releases"
+      }
+    },
+    {
+      "name": "theHarvester",
+      "summary": "Gather emails, names, subdomains and hosts from public sources",
+      "category": "information-gathering",
+      "homepage": "https://github.com/laramies/theHarvester",
+      "license": "GPL-2.0 (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "theHarvester is maintained on PyPI/GitHub and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install theHarvester'), or run from a git checkout.",
+        "url": "https://github.com/laramies/theHarvester"
+      }
+    },
+    {
+      "name": "mitmproxy",
+      "summary": "Interactive, scriptable HTTPS intercepting proxy",
+      "category": "sniffing-spoofing",
+      "homepage": "https://mitmproxy.org",
+      "license": "MIT (open source); not currently in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "mitmproxy ships prebuilt bundles and PyPI wheels on a fast cadence and is not in Debian trixie."
+      },
+      "how": {
+        "text": "Install into an isolated environment with pipx ('pipx install mitmproxy'), or use the official standalone binaries.",
+        "url": "https://mitmproxy.org"
+      }
+    },
+    {
+      "name": "Snort",
+      "summary": "Signature-based network intrusion detection/prevention",
+      "category": "defensive-monitoring",
+      "homepage": "https://www.snort.org",
+      "license": "GPL-2.0 (open source); Snort 3 is not in Debian trixie.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "Snort 3 is distributed by Cisco/Snort.org outside Debian; Suricata, which is in Debian, is an alternative."
+      },
+      "how": {
+        "text": "Build Snort 3 from the official source release, or use the vendor packages per the Snort docs.",
+        "url": "https://www.snort.org/downloads"
+      }
+    },
+    {
+      "name": "NetworkMiner",
+      "summary": "Passive network forensic analysis of PCAP files",
+      "category": "forensics",
+      "homepage": "https://www.netresec.com/?page=NetworkMiner",
+      "license": "Proprietary freeware (free and Professional editions).",
+      "why": {
+        "reason": "proprietary",
+        "text": "NetworkMiner is closed-source .NET software and cannot be redistributed by Shadow OS."
+      },
+      "how": {
+        "text": "Download the free edition from Netresec and run it under Mono/.NET on Linux.",
+        "url": "https://www.netresec.com/?page=NetworkMiner"
+      }
+    },
+    {
+      "name": "Maltego",
+      "summary": "Graphical link-analysis and OSINT platform",
+      "category": "information-gathering",
+      "homepage": "https://www.maltego.com",
+      "license": "Proprietary (Community and commercial editions).",
+      "why": {
+        "reason": "proprietary",
+        "text": "Maltego is closed-source commercial software and cannot be redistributed by Shadow OS."
+      },
+      "how": {
+        "text": "Download the installer for Linux from Maltego and register for a Community or commercial account.",
+        "url": "https://www.maltego.com/downloads/"
+      }
+    },
+    {
+      "name": "SpiderFoot",
+      "summary": "Automated OSINT collection and correlation engine",
+      "category": "information-gathering",
+      "homepage": "https://github.com/smicallef/spiderfoot",
+      "license": "MIT (open source); not packaged in Debian.",
+      "why": {
+        "reason": "not-in-debian",
+        "text": "SpiderFoot is a Python application distributed on GitHub and not in Debian trixie."
+      },
+      "how": {
+        "text": "Clone the official repository and run ./sf.py after installing its Python requirements, ideally in a virtualenv.",
+        "url": "https://github.com/smicallef/spiderfoot"
+      }
+    }
+  ]
 }
