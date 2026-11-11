@@ -11,7 +11,7 @@
 # (zwp_idle_inhibit_manager_v1) while it is shown. Used by session-test.sh
 # when it is on PATH (/build/modpower-tests/bin).
 cmake_minimum_required(VERSION 3.22)
-project(power-module-tests LANGUAGES CXX)
+project(power-module-tests LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)

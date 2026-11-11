@@ -19,3 +19,16 @@ click 940 119 1.2; shot seccenter-ex-4-copied-toast.png
 # "Copy as text" put there (the chroot has no wl-paste).
 click 1074 78 2; shot seccenter-ex-5-save-dialog.png
 xdo key ctrl+a; xdo key ctrl+v; sleep 1; shot seccenter-ex-6-clipboard-pasted.png
+click 763 533 1
+# Save as JSON, then as text; keep copies of the written files.
+click 1074 78 2; click 535 436 1; shot seccenter-ex-7-save-json.png; click 852 533 1.5; shot seccenter-ex-8-saved-toast.png
+click 1074 78 2; click 852 533 1.5
+ls -l "$HOME"/nexus-security-report-* > "$NEXUS_LOGS/gui-export-files.log" 2>&1
+cp "$HOME"/nexus-security-report-* "$NEXUS_LOGS/" 2>/dev/null
+# Saving again under the same name: the dialog warns before replacing.
+click 1074 78 2; shot seccenter-ex-9-save-exists.png; click 763 533 1
+# Every page through the sidebar.
+n=0
+for y in 235 273 311 349 387 457 495 533; do
+    n=$((n+1)); click 100 "$y" 1.5; shot "seccenter-ex-page-$n.png"
+done
