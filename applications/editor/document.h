@@ -6,7 +6,6 @@
 #include <QObject>
 #include <QPointer>
 #include <QQmlEngine>
-#include <QQuickTextDocument>
 #include <QRegularExpression>
 #include <QTimer>
 #include <QVariantList>
@@ -19,6 +18,7 @@ class Repository;
 class SyntaxHighlighter;
 }
 class QTextDocument;
+class CodeEditor;
 
 // Limits established by measurement (see README, "Large files").
 namespace EditorLimits {
@@ -37,7 +37,7 @@ class EditorDocument : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(QQuickTextDocument *textDocument READ textDocument WRITE setTextDocument NOTIFY textDocumentChanged)
+    Q_PROPERTY(CodeEditor *editor READ editor WRITE setEditor NOTIFY editorChanged)
     Q_PROPERTY(QString filePath READ filePath NOTIFY filePathChanged)
     Q_PROPERTY(QString fileName READ fileName NOTIFY filePathChanged)
     Q_PROPERTY(bool modified READ modified NOTIFY modifiedChanged)
@@ -57,15 +57,14 @@ class EditorDocument : public QObject
     Q_PROPERTY(int lineCount READ lineCount NOTIFY lineCountChanged)
     Q_PROPERTY(int matchCount READ matchCount NOTIFY matchesChanged)
     Q_PROPERTY(QString searchError READ searchError NOTIFY matchesChanged)
-    Q_PROPERTY(int layoutRevision READ layoutRevision NOTIFY layoutRevisionChanged)
     Q_PROPERTY(int insertMilliseconds READ insertMilliseconds NOTIFY loaded)
 
 public:
     explicit EditorDocument(QObject *parent = nullptr);
     ~EditorDocument() override;
 
-    QQuickTextDocument *textDocument() const { return m_quickDocument; }
-    void setTextDocument(QQuickTextDocument *document);
+    CodeEditor *editor() const { return m_editor; }
+    void setEditor(CodeEditor *editor);
 
     QString filePath() const { return m_filePath; }
     QString fileName() const;
@@ -91,7 +90,6 @@ public:
     int lineCount() const;
     int matchCount() const { return int(m_matches.size()); }
     QString searchError() const { return m_searchError; }
-    int layoutRevision() const { return m_layoutRevision; }
     // How long putting the text of the last load into the document took (diagnostics).
     int insertMilliseconds() const { return m_insertMs; }
 
@@ -110,10 +108,6 @@ public:
     Q_INVOKABLE void acknowledgeDiskChange();
     Q_INVOKABLE void dismissNotice();
 
-    // ---- geometry for the line-number gutter -------------------------------
-    // Blocks intersecting [top, bottom] in text coordinates:
-    // [{ line, y, height, lineHeight }]
-    Q_INVOKABLE QVariantList visibleLines(qreal top, qreal bottom) const;
     Q_INVOKABLE QVariantMap lineColumn(int position) const;
     Q_INVOKABLE int positionForLine(int line, int column) const;
 
@@ -141,7 +135,7 @@ public:
     QString plainText() const;
 
 Q_SIGNALS:
-    void textDocumentChanged();
+    void editorChanged();
     void filePathChanged();
     void modifiedChanged();
     void loadingChanged();
@@ -153,7 +147,6 @@ Q_SIGNALS:
     void noticeChanged();
     void lineCountChanged();
     void matchesChanged();
-    void layoutRevisionChanged();
     void loaded();
     void loadFailed(const QString &message);
     void saveFinished(bool ok, const QString &message);
@@ -168,11 +161,12 @@ private:
     void markFormatEdited();
     const QString &searchText();
     void refreshMatches();
+    void notifyMatches();
     QString expandReplacement(const QString &replacement, const QRegularExpressionMatch &match) const;
     void writeFile(const QString &path);
     bool definitionTooLarge() const;
 
-    QPointer<QQuickTextDocument> m_quickDocument;
+    QPointer<CodeEditor> m_editor;
     KSyntaxHighlighting::SyntaxHighlighter *m_highlighter = nullptr;
     QString m_filePath;
     QString m_encoding = QStringLiteral("UTF-8");
@@ -190,7 +184,6 @@ private:
     bool m_deletedOnDisk = false;
     QString m_notice;
     int m_loadSerial = 0;
-    int m_layoutRevision = 0;
     int m_insertMs = 0;
 
     QFileSystemWatcher m_watcher;

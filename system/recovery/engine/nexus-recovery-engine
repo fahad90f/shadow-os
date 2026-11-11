@@ -1,0 +1,15 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""NEXUS Recovery engine (see nexus_recovery/__init__.py)."""
+import os
+import sys
+
+# Installed: /usr/sbin/nexus-recovery-engine + /usr/lib/nexus-recovery/nexus_recovery.
+# From a source tree the package sits next to this file.
+_here = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, _here if os.path.isdir(os.path.join(_here, "nexus_recovery")) else "/usr/lib/nexus-recovery")
+sys.dont_write_bytecode = True
+
+from nexus_recovery.__main__ import main  # noqa: E402
+
+sys.exit(main())

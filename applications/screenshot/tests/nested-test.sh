@@ -75,7 +75,13 @@ sleep 1
 pgrep -f "nexus-screenshot --full --clipboard" >/dev/null && ok "background process keeps the clipboard" || bad "no process holds the clipboard"
 nexus-screenshot-cliptest read "$OUT/pasted.png"; expect_rc "another client pastes an image" $? 0
 same "pasted image equals the X screenshot" "$OUT/pasted.png" /shots/disks-ref.png 2500
-nexus-screenshot-cliptest text "replaced"; sleep 2
-pgrep -f "nexus-screenshot --full --clipboard" >/dev/null && bad "holder still running after the clipboard was replaced" || ok "holder exits once the clipboard is replaced"
+nexus-screenshot-cliptest text "replaced" & replacer=$!
+sleep 1.5; xdo mousemove 800 450 click 1      # the small test window is centred; the click gives it an input serial
+wait $replacer; expect_rc "another client takes the clipboard over" $? 0
+for _ in 1 2 3 4 5 6; do pgrep -f "nexus-screenshot --full --clipboard" >/dev/null || break; sleep 1; done
+if pgrep -af "nexus-screenshot --full --clipboard"; then bad "holder still running after the clipboard was replaced"; else ok "holder exits once the clipboard is replaced"; fi
 
+
+
+if [ -n "${GUI_STEPS:-}" ]; then . "$GUI_STEPS"; fi
 echo "screenshot tests: $pass passed, $fail failed"

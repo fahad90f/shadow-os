@@ -33,7 +33,9 @@ click() { xdotool mousemove "$1" "$2" click 1; sleep "${3:-1.2}"; }
 NEXUS_WINDOW_SIZE=1280x900 dbus-run-session -- nexus-disks >"$RIG/app.log" 2>&1 &
 APP=$!
 sleep 6
-xdotool search --name "Disk Manager" windowmove 0 0 2>/dev/null
+# No window manager on this X server: place the window and give it the input focus by hand.
+WIN="$(xdotool search --name "Disk Manager" | head -n1)"
+xdotool windowmove "$WIN" 0 0 windowfocus "$WIN" 2>/dev/null
 sleep 1
 snap disks-dm-1-main.png
 if [ -n "${GUI_STEPS:-}" ]; then . "$GUI_STEPS"; fi

@@ -35,6 +35,9 @@ Dialog {
         tableBox.currentIndex = 0
         typeBox.currentIndex = Math.max(0, root.formatTypes.indexOf("ext4"))
         open()
+        if (action === "format") typeBox.forceActiveFocus()
+        else if (action === "restore") imageField.forceActiveFocus()
+        else phrase.forceActiveFocus()
     }
 
     readonly property bool inputValid: action === "format" ? typeBox.currentIndex >= 0

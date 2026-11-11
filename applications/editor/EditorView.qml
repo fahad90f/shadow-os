@@ -16,7 +16,6 @@ FocusScope {
     readonly property alias editor: edit
     property int cursorLine: 1
     property int cursorColumn: 1
-    property var lines: []
     property int pendingPosition: -1
     property int pendingLine: 0
     property var afterSave: null            // called once after the next successful save
@@ -37,60 +36,35 @@ FocusScope {
     }
     function goToLine(line, column) {
         edit.cursorPosition = doc.positionForLine(line, column || 1)
-        centerCursor()
+        edit.centerCursor()
         edit.forceActiveFocus()
-    }
-    function centerCursor() {
-        const r = edit.cursorRectangle
-        flick.contentY = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height),
-                                              r.y - (flick.height - r.height) / 2))
     }
     function selectRange(start, end) {
         edit.select(start, end)
-        const r = edit.cursorRectangle
-        if (r.y < flick.contentY + r.height || r.y + r.height * 2 > flick.contentY + flick.height)
-            centerCursor()
-    }
-    function ensureVisible(r) {
-        const pad = Theme.spaceLg
-        if (r.x - pad < flick.contentX)
-            flick.contentX = Math.max(0, r.x - pad)
-        else if (r.x + r.width + pad > flick.contentX + flick.width)
-            flick.contentX = r.x + r.width + pad - flick.width
-        if (r.y < flick.contentY)
-            flick.contentY = r.y
-        else if (r.y + r.height > flick.contentY + flick.height)
-            flick.contentY = r.y + r.height - flick.height
-    }
-    function updateLines() {
-        lines = prefs.lineNumbers ? doc.visibleLines(flick.contentY - edit.topPadding, flick.contentY + flick.height) : []
+        edit.centerCursor()
     }
     function updateCursorInfo() {
         const info = doc.lineColumn(edit.cursorPosition)
         cursorLine = info.line
         cursorColumn = info.column
     }
-    function scheduleLines() { Qt.callLater(view.updateLines) }
 
     EditorDocument {
         id: doc
-        textDocument: edit.textDocument
+        editor: edit
         dark: Appearance.dark
         onLoaded: {
-            if (view.pendingLine > 0) {
+            if (view.pendingLine > 0)
                 edit.cursorPosition = doc.positionForLine(view.pendingLine, 1)
-            } else {
+            else
                 edit.cursorPosition = Math.max(0, Math.min(view.pendingPosition, edit.length))
-            }
             view.pendingLine = 0
             view.pendingPosition = -1
-            Qt.callLater(view.centerCursor)
+            edit.centerCursor()
             view.updateCursorInfo()
-            view.scheduleLines()
             view.fileLoaded()
         }
         onLoadFailed: (message) => view.failed(message)
-        onLayoutRevisionChanged: view.scheduleLines()
         onSaveFinished: (ok, message) => {
             const then = view.afterSave
             view.afterSave = null
@@ -98,8 +72,6 @@ FocusScope {
             else if (then) then()
         }
     }
-
-    FontMetrics { id: metrics; font: edit.font }
 
     ColumnLayout {
         anchors.fill: parent
@@ -141,130 +113,91 @@ FocusScope {
             }
         }
 
-        RowLayout {
+        // ---- text (with its line-number gutter) --------------------------------
+        CodeEditor {
+            id: edit
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 0
+            focus: true
+            fontFamily: view.prefs.fontFamily
+            fontPointSize: view.prefs.fontSize
+            wordWrap: view.prefs.wordWrap
+            tabWidth: view.prefs.indentWidth
+            lineNumbers: view.prefs.lineNumbers
+            highlightCurrentLine: view.prefs.highlightLine
+            readOnly: doc.loading
+            textColor: Theme.textPrimary
+            backgroundColor: Theme.bgBase
+            gutterColor: Theme.bgSurface
+            gutterTextColor: Theme.textMuted
+            gutterCurrentColor: Theme.textPrimary
+            currentLineColor: Theme.mix(Theme.bgBase, Theme.textPrimary, 0.06)
+            selectionColor: Theme.mix(Theme.bgBase, Theme.accent, 0.32)
+            matchColor: Theme.mix(Theme.bgBase, Theme.warning, 0.30)
+            dividerColor: Theme.borderSubtle
+            Accessible.role: Accessible.EditableText
+            Accessible.name: qsTr("Text of %1").arg(doc.fileName)
 
-            // ---- line numbers --------------------------------------------------
-            Rectangle {
-                id: gutter
-                Layout.fillHeight: true
-                Layout.preferredWidth: view.prefs.lineNumbers
-                    ? metrics.advanceWidth("0") * Math.max(3, String(doc.lineCount).length) + Theme.spaceLg + Theme.spaceSm : 0
-                visible: view.prefs.lineNumbers
-                color: Theme.bgSurface
-                clip: true
+            onCursorChanged: view.updateCursorInfo()
+            onContextMenuRequested: contextMenu.popup()
 
-                Repeater {
-                    model: view.lines.length
-                    Text {
-                        required property int index
-                        readonly property var entry: view.lines[index] ?? null
-                        visible: entry !== null
-                        x: 0
-                        y: entry ? entry.y + edit.topPadding - flick.contentY : 0
-                        width: gutter.width - Theme.spaceSm
-                        height: entry ? entry.lineHeight : 0
-                        horizontalAlignment: Text.AlignRight
-                        verticalAlignment: Text.AlignVCenter
-                        text: entry ? entry.line : ""
-                        color: entry && entry.line === view.cursorLine ? Theme.textPrimary : Theme.textMuted
-                        font.family: edit.font.family
-                        font.pointSize: edit.font.pointSize
+            Keys.onPressed: (event) => {
+                const plain = !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+                if (!plain || readOnly)
+                    return
+                const p = view.prefs
+                if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+                    const unindent = event.key === Qt.Key_Backtab
+                    if (unindent || selectedText.indexOf("\n") >= 0) {
+                        const hadSelection = selectionStart !== selectionEnd
+                        const range = doc.indentLines(selectionStart, selectionEnd, unindent, p.useSpaces, p.indentWidth)
+                        if (hadSelection) select(range.start, range.end)
+                    } else {
+                        const start = selectionStart
+                        if (selectionStart !== selectionEnd) remove(selectionStart, selectionEnd)
+                        insert(start, doc.tabText(start, p.useSpaces, p.indentWidth))
                     }
+                    event.accepted = true
+                } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
+                    const start = selectionStart
+                    const text = doc.newlineText(start, p.autoIndent, p.useSpaces, p.indentWidth)
+                    if (selectionStart !== selectionEnd) remove(selectionStart, selectionEnd)
+                    insert(start, text)
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Backspace && selectionStart === selectionEnd) {
+                    const count = doc.backspaceIndent(cursorPosition, p.useSpaces, p.indentWidth)
+                    if (count > 0) {
+                        remove(cursorPosition - count, cursorPosition)
+                        event.accepted = true
+                    } else {
+                        event.accepted = false
+                    }
+                } else {
+                    event.accepted = false
                 }
-                NxDivider { vertical: true; anchors.right: parent.right; height: parent.height }
             }
 
-            // ---- text ----------------------------------------------------------
-            Flickable {
-                id: flick
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                contentWidth: edit.width
-                contentHeight: edit.height
-                boundsBehavior: Flickable.StopAtBounds
-                flickableDirection: Flickable.AutoFlickIfNeeded
-                pixelAligned: true
-                ScrollBar.vertical: ScrollBar { }
-                ScrollBar.horizontal: ScrollBar { }
-                onContentYChanged: view.updateLines()
-                onHeightChanged: view.scheduleLines()
-                onWidthChanged: view.scheduleLines()
-
-                Rectangle {
-                    visible: view.prefs.highlightLine
-                    y: edit.cursorRectangle.y
-                    width: Math.max(flick.width, edit.width)
-                    height: edit.cursorRectangle.height
-                    color: Theme.hoverOverlay
-                }
-
-                TextEdit {
-                    id: edit
-                    width: view.prefs.wordWrap ? flick.width : Math.max(flick.width, implicitWidth)
-                    height: Math.max(flick.height, implicitHeight)
-                    focus: true
-                    textFormat: TextEdit.PlainText
-                    wrapMode: view.prefs.wordWrap ? TextEdit.Wrap : TextEdit.NoWrap
-                    font.family: view.prefs.fontFamily
-                    font.pointSize: view.prefs.fontSize
-                    tabStopDistance: metrics.advanceWidth(" ") * view.prefs.indentWidth
-                    color: Theme.textPrimary
-                    selectionColor: Theme.accentFillStrong
-                    selectedTextColor: Theme.textPrimary
-                    selectByMouse: true
-                    persistentSelection: true
-                    leftPadding: Theme.spaceSm
-                    rightPadding: Theme.spaceLg
-                    topPadding: Theme.spaceXs
-                    bottomPadding: Theme.spaceXl
-                    readOnly: doc.loading
-                    Accessible.name: qsTr("Text of %1").arg(doc.fileName)
-
-                    onCursorRectangleChanged: view.ensureVisible(cursorRectangle)
-                    onCursorPositionChanged: view.updateCursorInfo()
-                    onFontChanged: view.scheduleLines()
-                    onWidthChanged: view.scheduleLines()
-
-                    Keys.onPressed: (event) => {
-                        const plain = !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
-                        if (!plain || readOnly)
-                            return
-                        const p = view.prefs
-                        if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                            const unindent = event.key === Qt.Key_Backtab
-                            if (unindent || selectedText.indexOf(" ") >= 0 || selectedText.indexOf("\n") >= 0) {
-                                const range = doc.indentLines(selectionStart, selectionEnd, unindent, p.useSpaces, p.indentWidth)
-                                if (selectionStart !== selectionEnd) select(range.start, range.end)
-                            } else {
-                                const start = selectionStart
-                                if (selectionStart !== selectionEnd) remove(selectionStart, selectionEnd)
-                                insert(start, doc.tabText(start, p.useSpaces, p.indentWidth))
-                            }
-                            event.accepted = true
-                        } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
-                            const start = selectionStart
-                            const text = doc.newlineText(start, p.autoIndent, p.useSpaces, p.indentWidth)
-                            if (selectionStart !== selectionEnd) remove(selectionStart, selectionEnd)
-                            insert(start, text)
-                            event.accepted = true
-                        } else if (event.key === Qt.Key_Backspace && selectionStart === selectionEnd) {
-                            const count = doc.backspaceIndent(cursorPosition, p.useSpaces, p.indentWidth)
-                            if (count > 0) {
-                                remove(cursorPosition - count, cursorPosition)
-                                event.accepted = true
-                            }
-                        }
-                    }
-
-                    TapHandler {
-                        acceptedButtons: Qt.RightButton
-                        onTapped: contextMenu.popup()
-                    }
-                }
+            ScrollBar {
+                id: verticalBar
+                orientation: Qt.Vertical
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                size: edit.verticalSize
+                policy: edit.verticalSize < 1 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                onPositionChanged: if (pressed) edit.scrollVertically(position)
+                Binding on position { value: edit.verticalPosition; when: !verticalBar.pressed }
+            }
+            ScrollBar {
+                id: horizontalBar
+                orientation: Qt.Horizontal
+                anchors.left: parent.left
+                anchors.right: verticalBar.left
+                anchors.bottom: parent.bottom
+                size: edit.horizontalSize
+                policy: edit.horizontalSize < 1 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                onPositionChanged: if (pressed) edit.scrollHorizontally(position)
+                Binding on position { value: edit.horizontalPosition; when: !horizontalBar.pressed }
             }
         }
     }

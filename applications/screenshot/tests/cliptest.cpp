@@ -39,12 +39,20 @@ int main(int argc, char **argv)
             return;
         QClipboard *clipboard = QGuiApplication::clipboard();
         if (command == QLatin1String("text")) {
+            // Qt needs a recent input serial to set the selection; give the test
+            // time to click into the window first.
+            if (attempts < 25)
+                return;
             clipboard->setText(argument);
-            std::printf("cliptest: clipboard set to text\n");
+            std::printf("cliptest: clipboard set to text (window active: %d, after %d ms)\n", int(window.isActive()), attempts * 100);
             std::fflush(stdout);
             timer.stop();
             // Stay for a moment so the selection is announced, then leave.
-            QTimer::singleShot(1500, &app, [] { QCoreApplication::exit(0); });
+            QTimer::singleShot(1500, &app, [clipboard, argument] {
+                const bool took = clipboard->text() == argument;
+                std::printf("cliptest: clipboard now holds the text: %s\n", took ? "yes" : "NO");
+                QCoreApplication::exit(took ? 0 : 1);
+            });
             return;
         }
         const QMimeData *mime = clipboard->mimeData();

@@ -244,10 +244,13 @@ NxWindow {
             if (step >= steps.length) { Qt.quit(); return }
             started = Date.now()
             steps[step].run()
-            window.contentItem.update()
+            waiting = true
+            window.currentView.editor.update()
         }
+        property bool waiting: false
         function frame() {
-            if (step < 0 || step >= steps.length) return
+            if (!waiting || step < 0 || step >= steps.length) return
+            waiting = false
             console.log("BENCH", steps[step].name + ":", Date.now() - started, "ms")
             Qt.callLater(next)
         }

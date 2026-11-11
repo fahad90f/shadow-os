@@ -69,7 +69,10 @@ FIREWALL_TABLE = ("inet", "nexus_filter")
 def run(argv, timeout=20):
     env = dict(os.environ, LC_ALL="C.UTF-8", LANGUAGE="C")
     try:
-        p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=timeout)
+        # stdin is /dev/null: ausearch and aureport read events from stdin
+        # instead of the logs when it is a pipe (as it is under pkexec/QProcess).
+        p = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           env=env, timeout=timeout)
         return p.returncode, p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
     except FileNotFoundError:
         return 127, "", f"{argv[0]}: not installed"
@@ -287,9 +290,7 @@ def section_encryption():
                 entry["pbkdf"] = m.group(1) if m else None
             luks.append(entry)
     live = os.path.exists("/run/nexus/live-session") or "boot=live" in (read("/proc/cmdline") or "")
-    extra = {}
-    probe(extra, "filesystems", _mounted_filesystems)
-    return {**extra, "available": True, "live_session": live,
+    info = {"available": True, "live_session": live,
             "root": {"encrypted": root_enc, "device": root_dev},
             "home": {"separate": home_dev is not None, "encrypted": home_enc if home_dev else root_enc,
                      "device": home_dev},
@@ -297,6 +298,8 @@ def section_encryption():
                      "encrypted": swap_enc if swap_dev else (root_enc if _swapfile_on_root() else None),
                      "device": swap_dev},
             "luks_devices": luks}
+    probe(info, "filesystems", _mounted_filesystems)
+    return info
 
 
 # Mounted file systems and the block-device stack beneath each of them.
@@ -639,14 +642,14 @@ def section_updates():
     lists = glob.glob("/var/lib/apt/lists/*_InRelease") + glob.glob("/var/lib/apt/lists/*_Release")
     last_refresh = max((os.path.getmtime(p) for p in lists), default=None)
     reboot_pkgs = (read("/run/reboot-required.pkgs") or "").split()
-    extra = {}
-    probe(extra, "last_upgrade", _last_upgrade)
-    return {**extra, "available": True, "upgradable": len(upgrades), "security": sum(1 for u in upgrades if u["security"]),
+    info = {"available": True, "upgradable": len(upgrades), "security": sum(1 for u in upgrades if u["security"]),
             "packages": upgrades[:200],
             "lists_present": bool(lists),
             "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last_refresh)) if last_refresh else None,
             "last_refresh_age_days": round((time.time() - last_refresh) / 86400, 1) if last_refresh else None,
             "reboot_required": os.path.exists("/run/reboot-required"), "reboot_required_packages": reboot_pkgs}
+    probe(info, "last_upgrade", _last_upgrade)
+    return info
 
 
 # --------------------------------------------------------------------------- sockets
@@ -764,9 +767,148 @@ def section_logins():
 
 
 # --------------------------------------------------------------------------- audit
+def _audit_keys():
+    """The rule keys of the NEXUS audit rules (the installed file, else the shipped set)."""
+    text = read(AUDIT_RULES)
+    keys = []
+    if text:
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("#"):
+                continue
+            for m in re.finditer(r"(?:^|\s)(?:-k\s+|-F\s+key=)(\S+)", line):
+                if m.group(1) not in keys:
+                    keys.append(m.group(1))
+    return keys or list(AUDIT_KEYS)
+
+
+def _audit_value(raw):
+    """Value of an audit field: quoted text, or hex when the kernel had to encode it."""
+    if raw.startswith('"'):
+        return raw.strip('"')
+    if len(raw) >= 2 and len(raw) % 2 == 0 and re.fullmatch(r"[0-9A-Fa-f]+", raw):
+        try:
+            return bytes.fromhex(raw).decode("utf-8", "replace")
+        except ValueError:
+            pass
+    return raw
+
+
+_AUDIT_FIELD = re.compile(r'(\w[\w-]*)=("(?:[^"]*)"|\S*)')
+_AUDIT_HEAD = re.compile(r"^(?:node=\S+ )?type=(\S+) msg=audit\((\d+)\.(\d+):(\d+)\):\s?(.*)$")
+
+
+def _user_name(uid):
+    if uid is None or not uid.isdigit():
+        return None
+    if uid == "4294967295":
+        return None                     # "unset": no login user (a system service)
+    try:
+        return pwd.getpwuid(int(uid)).pw_name
+    except (KeyError, OverflowError):
+        return f"uid {uid}"
+
+
+def _event_summary(records):
+    """One line built only from fields present in the event's records."""
+    sys_fields, paths, module = {}, [], None
+    for rtype, fields in records:
+        if rtype == "SYSCALL" and not sys_fields:
+            sys_fields = fields
+        elif rtype == "PATH" and fields.get("nametype") != "PARENT" and "name" in fields:
+            name = _audit_value(fields["name"])
+            if name not in ("(null)", "") and name not in paths:
+                paths.append(name)
+        elif rtype == "KERN_MODULE" and "name" in fields:
+            module = _audit_value(fields["name"])
+        elif rtype == "CONFIG_CHANGE" and not sys_fields:
+            sys_fields = fields
+    parts = []
+    who = _user_name(sys_fields.get("auid"))
+    acting = _user_name(sys_fields.get("uid"))
+    program = _audit_value(sys_fields["exe"]) if "exe" in sys_fields else \
+        (_audit_value(sys_fields["comm"]) if "comm" in sys_fields else None)
+    if who and acting and who != acting:
+        parts.append(f"{who} (as {acting})")
+    elif who or acting:
+        parts.append(who or acting)
+    if program:
+        parts.append(f"ran {program}" if parts else program)
+    if module:
+        parts.append(f"module {module}")
+    elif paths:
+        parts.append("on " + ", ".join(paths[:3]) + (" …" if len(paths) > 3 else ""))
+    elif "op" in sys_fields:
+        parts.append(f"operation {_audit_value(sys_fields['op'])}")
+    text = " ".join(parts)
+    if "success" in sys_fields:
+        outcome = "succeeded" if sys_fields["success"] == "yes" else f"failed (exit {sys_fields.get('exit', '?')})"
+    elif "res" in sys_fields:
+        outcome = "succeeded" if sys_fields["res"] in ("1", "success") else "failed"
+    else:
+        return text
+    return f"{text} — {outcome}" if text else outcome
+
+
+def parse_audit_events(raw, keys):
+    """ausearch --format raw output → [{time, key, type, summary}], oldest first, keys ⊆ `keys` only."""
+    events, order = {}, []
+    for line in raw.splitlines():
+        m = _AUDIT_HEAD.match(line.strip())
+        if not m:
+            continue
+        rtype, sec, _msec, serial, rest = m.groups()
+        ident = (sec, serial)
+        if ident not in events:
+            events[ident] = {"epoch": int(sec), "records": [], "key": None, "type": None}
+            order.append(ident)
+        fields = {k: v for k, v in _AUDIT_FIELD.findall(rest)}
+        ev = events[ident]
+        ev["records"].append((rtype, fields))
+        if "key" in fields and ev["key"] is None:
+            # Several rules can match one event; their keys are then joined with \x01.
+            for key in _audit_value(fields["key"]).split("\x01"):
+                if key in keys:
+                    ev["key"], ev["type"] = key, rtype
+                    break
+    out = []
+    for ident in order:
+        ev = events[ident]
+        if ev["key"] is None:
+            continue
+        kinds = [r for r, _ in ev["records"]]
+        # A module load/unload is recorded as SYSCALL + KERN_MODULE: name the specific one.
+        rtype = "KERN_MODULE" if "KERN_MODULE" in kinds else ev["type"]
+        out.append({"time": iso_utc(ev["epoch"]), "key": ev["key"], "type": rtype,
+                    "summary": _event_summary(ev["records"])})
+    out.sort(key=lambda e: e["time"])
+    return out
+
+
+def _recent_audit_events(extra_args=()):
+    """The last RECENT_EVENTS_MAX events of the last 7 days that carry a NEXUS rule key."""
+    keys = _audit_keys()
+    # Rule-matched events are SYSCALL events (file watches included) carrying
+    # key=…; ausearch -k matches substrings and takes one key only, so the
+    # exact key filter is applied here.
+    rc, out, err = run(["ausearch", "--input-logs", "-m", "SYSCALL", "-ts", "week-ago", "--format", "raw",
+                        *extra_args], timeout=90)
+    if rc == 127:
+        return [], "ausearch is not installed (package auditd)."
+    if rc == 124:
+        return [], "ausearch did not finish within 90 seconds."
+    if rc != 0 and "<no matches>" in err + out:
+        return []
+    if rc != 0:
+        return [], (err or out).strip().splitlines()[-1] if (err or out).strip() else f"ausearch exited with status {rc}"
+    return parse_audit_events(out, keys)[-RECENT_EVENTS_MAX:]
+
+
 def section_audit():
     info = {"available": True, "service": unit_state("auditd.service"), "enabled": None, "rules": None,
             "lost": None, "backlog": None, "events_by_key_7d": None}
+    # Reads the audit logs, so it works whether or not the audit system is running now.
+    probe(info, "recent_events", _recent_audit_events, empty=[])
     rc, out, err = run(["auditctl", "-s"])
     if rc != 0:
         info["available"] = False
@@ -807,15 +949,64 @@ def _baseline_sysctls():
     return wanted
 
 
+def _baseline_modules():
+    """[(module, expected)] from the modprobe.d baseline, or None when it is not installed."""
+    text = read(BASELINE_MODPROBE)
+    if text is None:
+        return None
+    wanted = []
+    for line in text.splitlines():
+        f = line.split("#")[0].split()
+        if len(f) >= 2 and f[0] == "blacklist":
+            wanted.append((f[1], "blacklisted"))
+        elif len(f) >= 3 and f[0] == "install" and f[2] in ("/bin/false", "/bin/true", "/usr/bin/false",
+                                                           "/usr/bin/true"):
+            wanted.append((f[1], "disabled"))
+    return wanted
+
+
+def _module_restrictions():
+    """Module restrictions of the baseline against the modules loaded now.
+
+    expected "blacklisted": the baseline keeps the module from being loaded
+    automatically (root may still load it by name). actual is "loaded" or
+    "not loaded" from /proc/modules; ok means it is not loaded.
+    """
+    wanted = _baseline_modules()
+    if wanted is None:
+        return None, f"{BASELINE_MODPROBE} is not installed (package nexus-hardening)"
+    listing = read(f"{PROC}/modules")
+    if listing is None:
+        return ([{"module": m, "expected": e, "actual": None, "ok": None} for m, e in wanted],
+                f"{PROC}/modules is not readable, so it is unknown which modules are loaded.")
+    loaded = {line.split()[0] for line in listing.splitlines() if line.split()}
+    rows = []
+    for module, expected in wanted:
+        is_loaded = module.replace("-", "_") in loaded      # the kernel names modules with underscores
+        rows.append({"module": module, "expected": expected, "actual": "loaded" if is_loaded else "not loaded",
+                     "ok": not is_loaded})
+    return rows
+
+
+def _vulnerable_parts(status):
+    """The parts of a /sys/…/vulnerabilities status in which the kernel says "vulnerable".
+
+    "Mitigation: Retpolines; IBPB: conditional; BHI: Vulnerable" → ["BHI: Vulnerable"]
+    "Mitigation: Clear CPU buffers; SMT vulnerable"              → ["SMT vulnerable"]
+    """
+    return [part.strip() for part in re.split(r"[;,]", status) if re.search(r"\bvulnerable\b", part, re.I)]
+
+
 def section_hardening():
     info = {"available": True, "sysctl": [], "cmdline": [], "mitigations": [], "kernel": os.uname().release,
             "tainted": None}
+    probe(info, "modules", _module_restrictions)
     wanted = _baseline_sysctls()
     if wanted is None:
         info["sysctl_baseline"] = unavailable(f"{BASELINE_SYSCTL} is not installed (package nexus-hardening)")
     else:
         for key, (expected, optional) in wanted.items():
-            actual = read("/proc/sys/" + key.replace(".", "/"))
+            actual = read(f"{PROC}/sys/" + key.replace(".", "/"))
             if actual is None and optional:
                 continue
             info["sysctl"].append({"key": key, "expected": expected, "actual": actual,
@@ -826,11 +1017,16 @@ def section_hardening():
         m = re.search(r'GRUB_CMDLINE_LINUX="\$GRUB_CMDLINE_LINUX ([^"]*)"', cfg)
         for param in (m.group(1).split() if m else []):
             info["cmdline"].append({"parameter": param, "ok": param in cmdline})
-    for path in sorted(glob.glob("/sys/devices/system/cpu/vulnerabilities/*")):
+    for path in sorted(glob.glob(f"{SYS}/devices/system/cpu/vulnerabilities/*")):
         status = read(path) or ""
+        parts = _vulnerable_parts(status)
+        # vulnerable: the kernel's status says "vulnerable" anywhere — as the
+        # whole verdict ("Vulnerable", "Vulnerable: no microcode") or for one
+        # aspect of an otherwise mitigated issue ("…; BHI: Vulnerable",
+        # "…; SMT vulnerable"). vulnerable_parts names those aspects.
         info["mitigations"].append({"name": os.path.basename(path), "status": status,
-                                    "vulnerable": status.startswith("Vulnerable")})
-    tainted = read("/proc/sys/kernel/tainted")
+                                    "vulnerable": bool(parts), "vulnerable_parts": parts})
+    tainted = read(f"{PROC}/sys/kernel/tainted")
     info["tainted"] = int(tainted) if tainted and tainted.isdigit() else None
     return info
 
@@ -912,11 +1108,12 @@ def recommendations(r):
         add("cmdline-drift", "low", "Kernel hardening boot parameters are not in effect",
             "Missing from the running kernel's command line: " + " ".join(missing)
             + ". Run 'sudo update-grub' and restart.")
-    vulnerable = [m["name"] for m in hd.get("mitigations", []) if m["vulnerable"]]
+    vulnerable = [m for m in hd.get("mitigations", []) if m["vulnerable"]]
     if vulnerable:
-        add("cpu-vulnerable", "medium", "CPU vulnerabilities without mitigation",
-            "The kernel reports no mitigation for: " + ", ".join(vulnerable)
-            + ". A firmware/microcode update may be required.")
+        add("cpu-vulnerable", "medium", "CPU vulnerabilities without full mitigation",
+            "The kernel reports a vulnerable state for: "
+            + "; ".join(f"{m['name']} ({', '.join(m.get('vulnerable_parts') or [m['status']])})" for m in vulnerable)
+            + ". A firmware/microcode update or a change of the SMT setting may be required.")
 
     lg = r.get("logins", {})
     if (lg.get("failed_count_7d") or 0) >= 10:

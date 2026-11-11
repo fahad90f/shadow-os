@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "document.h"
+#include "codeeditor.h"
 #include "textfile.h"
 
 #include <KSyntaxHighlighting/Definition>
@@ -7,7 +8,6 @@
 #include <KSyntaxHighlighting/SyntaxHighlighter>
 #include <KSyntaxHighlighting/Theme>
 
-#include <QAbstractTextDocumentLayout>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -17,7 +17,6 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
-#include <QTextLayout>
 #include <QtConcurrentRun>
 
 namespace {
@@ -155,22 +154,28 @@ EditorDocument::EditorDocument(QObject *parent)
     });
 }
 
-EditorDocument::~EditorDocument() = default;
+EditorDocument::~EditorDocument()
+{
+    if (m_editor)
+        m_editor->setMatches(nullptr);
+}
 
 QTextDocument *EditorDocument::doc() const
 {
-    return m_quickDocument ? m_quickDocument->textDocument() : nullptr;
+    return m_editor ? m_editor->textDocument() : nullptr;
 }
 
-void EditorDocument::setTextDocument(QQuickTextDocument *document)
+void EditorDocument::setEditor(CodeEditor *editor)
 {
-    if (m_quickDocument == document)
+    if (m_editor == editor)
         return;
     if (QTextDocument *old = doc())
         old->disconnect(this);
+    if (m_editor)
+        m_editor->setMatches(nullptr);
     delete m_highlighter;
     m_highlighter = nullptr;
-    m_quickDocument = document;
+    m_editor = editor;
     if (QTextDocument *d = doc()) {
         connect(d, &QTextDocument::modificationChanged, this, &EditorDocument::modifiedChanged);
         connect(d, &QTextDocument::blockCountChanged, this, &EditorDocument::lineCountChanged);
@@ -179,14 +184,13 @@ void EditorDocument::setTextDocument(QQuickTextDocument *document)
                 m_matchesDirty = true;
                 m_matchTimer.start();
             }
-            ++m_layoutRevision;
-            Q_EMIT layoutRevisionChanged();
         });
         m_highlighter = new KSyntaxHighlighting::SyntaxHighlighter(d);
         applyTheme();
         applyDefinition();
+        m_editor->setMatches(&m_matches);
     }
-    Q_EMIT textDocumentChanged();
+    Q_EMIT editorChanged();
     Q_EMIT modifiedChanged();
     Q_EMIT lineCountChanged();
 }
@@ -560,40 +564,7 @@ void EditorDocument::acknowledgeDiskChange()
     }
 }
 
-// ---- gutter geometry --------------------------------------------------------
-
-QVariantList EditorDocument::visibleLines(qreal top, qreal bottom) const
-{
-    QVariantList lines;
-    const QTextDocument *d = doc();
-    if (!d)
-        return lines;
-    const QAbstractTextDocumentLayout *layout = d->documentLayout();
-    int low = 0, high = d->blockCount() - 1;
-    while (low < high) {
-        const int middle = (low + high) / 2;
-        if (layout->blockBoundingRect(d->findBlockByNumber(middle)).bottom() < top)
-            low = middle + 1;
-        else
-            high = middle;
-    }
-    for (QTextBlock block = d->findBlockByNumber(low); block.isValid(); block = block.next()) {
-        const QRectF rect = layout->blockBoundingRect(block);
-        if (rect.top() > bottom)
-            break;
-        const QTextLayout *textLayout = block.layout();
-        const qreal lineHeight = textLayout && textLayout->lineCount() > 0 ? textLayout->lineAt(0).height() : rect.height();
-        lines.append(QVariantMap{
-            {QStringLiteral("line"), block.blockNumber() + 1},
-            {QStringLiteral("y"), rect.top()},
-            {QStringLiteral("height"), rect.height()},
-            {QStringLiteral("lineHeight"), lineHeight},
-        });
-        if (lines.size() > 400)
-            break;
-    }
-    return lines;
-}
+// ---- positions --------------------------------------------------------------
 
 QVariantMap EditorDocument::lineColumn(int position) const
 {
@@ -617,6 +588,13 @@ int EditorDocument::positionForLine(int line, int column) const
 }
 
 // ---- search -----------------------------------------------------------------
+
+void EditorDocument::notifyMatches()
+{
+    if (m_editor)
+        m_editor->refreshMatches();
+    Q_EMIT matchesChanged();
+}
 
 const QString &EditorDocument::searchText()
 {
@@ -646,7 +624,7 @@ void EditorDocument::refreshMatches()
     if (m_pattern.isEmpty() || !doc()) {
         m_searchText.clear();
         m_searchTextRevision = -1;
-        Q_EMIT matchesChanged();
+        notifyMatches();
         return;
     }
     QString pattern = m_regex ? m_pattern : QRegularExpression::escape(m_pattern);
@@ -659,7 +637,7 @@ void EditorDocument::refreshMatches()
     m_expression = QRegularExpression(pattern, options);
     if (!m_expression.isValid()) {
         m_searchError = tr("Invalid expression: %1").arg(m_expression.errorString());
-        Q_EMIT matchesChanged();
+        notifyMatches();
         return;
     }
     const QString &text = searchText();
@@ -670,7 +648,7 @@ void EditorDocument::refreshMatches()
             continue;       // "^", "x*" and the like: nothing to select or replace
         m_matches.emplace_back(int(match.capturedStart()), int(match.capturedEnd()));
     }
-    Q_EMIT matchesChanged();
+    notifyMatches();
 }
 
 QVariantMap EditorDocument::findNext(int from, bool backward)
