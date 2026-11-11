@@ -3,6 +3,8 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QGuiApplication>
+#include <QQuickWindow>
 #include <QSettings>
 #include <QStandardPaths>
 
@@ -37,6 +39,19 @@ Appearance *Appearance::create(QQmlEngine *, QJSEngine *)
     return self;
 }
 
+bool Appearance::softwareRendering()
+{
+    // Asked once, on first use. QQuickWindow::sceneGraphBackend() resolves the
+    // backend the way the first window will (QT_QUICK_BACKEND, an explicit
+    // QQuickWindow::setSceneGraphBackend(), or the fallback when the platform
+    // cannot do RHI rendering) and that choice is fixed for the process.
+    // Without a QGuiApplication (--dump mode, unit tests of non-GUI code)
+    // nothing is rendered at all.
+    static const bool software = qobject_cast<QGuiApplication *>(QCoreApplication::instance())
+        && QQuickWindow::sceneGraphBackend() == QLatin1String("software");
+    return software;
+}
+
 QString Appearance::configPath()
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
@@ -50,6 +65,7 @@ Appearance::Appearance(QObject *parent)
     watch();
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, [this] { load(); watch(); });
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] { load(); watch(); });
+    connect(this, &Appearance::reduceMotionChanged, this, &Appearance::animateValuesChanged);
 }
 
 void Appearance::watch()

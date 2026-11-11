@@ -262,7 +262,19 @@ void UDisksClient::interfacesAdded(const QDBusObjectPath &path, const UDisksInte
     UDisksInterfaces &object = m_objects[path];
     for (auto it = interfaces.constBegin(); it != interfaces.constEnd(); ++it)
         object.insert(it.key(), it.value());
-    m_rebuildTimer.start();
+    // A job can be over within milliseconds: show it at once.
+    if (interfaces.contains(QString::fromLatin1(kJob)))
+        rebuild();
+    else
+        scheduleRebuild();
+}
+
+// Coalesces bursts of change signals without ever postponing the update:
+// the model is rebuilt at most 80 ms after the first change.
+void UDisksClient::scheduleRebuild()
+{
+    if (!m_rebuildTimer.isActive())
+        m_rebuildTimer.start();
 }
 
 void UDisksClient::interfacesRemoved(const QDBusObjectPath &path, const QStringList &interfaces)
@@ -276,7 +288,7 @@ void UDisksClient::interfacesRemoved(const QDBusObjectPath &path, const QStringL
         it->remove(i);
     if (it->isEmpty())
         m_objects.erase(it);
-    m_rebuildTimer.start();
+    scheduleRebuild();
 }
 
 void UDisksClient::propertiesChanged(const QString &interface, const QVariantMap &changed, const QStringList &invalidated, const QDBusMessage &message)
@@ -290,7 +302,7 @@ void UDisksClient::propertiesChanged(const QString &interface, const QVariantMap
     QVariantMap &properties = (*it)[interface];
     for (auto c = changed.constBegin(); c != changed.constEnd(); ++c)
         properties.insert(c.key(), c.value());
-    m_rebuildTimer.start();
+    scheduleRebuild();
 }
 
 QVariantMap UDisksClient::property(const QString &path, const char *interface) const
@@ -755,7 +767,7 @@ void UDisksClient::fetchSmartAttributes()
                 }
             }
             m_smartAttributes[path] = rows;
-            m_rebuildTimer.start();
+            scheduleRebuild();
         });
     }
 }

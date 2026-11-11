@@ -93,6 +93,11 @@ T.ComboBox {
             radius: Theme.radiusMd
             border.width: Theme.borderWidth
             border.color: Theme.border
+            // See Popup.qml: presses on the popup never reach the content beneath it.
+            TapHandler {
+                acceptedButtons: Qt.AllButtons
+                gesturePolicy: TapHandler.ReleaseWithinBounds
+            }
         }
     }
 }

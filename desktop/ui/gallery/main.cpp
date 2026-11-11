@@ -6,7 +6,8 @@
 // nexus-ui-gallery                      the component overview
 // nexus-ui-gallery --case <name>        one focused test page (Case<Name>.qml):
 //                                       dialogs, segmented, rows, table, toast,
-//                                       page, motion, glyphs
+//                                       page, motion, glyphs, filedialog,
+//                                       folderdialog
 // nexus-ui-gallery --case <name> --selftest
 //                                       the page also runs its scripted checks,
 //                                       prints NEXUS-CASE-OK <name> or
@@ -21,7 +22,7 @@ int main(int argc, char **argv)
     });
     QCommandLineOption caseOption(QStringLiteral("case"),
         QStringLiteral("Open the test page <name> instead of the overview "
-                       "(dialogs, segmented, rows, table, toast, page, motion, glyphs)."),
+                       "(dialogs, segmented, rows, table, toast, page, motion, glyphs, filedialog, folderdialog)."),
         QStringLiteral("name"));
     QCommandLineOption selfTestOption(QStringLiteral("selftest"),
         QStringLiteral("Run the scripted checks of the test page and exit 4 if one fails."));
@@ -39,6 +40,7 @@ int main(int argc, char **argv)
             QStringLiteral("dialogs"), QStringLiteral("segmented"), QStringLiteral("rows"),
             QStringLiteral("table"), QStringLiteral("toast"), QStringLiteral("page"),
             QStringLiteral("motion"), QStringLiteral("glyphs"),
+            QStringLiteral("filedialog"), QStringLiteral("folderdialog"),
         };
         if (!known.contains(name)) {
             fprintf(stderr, "nexus-ui-gallery: unknown case '%s' (known: %s)\n", qPrintable(name),

@@ -121,6 +121,7 @@ private:
     void fetchCapabilities();
     void fetchSmartAttributes();
     void rebuild();
+    void scheduleRebuild();
     QVariantMap volumeFor(const QString &blockPath, const QHash<QString, QString> &protectedDisks) const;
     QVariantMap smartFor(const QString &drivePath) const;
     QVariantMap property(const QString &path, const char *interface) const;

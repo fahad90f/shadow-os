@@ -9,6 +9,11 @@ Item {
     id: root
 
     property int duration: 3800
+    // A toast is as wide as its text, up to this width; longer text wraps.
+    // The limit also keeps a toast from covering the whole window (sidebar
+    // included) however long the message is.
+    property real maxToastWidth: 480
+    readonly property real toastWidthLimit: Math.max(120, Math.min(maxToastWidth, width - Theme.spaceXxl * 2))
     z: 1000
 
     function show(text, kind) {
@@ -36,7 +41,7 @@ Item {
                     : kind === "danger" ? Theme.danger : Theme.accent
 
                 anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
-                width: Math.min(root.width - Theme.spaceXxl, row.implicitWidth + Theme.spaceLg * 2)
+                width: Math.min(root.toastWidthLimit, row.implicitWidth + Theme.spaceLg * 2)
                 height: Math.max(40, row.implicitHeight + Theme.spaceMd * 2)
                 radius: Theme.radiusMd
                 color: Theme.bgOverlay
@@ -48,9 +53,13 @@ Item {
                 RowLayout {
                     id: row
                     anchors.centerIn: parent
-                    width: Math.min(implicitWidth, root.width - Theme.spaceXxl - Theme.spaceLg * 2)
+                    width: Math.min(implicitWidth, root.toastWidthLimit - Theme.spaceLg * 2)
                     spacing: Theme.spaceSm
-                    Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: toast.tone }
+                    Rectangle {
+                        implicitWidth: 8; implicitHeight: 8; radius: 4; color: toast.tone
+                        Layout.alignment: Qt.AlignTop
+                        Layout.topMargin: Math.max(0, (Theme.fontSizeBody * 1.35 - 8) / 2)
+                    }
                     Text {
                         Layout.fillWidth: true
                         text: toast.text
@@ -67,7 +76,11 @@ Item {
                     running: true
                     onTriggered: toasts.remove(toast.index)
                 }
-                TapHandler { onTapped: toasts.remove(toast.index) }
+                // Exclusive grab: dismissing a toast must not also tap what lies under it.
+                TapHandler {
+                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                    onTapped: toasts.remove(toast.index)
+                }
             }
         }
     }

@@ -21,10 +21,13 @@ NxWindow {
     Component.onCompleted: recovery.rescan()
 
     readonly property var target: recovery.current
-    readonly property bool hasTarget: recovery.currentId !== ""
+    readonly property bool hasTarget: recovery.currentId !== "" && target.id === recovery.currentId
     readonly property bool targetRunning: hasTarget && target.running === true
     readonly property bool targetMounted: hasTarget && !!target.mounted_by_recovery
-    readonly property bool idle: !recovery.busy && !recovery.scanning
+    // Nothing is running — and something could be run (not the read-only test mode).
+    readonly property bool idle: !recovery.busy && !recovery.scanning && !recovery.testMode
+    // For a console, when NEXUS Terminal is not there.
+    readonly property string shellCommand: hasTarget ? "sudo nexus-recovery-engine shell --target " + recovery.currentId + " --exec" : ""
 
     function describe(installation) {
         const parts = [installation.root.device, Theme.formatBytes(installation.root.size), installation.root.fstype]
@@ -35,7 +38,7 @@ NxWindow {
         return parts.join("  ·  ")
     }
     function userNames() {
-        return hasTarget ? target.users.map(u => u.name) : []
+        return hasTarget && target.users ? target.users.map(u => u.name) : []
     }
 
     NxPage {
@@ -50,7 +53,7 @@ NxWindow {
                 text: qsTr("Scan again")
                 iconName: "refresh"
                 busy: recovery.scanning
-                enabled: window.idle && recovery.engineProblem === ""
+                enabled: !recovery.busy && !recovery.scanning && recovery.engineProblem === ""
                 onClicked: recovery.rescan()
             }
         ]
@@ -122,12 +125,11 @@ NxWindow {
                     NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: installationRow.modelData.encrypted; text: qsTr("Encrypted"); kind: "neutral" }
                     NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: !!installationRow.modelData.mounted_by_recovery; text: qsTr("Mounted"); kind: "success" }
                     NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: !installationRow.modelData.is_nexus; text: qsTr("Not NEXUS OS"); kind: "warning" }
+                    NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: installationRow.selected; text: qsTr("Selected"); kind: "accent"; dot: false }
                     NxButton {
-                        visible: installationRow.modelData.is_nexus
-                        text: installationRow.selected ? qsTr("Selected") : qsTr("Select")
-                        kind: installationRow.selected ? "primary" : "secondary"
-                        iconName: installationRow.selected ? "check" : ""
-                        enabled: window.idle && !installationRow.selected
+                        visible: installationRow.modelData.is_nexus && !installationRow.selected
+                        text: qsTr("Select")
+                        enabled: window.idle
                         onClicked: recovery.select(installationRow.modelData.id)
                     }
                 }
@@ -198,7 +200,7 @@ NxWindow {
                 }
             }
             Repeater {
-                model: window.hasTarget ? window.target.problems : []
+                model: window.hasTarget && window.target.problems ? window.target.problems : []
                 NxRow {
                     required property string modelData
                     icon: "alert-triangle"
@@ -295,7 +297,7 @@ NxWindow {
                 title: qsTr("Open a terminal in the installed system")
                 explanation: recovery.terminalAvailable
                     ? qsTr("For repairs by hand: a root shell whose / is the installation (chroot).")
-                    : qsTr("NEXUS Terminal is not installed here. From a console, the same root shell is started with: %1").arg(recovery.shellCommand())
+                    : qsTr("NEXUS Terminal is not installed here. From a console, the same root shell is started with: %1").arg(window.shellCommand)
                 changes: qsTr("Whatever you type there.")
                 result: recovery.results.terminal
                 running: recovery.busyAction === "terminal"

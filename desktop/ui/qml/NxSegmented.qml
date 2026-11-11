@@ -3,6 +3,15 @@ import QtQuick
 
 // Mutually exclusive choice shown as a segmented bar.
 //   NxSegmented { model: ["1H", "24H", "7D"]; currentIndex: 0; onActivated: (i) => ... }
+//
+// currentIndex can be used in two ways, and a tap respects both:
+//   * not bound (a plain value, or none): the selector keeps its own state —
+//     a tap sets currentIndex to the tapped segment, then emits activated();
+//   * bound to application state (currentIndex: backend.mode): a tap leaves
+//     the binding in place and only emits activated(index). The selector
+//     shows the tapped segment once the state it is bound to has changed,
+//     so a back-end that refuses or delays the change is displayed truthfully.
+// activated() is emitted only for a segment other than the current one.
 Rectangle {
     id: root
 
@@ -10,6 +19,28 @@ Rectangle {
     property int currentIndex: 0
 
     signal activated(int index)
+
+    // Select a segment as a tap does (also used by the keyboard handling).
+    function select(index) {
+        if (index === currentIndex || index < 0)
+            return
+        // Write through a Binding that is switched on and off again: with
+        // RestoreBinding a caller's binding on currentIndex is put back (and
+        // re-evaluated) when it is switched off, while a plain value stays
+        // at what was written. A direct assignment would destroy the binding.
+        tapValue.value = index
+        tapValue.when = true
+        tapValue.when = false
+        activated(index)
+    }
+
+    Binding {
+        id: tapValue
+        target: root
+        property: "currentIndex"
+        when: false
+        restoreMode: Binding.RestoreBinding
+    }
 
     implicitWidth: row.implicitWidth + 6
     implicitHeight: Theme.controlHeight
@@ -38,8 +69,9 @@ Rectangle {
                 Accessible.role: Accessible.RadioButton
                 Accessible.name: String(modelData)
                 Accessible.checked: selected
-                Keys.onReturnPressed: tap.tapped(null, null)
-                Keys.onSpacePressed: tap.tapped(null, null)
+                Keys.onReturnPressed: root.select(index)
+                Keys.onEnterPressed: root.select(index)
+                Keys.onSpacePressed: root.select(index)
 
                 Text {
                     id: label
@@ -53,12 +85,7 @@ Rectangle {
                 HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
                 TapHandler {
                     id: tap
-                    onTapped: {
-                        if (root.currentIndex !== seg.index) {
-                            root.currentIndex = seg.index
-                            root.activated(seg.index)
-                        }
-                    }
+                    onTapped: root.select(seg.index)
                 }
             }
         }

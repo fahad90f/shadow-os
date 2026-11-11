@@ -15,6 +15,10 @@ ColumnLayout {
         : value >= 0.92 ? Theme.danger
         : value >= 0.80 ? Theme.warning : Theme.accent
 
+    // Animate the bar towards a new value? Off with "reduce motion" and with
+    // software rendering (see NxGauge).
+    readonly property bool animated: Appearance.animateValues
+
     spacing: Theme.spaceXs + 2
     Accessible.role: Accessible.ProgressBar
     Accessible.name: label + " " + valueText
@@ -48,8 +52,14 @@ ColumnLayout {
             height: parent.height
             radius: 3
             color: root.color
-            Behavior on width { NumberAnimation { duration: Theme.motionSlow; easing.type: Easing.OutCubic } }
-            Behavior on color { ColorAnimation { duration: Theme.motionNormal } }
+            Behavior on width {
+                enabled: root.animated
+                NumberAnimation { duration: Theme.motionSlow; easing.type: Easing.OutCubic }
+            }
+            Behavior on color {
+                enabled: root.animated
+                ColorAnimation { duration: Theme.motionNormal }
+            }
         }
     }
 }

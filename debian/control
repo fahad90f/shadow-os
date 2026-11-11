@@ -64,7 +64,8 @@ Build-Depends-Arch:
  libkf6notifications-dev,
  libkf6i18n-dev,
  libkf6crash-dev,
- libkf6statusnotifieritem-dev
+ libkf6statusnotifieritem-dev,
+ libkf6guiaddons-dev
 
 Package: nexus-base-files
 Architecture: all
@@ -770,3 +771,26 @@ Description: NEXUS Security Center
  services and connections, logins, audit events and kernel hardening, with
  the recommendations that follow from them, and manages the host firewall.
  It reports states with their evidence; it does not compute scores.
+
+Package: nexus-screenshot
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ kwin-wayland, qt6-image-formats-plugins
+Recommends: xdg-desktop-portal, nexus-files
+Description: NEXUS Screenshot
+ Captures the whole screen, one monitor, a window or a selected region, with
+ optional delay, then offers saving, copying to the clipboard and simple
+ annotations (crop, arrow, rectangle, text, pixelate). Also usable from the
+ command line.
+
+Package: nexus-disk-manager
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ udisks2, polkitd, e2fsprogs, dosfstools
+Recommends: cryptsetup-bin, btrfs-progs, exfatprogs, ntfs-3g, smartmontools
+Suggests: xfsprogs, f2fs-tools
+Description: NEXUS Disk Manager
+ Drives and partitions through UDisks2: partition map, mounting, LUKS
+ unlock, formatting, partition tables, resizing, checking and disk images.
+ Destructive actions name the device, list what will be lost, require the
+ device name to be typed and are refused for the disk the system runs from.

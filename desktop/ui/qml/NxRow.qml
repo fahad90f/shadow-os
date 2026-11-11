@@ -19,7 +19,26 @@ Item {
 
     signal clicked()
 
-    readonly property bool isFirst: parent && parent.children.length > 0 && parent.children[0] === root
+    // True when no visible item precedes this row in its parent — the first
+    // row of a section draws no divider above itself. Invisible siblings and
+    // items without height (a Repeater, helper Items) do not count. Evaluated
+    // again when siblings are added, removed, shown or hidden, and when the
+    // row is moved (its y changes), e.g. by a model move in a Repeater.
+    readonly property bool isFirst: {
+        void root.y
+        if (!root.parent)
+            return false
+        const siblings = root.parent.visibleChildren
+        for (let i = 0; i < siblings.length; i++) {
+            const item = siblings[i]
+            if (item === root)
+                return true
+            if (item.height > 0)
+                return false
+        }
+        // Not among the visible children (the row itself is hidden): fall back to the plain order.
+        return root.parent.children.length > 0 && root.parent.children[0] === root
+    }
 
     Layout.fillWidth: true
     implicitHeight: Math.max(subtitle !== "" ? Theme.rowHeightLarge : Theme.rowHeight,

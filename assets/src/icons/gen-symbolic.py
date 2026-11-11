@@ -36,6 +36,11 @@ def dot(cx, cy, r=1.4) -> str:
     return f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="currentColor" stroke="none"/>'
 
 
+def dim(body: str) -> str:
+    """Parts of a level glyph that are "not lit": same colour, drawn faint."""
+    return f'<g opacity="0.3">{body}</g>'
+
+
 def r(x, y, w, h, rx=2) -> str:
     return f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}"/>'
 
@@ -61,6 +66,26 @@ def hexagon(cx=12, cy=12, rad=9.2, rot=0.0) -> str:
 
 SHIELD = "M12 3.2l7.3 2.7v5.6c0 4.5-3 8-7.3 9.6-4.3-1.6-7.3-5.1-7.3-9.6V5.9z"
 SPEAKER = "M4.5 9.5h3l4.5-3.8v12.6l-4.5-3.8h-3z"
+
+# Wi-Fi fan: the dot and the three arcs are the four "bars" of the signal level.
+WIFI_DOT = dot(12, 19, 1.3)
+WIFI_ARCS = ["M9 15.9a4.5 4.5 0 0 1 6 0", "M5.9 12.6a9 9 0 0 1 12.2 0", "M2.8 9.3a13.5 13.5 0 0 1 18.4 0"]
+
+
+def wifi_level(bars: int) -> str:
+    """Signal strength 0–4: lit parts at full strength, the rest faint."""
+    lit = (WIFI_DOT if bars >= 1 else "") + "".join(p(a) for a in WIFI_ARCS[:max(0, bars - 1)])
+    unlit = (WIFI_DOT if bars < 1 else "") + "".join(p(a) for a in WIFI_ARCS[max(0, bars - 1):])
+    return lit + (dim(unlit) if unlit else "")
+
+
+BATTERY_BODY = r(3, 8, 15.5, 8, 2) + p("M21 10.7v2.6")
+
+
+def battery_level(cells: int) -> str:
+    """Charge level as 0–4 cells inside the battery outline."""
+    return BATTERY_BODY + (p("".join(f"M{6 + 3 * i} 11v2" for i in range(cells))) if cells else "")
+
 
 ICONS: dict[str, str] = {
     # ---- basic actions -----------------------------------------------------
@@ -163,6 +188,13 @@ ICONS: dict[str, str] = {
     "thermometer": p("M10 14.2V5.5a2 2 0 0 1 4 0v8.7a4 4 0 1 1-4 0z") + dot(12, 17.3, 1.5) + p("M12 15.5V9"),
     "battery": r(3, 8, 15.5, 8, 2) + p("M21 10.7v2.6") + p("M6 11v2M9 11v2M12 11v2"),
     "battery-charging": r(3, 8, 15.5, 8, 2) + p("M21 10.7v2.6M11.5 9.6l-2.2 2.9h3.2l-2.2 2.9"),
+    # Charge levels: empty (0–5 %), low, half, high, full. "battery" above is
+    # the generic glyph (same drawing as battery-high).
+    "battery-empty": battery_level(0),
+    "battery-low": battery_level(1),
+    "battery-half": battery_level(2),
+    "battery-high": battery_level(3),
+    "battery-full": battery_level(4),
     "power": p("M12 3.5v8.5M7.3 6.6a7.5 7.5 0 1 0 9.4 0"),
     "plug": p("M9 3.5v4M15 3.5v4M6.5 7.5h11V11a5.5 5.5 0 0 1-11 0zM12 16.5v4"),
     "logout": p("M10 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H10M15 8l4 4-4 4M19 12H9.5"),
@@ -196,12 +228,22 @@ ICONS: dict[str, str] = {
     "globe": c(12, 12, 8.5) + p("M3.5 12h17M12 3.5c2.4 2.3 3.6 5.2 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.2-3.6-8.5s1.2-6.2 3.6-8.5z"),
     "bluetooth": p("M7 7.5l10 9-5 4.5V3l5 4.5-10 9"),
     "airplane": p("M10.5 3.8a1.5 1.5 0 0 1 3 0V9l7 4.2v2l-7-2.2v4.4l2.2 1.6v1.7L12 19.6l-3.7 1.1V19l2.2-1.6V13l-7 2.2v-2l7-4.2z"),
+    # Signal strength of the connected / listed network, 0 (no signal) to 4 bars.
+    "wifi-0": wifi_level(0),
+    "wifi-1": wifi_level(1),
+    "wifi-2": wifi_level(2),
+    "wifi-3": wifi_level(3),
+    "wifi-4": wifi_level(4),
     "signal": p("M5 19v-3M9.7 19v-6.5M14.3 19V9M19 19V5"),
     "share": c(6.5, 12, 2.5) + c(17.5, 6, 2.5) + c(17.5, 18, 2.5) + p("M8.7 10.8l6.6-3.6M8.7 13.2l6.6 3.6"),
     "radar": c(12, 12, 8.5) + c(12, 12, 4.4) + p("M12 12l6-6") + dot(12, 12, 1.1) + dot(16.4, 14.6, 1),
     "volume-high": p(SPEAKER) + p("M15.5 9a4.3 4.3 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"),
     "volume-low": p(SPEAKER) + p("M15.5 9a4.3 4.3 0 0 1 0 6"),
     "volume-mute": p(SPEAKER) + p("M16 9.5l5 5M21 9.5l-5 5"),
+    # Volume at zero (not muted): the speaker with its waves unlit.
+    "volume-zero": p(SPEAKER) + dim(p("M15.5 9a4.3 4.3 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11")),
+    # Output switched off / muted, struck through like mic-off and wifi-off.
+    "volume-off": p("M11.2 6.4l.8-.7v3.6M12 14.6v3.7l-4.5-3.8h-3v-5h2.6M15.9 9.5a4.3 4.3 0 0 1 .8 2.5M4 4l16 16"),
     "mic": r(9, 3.5, 6, 10.5, 3) + p("M5.8 11.5a6.2 6.2 0 0 0 12.4 0M12 17.7v2.8"),
     "mic-off": p("M15 10.5V6.5a3 3 0 0 0-5.8-1.1M9 9v2a3 3 0 0 0 4.7 2.5M5.8 11.5a6.2 6.2 0 0 0 10.4 4.6M18.2 11.5a6 6 0 0 1-.3 1.9M12 17.7v2.8M4 4l16 16"),
 

@@ -6,7 +6,5 @@
 applications/terminal
 applications/editor
 applications/archive-manager
-applications/disk-manager
-applications/screenshot
 system/recovery
 desktop/horizon-shell/modules/power

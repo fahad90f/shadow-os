@@ -83,13 +83,6 @@ bool Recovery::terminalAvailable() const
     return !QStandardPaths::findExecutable(QStringLiteral("nexus-terminal")).isEmpty();
 }
 
-QString Recovery::shellCommand() const
-{
-    if (m_currentId.isEmpty())
-        return {};
-    return QStringLiteral("sudo nexus-recovery-engine shell --target %1 --exec").arg(m_currentId);
-}
-
 // ---- the engine ---------------------------------------------------------------------
 
 void Recovery::appendLog(const QString &text)

@@ -24,6 +24,14 @@ class Appearance : public QObject
     Q_PROPERTY(bool reduceMotion READ reduceMotion WRITE setReduceMotion NOTIFY reduceMotionChanged)
     Q_PROPERTY(bool transparency READ transparency WRITE setTransparency NOTIFY transparencyChanged)
     Q_PROPERTY(qreal fontScale READ fontScale WRITE setFontScale NOTIFY fontScaleChanged)
+    // True when Qt Quick renders this process with its software backend
+    // (QT_QUICK_BACKEND=software — set by the session on machines without
+    // usable 3D — or Qt's own fallback). Every animation frame is then
+    // rasterised on the CPU, so components skip decorative value animations.
+    Q_PROPERTY(bool softwareRendering READ softwareRendering CONSTANT)
+    // What components should test before animating a value change:
+    // false with "reduce motion" and with software rendering.
+    Q_PROPERTY(bool animateValues READ animateValues NOTIFY animateValuesChanged)
 
 public:
     static Appearance *instance();
@@ -34,6 +42,8 @@ public:
     bool reduceMotion() const { return m_reduceMotion; }
     bool transparency() const { return m_transparency; }
     qreal fontScale() const { return m_fontScale; }
+    static bool softwareRendering();
+    bool animateValues() const { return !m_reduceMotion && !softwareRendering(); }
 
     void setDark(bool dark);
     void setAccent(const QString &accent);
@@ -49,6 +59,7 @@ Q_SIGNALS:
     void reduceMotionChanged();
     void transparencyChanged();
     void fontScaleChanged();
+    void animateValuesChanged();
 
 private:
     explicit Appearance(QObject *parent = nullptr);

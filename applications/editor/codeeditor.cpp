@@ -208,6 +208,9 @@ CodeEditor::CodeEditor(QQuickItem *parent)
     m_widget = new CodeWidget;
     // Alive and laid out like a visible widget, but never mapped to the screen.
     m_widget->setAttribute(Qt::WA_DontShowOnScreen, true);
+    // It must not count as an open window, or the application would keep
+    // running after its real window is closed.
+    m_widget->setAttribute(Qt::WA_QuitOnClose, false);
     m_widget->resize(640, 480);
     m_widget->show();
 
@@ -343,6 +346,9 @@ void CodeEditor::setFontFamily(const QString &family)
     font.setFamily(family);
     font.setStyleHint(QFont::Monospace);
     font.setFixedPitch(true);
+    // Source code is shown character by character: no "!=" → "≠" ligatures.
+    font.setFeature(QFont::Tag("liga"), 0);
+    font.setFeature(QFont::Tag("calt"), 0);
     m_widget->setFont(font);
     applyTabWidth();
     Q_EMIT fontChanged();

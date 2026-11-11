@@ -14,6 +14,11 @@ arrow-up.svg
 arrow-up-circle.svg
 battery.svg
 battery-charging.svg
+battery-empty.svg
+battery-full.svg
+battery-half.svg
+battery-high.svg
+battery-low.svg
 bell.svg
 bell-off.svg
 bluetooth.svg
@@ -155,7 +160,14 @@ video.svg
 volume-high.svg
 volume-low.svg
 volume-mute.svg
+volume-off.svg
+volume-zero.svg
 wifi.svg
+wifi-0.svg
+wifi-1.svg
+wifi-2.svg
+wifi-3.svg
+wifi-4.svg
 wifi-off.svg
 window.svg
 wrench.svg

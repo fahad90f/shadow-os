@@ -19,6 +19,10 @@ import QtQuick.Layouts
 //
 // Sorting is delegated to the model owner through sortRequested(); the table
 // only renders the indicator.
+//
+// Selection: currentRow is -1 (nothing selected) until the caller sets it or
+// the user selects a row with the pointer or the arrow keys. Setting or
+// replacing the model does not select anything and leaves currentRow as it is.
 Item {
     id: root
 
@@ -39,6 +43,9 @@ Item {
 
     implicitWidth: 600
     implicitHeight: 300
+
+    onModelChanged: list.applyModel()
+    onCurrentRowChanged: if (list.currentIndex !== currentRow) list.currentIndex = currentRow
 
     function columnWidth(index) {
         var c = columns[index]
@@ -117,16 +124,34 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         clip: true
-        model: root.model
         boundsBehavior: Flickable.StopAtBounds
-        currentIndex: root.currentRow
+        currentIndex: -1
         highlightMoveDuration: 0
         reuseItems: true
         activeFocusOnTab: true
         keyNavigationEnabled: true
         ScrollBar.vertical: ScrollBar { }
 
-        onCurrentIndexChanged: if (currentIndex !== root.currentRow) root.currentRow = currentIndex
+        // ListView selects its first item whenever it is given a model. That
+        // is the view's doing, not a choice of the user or the caller, so the
+        // model is handed over under a guard and the view's index is put back
+        // to currentRow afterwards. Every other change of the view's index
+        // (arrow keys, a caller writing view.currentIndex) is a selection.
+        property bool settingModel: false
+        function applyModel() {
+            settingModel = true
+            model = root.model
+            settingModel = false
+            if (currentIndex !== root.currentRow)
+                currentIndex = root.currentRow
+        }
+        onCurrentIndexChanged: {
+            if (settingModel)
+                return
+            if (currentIndex !== root.currentRow)
+                root.currentRow = currentIndex
+        }
+        Component.onCompleted: applyModel()
         Keys.onReturnPressed: if (currentItem) root.rowActivated(currentIndex, currentItem.rowData)
 
         delegate: Rectangle {

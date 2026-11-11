@@ -69,3 +69,8 @@ tcpdump
 libkscreen-bin
 pulseaudio-utils
 os-prober
+exfatprogs
+ntfs-3g
+btrfs-progs
+smartmontools
+kio-extras

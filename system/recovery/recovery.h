@@ -118,8 +118,6 @@ public:
     Q_INVOKABLE void restart();
     Q_INVOKABLE void copyLog() const;
     Q_INVOKABLE void clearLog();
-    // The command a person would type for a root shell in the installation.
-    Q_INVOKABLE QString shellCommand() const;
 
     QJsonObject statusJson() const;
     QJsonObject scanJson() const;

@@ -13,6 +13,7 @@ Rectangle {
     property var view: null                 // current EditorView
     property bool replaceMode: false
     property int currentIndex: 0            // 1-based index of the selected match, 0: none
+    property int anchor: 0                  // where typing in the search field searches from
     readonly property var document: view ? view.document : null
     readonly property int matchCount: document ? document.matchCount : 0
 
@@ -25,6 +26,7 @@ Rectangle {
         const selected = view ? view.editor.selectedText : ""
         if (selected !== "" && selected.indexOf(" ") < 0 && selected.indexOf("\n") < 0)
             searchField.text = selected
+        anchor = view ? view.editor.selectionStart : 0
         searchField.forceActiveFocus()
         searchField.selectAll()
         apply(true)
@@ -42,9 +44,9 @@ Rectangle {
         document.setSearch(searchField.text, regexButton.checked, caseButton.checked, wordButton.checked)
         currentIndex = 0
         if (jump && searchField.text !== "")
-            step(false, view.editor.selectionStart)
+            step(false, anchor, true)
     }
-    function step(backward, from) {
+    function step(backward, from, keepAnchor) {
         if (!document || searchField.text === "")
             return
         const editor = view.editor
@@ -53,6 +55,7 @@ Rectangle {
         if (result.found) {
             view.selectRange(result.start, result.end)
             currentIndex = result.index
+            if (!keepAnchor) anchor = result.start
         } else {
             currentIndex = 0
         }
@@ -77,7 +80,7 @@ Rectangle {
         replacedAll(count)
     }
 
-    onViewChanged: apply(false)
+    onViewChanged: { anchor = view ? view.editor.selectionStart : 0; apply(false) }
 
     visible: false
     implicitHeight: column.implicitHeight + Theme.spaceSm * 2

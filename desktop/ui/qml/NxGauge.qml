@@ -19,7 +19,14 @@ Item {
 
     readonly property real clamped: Math.max(0, Math.min(1, value))
     property real shown: available ? clamped : 0
-    Behavior on shown { NumberAnimation { duration: Theme.motionSlow; easing.type: Easing.OutCubic } }
+    // The arc glides to a new value — unless "reduce motion" is on or the
+    // scene is rendered in software, where every frame of 12 gauges moving
+    // once a second is CPU time (see README.md, "Value animations").
+    readonly property bool animated: Appearance.animateValues
+    Behavior on shown {
+        enabled: root.animated
+        NumberAnimation { duration: Theme.motionSlow; easing.type: Easing.OutCubic }
+    }
 
     implicitWidth: 140
     implicitHeight: 140

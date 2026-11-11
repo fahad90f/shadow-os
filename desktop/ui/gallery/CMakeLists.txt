@@ -17,5 +17,7 @@ qt_add_qml_module(nexus-ui-gallery
         CasePage.qml
         CaseMotion.qml
         CaseGlyphs.qml
+        CaseFiledialog.qml
+        CaseFolderdialog.qml
 )
 target_link_libraries(nexus-ui-gallery PRIVATE Nexus::App)

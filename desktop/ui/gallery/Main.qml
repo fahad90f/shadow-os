@@ -24,7 +24,7 @@ NxWindow {
             model: [
                 { key: "components", title: "Components", icon: "layers", section: "Design system" },
                 { key: "colors", title: "Colours", icon: "palette", section: "Design system" },
-                { key: "icons", title: "Icons", icon: "grid", section: "Design system", badge: "165" },
+                { key: "icons", title: "Icons", icon: "grid", section: "Design system", badge: "177" },
                 { key: "wifi", title: "Wi-Fi", icon: "wifi", section: "Sample navigation" },
                 { key: "security", title: "Security", icon: "shield-check", section: "Sample navigation" },
                 { key: "storage", title: "Storage", icon: "harddrive", section: "Sample navigation" },
