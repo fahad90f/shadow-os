@@ -39,8 +39,11 @@ class Assistant : public QObject
     Q_PROPERTY(bool hasPending READ hasPending NOTIFY phaseChanged)
     Q_PROPERTY(bool thinkHard READ thinkHard WRITE setThinkHard NOTIFY thinkHardChanged)
     Q_PROPERTY(QVariantList toolLog READ toolLog NOTIFY toolLogChanged)
-    // Voice is scaffolded but disabled (no tested backend in this build).
-    Q_PROPERTY(bool voiceAvailable READ voiceAvailable CONSTANT)
+    // Env-gated screenshot/test hooks (empty in normal use), used to open a
+    // view or inject a first message deterministically for headless captures.
+    Q_PROPERTY(QString testView READ testView CONSTANT)
+    Q_PROPERTY(QString testPrompt READ testPrompt CONSTANT)
+    Q_PROPERTY(QString testOrb READ testOrb CONSTANT)
 
 public:
     explicit Assistant(QObject *parent = nullptr);
@@ -57,7 +60,9 @@ public:
     bool thinkHard() const { return m_thinkHard; }
     void setThinkHard(bool v);
     QVariantList toolLog() const { return m_log; }
-    bool voiceAvailable() const { return false; }
+    QString testView() const { return QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_TEST_VIEW")); }
+    QString testPrompt() const { return QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_TEST_PROMPT")); }
+    QString testOrb() const { return QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_TEST_ORB")); }
 
     Q_INVOKABLE void newConversation();
     Q_INVOKABLE void selectConversation(const QString &id);

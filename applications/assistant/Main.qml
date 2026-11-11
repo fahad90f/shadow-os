@@ -16,15 +16,85 @@ NxWindow {
     minimumHeight: 540
 
     Assistant { id: agent }
+    VoiceController { id: voice; config: agent.config }
 
     // "chat" | "settings". The setup state replaces the chat page when no key.
     property string view: "chat"
+
+    // Composite presence state: the mic side (voice) takes precedence while a
+    // voice turn is active, otherwise the model's chat phase drives the orb.
+    readonly property string orbState: {
+        if (agent.testOrb !== "") return agent.testOrb
+        if (voice.state === "speaking") return "speaking"
+        if (voice.state === "listening" || voice.state === "transcribing") return "listening"
+        if (voice.state === "wake") return "wake"
+        return agent.orbState
+    }
+
+    // Push-to-talk: start (or cancel) a spoken command.
+    function toggleListen() {
+        if (voice.capturing || voice.state === "wake") {
+            voice.cancel()
+        } else {
+            voice.beginVoiceTurn()
+            voice.startCommandCapture()
+        }
+    }
+
+    // ---- voice ⇄ agent wiring (the hands-free loop) ----
+    Connections {
+        target: voice
+        function onTranscriptReady(text) {
+            window.view = "chat"
+            if (agent.canSend)
+                agent.sendMessage(text)
+            else
+                window.toaster.show(qsTr("Heard: %1").arg(text), "info")
+        }
+        function onWakeDetected() {
+            window.view = "chat"
+            window.toaster.show(qsTr("Shadow is listening…"), "info")
+        }
+        function onYesNoResult(tag, yes) {
+            agent.confirmTool(-1, tag, yes)
+            if (!yes) voice.endVoiceTurn()
+        }
+        function onUnavailable(reason) { window.toaster.show(reason, "warning") }
+    }
+    Connections {
+        target: agent
+        function onAssistantReplyReady(text) {
+            if (voice.voiceTurn) {
+                voice.speak(text)
+                voice.endVoiceTurn()
+            }
+        }
+        function onConfirmationNeeded(summary, preview, callId) {
+            if (voice.voiceTurn)
+                voice.confirmBySpeech(callId,
+                    qsTr("I'd like to %1: %2. Shall I run it? Say yes or no.").arg(summary).arg(preview))
+        }
+    }
 
     Component.onCompleted: {
         if (agent.conversations.count > 0)
             agent.selectConversation(agent.conversations.data(agent.conversations.index(0, 0), 257 /*IdRole*/))
         else
             agent.newConversation()
+        // Env-gated headless screenshot hooks (no effect in normal use).
+        if (agent.testView !== "")
+            window.view = agent.testView
+        if (agent.testPrompt !== "")
+            testPromptTimer.start()
+    }
+    Timer {
+        id: testPromptTimer
+        interval: 400
+        onTriggered: {
+            voice.beginVoiceTurn()      // treat as a spoken turn
+            if (agent.canSend)
+                agent.sendMessage(agent.testPrompt)
+        }
     }
 
     // Background wash: deep base with a subtle accent aurora for the futuristic feel.
@@ -61,15 +131,75 @@ NxWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Theme.spaceSm
-                    AssistantOrb { orbState: agent.orbState; implicitWidth: 32; implicitHeight: 32 }
+                    AssistantOrb { orbState: window.orbState; implicitWidth: 32; implicitHeight: 32 }
                     Text {
                         Layout.fillWidth: true
-                        text: qsTr("Shadow Assistant")
+                        text: qsTr("Shadow")
                         color: Theme.textPrimary
                         font.family: Theme.fontUi
                         font.pixelSize: Theme.fontSizeBodyLarge
                         font.weight: Theme.weightSemibold
                         elide: Text.ElideRight
+                    }
+                }
+
+                // Voice quick-controls: privacy mute, always-listening toggle,
+                // and a listening indicator. Push-to-talk lives in the composer.
+                Rectangle {
+                    Layout.fillWidth: true
+                    radius: Theme.radiusSm
+                    color: Theme.alpha(Theme.bgRaised, 0.6)
+                    border.color: Theme.borderSubtle
+                    border.width: 1
+                    implicitHeight: voiceRow.implicitHeight + Theme.spaceSm * 2
+                    RowLayout {
+                        id: voiceRow
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceSm
+                        spacing: Theme.spaceXs
+                        NxIconButton {
+                            iconName: agent.config.micMuted ? "mic-off" : "mic"
+                            icon.color: agent.config.micMuted ? Theme.danger : Theme.accent
+                            checkable: true
+                            checked: agent.config.micMuted
+                            tooltip: agent.config.micMuted ? qsTr("Microphone muted — click to unmute")
+                                                           : qsTr("Mute microphone (privacy)")
+                            onClicked: { agent.config.micMuted = !agent.config.micMuted; if (agent.config.micMuted) voice.cancel() }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 0
+                            Text {
+                                text: agent.config.micMuted ? qsTr("Muted")
+                                    : window.orbState === "listening" ? qsTr("Listening…")
+                                    : window.orbState === "wake" ? qsTr("Wake!")
+                                    : agent.config.wakeEnabled ? qsTr("Say “Shadow”") : qsTr("Voice ready")
+                                color: Theme.textSecondary
+                                font.family: Theme.fontUi
+                                font.pixelSize: Theme.fontSizeCaption
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                visible: !voice.wakeAvailable && agent.config.wakeEnabled
+                                text: qsTr("wake word needs engine")
+                                color: Theme.warning
+                                font.family: Theme.fontUi
+                                font.pixelSize: Theme.fontSizeCaption
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                        }
+                        NxIconButton {
+                            iconName: "signal"
+                            icon.color: agent.config.wakeEnabled ? Theme.accent : Theme.textMuted
+                            checkable: true
+                            checked: agent.config.wakeEnabled
+                            enabled: !agent.config.micMuted
+                            tooltip: agent.config.wakeEnabled ? qsTr("Always-listening on — click to stop")
+                                                              : qsTr("Turn on always-listening for the wake word")
+                            onClicked: agent.config.wakeEnabled = !agent.config.wakeEnabled
+                        }
                     }
                 }
 
@@ -209,6 +339,7 @@ NxWindow {
                 anchors.fill: parent
                 visible: window.view === "settings"
                 controller: agent
+                voice: voice
             }
             SetupPage {
                 anchors.fill: parent
@@ -219,6 +350,9 @@ NxWindow {
                 anchors.fill: parent
                 visible: window.view !== "settings" && agent.config.apiKeyConfigured
                 controller: agent
+                voice: voice
+                orbState: window.orbState
+                onRequestListen: window.toggleListen()
             }
         }
     }
@@ -252,6 +386,9 @@ NxWindow {
 
     Connections {
         target: agent
-        function onErrorMessage(text) { window.toaster.show(text.split("\n")[0], "danger") }
+        function onErrorMessage(text) {
+            window.toaster.show(text.split("\n")[0], "danger")
+            voice.endVoiceTurn()
+        }
     }
 }

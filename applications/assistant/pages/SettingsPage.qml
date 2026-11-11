@@ -8,6 +8,7 @@ import org.shadow.ui
 NxPage {
     id: settings
     property var controller
+    property var voice
     readonly property var config: controller ? controller.config : null
     title: qsTr("Settings")
     subtitle: qsTr("Shadow Assistant · NVIDIA Nemotron")
@@ -86,6 +87,97 @@ NxPage {
     }
 
     NxSection {
+        title: qsTr("Voice")
+        description: qsTr("Hands-free “Shadow”. Say the wake word, speak a command, and hear the reply. Nothing is captured or sent until after the wake word, and never while muted.")
+
+        NxRow {
+            icon: settings.voice && settings.voice.anyEngine ? "sound" : "volume-off"
+            iconColor: settings.voice && settings.voice.anyEngine ? Theme.success : Theme.warning
+            title: qsTr("Status")
+            subtitle: settings.voice ? settings.voice.statusText : ""
+        }
+
+        NxRow {
+            icon: "mic-off"
+            title: qsTr("Privacy mute")
+            subtitle: qsTr("When on, the microphone is never opened.")
+            Switch {
+                checked: settings.config ? settings.config.micMuted : false
+                onToggled: settings.config.micMuted = checked
+            }
+        }
+        NxRow {
+            icon: "signal"
+            title: qsTr("Always-listening wake word")
+            subtitle: settings.voice && !settings.voice.wakeAvailable
+                      ? qsTr("Needs pocketsphinx + an en-us model and a capture tool. Off until available.")
+                      : qsTr("Opt-in. Listens locally for “%1”.").arg(settings.config ? settings.config.wakePhrase : "shadow")
+            Switch {
+                enabled: settings.config && !settings.config.micMuted && settings.voice && settings.voice.wakeAvailable
+                checked: settings.config ? settings.config.wakeEnabled : false
+                onToggled: settings.config.wakeEnabled = checked
+            }
+        }
+        NxRow {
+            icon: "volume-high"
+            title: qsTr("Speak replies aloud")
+            Switch {
+                checked: settings.config ? settings.config.speakReplies : false
+                onToggled: settings.config.speakReplies = checked
+            }
+        }
+
+        NxRow {
+            icon: "sound"
+            title: qsTr("Speech engine")
+            subtitle: settings.voice
+                ? qsTr("Resolved: %1").arg(settings.voice.resolvedTtsEngine === "" ? qsTr("none installed") : settings.voice.resolvedTtsEngine)
+                : ""
+            NxSegmented {
+                model: ["Auto", "Piper", "Speech-dispatcher", "eSpeak"]
+                currentIndex: {
+                    if (!settings.config) return 0
+                    switch (settings.config.ttsEngine) {
+                    case "piper": return 1
+                    case "speechd": return 2
+                    case "espeak": return 3
+                    default: return 0
+                    }
+                }
+                onActivated: (index) => settings.config.ttsEngine =
+                    ["auto", "piper", "speechd", "espeak"][index]
+            }
+        }
+
+        NxRow {
+            icon: "info"
+            title: qsTr("Engines detected")
+            subtitle: qsTr("Speech-to-text (pocketsphinx), text-to-speech, wake word, and keyboard typing.")
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spaceLg
+            spacing: Theme.spaceXs
+            NxBadge { text: qsTr("TTS"); kind: settings.voice && settings.voice.ttsAvailable ? "success" : "neutral" }
+            NxBadge { text: qsTr("STT"); kind: settings.voice && settings.voice.sttAvailable ? "success" : "neutral" }
+            NxBadge { text: qsTr("Wake"); kind: settings.voice && settings.voice.wakeAvailable ? "success" : "neutral" }
+            NxBadge { text: qsTr("Capture: %1").arg(settings.voice && settings.voice.resolvedCaptureTool !== "" ? settings.voice.resolvedCaptureTool : qsTr("none"));
+                      kind: settings.voice && settings.voice.captureAvailable ? "success" : "neutral" }
+            NxBadge { text: qsTr("Type"); kind: settings.voice && settings.voice.typeAvailable ? "success" : "neutral" }
+            Item { Layout.fillWidth: true }
+        }
+        Text {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spaceLg
+            wrapMode: Text.Wrap
+            text: qsTr("Engine paths, the piper voice model, the wake phrase/threshold and the capture device are set in the [voice] section of the configuration file.")
+            color: Theme.textMuted
+            font.family: Theme.fontUi
+            font.pixelSize: Theme.fontSizeSmall
+        }
+    }
+
+    NxSection {
         title: qsTr("Tools")
         description: qsTr("Which capabilities the assistant may call. A disabled tool is never offered to the model.")
         Repeater {
@@ -96,6 +188,16 @@ NxPage {
                 { name: "search_files", title: qsTr("Search files"), icon: "file-search", risky: false },
                 { name: "open_application", title: qsTr("Open applications"), icon: "apps", risky: false },
                 { name: "get_system_info", title: qsTr("Read system info"), icon: "info", risky: false },
+                { name: "open_url", title: qsTr("Open URLs / browser"), icon: "globe", risky: false },
+                { name: "web_search", title: qsTr("Web search"), icon: "search", risky: false },
+                { name: "make_directory", title: qsTr("Create folders"), icon: "folder", risky: false },
+                { name: "move_path", title: qsTr("Move / rename"), icon: "folder-open", risky: true },
+                { name: "copy_path", title: qsTr("Copy files / folders"), icon: "copy", risky: false },
+                { name: "delete_path", title: qsTr("Delete files / folders"), icon: "trash", risky: true },
+                { name: "write_code", title: qsTr("Write code"), icon: "file-text", risky: false },
+                { name: "run_in_terminal", title: qsTr("Run in terminal"), icon: "terminal", risky: true },
+                { name: "type_text", title: qsTr("Type into focused window"), icon: "edit", risky: true },
+                { name: "take_screenshot", title: qsTr("Take screenshots"), icon: "camera", risky: false },
             ]
             delegate: NxRow {
                 required property var modelData
@@ -107,17 +209,6 @@ NxPage {
                     onToggled: settings.config.setToolEnabled(modelData.name, checked)
                 }
             }
-        }
-    }
-
-    NxSection {
-        title: qsTr("Voice")
-        NxRow {
-            icon: "mic-off"
-            iconColor: Theme.textMuted
-            title: qsTr("Push-to-talk & speech")
-            subtitle: qsTr("Scaffolded with the omni model, but disabled: no tested speech backend (e.g. speech-dispatcher) in this build.")
-            NxBadge { text: qsTr("Unavailable"); kind: "neutral" }
         }
     }
 

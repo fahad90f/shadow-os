@@ -23,9 +23,11 @@ Item {
     property real t: 0
     readonly property real speed: orbState === "thinking" ? 2.4
                                  : orbState === "speaking" ? 1.6
-                                 : orbState === "listening" ? 1.8 : 0.5
+                                 : orbState === "listening" ? 1.8
+                                 : orbState === "wake" ? 3.0 : 0.5
     readonly property real intensity: orbState === "idle" ? 0.5
-                                 : orbState === "speaking" ? 1.0 : 0.8
+                                 : orbState === "speaking" ? 1.0
+                                 : orbState === "wake" ? 1.0 : 0.8
 
     // Smoothly eased "energy" level the drawing reads from.
     property real energy: intensity
@@ -112,12 +114,14 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.bottom
         anchors.topMargin: Theme.spaceXs
-        visible: root.orbState !== "idle"
+        // Only on the large presence orbs; tiny brand/header orbs stay clean.
+        visible: root.orbState !== "idle" && root.height >= 96
         color: Theme.textSecondary
         font.family: Theme.fontUi
         font.pixelSize: Theme.fontSizeCaption
         text: root.orbState === "thinking" ? qsTr("Thinking…")
             : root.orbState === "speaking" ? qsTr("Responding…")
-            : root.orbState === "listening" ? qsTr("Listening…") : ""
+            : root.orbState === "listening" ? qsTr("Listening…")
+            : root.orbState === "wake" ? qsTr("Yes?") : ""
     }
 }
