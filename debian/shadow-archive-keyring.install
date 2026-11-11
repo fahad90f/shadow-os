@@ -1,0 +1,2 @@
+debian/generated/shadow-archive-keyring.gpg usr/share/keyrings
+debian/generated/shadow.sources etc/apt/sources.list.d

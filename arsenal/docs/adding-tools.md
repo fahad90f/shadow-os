@@ -12,7 +12,7 @@ A tool goes into `tools` only if **all** of this is true:
 1. It is a binary package in Debian 13 "trixie", component **`main`**. Not
    `contrib`, not `non-free`, not backports, and never a package from Kali,
    Parrot, Ubuntu, BlackArch or a vendor repository.
-2. It exists for every architecture NEXUS OS is built for (amd64, arm64) — or
+2. It exists for every architecture Shadow OS is built for (amd64, arm64) — or
    the entry says which with `"architectures"`.
 3. It is useful to the audience of the profile and still maintained well
    enough to be in a stable release. Prefer one good tool over three that do
@@ -21,7 +21,7 @@ A tool goes into `tools` only if **all** of this is true:
    payloads, malware samples, credentials or word lists.
 
 A well-known tool that fails rule 1 goes into `external` instead: the manager
-lists it as "not installable from NEXUS repositories" with a link to the
+lists it as "not installable from SHADOW repositories" with a link to the
 vendor's instructions. Nothing is downloaded or repackaged, and `how.text`
 must not be a command that pipes a download into a shell.
 
@@ -113,15 +113,15 @@ Then merge `arsenal/packaging/control.in` into `debian/control`, and look at
 the result in the manager:
 
 ```
-NEXUS_JOBS=2 scripts/dev.sh build --dir arsenal --only manager
-scripts/dev.sh run --dir arsenal nexus-arsenal --profiles-dir /src/arsenal/profiles --dump profiles
+SHADOW_JOBS=2 scripts/dev.sh build --dir arsenal --only manager
+scripts/dev.sh run --dir arsenal shadow-arsenal --profiles-dir /src/arsenal/profiles --dump profiles
 tests/desktop/smoke.sh --dir arsenal manager
 ```
 
 ## Adding a profile
 
 Create `profiles/<id>.json` (`id` lower-case letters and digits,
-`metapackage` = `nexus-arsenal-<id>`, `icon` = an icon in
+`metapackage` = `shadow-arsenal-<id>`, `icon` = an icon in
 `assets/icons/categories` or `assets/icons/apps`), add the id to
 `complete.json` `includes` and to `PROFILE_ORDER` in
 `tools/arsenal_manifest.py` (and `kOrder` in `manager/manifest.cpp`) if it
@@ -129,5 +129,5 @@ should not sort last, then run the steps above.
 
 ## Adding a category
 
-Add it to `profiles/categories.json`; `icon` must be a glyph of the NexusUI
+Add it to `profiles/categories.json`; `icon` must be a glyph of the ShadowUI
 icon set (`desktop/ui/icons`).

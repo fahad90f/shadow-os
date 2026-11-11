@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Shadow Horizon
+Comment=The Shadow OS desktop (Wayland)
+Exec=/usr/bin/shadow-horizon-session
+TryExec=/usr/bin/shadow-horizon-session
+DesktopNames=SHADOW;KDE
+X-KDE-PluginInfo-Version=0.1.0

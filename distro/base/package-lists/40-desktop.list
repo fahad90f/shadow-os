@@ -1,4 +1,4 @@
-# NEXUS HORIZON desktop: the Debian packages behind the session. NEXUS's own
+# Shadow Horizon desktop: the Debian packages behind the session. SHADOW's own
 # packages (shell, applications, themes) are listed in the variant file.
 
 # Boot splash (also asks for the disk-encryption passphrase)
@@ -18,7 +18,7 @@ xdg-desktop-portal
 xdg-desktop-portal-kde
 xdg-desktop-portal-gtk
 
-# Compositor (pulled in by nexus-horizon as well; listed for clarity)
+# Compositor (pulled in by shadow-horizon as well; listed for clarity)
 kwin-wayland
 xwayland
 plasma-desktoptheme
@@ -59,10 +59,10 @@ fonts-noto-core
 fonts-noto-color-emoji
 fonts-noto-mono
 
-# Everyday applications that are not NEXUS's own
+# Everyday applications that are not SHADOW's own
 firefox-esr
 
-# Tools the NEXUS applications call
+# Tools the SHADOW applications call
 traceroute
 bind9-dnsutils
 tcpdump

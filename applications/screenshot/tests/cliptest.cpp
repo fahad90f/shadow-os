@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Test client for NEXUS Screenshot: an independent application that reads
+// Test client for SHADOW Screenshot: an independent application that reads
 // the clipboard through the ordinary Qt/Wayland path (wl_data_device, which
 // requires a focused window) and stores the picture it receives.
 //
-//   nexus-screenshot-cliptest read  <out.png>   exit 0 if an image was pasted
-//   nexus-screenshot-cliptest text  <string>    take the clipboard over with text
+//   shadow-screenshot-cliptest read  <out.png>   exit 0 if an image was pasted
+//   shadow-screenshot-cliptest text  <string>    take the clipboard over with text
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QImage>

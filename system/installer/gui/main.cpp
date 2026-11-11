@@ -6,7 +6,7 @@
 #include "timezones.h"
 #include "validation.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QCommandLineOption>
 #include <QFile>
@@ -34,16 +34,16 @@ const QStringList kSteps = {
 
 int main(int argc, char **argv)
 {
-    Nexus::App app(argc, argv, {
-        QStringLiteral("org.nexus.installer"),
-        QStringLiteral("NEXUS OS Installer"),
-        QStringLiteral("org.nexus.installer"),
-        QStringLiteral("Install NEXUS OS on this computer"),
+    Shadow::App app(argc, argv, {
+        QStringLiteral("org.shadow.installer"),
+        QStringLiteral("Shadow OS Installer"),
+        QStringLiteral("org.shadow.installer"),
+        QStringLiteral("Install Shadow OS on this computer"),
         true,
     });
 
     const QCommandLineOption engineOption(QStringLiteral("engine"),
-        QStringLiteral("Installation engine to run instead of %1 (also $NEXUS_INSTALLER_ENGINE).").arg(Options::defaultEnginePath()),
+        QStringLiteral("Installation engine to run instead of %1 (also $SHADOW_INSTALLER_ENGINE).").arg(Options::defaultEnginePath()),
         QStringLiteral("path"));
     const QCommandLineOption probeOption(QStringLiteral("probe-file"),
         QStringLiteral("TEST MODE: take the hardware description from this JSON file instead of the engine's "
@@ -73,7 +73,7 @@ int main(int argc, char **argv)
     Options &o = Options::instance();
     const QCommandLineParser &parser = app.parser();
     o.enginePath = Options::defaultEnginePath();
-    const QString envEngine = qEnvironmentVariable("NEXUS_INSTALLER_ENGINE");
+    const QString envEngine = qEnvironmentVariable("SHADOW_INSTALLER_ENGINE");
     if (parser.isSet(engineOption) || !envEngine.isEmpty()) {
         o.enginePath = QFileInfo(parser.isSet(engineOption) ? parser.value(engineOption) : envEngine).absoluteFilePath();
         o.customEngine = true;
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
     o.runningAsRoot = geteuid() == 0;
 
     if (parser.isSet(stepOption) && !kSteps.contains(parser.value(stepOption))) {
-        std::fprintf(stderr, "nexus-installer: unknown step '%s' (steps: %s)\n",
+        std::fprintf(stderr, "shadow-installer: unknown step '%s' (steps: %s)\n",
                      qPrintable(parser.value(stepOption)), qPrintable(kSteps.join(QLatin1Char(' '))));
         return 2;
     }
@@ -95,11 +95,11 @@ int main(int argc, char **argv)
         o.presetFile = parser.value(presetOption);
         o.simulateScenario = parser.value(simulateOption);
         if (!o.simulateScenario.isEmpty() && !o.customEngine) {
-            std::fprintf(stderr, "nexus-installer: --simulate needs --engine <test-engine>\n");
+            std::fprintf(stderr, "shadow-installer: --simulate needs --engine <test-engine>\n");
             return 2;
         }
     } else if (parser.isSet(stepOption) || parser.isSet(presetOption) || parser.isSet(simulateOption)) {
-        std::fprintf(stderr, "nexus-installer: --step, --preset and --simulate are test options and need --probe-file\n");
+        std::fprintf(stderr, "shadow-installer: --step, --preset and --simulate are test options and need --probe-file\n");
         return 2;
     }
 
@@ -116,11 +116,11 @@ int main(int argc, char **argv)
             return app.finishDump(TimeZones().toJson());
         if (topic == QLatin1String("rules")) {
             // Verdicts of the mirrored input rules (validation.h) for the strings in
-            // $NEXUS_INSTALLER_RULES_INPUT; testing/check-rules.py compares them with
+            // $SHADOW_INSTALLER_RULES_INPUT; testing/check-rules.py compares them with
             // the engine's own code.
-            QFile input(qEnvironmentVariable("NEXUS_INSTALLER_RULES_INPUT"));
+            QFile input(qEnvironmentVariable("SHADOW_INSTALLER_RULES_INPUT"));
             if (!input.open(QIODevice::ReadOnly))
-                return app.dumpError(QStringLiteral("set NEXUS_INSTALLER_RULES_INPUT to a JSON file "
+                return app.dumpError(QStringLiteral("set SHADOW_INSTALLER_RULES_INPUT to a JSON file "
                                                     "{usernames, hostnames, fullnames, passphrases, passwords}"));
             const QJsonObject in = QJsonDocument::fromJson(input.readAll()).object();
             const auto verdicts = [&in](const char *key, QString (*problem)(const QString &)) {
@@ -155,5 +155,5 @@ int main(int argc, char **argv)
         }
         return app.dumpError(QStringLiteral("unknown dump topic '%1'").arg(topic));
     }
-    return app.run(QStringLiteral("org.nexus.installer"));
+    return app.run(QStringLiteral("org.shadow.installer"));
 }

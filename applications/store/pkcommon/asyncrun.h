@@ -7,7 +7,7 @@
 
 #include <type_traits>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 // Run a blocking function on the global thread pool and deliver its result to
 // 'done' on the context object's thread. Nothing is delivered if the context
@@ -24,4 +24,4 @@ void runAsync(QObject *context, Function function, Done done)
     watcher->setFuture(QtConcurrent::run(std::move(function)));
 }
 
-} // namespace NexusPk
+} // namespace ShadowPk

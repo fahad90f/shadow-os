@@ -17,7 +17,7 @@
 #include <QThread>
 #include <QTimer>
 
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
 #include <KConfig>
 #include <KConfigGroup>
 #endif
@@ -27,7 +27,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-NEXUS_CC_DUMP("privacy", [] {
+SHADOW_CC_DUMP("privacy", [] {
     PrivacyBackend backend;
     backend.scan();
     if (backend.scanning()) {
@@ -50,7 +50,7 @@ QString recentDocumentsDir() { return dataDir() + QStringLiteral("/RecentDocumen
 QSettings launcherUsage()
 {
     // The store the launcher of horizon-shell counts application starts in.
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("horizon-usage"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("horizon-usage"));
 }
 
 // ---- disk walking (worker thread; plain POSIX so odd file names are no problem) ----
@@ -202,7 +202,7 @@ void PrivacyBackend::refresh()
 
 bool PrivacyBackend::lockConfigurable() const
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     return true;
 #else
     return false;
@@ -211,7 +211,7 @@ bool PrivacyBackend::lockConfigurable() const
 
 void PrivacyBackend::loadLock()
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     const KConfig config(QStringLiteral("kscreenlockerrc"), KConfig::NoGlobals);
     const KConfigGroup daemon = config.group(QStringLiteral("Daemon"));
     // Fallbacks are KScreenLocker's own defaults.
@@ -227,7 +227,7 @@ void PrivacyBackend::loadLock()
 
 void PrivacyBackend::writeLock(const char *key, const QVariant &value)
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     {
         KConfig config(QStringLiteral("kscreenlockerrc"), KConfig::NoGlobals);
         KConfigGroup daemon = config.group(QStringLiteral("Daemon"));
@@ -387,13 +387,13 @@ void PrivacyBackend::loadNetwork()
         {QStringLiteral("connection"), QStringLiteral("ipv6.ip6-privacy")},
     };
     QHash<QString, NmValue> values;
-    m_nexusPrivacyFile.clear();
+    m_shadowPrivacyFile.clear();
     for (const QString &path : nmConfigFiles()) {
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly))
             continue;
-        if (path.endsWith(QLatin1String("/80-nexus-privacy.conf")))
-            m_nexusPrivacyFile = path;
+        if (path.endsWith(QLatin1String("/80-shadow-privacy.conf")))
+            m_shadowPrivacyFile = path;
         QString section;
         const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
         for (const QString &raw : lines) {
@@ -448,7 +448,7 @@ QJsonObject PrivacyBackend::toJson() const
         {QStringLiteral("cleanup"), QJsonArray::fromVariantList(m_cleanup)},
         {QStringLiteral("network"), QJsonObject{
             {QStringLiteral("networkManagerInstalled"), networkManagerInstalled()},
-            {QStringLiteral("nexusPrivacyFile"), m_nexusPrivacyFile},
+            {QStringLiteral("shadowPrivacyFile"), m_shadowPrivacyFile},
             {QStringLiteral("settings"), QJsonArray::fromVariantList(m_macSettings)}}},
     };
 }

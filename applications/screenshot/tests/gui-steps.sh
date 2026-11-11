@@ -11,7 +11,7 @@ PICS="$HOME/Pictures/Screenshots"
 # minute; comparisons against a reference taken earlier allow for that line.
 UPTIME_TOLERANCE=400
 shot disks-ref2.png
-nexus-screenshot 2>"$OUT/gui.err" & gui=$!
+shadow-screenshot 2>"$OUT/gui.err" & gui=$!
 sleep 7
 shot disks-gui-1-result.png
 tool() { xdo mousemove "$1" 805 click 1; sleep 0.6; }
@@ -53,7 +53,7 @@ file "$OUT/gui-saved-as.webp" | grep -q "Web/P" && ok "Save as… wrote a WebP f
 
 xdo mousemove 1366 852 click 1; sleep 1         # Copy
 shot disks-gui-6-copied.png
-nexus-screenshot-cliptest read "$OUT/gui-pasted.png"; expect_rc "Copy: another client pastes the picture" $? 0
+shadow-screenshot-cliptest read "$OUT/gui-pasted.png"; expect_rc "Copy: another client pastes the picture" $? 0
 same "pasted picture equals the saved, cropped file" "$OUT/gui-pasted.png" "$OUT/gui-cropped.png"
 
 xdo mousemove 857 138 click 1; sleep 0.5        # Region mode
@@ -67,15 +67,15 @@ same "region captured from the window equals that area of the screen (own window
 
 xdo mousemove 1147 852 click 1; sleep 6         # Open folder
 shot disks-gui-9-open-folder.png
-files="$(pgrep -n -f "nexus-files $PICS")"
+files="$(pgrep -n -f "shadow-files $PICS")"
 if [ -n "$files" ]; then ok "Open folder started the file manager on $PICS"; kill "$files"; sleep 1
-else echo "NOTE  nexus-files is not built in this tree; Open folder not verified"; fi
+else echo "NOTE  shadow-files is not built in this tree; Open folder not verified"; fi
 
 xdo mousemove 1366 852 click 1; sleep 1         # Copy again, then close the window
 xdo mousemove 1505 87 click 1; sleep 2
 kill -0 $gui 2>/dev/null && ok "closing the window keeps the process while it holds the clipboard" || bad "process exited although it holds the clipboard"
-nexus-screenshot-cliptest read "$OUT/gui-pasted-after-close.png"; expect_rc "paste still works after the window was closed" $? 0
-nexus-screenshot-cliptest text "bye" >/dev/null & replacer=$!
+shadow-screenshot-cliptest read "$OUT/gui-pasted-after-close.png"; expect_rc "paste still works after the window was closed" $? 0
+shadow-screenshot-cliptest text "bye" >/dev/null & replacer=$!
 sleep 1.5; xdo mousemove 800 450 click 1; wait $replacer
 for _ in 1 2 3 4 5 6; do kill -0 $gui 2>/dev/null || break; sleep 1; done
 kill -0 $gui 2>/dev/null && bad "process still running after the clipboard was replaced" || ok "process ends once the clipboard is replaced"

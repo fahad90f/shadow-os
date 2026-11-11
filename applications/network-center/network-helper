@@ -1,10 +1,10 @@
 #!/usr/bin/python3 -I
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Privileged helper of NEXUS Network Center.
+"""Privileged helper of SHADOW Network Center.
 
 Started by the application through pkexec (polkit actions
-org.nexus.networkcenter.sockets and org.nexus.networkcenter.capture, see
-org.nexus.networkcenter.policy). It accepts a closed set of sub-commands,
+org.shadow.networkcenter.sockets and org.shadow.networkcenter.capture, see
+org.shadow.networkcenter.policy). It accepts a closed set of sub-commands,
 validates every argument, never invokes a shell and never opens a file on
 behalf of the caller. Before it runs a tool it removes from the capability
 bounding set every capability that tool does not need, so the child is root

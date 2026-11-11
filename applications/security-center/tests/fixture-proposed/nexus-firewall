@@ -1,7 +1,0 @@
-#!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
-# TEST FIXTURE — never installed. It changes nothing: every command fails the
-# way the real nexus-firewall fails (message on stderr, exit 1), which is how
-# the "the firewall was not changed" path of the Firewall page is tested.
-echo "nexus-firewall: test fixture: '$1' was refused, nothing was changed" >&2
-exit 1

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<!--
+  polkit actions of SHADOW Network Center. Both run the same helper through
+  pkexec; pkexec selects the action by the helper's first argument
+  (org.freedesktop.policykit.exec.argv1), so each sub-command has its own
+  authorisation and its own message. Neither changes the system: "sockets"
+  discloses which processes own the network sockets of other users, "capture"
+  discloses the traffic of an interface. Both therefore require an
+  administrator; a capture is asked for every time (no "keep") and only from
+  the active local session.
+-->
+<policyconfig>
+  <vendor>Shadow OS</vendor>
+  <vendor_url>https://github.com/fahad90fa/Custom-OS</vendor_url>
+  <icon_name>org.shadow.networkcenter</icon_name>
+
+  <action id="org.shadow.networkcenter.sockets">
+    <description>Show the processes behind all network connections</description>
+    <message>Authentication is required to see which processes of other users own network sockets</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@NC_HELPER_PATH@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">sockets</annotate>
+  </action>
+
+  <action id="org.shadow.networkcenter.capture">
+    <description>Capture network packets</description>
+    <message>Authentication is required to capture the network traffic of this computer</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@NC_HELPER_PATH@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">capture</annotate>
+  </action>
+</policyconfig>

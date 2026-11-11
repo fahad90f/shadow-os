@@ -29,12 +29,12 @@ std::atomic<int> g_styleSheetErrors{0};
 
 QString iconPath(const QString &name)
 {
-    // This application's own glyphs first, then the shared NEXUS set that is
+    // This application's own glyphs first, then the shared SHADOW set that is
     // compiled into the UI library.
     const QString own = QStringLiteral(":/terminal/icons/") + name + QStringLiteral(".svg");
     if (QFile::exists(own))
         return own;
-    return QStringLiteral(":/nexus/icons/") + name + QStringLiteral(".svg");
+    return QStringLiteral(":/shadow/icons/") + name + QStringLiteral(".svg");
 }
 
 // Renders a "currentColor" SVG glyph in a colour that depends on the icon
@@ -119,14 +119,14 @@ Theme *Theme::instance()
 Theme::Theme(QObject *parent)
     : QObject(parent)
 {
-    auto *appearance = Nexus::Appearance::instance();
-    connect(appearance, &Nexus::Appearance::darkChanged, this, &Theme::apply);
-    connect(appearance, &Nexus::Appearance::accentChanged, this, &Theme::apply);
-    connect(appearance, &Nexus::Appearance::fontScaleChanged, this, &Theme::apply);
+    auto *appearance = Shadow::Appearance::instance();
+    connect(appearance, &Shadow::Appearance::darkChanged, this, &Theme::apply);
+    connect(appearance, &Shadow::Appearance::accentChanged, this, &Theme::apply);
+    connect(appearance, &Shadow::Appearance::fontScaleChanged, this, &Theme::apply);
     // Transparency and motion do not change the style sheet, but the terminal
     // panes react to them through changed().
-    connect(appearance, &Nexus::Appearance::transparencyChanged, this, &Theme::changed);
-    connect(appearance, &Nexus::Appearance::reduceMotionChanged, this, &Theme::changed);
+    connect(appearance, &Shadow::Appearance::transparencyChanged, this, &Theme::changed);
+    connect(appearance, &Shadow::Appearance::reduceMotionChanged, this, &Theme::changed);
 }
 
 int Theme::styleSheetErrors()
@@ -141,17 +141,17 @@ void Theme::noteStyleSheetError()
 
 qreal Theme::fontScale() const
 {
-    return Nexus::Appearance::instance()->fontScale();
+    return Shadow::Appearance::instance()->fontScale();
 }
 
 bool Theme::transparency() const
 {
-    return Nexus::Appearance::instance()->transparency();
+    return Shadow::Appearance::instance()->transparency();
 }
 
 bool Theme::reduceMotion() const
 {
-    return Nexus::Appearance::instance()->reduceMotion();
+    return Shadow::Appearance::instance()->reduceMotion();
 }
 
 int Theme::scaled(int tokenPixelSize) const
@@ -174,13 +174,13 @@ QColor Theme::color(const QString &token) const
     const auto it = m_colors.constFind(token);
     if (it != m_colors.constEnd())
         return it.value();
-    qWarning("nexus-terminal: unknown colour token '%s'", qPrintable(token));
+    qWarning("shadow-terminal: unknown colour token '%s'", qPrintable(token));
     return QColor(Qt::magenta);
 }
 
 void Theme::apply()
 {
-    const auto *appearance = Nexus::Appearance::instance();
+    const auto *appearance = Shadow::Appearance::instance();
     m_dark = appearance->dark();
     const QString mode = m_dark ? QStringLiteral("dark") : QStringLiteral("light");
 
@@ -202,7 +202,7 @@ void Theme::apply()
                 m_colors.insert(it.key(), c);
         }
     } else {
-        qWarning("nexus-terminal: theme colour table '%s' is missing", qPrintable(variant));
+        qWarning("shadow-terminal: theme colour table '%s' is missing", qPrintable(variant));
     }
 
     // ---- palette -------------------------------------------------------------
@@ -242,7 +242,7 @@ void Theme::apply()
     if (qss.open(QIODevice::ReadOnly))
         sheet = QString::fromUtf8(qss.readAll());
     else
-        qWarning("nexus-terminal: style sheet '%s' is missing", qPrintable(variant));
+        qWarning("shadow-terminal: style sheet '%s' is missing", qPrintable(variant));
 
     // The sheet carries the token font sizes; apply the user's font scale.
     const qreal scale = fontScale();
@@ -287,7 +287,7 @@ QIcon Theme::icon(const QString &name, const QString &token, const QString &acti
 {
     QFile file(iconPath(name));
     if (!file.open(QIODevice::ReadOnly)) {
-        qWarning("nexus-terminal: unknown symbolic icon '%s'", qPrintable(name));
+        qWarning("shadow-terminal: unknown symbolic icon '%s'", qPrintable(name));
         return QIcon();
     }
     return QIcon(new SymbolicIconEngine(file.readAll(), color(token), color(activeToken),

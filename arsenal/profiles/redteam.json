@@ -4,8 +4,8 @@
   "name": "Red Team",
   "summary": "Offensive tooling for authorized penetration tests and red-team engagements",
   "description": "Credential attacks, exploitation helpers, Active Directory and Windows protocol tooling, and pivoting utilities for engagements you have written authorization to perform. Several cornerstone frameworks (Metasploit, Responder, NetExec, BloodHound, Sliver) are not in Debian main and are listed as external tools with vendor install instructions rather than bundled.",
-  "icon": "nexus-red-team",
-  "metapackage": "nexus-arsenal-redteam",
+  "icon": "shadow-red-team",
+  "metapackage": "shadow-arsenal-redteam",
   "tools": [
     {
       "package": "hydra",

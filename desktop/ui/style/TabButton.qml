@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls.impl
 import QtQuick.Templates as T
-import org.nexus.ui
+import org.shadow.ui
 
 T.TabButton {
     id: control

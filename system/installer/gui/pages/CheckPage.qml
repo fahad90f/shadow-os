@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 StepPage {
     id: page
@@ -20,7 +20,7 @@ StepPage {
     ready: ok && report.can_install === true
     blockReason: Installer.probeState === "running" ? qsTr("Examining this computer…")
                : !ok ? qsTr("The system check has not succeeded.")
-               : !ready ? qsTr("Blocking problems must be solved before NEXUS OS can be installed.") : ""
+               : !ready ? qsTr("Blocking problems must be solved before Shadow OS can be installed.") : ""
 
     function entered() {
         if (Installer.probeState === "idle")
@@ -119,7 +119,7 @@ StepPage {
 
         NxBanner {
             kind: page.failures.length > 0 ? "danger" : page.cautions.length > 0 ? "warning" : "success"
-            title: page.failures.length > 0 ? qsTr("NEXUS OS cannot be installed on this computer as it is")
+            title: page.failures.length > 0 ? qsTr("Shadow OS cannot be installed on this computer as it is")
                  : page.cautions.length > 0 ? (page.cautions.length === 1 ? qsTr("This computer can run the installation — one point to note") : qsTr("This computer can run the installation — %1 points to note").arg(page.cautions.length))
                  : qsTr("This computer meets all requirements")
             message: page.failures.length > 0

@@ -1,6 +1,6 @@
-# NEXUS Network Center
+# SHADOW Network Center
 
-`nexus-network-center` (id `org.nexus.networkcenter`) shows the state of the
+`shadow-network-center` (id `org.shadow.networkcenter`) shows the state of the
 network, changes the configuration through NetworkManager and carries the
 tools needed to find out why a connection does not work.
 
@@ -17,7 +17,7 @@ tools needed to find out why a connection does not work.
 | Diagnostics | troubleshooting checklist; ping, route trace, DNS lookup, TCP port check, path-MTU probe — live output, cancellable |
 | Packet capture | capture to file with filter, size/time limits, ring buffer, live counters, stop; open in Wireshark |
 
-`nexus-network-center <page>` (or `--page <page>`) opens a page directly:
+`shadow-network-center <page>` (or `--page <page>`) opens a page directly:
 `overview wifi interfaces ip dns routes connections vpn diagnostics capture`.
 
 ## Data sources
@@ -74,15 +74,15 @@ NetworkManager's own polkit policy decides what the user may do.
 
 ## Privileged operations
 
-One helper, `/usr/libexec/nexus/network-helper` (Python 3, standard library),
-started through `pkexec`. Policy: `org.nexus.networkcenter.policy`, generated
+One helper, `/usr/libexec/shadow/network-helper` (Python 3, standard library),
+started through `pkexec`. Policy: `org.shadow.networkcenter.policy`, generated
 by CMake so that the authorised path is the installed path; pkexec selects the
 action by the helper's first argument (`org.freedesktop.policykit.exec.argv1`).
 
 | Action | Sub-command | Authorisation |
 |---|---|---|
-| `org.nexus.networkcenter.sockets` | `sockets` — `ss` as root, to see the processes of other users | `auth_admin_keep` (active session), `auth_admin` otherwise |
-| `org.nexus.networkcenter.capture` | `capture --interface NAME [--filter EXPR] [--snaplen N]` — `tcpdump -Z USER -i NAME -U -w - [-s N] [-- EXPR]` | `auth_admin` every time, active local session only (`allow_any`/`allow_inactive` = `no`) |
+| `org.shadow.networkcenter.sockets` | `sockets` — `ss` as root, to see the processes of other users | `auth_admin_keep` (active session), `auth_admin` otherwise |
+| `org.shadow.networkcenter.capture` | `capture --interface NAME [--filter EXPR] [--snaplen N]` — `tcpdump -Z USER -i NAME -U -w - [-s N] [-- EXPR]` | `auth_admin` every time, active local session only (`allow_any`/`allow_inactive` = `no`) |
 
 Properties of the helper (reviewed and tested, see below):
 
@@ -150,7 +150,7 @@ capture without authentication for members of group `wireshark`),
 Everything below was run in the Debian build chroot (root, no systemd, no
 polkit, no hardware).
 
-* **Build:** `NEXUS_JOBS=2 scripts/dev.sh build --dir netcenter --only network-center` — no compiler warnings.
+* **Build:** `SHADOW_JOBS=2 scripts/dev.sh build --dir netcenter --only network-center` — no compiler warnings.
 * **Smoke test:** `tests/desktop/smoke.sh --dir netcenter network-center` — 10 of 10 launches pass (one per page), no QML warnings. The same ten launches were repeated with a live NetworkManager (below): no QML warnings.
 * **Kernel data:** `--dump interfaces|routes|sockets|overview|dns|capture` compared with `ip -j address`, `ip -j route show table all` and `ss` (same interfaces, MAC, MTU, route and socket counts; a listener started as user `nobody` appears with its process).
 * **Unavailable state:** without a system bus every NetworkManager page and `--dump wifi|connections|vpn` report "NetworkManager cannot be reached: the system message bus is not available (…)"; screenshots `netcenter-overview.png`, `netcenter-wifi.png`.

@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # GUI round trip of the Firewall page, driven with xdotool inside the nested
-# NEXUS HORIZON session (scripts/dev.sh nested). The application runs in the
+# Shadow Horizon session (scripts/dev.sh nested). The application runs in the
 # isolation of tests/isolated.sh, so the firewall it enables, opens ports in,
 # resets and disables is that of a throw-away network namespace.
 #
@@ -9,15 +9,15 @@
 #       '. /src/applications/security-center/tests/gui-firewall.sh'
 #
 # Screenshots: build/work/shots/seccenter-fw-*.png; the state the tool reports
-# after every step is appended to $NEXUS_LOGS/gui-firewall.log.
+# after every step is appended to $SHADOW_LOGS/gui-firewall.log.
 T=/src/applications/security-center/tests
-LOG="$NEXUS_LOGS/gui-firewall.log"; : > "$LOG"
-export NEXUS_SECURITY_STATUS_TOOL="$T/status-with-ruleset" NEXUS_FIREWALL_TOOL=/src/security/firewall/nexus-firewall
-"$T/isolated.sh" nexus-security-center --page firewall > "$NEXUS_LOGS/gui-firewall-app.log" 2>&1 &
+LOG="$SHADOW_LOGS/gui-firewall.log"; : > "$LOG"
+export SHADOW_SECURITY_STATUS_TOOL="$T/status-with-ruleset" SHADOW_FIREWALL_TOOL=/src/security/firewall/shadow-firewall
+"$T/isolated.sh" shadow-security-center --page firewall > "$SHADOW_LOGS/gui-firewall-app.log" 2>&1 &
 sleep 9
 # The app (and the tools it starts) live in the namespaces of this process.
-app="$(pgrep -n -x nexus-security-)"
-state() { echo "== $1" >> "$LOG"; nsenter -t "$app" -n -m -r -w /src/security/firewall/nexus-firewall status --json >> "$LOG" 2>&1; }
+app="$(pgrep -n -x shadow-security-)"
+state() { echo "== $1" >> "$LOG"; nsenter -t "$app" -n -m -r -w /src/security/firewall/shadow-firewall status --json >> "$LOG" 2>&1; }
 click() { xdo mousemove "$1" "$2" click 1; sleep "${3:-1}"; }
 state "start"
 shot seccenter-fw-1-inactive.png

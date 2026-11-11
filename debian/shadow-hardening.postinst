@@ -1,0 +1,25 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        if [ -z "$2" ]; then
+            # Fresh installation: the firewall starts at boot. (Debian installs
+            # nftables.service disabled.) Later upgrades leave the
+            # administrator's choice alone.
+            deb-systemd-helper enable nftables.service >/dev/null || true
+        fi
+        # Apply the kernel settings now where a running system allows it.
+        if [ -d /run/systemd/system ]; then
+            sysctl --quiet --system >/dev/null 2>&1 || true
+            # A firewall that is already active picks up the new ruleset.
+            if nft list table inet shadow_filter >/dev/null 2>&1; then
+                shadow-firewall reload >/dev/null 2>&1 || \
+                    echo "shadow-hardening: warning: could not reload the firewall; run 'sudo shadow-firewall reload'" >&2
+            fi
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+exit 0

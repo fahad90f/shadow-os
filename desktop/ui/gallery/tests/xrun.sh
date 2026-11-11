@@ -27,17 +27,17 @@ ARGS=()
 while [ $# -gt 0 ] && [ "$1" != "--" ]; do ARGS+=("$1"); shift; done
 shift; COMMANDS="${1:-true}"
 
-export HOME="$(mktemp -d /tmp/nexus-xrun-home.XXXXXX)"
+export HOME="$(mktemp -d /tmp/shadow-xrun-home.XXXXXX)"
 export XDG_RUNTIME_DIR="$HOME/run"; mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.nexus.style
-export QT_LOGGING_RULES="qt.qpa.*=false" NEXUS_WINDOW_SIZE="$SIZE"
+export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.shadow.style
+export QT_LOGGING_RULES="qt.qpa.*=false" SHADOW_WINDOW_SIZE="$SIZE"
 out="$HOME/app.log"; : > "$out"
 display=":$(( 300 + RANDOM % 600 ))"
 Xvfb "$display" -screen 0 1920x1200x24 -nolisten tcp >"$HOME/xvfb.log" 2>&1 &
 xvfb=$!
 sleep 1
 export DISPLAY="$display"
-env "${ENVS[@]}" dbus-run-session -- timeout --signal=KILL "${NEXUS_RUN_TIMEOUT:-120}" "${ARGS[@]}" >"$out" 2>&1 &
+env "${ENVS[@]}" dbus-run-session -- timeout --signal=KILL "${SHADOW_RUN_TIMEOUT:-120}" "${ARGS[@]}" >"$out" 2>&1 &
 app=$!
 
 wait_for() { for _ in $(seq 100); do grep -qE "$1" "$out" && return 0; sleep 0.2; done; echo "xrun: timed out waiting for $1" >&2; return 1; }

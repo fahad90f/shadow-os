@@ -1,5 +1,5 @@
 #!/bin/bash
-# GUI smoke test: launch every NEXUS application headlessly inside the build
+# GUI smoke test: launch every SHADOW application headlessly inside the build
 # chroot and fail if it cannot load its UI or the QML engine reports any
 # warning or error.
 #
@@ -35,11 +35,11 @@ while IFS= read -r list; do
         args=(--dir "$DIR" --smoke)
         [ "$SHOTS" -eq 1 ] && args+=(--shot "smoke-$bin.png")
         out="$("$ROOT/scripts/dev.sh" run "${args[@]}" "$@" 2>&1)"; rc=$?
-        if [ $rc -eq 0 ] && grep -q "NEXUS-SMOKE-OK" <<<"$out"; then
+        if [ $rc -eq 0 ] && grep -q "SHADOW-SMOKE-OK" <<<"$out"; then
             echo "PASS  $comp: $line"; pass=$((pass+1))
         else
             echo "FAIL  $comp: $line (exit $rc)"
-            grep -E "QML-WARNING|QML-ERROR|NEXUS-|error|Segmentation|Aborted" <<<"$out" | head -15 | sed 's/^/      /'
+            grep -E "QML-WARNING|QML-ERROR|SHADOW-|error|Segmentation|Aborted" <<<"$out" | head -15 | sed 's/^/      /'
             fail=$((fail+1)); failed+=("$comp:$bin")
         fi
     done < "$list"

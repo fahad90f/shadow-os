@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.networkcenter
+import org.shadow.ui
+import org.shadow.networkcenter
 
 // One network interface: header with state and live rates, expandable details.
 // Used as a delegate over a RecordModel of NetState.interfaces.

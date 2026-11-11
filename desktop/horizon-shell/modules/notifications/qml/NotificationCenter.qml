@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // The notification centre: what has arrived, grouped by application, with
 // the Do Not Disturb switch. Registered as the overlay "notifications", so
@@ -15,7 +15,7 @@ PopupSurface {
     screen: shell.primaryScreen
     alignment: "right"
     popupWidth: 420
-    scope: "nexus-notification-center"
+    scope: "shadow-notification-center"
 
     // For the "5 min" labels; only ticks while the centre is showing.
     property double now: Date.now()
@@ -132,7 +132,7 @@ PopupSurface {
             kind: "warning"
             title: qsTr("Notifications are not available")
             message: notifications.unavailableReason === "other-service"
-                ? qsTr("Another notification service is running in this session. NEXUS HORIZON shows notifications as soon as it has stopped.")
+                ? qsTr("Another notification service is running in this session. Shadow Horizon shows notifications as soon as it has stopped.")
                 : qsTr("There is no session message bus, so applications cannot send notifications.")
         }
 

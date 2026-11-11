@@ -1,6 +1,6 @@
-# Security toolkit: NEXUS Arsenal
+# Security toolkit: SHADOW Arsenal
 
-NEXUS Arsenal is how security tools get onto a NEXUS OS system: curated
+SHADOW Arsenal is how security tools get onto a Shadow OS system: curated
 **profiles** of Debian packages, installed on demand through the package
 manager. Source: `arsenal/`.
 
@@ -17,9 +17,9 @@ contains:
 
 | In the image | Package |
 |---|---|
-| the Arsenal manager application | `nexus-arsenal` |
-| the profile manifests | `nexus-arsenal-data` |
-| the profile metapackages, as files in the on-disk repository `/usr/share/nexus/repository` (not installed) | `nexus-arsenal-<profile>` |
+| the Arsenal manager application | `shadow-arsenal` |
+| the profile manifests | `shadow-arsenal-data` |
+| the profile metapackages, as files in the on-disk repository `/usr/share/shadow/repository` (not installed) | `shadow-arsenal-<profile>` |
 | general network utilities that are part of the base system | for example `tcpdump`, `traceroute`, `dig`, `whois`, `curl`, `openssh-client` |
 
 The tools of a profile are downloaded from Debian when you install the
@@ -27,21 +27,21 @@ profile; you need a network connection.
 
 (The variant file `distro/base/variants/desktop.conf` describes the image as
 containing "the Core Security toolkit". The package lists do not install
-`nexus-arsenal-core`; what is stated here is what the build does.)
+`shadow-arsenal-core`; what is stated here is what the build does.)
 
 ## Profiles
 
 | Profile | Metapackage | Tools | External entries |
 |---|---|---:|---:|
-| Core Security | `nexus-arsenal-core` | 15 | 1 |
-| Web Application | `nexus-arsenal-web` | 19 | 4 |
-| Network Security | `nexus-arsenal-network` | 26 | 0 |
-| Red Team | `nexus-arsenal-redteam` | 25 | 6 |
-| Blue Team | `nexus-arsenal-blueteam` | 20 | 4 |
-| Forensics | `nexus-arsenal-forensics` | 22 | 1 |
-| Reverse Engineering | `nexus-arsenal-reversing` | 23 (one amd64-only) | 3 |
-| Developer | `nexus-arsenal-developer` | 25 | 0 |
-| Complete Arsenal | `nexus-arsenal-complete` | all of the above: 159 distinct | 18 distinct |
+| Core Security | `shadow-arsenal-core` | 15 | 1 |
+| Web Application | `shadow-arsenal-web` | 19 | 4 |
+| Network Security | `shadow-arsenal-network` | 26 | 0 |
+| Red Team | `shadow-arsenal-redteam` | 25 | 6 |
+| Blue Team | `shadow-arsenal-blueteam` | 20 | 4 |
+| Forensics | `shadow-arsenal-forensics` | 22 | 1 |
+| Reverse Engineering | `shadow-arsenal-reversing` | 23 (one amd64-only) | 3 |
+| Developer | `shadow-arsenal-developer` | 25 | 0 |
+| Complete Arsenal | `shadow-arsenal-complete` | all of the above: 159 distinct | 18 distinct |
 
 The contents of every profile, with download and installed sizes, are in
 [arsenal/docs/profiles.md](../../arsenal/docs/profiles.md) (generated from
@@ -64,9 +64,9 @@ Rules the profiles follow (`arsenal/README.md`):
 
 ### With the Arsenal manager
 
-Start **NEXUS Arsenal** from the launcher (`nexus-arsenal`). On first start
+Start **SHADOW Arsenal** from the launcher (`shadow-arsenal`). On first start
 you must acknowledge the conditions of responsible use; the acknowledgement
-is stored in `~/.config/nexus/arsenal.conf` and records only that you were
+is stored in `~/.config/shadow/arsenal.conf` and records only that you were
 told — it authorises nothing.
 
 * **Install profile** installs the metapackage. The manager resolves the
@@ -77,7 +77,7 @@ told — it authorises nothing.
   removes the metapackage with autoremove: tools that came with it and that
   nothing else needs are removed, tools you installed by hand stay.
 * **Install / remove a single tool** from the tool list. Removal is not
-  offered for essential packages, and a removal that would take a NEXUS
+  offered for essential packages, and a removal that would take a SHADOW
   system package with it is refused.
 * Each tool has a details view with its start command; command-line tools
   can be opened in a terminal showing their help.
@@ -93,10 +93,10 @@ If PackageKit is not available, the buttons open a dialog with the exact
 
 ```sh
 sudo apt update
-sudo apt install nexus-arsenal-web          # a profile
+sudo apt install shadow-arsenal-web          # a profile
 sudo apt install nmap                       # a single tool
 sudo apt remove nmap
-sudo apt remove --autoremove nexus-arsenal-web   # a profile and the tools nothing else needs
+sudo apt remove --autoremove shadow-arsenal-web   # a profile and the tools nothing else needs
 ```
 
 `apt install` follows Recommends by default, so installing a metapackage
@@ -104,8 +104,8 @@ installs its tools. Do **not** add `--no-install-recommends`: you would get
 the empty metapackage only.
 
 The metapackages come from the on-disk repository
-(`/etc/apt/sources.list.d/nexus-local.sources`); this has not been verified
-on an installed system. If `apt` cannot find `nexus-arsenal-<profile>`,
+(`/etc/apt/sources.list.d/shadow-local.sources`); this has not been verified
+on an installed system. If `apt` cannot find `shadow-arsenal-<profile>`,
 install the tools directly — the package names are in
 [arsenal/docs/profiles.md](../../arsenal/docs/profiles.md).
 
@@ -125,18 +125,18 @@ Frida, BloodHound, Responder, NetExec, Sliver, Volatility 3, Zeek, Wazuh.
 * They are **listed**, per profile, as external entries with their licence,
   the reason they are not included, and a link to the vendor's official
   installation instructions.
-* NEXUS OS **does not install, download or repackage them**, and enables no
+* Shadow OS **does not install, download or repackage them**, and enables no
   third-party repository for them. The manager shows them as "not
-  installable from NEXUS repositories" and opens the vendor's page.
+  installable from SHADOW repositories" and opens the vendor's page.
 * If you install one yourself, you are trusting its vendor's packaging and
-  update channel, not Debian's or NEXUS's. Verify signatures and checksums
+  update channel, not Debian's or SHADOW's. Verify signatures and checksums
   as the vendor documents, and prefer installing into a lab machine.
 * The session sets `_JAVA_AWT_WM_NONREPARENTING=1` so that Java tools such
   as Burp Suite and Ghidra lay out correctly through Xwayland. That is the
   only accommodation made for them; none of them has been tested.
 
 The repository component `security` is reserved for the profile
-metapackages and for tools NEXUS might package itself (`nexus-tool-*`);
+metapackages and for tools SHADOW might package itself (`shadow-tool-*`);
 no such tool package exists.
 
 ## Legal and responsible use
@@ -162,13 +162,13 @@ To practise, build an isolated lab of virtual machines:
 [arsenal/docs/lab-setup.md](../../arsenal/docs/lab-setup.md). It uses
 libvirt/QEMU from the Developer profile.
 
-## Things to know when using the tools on NEXUS OS
+## Things to know when using the tools on Shadow OS
 
 * **Firewall.** Inbound connections are dropped by default. A listener for
   a reverse connection, a local web server for a test, or a capture
   interface that expects unsolicited traffic needs an opened port:
-  `sudo nexus-firewall allow 4444/tcp --name "lab listener"`, and
-  `sudo nexus-firewall remove 4444/tcp` afterwards
+  `sudo shadow-firewall allow 4444/tcp --name "lab listener"`, and
+  `sudo shadow-firewall remove 4444/tcp` afterwards
   ([hardening.md](hardening.md)).
 * **Packet capture as a user.** Debian's `wireshark-common` decides
   whether members of the group `wireshark` may capture without root

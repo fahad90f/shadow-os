@@ -4,13 +4,13 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
     title: qsTr("Appearance")
-    subtitle: qsTr("Colours, wallpaper, dock and panel of the NEXUS desktop. Changes apply immediately to every NEXUS application.")
+    subtitle: qsTr("Colours, wallpaper, dock and panel of the SHADOW desktop. Changes apply immediately to every SHADOW application.")
 
     // Which wallpaper slot the chooser edits: the shell shows one image in
     // dark and another in light appearance.
@@ -44,7 +44,7 @@ NxPage {
         NxRow {
             icon: Appearance.dark ? "moon" : "sun"
             title: qsTr("Appearance")
-            subtitle: qsTr("Dark or light surfaces in all NEXUS applications and the shell.")
+            subtitle: qsTr("Dark or light surfaces in all SHADOW applications and the shell.")
             NxSegmented {
                 anchors.verticalCenter: parent.verticalCenter
                 model: [qsTr("Dark"), qsTr("Light")]
@@ -118,7 +118,7 @@ NxPage {
         NxRow {
             icon: "activity"
             title: qsTr("Reduce motion")
-            subtitle: qsTr("Switches off animations in NEXUS applications and the shell.")
+            subtitle: qsTr("Switches off animations in SHADOW applications and the shell.")
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
                 checked: Appearance.reduceMotion
@@ -130,8 +130,8 @@ NxPage {
             icon: "type"
             title: qsTr("Text size")
             subtitle: page.fontScaleIgnored
-                ? qsTr("Saved, but this version of the NEXUS UI library does not scale its text yet.")
-                : qsTr("Scales the text of NEXUS applications.")
+                ? qsTr("Saved, but this version of the SHADOW UI library does not scale its text yet.")
+                : qsTr("Scales the text of SHADOW applications.")
             Label {
                 anchors.verticalCenter: parent.verticalCenter
                 text: Math.round(fontSlider.value * 100) + " %"

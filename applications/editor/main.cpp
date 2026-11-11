@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// NEXUS Text Editor.
+// SHADOW Text Editor.
 //
-//   nexus-editor [file[:line]...]        open files (in the running window, if any)
-//   nexus-editor --probe <file>          print what the editor detects (encoding, BOM,
+//   shadow-editor [file[:line]...]        open files (in the running window, if any)
+//   shadow-editor --probe <file>          print what the editor detects (encoding, BOM,
 //                                        line endings, syntax) as JSON; no window
-//   nexus-editor --resave <in> <out>     decode <in> and write it to <out> exactly as the
+//   shadow-editor --resave <in> <out>     decode <in> and write it to <out> exactly as the
 //                                        editor would save it; no window (round-trip check)
-//   nexus-editor --dump <topic>          syntaxes | encodings | themes | limits | settings
+//   shadow-editor --dump <topic>          syntaxes | encodings | themes | limits | settings
 #include "document.h"
 #include "textfile.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <KSyntaxHighlighting/Definition>
 #include <KSyntaxHighlighting/Repository>
@@ -70,22 +70,22 @@ int resave(const QString &in, const QString &out)
 {
     QFile file(in);
     if (!file.open(QIODevice::ReadOnly)) {
-        std::fprintf(stderr, "nexus-editor: %s: %s\n", qPrintable(in), qPrintable(file.errorString()));
+        std::fprintf(stderr, "shadow-editor: %s: %s\n", qPrintable(in), qPrintable(file.errorString()));
         return 1;
     }
     const TextFile::Decoded decoded = TextFile::decode(file.readAll());
     if (!decoded.ok()) {
-        std::fprintf(stderr, "nexus-editor: %s\n", qPrintable(decoded.error));
+        std::fprintf(stderr, "shadow-editor: %s\n", qPrintable(decoded.error));
         return 1;
     }
     const TextFile::Encoded encoded = TextFile::encode(decoded.text, decoded.encoding, decoded.bom, decoded.lineEnding);
     if (!encoded.ok()) {
-        std::fprintf(stderr, "nexus-editor: %s\n", qPrintable(encoded.error));
+        std::fprintf(stderr, "shadow-editor: %s\n", qPrintable(encoded.error));
         return 1;
     }
     QSaveFile target(out);
     if (!target.open(QIODevice::WriteOnly) || target.write(encoded.bytes) != encoded.bytes.size() || !target.commit()) {
-        std::fprintf(stderr, "nexus-editor: %s: %s\n", qPrintable(out), qPrintable(target.errorString()));
+        std::fprintf(stderr, "shadow-editor: %s: %s\n", qPrintable(out), qPrintable(target.errorString()));
         return 1;
     }
     return 0;
@@ -130,10 +130,10 @@ int main(int argc, char **argv)
         qputenv("QT_QPA_PLATFORM", "offscreen");
     int count = argc;
 
-    Nexus::App app(count, arguments.data(), {
-        QStringLiteral("org.nexus.editor"),
+    Shadow::App app(count, arguments.data(), {
+        QStringLiteral("org.shadow.editor"),
         QStringLiteral("Text Editor"),
-        QStringLiteral("org.nexus.editor"),
+        QStringLiteral("org.shadow.editor"),
         QStringLiteral("Text editor for source code and plain text"),
         !headless,      // single instance: files open as tabs of the running window
     });
@@ -142,7 +142,7 @@ int main(int argc, char **argv)
     QCommandLineOption probeOption(QStringLiteral("probe"),
         QStringLiteral("Print the detected encoding, line endings and syntax of the given files as JSON and exit."));
     QCommandLineOption resaveOption(QStringLiteral("resave"),
-        QStringLiteral("Decode <in> and write it to <out> as the editor would save it, then exit: nexus-editor --resave <in> <out>."));
+        QStringLiteral("Decode <in> and write it to <out> as the editor would save it, then exit: shadow-editor --resave <in> <out>."));
     app.parser().addOption(probeOption);
     app.parser().addOption(resaveOption);
     app.parser().addPositionalArgument(QStringLiteral("files"), QStringLiteral("Files to open; file:LINE jumps to a line."),
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
     }
     if (app.parser().isSet(resaveOption)) {
         if (files.size() != 2) {
-            std::fprintf(stderr, "usage: nexus-editor --resave <in> <out>\n");
+            std::fprintf(stderr, "usage: shadow-editor --resave <in> <out>\n");
             return 2;
         }
         return resave(files.at(0), files.at(1));
@@ -189,8 +189,8 @@ int main(int argc, char **argv)
                 out.append(theme.name());
             return app.finishDump(QJsonObject{
                 {QStringLiteral("available"), out},
-                {QStringLiteral("nexusDark"), syntaxRepository().theme(QStringLiteral("NEXUS Dark")).isValid()},
-                {QStringLiteral("nexusLight"), syntaxRepository().theme(QStringLiteral("NEXUS Light")).isValid()},
+                {QStringLiteral("shadowDark"), syntaxRepository().theme(QStringLiteral("SHADOW Dark")).isValid()},
+                {QStringLiteral("shadowLight"), syntaxRepository().theme(QStringLiteral("SHADOW Light")).isValid()},
             });
         }
         if (topic == QLatin1String("limits")) {
@@ -210,5 +210,5 @@ int main(int argc, char **argv)
         }
         return app.dumpError(QStringLiteral("unknown dump topic '%1'").arg(topic));
     }
-    return app.run(QStringLiteral("org.nexus.editor"));
+    return app.run(QStringLiteral("org.shadow.editor"));
 }

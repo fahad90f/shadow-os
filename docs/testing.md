@@ -60,9 +60,9 @@ Planner unit tests: **28 pass.**
 
 | Check | Result |
 |---|---|
-| Boots via UEFI to SDDM auto-login into the "NEXUS HORIZON" Wayland session | PASS |
+| Boots via UEFI to SDDM auto-login into the "Shadow Horizon" Wayland session | PASS |
 | KWin and `horizon-shell` run; panel, dock, wallpaper and launcher are drawn | PASS |
-| System Information started from the launcher by keyboard; shows NEXUS OS 0.1.0 on kernel 6.12 | PASS |
+| System Information started from the launcher by keyboard; shows Shadow OS 0.1.0 on kernel 6.12 | PASS |
 | Graphical installer run | pending |
 | Lock screen | pending |
 | Login screen without auto-login | pending |
@@ -81,9 +81,9 @@ Found and fixed during these runs:
 
 | Component | Result |
 |---|---|
-| `nexus-firewall` | functional test in an isolated network namespace passes |
+| `shadow-firewall` | functional test in an isolated network namespace passes |
 | Shell in a nested KWin session (not a VM) | launcher, search, dock, context menu, session menu and global shortcuts verified with injected input and screenshots |
-| NEXUS kernel | `kernel/build.sh --configure-only` verified; a full build was started and **not completed** |
+| SHADOW kernel | `kernel/build.sh --configure-only` verified; a full build was started and **not completed** |
 | Applications and shell modules | each README states its own tests; most back-ends that need NetworkManager, BlueZ, UPower, logind or PackageKit were tested against the real daemon on a private bus where possible, otherwise against fixtures, and say which |
 
 Per-component details: [applications/README.md](applications/README.md) and
@@ -108,16 +108,16 @@ tests with `sudo` or change the owner.
 ### 1. Live boot: `tests/boot/`
 
 ```sh
-tests/boot/test_live_boot.py --iso build/out/iso/nexus-os-0.1.0-amd64-minimal.iso \
+tests/boot/test_live_boot.py --iso build/out/iso/shadow-os-0.1.0-amd64-minimal.iso \
     [--arch amd64|arm64] [--firmware uefi|uefi-secureboot|bios] [--media cdrom|usb] \
-    [--user nexus] [--password live] [--memory 4096] [--timeout 900] [--workdir DIR]
+    [--user shadow] [--password live] [--memory 4096] [--timeout 900] [--workdir DIR]
 
 tests/boot/run-matrix.sh <iso> [amd64|arm64] [results-dir]
 ```
 
 `run-matrix.sh` runs the six firmware × medium combinations for amd64 and
 prints a PASS/FAIL table (`summary.txt` in the results directory, default
-`build/work/tests/boot-matrix-amd64`). `NEXUS_TEST_TIMEOUT` sets the
+`build/work/tests/boot-matrix-amd64`). `SHADOW_TEST_TIMEOUT` sets the
 per-step timeout.
 
 Verified from inside the guest, over the serial console:
@@ -179,7 +179,7 @@ What "verified" means here: the engine's own JSON events report success;
 the virtual machine then boots **from the installed disk alone** through
 the same firmware; and these checks run inside the installed system:
 
-* booted from disk, not the live medium; `os-release` identifies NEXUS OS;
+* booted from disk, not the live medium; `os-release` identifies Shadow OS;
 * host name, locale, time zone and keyboard as answered (a German
   configuration is used on purpose); the locale was generated;
 * the user exists with its groups and `sudo` works with its password; the
@@ -189,9 +189,9 @@ the same firmware; and these checks run inside the installed system:
 * encrypted: root is on LUKS2 + LVM, and LUKS reports version 2 with
   Argon2id;
 * swap is a file, a partition or absent, as answered;
-* UEFI: a firmware boot entry "NEXUS OS" exists and the Secure Boot state
+* UEFI: a firmware boot entry "Shadow OS" exists and the Secure Boot state
   is as configured; BIOS: booted through legacy BIOS;
-* `/etc/nexus/boot.conf` exists and `nexus-grub-install --verbose` succeeds
+* `/etc/shadow/boot.conf` exists and `shadow-grub-install --verbose` succeeds
   (the update path);
 * the installation log is on the installed system and contains neither the
   password nor the passphrase;
@@ -203,7 +203,7 @@ untouched.
 ### 4. Desktop boot: `tests/desktop/test_desktop_boot.py`
 
 ```sh
-tests/desktop/test_desktop_boot.py --iso build/out/iso/nexus-os-0.1.0-amd64.iso \
+tests/desktop/test_desktop_boot.py --iso build/out/iso/shadow-os-0.1.0-amd64.iso \
     [--firmware uefi|uefi-secureboot|bios] [--workdir DIR] [--shots DIR] \
     [--memory 4096] [--timeout 900] [--session-timeout 1200] [--settle 45] [--keys]
 ```
@@ -229,7 +229,7 @@ Booting under emulation takes minutes, so debugging uses a VM that stays up
 between commands:
 
 ```sh
-tests/lib/vmshell.py start --iso build/out/iso/nexus-os-0.1.0-amd64.iso [--disk FILE] \
+tests/lib/vmshell.py start --iso build/out/iso/shadow-os-0.1.0-amd64.iso [--disk FILE] \
     [--firmware uefi] [--memory 4096] [--cpu MODEL] [--no-login] [--foreground]
 tests/lib/vmshell.py run 'systemctl --failed'      # as the live user, over the serial console
 tests/lib/vmshell.py sudo 'journalctl -b -p err'
@@ -250,7 +250,7 @@ on record were done this way.
 sudo tests/desktop/smoke.sh [--dir BUILD_DIR_NAME] [--shots] [component...]
 ```
 
-Launches every NEXUS application headlessly inside the build chroot and
+Launches every SHADOW application headlessly inside the build chroot and
 fails if it cannot load its UI or the QML engine reports any warning or
 error. Applications opt in with a `smoke-tests.list` next to their sources
 (one `<binary> [args...]` per line). `--dir` names a build tree made with
@@ -288,7 +288,7 @@ chroot, packages, repository, the desktop ISO, checksum verification, the
 desktop boot test under UEFI, and the live-boot test of the desktop ISO
 under UEFI Secure Boot and BIOS. It uploads the ISO as a workflow artifact
 and, for `v*` tags, creates a release. A release signing key can be
-supplied through the secret `NEXUS_SIGNING_KEY`; otherwise a development key
+supplied through the secret `SHADOW_SIGNING_KEY`; otherwise a development key
 is generated during the run.
 
 **No run of this workflow is on record**, so none of its steps counts as
@@ -316,9 +316,9 @@ sudo build/iso/build.sh
 
 # test
 python3 tests/installation/test_plan.py
-sudo tests/boot/run-matrix.sh build/out/iso/nexus-os-0.1.0-amd64-minimal.iso
-sudo tests/installation/run-all.sh build/out/iso/nexus-os-0.1.0-amd64-minimal.iso
-sudo tests/desktop/test_desktop_boot.py --iso build/out/iso/nexus-os-0.1.0-amd64.iso --keys
+sudo tests/boot/run-matrix.sh build/out/iso/shadow-os-0.1.0-amd64-minimal.iso
+sudo tests/installation/run-all.sh build/out/iso/shadow-os-0.1.0-amd64-minimal.iso
+sudo tests/desktop/test_desktop_boot.py --iso build/out/iso/shadow-os-0.1.0-amd64.iso --keys
 ```
 
 Expect long run times without KVM: every boot is emulated instruction by
@@ -353,5 +353,5 @@ None of the following can be established in QEMU, and none of it has been:
 | arm64 | everything |
 
 If you test on hardware, please report what you tried, the exact machine
-(`nexus-sysinfo --dump report`), and what happened — including successes
+(`shadow-sysinfo --dump report`), and what happened — including successes
 ([../CONTRIBUTING.md](../CONTRIBUTING.md)).

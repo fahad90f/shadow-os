@@ -5,7 +5,7 @@
 // result as one line of JSON. Exit code 0 = the action succeeded,
 // 1 = it failed or was refused, 2 = usage.
 //
-//   nexus-disks-testctl <action> <device> [arguments…]
+//   shadow-disks-testctl <action> <device> [arguments…]
 //     mount|unmount|lock|check|repair|delete|refusal  /dev/X
 //     unlock  /dev/X                      (passphrase on stdin)
 //     label   /dev/X <label>
@@ -17,7 +17,7 @@
 //     image-cancel /dev/X <file> <cancel-after-bytes>
 //     watch-jobs   /dev/X <seconds>       print every change of the job list
 //
-// The driver itself refuses to run unless NEXUS_DISKS_TEST_LOOP_ONLY=1 is
+// The driver itself refuses to run unless SHADOW_DISKS_TEST_LOOP_ONLY=1 is
 // set, which makes the back-end reject every modifying action on anything
 // that is not a loop device.
 #include "udisksclient.h"
@@ -57,11 +57,11 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     const QStringList args = app.arguments().mid(1);
     if (args.size() < 2) {
-        std::fprintf(stderr, "usage: nexus-disks-testctl <action> <device> [arguments...]\n");
+        std::fprintf(stderr, "usage: shadow-disks-testctl <action> <device> [arguments...]\n");
         return 2;
     }
-    if (qEnvironmentVariableIntValue("NEXUS_DISKS_TEST_LOOP_ONLY") != 1) {
-        std::fprintf(stderr, "nexus-disks-testctl: refusing to run without NEXUS_DISKS_TEST_LOOP_ONLY=1\n");
+    if (qEnvironmentVariableIntValue("SHADOW_DISKS_TEST_LOOP_ONLY") != 1) {
+        std::fprintf(stderr, "shadow-disks-testctl: refusing to run without SHADOW_DISKS_TEST_LOOP_ONLY=1\n");
         return 2;
     }
     const QString action = args.at(0);
@@ -75,7 +75,7 @@ int main(int argc, char **argv)
         loop.exec();
     }
     if (!client.available()) {
-        std::fprintf(stderr, "nexus-disks-testctl: UDisks unavailable: %s\n", qPrintable(client.unavailableReason()));
+        std::fprintf(stderr, "shadow-disks-testctl: UDisks unavailable: %s\n", qPrintable(client.unavailableReason()));
         return 1;
     }
     if (!client.capabilitiesLoaded()) {
@@ -85,7 +85,7 @@ int main(int argc, char **argv)
     }
     const QString path = pathOf(client, device);
     if (path.isEmpty()) {
-        std::fprintf(stderr, "nexus-disks-testctl: %s is not known to UDisks\n", qPrintable(device));
+        std::fprintf(stderr, "shadow-disks-testctl: %s is not known to UDisks\n", qPrintable(device));
         return 1;
     }
 
@@ -168,10 +168,10 @@ int main(int argc, char **argv)
         });
         poll->start(5);
     } else {
-        std::fprintf(stderr, "nexus-disks-testctl: unknown action '%s'\n", qPrintable(action));
+        std::fprintf(stderr, "shadow-disks-testctl: unknown action '%s'\n", qPrintable(action));
         return 2;
     }
-    QTimer::singleShot(600000, &app, [&] { std::fprintf(stderr, "nexus-disks-testctl: timeout\n"); app.exit(1); });
+    QTimer::singleShot(600000, &app, [&] { std::fprintf(stderr, "shadow-disks-testctl: timeout\n"); app.exit(1); });
     app.exec();
     return rc;
 }

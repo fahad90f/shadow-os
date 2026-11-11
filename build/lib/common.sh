@@ -1,5 +1,5 @@
 #!/bin/bash
-# NEXUS OS build system — shared configuration and helpers.
+# Shadow OS build system — shared configuration and helpers.
 # Sourced by every script under build/. Never executed directly.
 #
 # All knobs are environment-overridable so CI and developers can relocate
@@ -7,31 +7,31 @@
 
 set -euo pipefail
 
-NEXUS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export NEXUS_ROOT
+SHADOW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export SHADOW_ROOT
 
-# shellcheck source=../../distro/base/nexus.conf
-. "$NEXUS_ROOT/distro/base/nexus.conf"
+# shellcheck source=../../distro/base/shadow.conf
+. "$SHADOW_ROOT/distro/base/shadow.conf"
 
-: "${NEXUS_WORK:=$NEXUS_ROOT/build/work}"
-: "${NEXUS_OUT:=$NEXUS_ROOT/build/out}"
-: "${NEXUS_CACHE:=$NEXUS_WORK/cache}"
-: "${NEXUS_JOBS:=$(nproc)}"
-export NEXUS_WORK NEXUS_OUT NEXUS_CACHE NEXUS_JOBS
+: "${SHADOW_WORK:=$SHADOW_ROOT/build/work}"
+: "${SHADOW_OUT:=$SHADOW_ROOT/build/out}"
+: "${SHADOW_CACHE:=$SHADOW_WORK/cache}"
+: "${SHADOW_JOBS:=$(nproc)}"
+export SHADOW_WORK SHADOW_OUT SHADOW_CACHE SHADOW_JOBS
 # Fresh checkouts (CI) have neither directory; everything below assumes them.
-mkdir -p "$NEXUS_WORK" "$NEXUS_OUT" 2>/dev/null || true
+mkdir -p "$SHADOW_WORK" "$SHADOW_OUT" 2>/dev/null || true
 
 # Build-time mirrors. Plain HTTP is deliberate: APT authenticates content with
 # the signed Release file, and build hosts behind TLS-intercepting proxies do
 # not have their private CA inside a pristine chroot. The *installed* system
 # is configured with HTTPS mirrors (see distro/base/apt/).
-: "${NEXUS_BUILD_MIRROR:=http://deb.debian.org/debian}"
-: "${NEXUS_BUILD_SECURITY_MIRROR:=http://deb.debian.org/debian-security}"
-export NEXUS_BUILD_MIRROR NEXUS_BUILD_SECURITY_MIRROR
+: "${SHADOW_BUILD_MIRROR:=http://deb.debian.org/debian}"
+: "${SHADOW_BUILD_SECURITY_MIRROR:=http://deb.debian.org/debian-security}"
+export SHADOW_BUILD_MIRROR SHADOW_BUILD_SECURITY_MIRROR
 
-log()  { printf '\033[1;36m[nexus]\033[0m %s\n' "$*" >&2; }
-warn() { printf '\033[1;33m[nexus] WARNING:\033[0m %s\n' "$*" >&2; }
-die()  { printf '\033[1;31m[nexus] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+log()  { printf '\033[1;36m[shadow]\033[0m %s\n' "$*" >&2; }
+warn() { printf '\033[1;33m[shadow] WARNING:\033[0m %s\n' "$*" >&2; }
+die()  { printf '\033[1;31m[shadow] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 need_root() {
     [ "$(id -u)" -eq 0 ] || die "this step must run as root (it creates chroots and device nodes)"
@@ -81,9 +81,9 @@ ensure_foreign_arch() {
 # APT sources lines used while *building* (chroots, image rootfs).
 build_sources() {
     local comps="main contrib non-free-firmware"
-    printf 'deb %s %s %s\n' "$NEXUS_BUILD_MIRROR" "$NEXUS_DEBIAN_SUITE" "$comps"
-    printf 'deb %s %s-updates %s\n' "$NEXUS_BUILD_MIRROR" "$NEXUS_DEBIAN_SUITE" "$comps"
-    printf 'deb %s %s-security %s\n' "$NEXUS_BUILD_SECURITY_MIRROR" "$NEXUS_DEBIAN_SUITE" "$comps"
+    printf 'deb %s %s %s\n' "$SHADOW_BUILD_MIRROR" "$SHADOW_DEBIAN_SUITE" "$comps"
+    printf 'deb %s %s-updates %s\n' "$SHADOW_BUILD_MIRROR" "$SHADOW_DEBIAN_SUITE" "$comps"
+    printf 'deb %s %s-security %s\n' "$SHADOW_BUILD_SECURITY_MIRROR" "$SHADOW_DEBIAN_SUITE" "$comps"
 }
 
 # Run a command inside a chroot with the kernel filesystems it needs.
@@ -121,10 +121,10 @@ in_chroot() {
             HOME=/root TERM="${TERM:-dumb}" LANG=C.UTF-8 LC_ALL=C.UTF-8 \
             DEBIAN_FRONTEND=noninteractive \
             SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-}" \
-            NEXUS_JOBS="${NEXUS_JOBS:-1}" \
-            ${NEXUS_RUN_TIMEOUT:+NEXUS_RUN_TIMEOUT="$NEXUS_RUN_TIMEOUT"} \
+            SHADOW_JOBS="${SHADOW_JOBS:-1}" \
+            ${SHADOW_RUN_TIMEOUT:+SHADOW_RUN_TIMEOUT="$SHADOW_RUN_TIMEOUT"} \
             chroot "$root" "$@"
-    ' nexus-chroot "$root" "${#binds[@]}" "${binds[@]}" "$@"
+    ' shadow-chroot "$root" "${#binds[@]}" "${binds[@]}" "$@"
 }
 
 # Keyring used to authenticate the Debian archive during bootstrap. On a
@@ -144,8 +144,8 @@ safe_rmtree() {
     local dir="$1"
     [ -e "$dir" ] || return 0
     case "$(realpath "$dir")" in
-        "$(realpath "$NEXUS_WORK")"/*|"$(realpath "$NEXUS_OUT")"/*) ;;
-        *) die "refusing to remove '$dir': not inside NEXUS_WORK or NEXUS_OUT" ;;
+        "$(realpath "$SHADOW_WORK")"/*|"$(realpath "$SHADOW_OUT")"/*) ;;
+        *) die "refusing to remove '$dir': not inside SHADOW_WORK or SHADOW_OUT" ;;
     esac
     if awk -v d="$(realpath "$dir")" '$5==d || index($5, d"/")==1 {found=1} END{exit !found}' /proc/self/mountinfo; then
         die "refusing to remove '$dir': filesystems are still mounted below it"
@@ -155,6 +155,6 @@ safe_rmtree() {
 
 # Reproducible timestamps: default to the last commit time.
 if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
-    SOURCE_DATE_EPOCH="$(git -C "$NEXUS_ROOT" log -1 --format=%ct 2>/dev/null || date +%s)"
+    SOURCE_DATE_EPOCH="$(git -C "$SHADOW_ROOT" log -1 --format=%ct 2>/dev/null || date +%s)"
 fi
 export SOURCE_DATE_EPOCH

@@ -2,11 +2,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 NxWindow {
     id: window
-    title: "NexusUI Gallery"
+    title: "ShadowUI Gallery"
     width: 1280
     height: 900
 
@@ -56,7 +56,7 @@ NxWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             title: "Components"
-            subtitle: "Every control below is rendered by the org.nexus.style Qt Quick Controls style and the org.nexus.ui component library."
+            subtitle: "Every control below is rendered by the org.shadow.style Qt Quick Controls style and the org.shadow.ui component library."
             maxContentWidth: 980
             actions: [
                 NxButton { text: "Secondary" },
@@ -139,7 +139,7 @@ NxWindow {
                 }
                 NxRow {
                     title: "Text entry"
-                    TextField { placeholderText: "Hostname"; text: "nexus"; width: 150 }
+                    TextField { placeholderText: "Hostname"; text: "shadow"; width: 150 }
                     NxPasswordField { placeholderText: "Passphrase"; text: "correct horse"; width: 170 }
                     ComboBox { model: ["Performance", "Balanced", "Power saver"]; currentIndex: 1; width: 150 }
                     SpinBox { value: 8; from: 0; to: 64 }
@@ -197,10 +197,10 @@ NxWindow {
                         { title: "Memory", role: "mem", width: 110, align: Qt.AlignRight, mono: true, format: (v) => Theme.formatBytes(v) },
                     ]
                     model: [
-                        { name: "kwin_wayland", pid: 1412, user: "nexus", cpu: 6.4, mem: 214748364 },
-                        { name: "horizon-shell", pid: 1466, user: "nexus", cpu: 2.1, mem: 163577856 },
+                        { name: "kwin_wayland", pid: 1412, user: "shadow", cpu: 6.4, mem: 214748364 },
+                        { name: "horizon-shell", pid: 1466, user: "shadow", cpu: 2.1, mem: 163577856 },
                         { name: "NetworkManager", pid: 731, user: "root", cpu: 0.3, mem: 22020096 },
-                        { name: "pipewire", pid: 1398, user: "nexus", cpu: 0.2, mem: 15728640 },
+                        { name: "pipewire", pid: 1398, user: "shadow", cpu: 0.2, mem: 15728640 },
                         { name: "systemd-journald", pid: 302, user: "root", cpu: 0.1, mem: 31457280 },
                     ]
                 }

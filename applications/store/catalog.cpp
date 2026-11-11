@@ -207,7 +207,7 @@ struct Catalog::Loaded
 
 const QList<Catalog::CategoryDefinition> &Catalog::categoryDefinitions()
 {
-    // The curated NEXUS categories and the freedesktop.org main categories
+    // The curated SHADOW categories and the freedesktop.org main categories
     // (plus "Security") that AppStream components carry.
     static const QList<CategoryDefinition> defs = {
         {QStringLiteral("security"), tr("Security"), QStringLiteral("shield"), {QStringLiteral("Security")}},
@@ -267,10 +267,10 @@ void Catalog::load()
     std::shared_ptr<AppStream::Pool> pool(new AppStream::Pool, [](AppStream::Pool *p) { p->deleteLater(); });
     // The distribution's catalogue (DEP-11 data downloaded by APT) and the
     // metainfo of installed software. No Flatpak or other bundle sources:
-    // NEXUS Store installs DEB packages only.
+    // SHADOW Store installs DEB packages only.
     pool->setFlags(AppStream::Pool::Flags(AppStream::Pool::FlagLoadOsCatalog) | AppStream::Pool::FlagLoadOsMetainfo);
 
-    NexusPk::runAsync(this, [pool] {
+    ShadowPk::runAsync(this, [pool] {
         Loaded result;
         result.pool = pool;
         result.ok = pool->load();
@@ -433,7 +433,7 @@ void Catalog::search(const QString &text, QObject *context, std::function<void(c
         QTimer::singleShot(0, context, [done] { done({}); });
         return;
     }
-    NexusPk::runAsync(context, [pool, term] {
+    ShadowPk::runAsync(context, [pool, term] {
         QStringList ids;
         const AppStream::ComponentBox box = pool->search(term);
         for (const AppStream::Component &c : box) {
@@ -698,7 +698,7 @@ QJsonObject Catalog::detailsJson(const QString &id) const
     }
     o.insert(QStringLiteral("contentRatings"), ratings);
 
-    // How it is delivered. NEXUS Store only installs the DEB package; other
+    // How it is delivered. SHADOW Store only installs the DEB package; other
     // bundle kinds in the metadata are reported, not used.
     QJsonArray bundles;
     const QList<AppStream::Bundle> bundleList = c.bundles();

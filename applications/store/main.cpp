@@ -2,7 +2,7 @@
 #include "packageinfo.h"
 #include "store.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 #include <pkservice.h>
 
 #include <QCommandLineOption>
@@ -13,13 +13,13 @@
 #include <functional>
 #include <vector>
 
-using NexusPk::Service;
+using ShadowPk::Service;
 
 namespace {
 
 // Spin the event loop until 'condition' holds; 'signal' of 'sender' is what
 // may change it. Returns false on timeout.
-bool waitUntil(Nexus::App &app, QObject *sender, const char *signal, const std::function<bool()> &condition,
+bool waitUntil(Shadow::App &app, QObject *sender, const char *signal, const std::function<bool()> &condition,
                int timeoutMs)
 {
     QElapsedTimer timer;
@@ -59,15 +59,15 @@ int main(int argc, char **argv)
         arguments.push_back(a.data());
     int argumentCount = int(arguments.size());
 
-    Nexus::AppInfo info;
-    info.id = QStringLiteral("org.nexus.store");
-    info.displayName = QStringLiteral("NEXUS Store");
-    info.iconName = QStringLiteral("org.nexus.store");
+    Shadow::AppInfo info;
+    info.id = QStringLiteral("org.shadow.store");
+    info.displayName = QStringLiteral("SHADOW Store");
+    info.iconName = QStringLiteral("org.shadow.store");
     info.description = QStringLiteral("Browse, install, update and remove software. "
                                       "Open an application by AppStream ID, package name or appstream:// URL.");
     info.singleInstance = true;
 
-    Nexus::App app(argumentCount, arguments.data(), info);
+    Shadow::App app(argumentCount, arguments.data(), info);
     app.parser().addOption(QCommandLineOption(QStringLiteral("search"), QStringLiteral("Search for <text>."),
                                               QStringLiteral("text")));
     app.parser().addOption(QCommandLineOption(
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
         return 0;
 
     if (app.dumpTopic().isEmpty())
-        return app.run(QStringLiteral("org.nexus.store"));
+        return app.run(QStringLiteral("org.shadow.store"));
 
     // ---- diagnostic mode ------------------------------------------------------
     const QString topic = app.dumpTopic();
@@ -193,7 +193,7 @@ int main(int argc, char **argv)
 
     if (topic == QLatin1String("updates")) {
         // Reads the lists on disk; it does not refresh them.
-        NexusPk::UpdateChecker *checker = store.updateChecker();
+        ShadowPk::UpdateChecker *checker = store.updateChecker();
         waitUntil(app, checker, SIGNAL(stateChanged()), [checker] { return !checker->busy() && checker->state() != QLatin1String("idle"); },
                   300000);
         QJsonObject out = checker->toJson();

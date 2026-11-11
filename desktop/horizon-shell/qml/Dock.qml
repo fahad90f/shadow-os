@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // The application dock: pinned launchers and running applications.
 ShellSurface {
@@ -21,7 +21,7 @@ ShellSurface {
     readonly property real screenX: ((screen ? screen.width : width) - width) / 2
 
     layer: "top"
-    scope: "nexus-dock"
+    scope: "shadow-dock"
     anchorBottom: true
     exclusiveZone: autoHide ? 0 : Math.round(barHeight + bottomGap + 2)
     width: Math.max(160, bar.width + Theme.spaceXl * 2)

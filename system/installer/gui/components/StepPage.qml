@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // One step of the wizard: heading, explanation and the step's content, which
 // fills the remaining height. Steps that can grow put a ScrollColumn inside.

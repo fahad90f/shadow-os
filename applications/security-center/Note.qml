@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Muted explanatory line under a section (what a value means, why something
 // is not shown).

@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -69,8 +69,8 @@ NxPage {
     NxBanner {
         visible: firewall.statusKnown && !firewall.rulesetInstalled
         kind: "warning"
-        title: qsTr("The NEXUS ruleset is missing")
-        message: qsTr("/etc/nftables.conf does not exist, so the firewall cannot be loaded. Reinstall the nexus-hardening package.")
+        title: qsTr("The SHADOW ruleset is missing")
+        message: qsTr("/etc/nftables.conf does not exist, so the firewall cannot be loaded. Reinstall the shadow-hardening package.")
     }
 
     NxSection {
@@ -128,7 +128,7 @@ NxPage {
             visible: firewall.statusKnown
             icon: "list"
             title: qsTr("Rules loaded in the kernel")
-            subtitle: qsTr("nftables table “inet nexus_filter”")
+            subtitle: qsTr("nftables table “inet shadow_filter”")
             value: String(firewall.ruleCount)
             monoValue: true
         }
@@ -146,8 +146,8 @@ NxPage {
     NxSection {
         visible: firewall.installed
         title: qsTr("Open ports")
-        description: firewall.statusKnown ? qsTr("Other computers can connect to these ports. Recorded in /etc/nexus/firewall.json.")
-                                          : qsTr("As recorded in /etc/nexus/firewall.json.")
+        description: firewall.statusKnown ? qsTr("Other computers can connect to these ports. Recorded in /etc/shadow/firewall.json.")
+                                          : qsTr("As recorded in /etc/shadow/firewall.json.")
         headerActions: [
             NxButton {
                 text: qsTr("Reload")

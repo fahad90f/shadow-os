@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // A framed list to choose one entry from. Keyboard: Tab reaches the list,
 // Up/Down/Home/End/PageUp/PageDown move, Return or Space choose.

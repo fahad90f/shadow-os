@@ -24,7 +24,7 @@ struct PaneSpec
 {
     enum class Kind {
         Shell,      // the profile's shell or command
-        Command,    // an explicit argument vector (nexus-terminal -e ...)
+        Command,    // an explicit argument vector (shadow-terminal -e ...)
         Ssh,        // an ssh client started from the SSH dialog
     };
     Kind kind = Kind::Shell;

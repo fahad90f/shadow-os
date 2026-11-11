@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // A profile on the overview: icon, summary, how many of its tools are
 // installed and what installing the rest would cost.

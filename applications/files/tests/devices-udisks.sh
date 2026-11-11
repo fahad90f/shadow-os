@@ -5,7 +5,7 @@
 #
 #   scripts/dev.sh exec --dir files -- bash /src/applications/files/tests/devices-udisks.sh
 #
-# Prints `nexus-files --dump devices` without a system bus, with a bus but no
+# Prints `shadow-files --dump devices` without a system bus, with a bus but no
 # UDisks2, and with udisksd running; compares the latter with udisksctl.
 # Nothing is mounted. The bus and the daemon are stopped again at the end.
 W="$(mktemp -d /tmp/files-test-udisks.XXXXXX)"
@@ -31,14 +31,14 @@ print("  emptyReason:", repr(d["emptyReason"]))
 for v in d["devices"]: print("  volume:", v["device"], v["fsType"], "mounted" if v["mounted"] else "not mounted", v["mountPoint"], v["label"])'; }
 
 echo "== 1. no system bus"
-DBUS_SYSTEM_BUS_ADDRESS="unix:path=$W/none.sock" nexus-files --dump devices | summary
+DBUS_SYSTEM_BUS_ADDRESS="unix:path=$W/none.sock" shadow-files --dump devices | summary
 
 dbus-daemon --config-file="$W/bus.conf" --nofork --nopidfile > "$W/bus.log" 2>&1 &
 bus=$!
 for i in $(seq 50); do [ -S "$W/bus.sock" ] && break; sleep 0.1; done
 export DBUS_SYSTEM_BUS_ADDRESS="unix:path=$W/bus.sock"
 echo "== 2. system bus without UDisks2"
-nexus-files --dump devices | summary
+shadow-files --dump devices | summary
 
 /usr/libexec/udisks2/udisksd > "$W/udisksd.log" 2>&1 &
 ud=$!
@@ -47,7 +47,7 @@ for i in $(seq 80); do owned && break; sleep 0.25; done
 echo "== 3. udisksd running: $(owned && echo yes || echo NO)"
 echo "  udisksctl block devices: $(udisksctl dump 2>/dev/null | grep -c '^/org/freedesktop/UDisks2/block_devices/')"
 echo "  udisksctl file systems : $(udisksctl dump 2>/dev/null | grep -c 'org.freedesktop.UDisks2.Filesystem:')"
-nexus-files --dump devices | summary
+shadow-files --dump devices | summary
 
 kill "$ud" "$bus" 2>/dev/null; wait 2>/dev/null
 tail -3 "$W/udisksd.log" | sed 's/^/  udisksd: /'

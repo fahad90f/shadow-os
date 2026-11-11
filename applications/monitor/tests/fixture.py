@@ -19,7 +19,7 @@ machine.
     sudo scripts/dev.sh run --dir monitor python3 /src/applications/monitor/tests/fixture.py \
          python3 /src/applications/monitor/tests/fixture-check.py
     sudo scripts/dev.sh run --dir monitor --smoke --shot monitor-fixture-sensors.png --size 1240x1500 \
-         python3 /src/applications/monitor/tests/fixture.py nexus-monitor --page sensors
+         python3 /src/applications/monitor/tests/fixture.py shadow-monitor --page sensors
 
 What it proves: the parsing, unit conversion, de-duplication and presentation
 of these sources. What it cannot prove: that real drivers and a real systemd
@@ -43,7 +43,7 @@ The synthetic machine:
             Start/Stop/RestartUnit with JobRemoved, Enable/DisableUnitFiles,
             Reload; "denied.service" refuses every change like a failed
             authorisation; the start job of "unstable.service" fails; the
-            unit listing fails while /tmp/nexus-monitor-fixture/fail-listing exists
+            unit listing fails while /tmp/shadow-monitor-fixture/fail-listing exists
 """
 import json
 import os
@@ -52,7 +52,7 @@ import subprocess
 import sys
 import time
 
-FX = "/tmp/nexus-monitor-fixture"
+FX = "/tmp/shadow-monitor-fixture"
 DEV = f"{FX}/sys/devices"
 
 
@@ -304,7 +304,7 @@ def main():
     build_sysfs()
     helpers = build_systemd()
 
-    # "nexus-monitor" means the freshly built binary (dev.sh exports LD_LIBRARY_PATH=<build>/lib).
+    # "shadow-monitor" means the freshly built binary (dev.sh exports LD_LIBRARY_PATH=<build>/lib).
     for path in os.environ.get("LD_LIBRARY_PATH", "").split(":"):
         candidate = os.path.join(os.path.dirname(path.rstrip("/")), "bin", command[0])
         if "/" not in command[0] and os.access(candidate, os.X_OK):

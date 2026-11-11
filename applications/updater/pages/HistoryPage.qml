@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.updater
+import org.shadow.ui
+import org.shadow.updater
 
 // Dated record of package changes: APT's log (every apt, apt-get and
 // PackageKit run that changed packages), completed with who started each

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// NEXUS Archive Manager.
+// SHADOW Archive Manager.
 //
-//   nexus-archive-manager [archive]                    browse an archive
-//   nexus-archive-manager --extract <archive> [--to <dir>]
-//   nexus-archive-manager --create <output> <files…>
-//   nexus-archive-manager --list <archive>             JSON listing, no window
-//   nexus-archive-manager --test <archive>             integrity test, no window
+//   shadow-archive-manager [archive]                    browse an archive
+//   shadow-archive-manager --extract <archive> [--to <dir>]
+//   shadow-archive-manager --create <output> <files…>
+//   shadow-archive-manager --list <archive>             JSON listing, no window
+//   shadow-archive-manager --test <archive>             integrity test, no window
 //   … --headless                                       --extract/--create without a window
 //
 // See README.md for every option and the exit codes.
@@ -14,7 +14,7 @@
 #include "formats.h"
 #include "tools.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QDir>
 #include <QEventLoop>
@@ -50,7 +50,7 @@ struct Headless
     QString password;
 };
 
-int runHeadless(Nexus::App &app, const Headless &job)
+int runHeadless(Shadow::App &app, const Headless &job)
 {
     ArchiveSession session;
     QEventLoop loop;
@@ -178,10 +178,10 @@ int main(int argc, char **argv)
     if (headless)
         qputenv("QT_QPA_PLATFORM", "offscreen");
 
-    Nexus::App app(argc, argv, {
-        QStringLiteral("org.nexus.archivemanager"),
+    Shadow::App app(argc, argv, {
+        QStringLiteral("org.shadow.archivemanager"),
         QStringLiteral("Archive Manager"),
-        QStringLiteral("org.nexus.archivemanager"),
+        QStringLiteral("org.shadow.archivemanager"),
         QStringLiteral("Open, extract and create archives"),
     });
     app.setDumpTopics({QStringLiteral("formats"), QStringLiteral("tools")});
@@ -236,7 +236,7 @@ int main(int argc, char **argv)
         return Usage;
     }
     if ((parser.isSet(createOption) || parser.isSet(addOption) || parser.isSet(deleteOption)) && positional.size() < 2) {
-        say(QStringLiteral("usage: nexus-archive-manager --create <output> <files...> | --add <archive> <files...> | --delete <archive> <entries...>"));
+        say(QStringLiteral("usage: shadow-archive-manager --create <output> <files...> | --add <archive> <files...> | --delete <archive> <entries...>"));
         return Usage;
     }
     auto absolute = [](const QString &path) { return QDir::cleanPath(QFileInfo(path).absoluteFilePath()); };
@@ -297,5 +297,5 @@ int main(int argc, char **argv)
             launch.destination = absolute(parser.value(toOption));
     }
     app.expose(QStringLiteral("launch"), launchObject);
-    return app.run(QStringLiteral("org.nexus.archivemanager"));
+    return app.run(QStringLiteral("org.shadow.archivemanager"));
 }

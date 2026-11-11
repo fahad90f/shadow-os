@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.arsenal
+import org.shadow.ui
+import org.shadow.arsenal
 
 // Search across the tools of all profiles.
 NxPage {

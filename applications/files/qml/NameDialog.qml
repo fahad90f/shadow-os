@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Asks for one name: new folder, new file, bookmark label.
 Dialog {

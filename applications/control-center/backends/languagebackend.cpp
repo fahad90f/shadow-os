@@ -20,7 +20,7 @@
 #include <QTime>
 #include <QTimer>
 
-NEXUS_CC_DUMP("language", [] {
+SHADOW_CC_DUMP("language", [] {
     LanguageBackend backend;
     if (!backend.ready()) {
         QEventLoop loop;
@@ -36,7 +36,7 @@ const QString kService = QStringLiteral("org.freedesktop.locale1");
 const QString kPath = QStringLiteral("/org/freedesktop/locale1");
 const QString kInterface = QStringLiteral("org.freedesktop.locale1");
 const QString kProperties = QStringLiteral("org.freedesktop.DBus.Properties");
-const QString kHelper = QStringLiteral("/usr/libexec/nexus/language-helper");
+const QString kHelper = QStringLiteral("/usr/libexec/shadow/language-helper");
 const QString kSupported = QStringLiteral("/usr/share/i18n/SUPPORTED");
 const QString kReadOnlyPolicy = QStringLiteral("/usr/share/dbus-1/system.d/systemd-localed-read-only.conf");
 const QString kLang = QStringLiteral("LANG");
@@ -137,7 +137,7 @@ QString LanguageBackend::sessionLanguage() const
 
 bool LanguageBackend::helperAvailable() const
 {
-    return QFileInfo(kHelper).isExecutable() && Nexus::Command::available(QStringLiteral("pkexec"));
+    return QFileInfo(kHelper).isExecutable() && Shadow::Command::available(QStringLiteral("pkexec"));
 }
 
 bool LanguageBackend::loginPending() const
@@ -164,7 +164,7 @@ void LanguageBackend::loadLocales()
 
     // Generated locales. The command returns at once (it lists an archive).
     m_generated.clear();
-    const Nexus::CommandResult result = Nexus::Command::runSync(QStringLiteral("locale"), {QStringLiteral("-a")}, 4000);
+    const Shadow::CommandResult result = Shadow::Command::runSync(QStringLiteral("locale"), {QStringLiteral("-a")}, 4000);
     QStringList generatedNames;
     if (result.ok()) {
         const QStringList lines = result.outText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
@@ -508,7 +508,7 @@ void LanguageBackend::runHelper(const QStringList &generate, const QStringList &
         arguments << QStringLiteral("set") << set;
     setBusy(true, generate.isEmpty() ? tr("Applying…")
                                      : tr("Generating %1 — this can take a minute…").arg(generate.join(QStringLiteral(", "))));
-    Nexus::Command::run(this, QStringLiteral("pkexec"), arguments, [this, generate, set](const Nexus::CommandResult &result) {
+    Shadow::Command::run(this, QStringLiteral("pkexec"), arguments, [this, generate, set](const Shadow::CommandResult &result) {
         const QJsonObject reply = QJsonDocument::fromJson(result.out).object();
         if (!generate.isEmpty()) {
             loadLocales();

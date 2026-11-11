@@ -16,7 +16,7 @@
 
 #include <unistd.h>
 
-NEXUS_CC_DUMP("security", [] {
+SHADOW_CC_DUMP("security", [] {
     SecurityBackend backend;
     if (!backend.ready()) {
         QEventLoop loop;
@@ -32,8 +32,8 @@ const QString kSections = QStringLiteral("firewall,apparmor,encryption,secureboo
 
 QString toolPath()
 {
-    const QString override = qEnvironmentVariable("NEXUS_SECURITY_STATUS_TOOL");
-    return override.isEmpty() ? QStringLiteral("/usr/sbin/nexus-security-status") : override;
+    const QString override = qEnvironmentVariable("SHADOW_SECURITY_STATUS_TOOL");
+    return override.isEmpty() ? QStringLiteral("/usr/sbin/shadow-security-status") : override;
 }
 
 QString tr_(const char *text) { return SecurityBackend::tr(text); }
@@ -385,7 +385,7 @@ Check hardeningCheck(const QJsonObject &s)
         c.state = tr_("Baseline not installed");
         c.evidence << baseline.value(QStringLiteral("reason")).toString();
     } else if (drift.isEmpty()) {
-        c.state = tr_("%1 setting(s) match the NEXUS baseline").arg(sysctl.size());
+        c.state = tr_("%1 setting(s) match the SHADOW baseline").arg(sysctl.size());
         c.tone = QStringLiteral("success");
     } else {
         c.state = tr_("%1 of %2 setting(s) differ from the baseline").arg(drift.size()).arg(sysctl.size());
@@ -431,22 +431,22 @@ SecurityBackend::SecurityBackend(QObject *parent)
 
 bool SecurityBackend::securityCenterAvailable() const
 {
-    return !QStandardPaths::findExecutable(QStringLiteral("nexus-security-center")).isEmpty();
+    return !QStandardPaths::findExecutable(QStringLiteral("shadow-security-center")).isEmpty();
 }
 
 bool SecurityBackend::updaterAvailable() const
 {
-    return !QStandardPaths::findExecutable(QStringLiteral("nexus-updater")).isEmpty();
+    return !QStandardPaths::findExecutable(QStringLiteral("shadow-updater")).isEmpty();
 }
 
 bool SecurityBackend::openSecurityCenter() const
 {
-    return QProcess::startDetached(QStringLiteral("nexus-security-center"), {});
+    return QProcess::startDetached(QStringLiteral("shadow-security-center"), {});
 }
 
 bool SecurityBackend::openUpdater() const
 {
-    return QProcess::startDetached(QStringLiteral("nexus-updater"), {});
+    return QProcess::startDetached(QStringLiteral("shadow-updater"), {});
 }
 
 void SecurityBackend::refresh()
@@ -467,7 +467,7 @@ void SecurityBackend::runTool(bool throughPolkit)
 {
     const int generation = ++m_generation;
     const QStringList arguments{QStringLiteral("--section"), kSections};
-    auto done = [this, generation, throughPolkit](const Nexus::CommandResult &result) {
+    auto done = [this, generation, throughPolkit](const Shadow::CommandResult &result) {
         if (generation != m_generation)
             return;
         const QJsonDocument doc = QJsonDocument::fromJson(result.out);
@@ -491,9 +491,9 @@ void SecurityBackend::runTool(bool throughPolkit)
     };
     // The "updates" section simulates an upgrade with apt, which can take a while.
     if (throughPolkit)
-        Nexus::Command::run(this, QStringLiteral("pkexec"), QStringList{toolPath()} + arguments, done, 240000);
+        Shadow::Command::run(this, QStringLiteral("pkexec"), QStringList{toolPath()} + arguments, done, 240000);
     else
-        Nexus::Command::run(this, toolPath(), arguments, done, 240000);
+        Shadow::Command::run(this, toolPath(), arguments, done, 240000);
 }
 
 void SecurityBackend::fail(const QString &message)

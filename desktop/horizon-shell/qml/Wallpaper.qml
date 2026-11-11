@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // Desktop background of one screen.
 ShellSurface {
     id: root
 
     layer: "background"
-    scope: "nexus-wallpaper"
+    scope: "shadow-wallpaper"
     anchorTop: true; anchorBottom: true; anchorLeft: true; anchorRight: true
     exclusiveZone: -1
     width: screen ? screen.width : 1280

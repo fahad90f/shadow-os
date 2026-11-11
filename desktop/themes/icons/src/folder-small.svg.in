@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- @@GENERATED@@ -->
-<!-- NEXUS places icon "@@ICON_NAME@@", sizes below 32 px: the folder without a glyph,
-     drawn on the 16 px grid so its edges stay sharp. Original NEXUS artwork. -->
+<!-- SHADOW places icon "@@ICON_NAME@@", sizes below 32 px: the folder without a glyph,
+     drawn on the 16 px grid so its edges stay sharp. Original SHADOW artwork. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
 <defs>
 <linearGradient id="back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="@{accent.blue}"/><stop offset="1" stop-color="@{mix:accent.blue:brand.obsidian:0.45}"/></linearGradient>

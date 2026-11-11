@@ -45,7 +45,7 @@ class RowModel;
 //   several bindings separated by ", "), assigned, custom (keys differ from the
 //   action's default)
 //
-// Without KConfig (NEXUS_HAVE_KCONFIG undefined) nothing can be read or
+// Without KConfig (SHADOW_HAVE_KCONFIG undefined) nothing can be read or
 // written and the page shows the "unsupported-build" state.
 class KeyboardBackend : public QObject
 {

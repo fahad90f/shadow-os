@@ -4,10 +4,10 @@ import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.editor
+import org.shadow.ui
+import org.shadow.editor
 
-// NEXUS Text Editor — main window: toolbar, tabs, the editor views, find
+// SHADOW Text Editor — main window: toolbar, tabs, the editor views, find
 // bar, status bar and the dialogs.
 NxWindow {
     id: window
@@ -21,7 +21,7 @@ NxWindow {
     width: 1180
     height: 780
 
-    // ---- preferences: ~/.config/nexus/editor.conf, [Editor] ---------------------
+    // ---- preferences: ~/.config/shadow/editor.conf, [Editor] ---------------------
     QtObject {
         id: prefs
         property string fontFamily: Theme.fontMono
@@ -200,13 +200,13 @@ NxWindow {
             for (const file of session.files) openFile(file.path, file.position)
             if (session.files.length > 0) currentTab = Math.min(session.current, views.length - 1)
         }
-        openFiles(nexusApp.arguments)
+        openFiles(shadowApp.arguments)
         if (tabs.count === 0) newTab()
         started = true
         focusEditor()
     }
     Connections {
-        target: nexusApp
+        target: shadowApp
         function onActivationRequested(arguments) {
             window.openFiles(arguments)
             window.raise()
@@ -216,7 +216,7 @@ NxWindow {
     // Coming back to the window is when an external change matters.
     onActiveChanged: if (active) { for (const view of views) view.document.checkDisk() }
 
-    // ---- measurement (NEXUS_EDITOR_BENCH=1) ---------------------------------------
+    // ---- measurement (SHADOW_EDITOR_BENCH=1) ---------------------------------------
     // Each step changes something and is timed until the next frame is on screen.
     QtObject {
         id: bench

@@ -273,7 +273,7 @@ void PkJob::resolved(T::Exit exit)
             } else {
                 fail(QStringLiteral("unavailable"), tr("Not available from the configured repositories"),
                      tr("No repository that is enabled on this system offers: %1.\n"
-                        "Refresh the package lists (NEXUS Updater, or “sudo apt update”) and check that the "
+                        "Refresh the package lists (SHADOW Updater, or “sudo apt update”) and check that the "
                         "repository is enabled.").arg(m_unavailable.join(QStringLiteral(", "))));
             }
             return;
@@ -354,7 +354,7 @@ void PkJob::simulated(T::Exit exit)
     }
 
     // Never take the desktop down with a tool.
-    static const QRegularExpression protectedName(QStringLiteral("^nexus-(?!arsenal-)"));
+    static const QRegularExpression protectedName(QStringLiteral("^shadow-(?!arsenal-)"));
     QStringList blocked;
     for (const QVariant &entry : std::as_const(m_removeList)) {
         const QString name = entry.toMap().value(QStringLiteral("name")).toString();
@@ -362,7 +362,7 @@ void PkJob::simulated(T::Exit exit)
             blocked << name;
     }
     if (!blocked.isEmpty()) {
-        fail(QStringLiteral("protected"), tr("This would remove parts of NEXUS OS"),
+        fail(QStringLiteral("protected"), tr("This would remove parts of Shadow OS"),
              tr("The operation would also remove %1, so it was not started. Nothing was changed.")
                  .arg(blocked.join(QStringLiteral(", "))));
         return;
@@ -446,13 +446,13 @@ void PkJob::ran(T::Exit exit)
         return;
     case T::ExitEulaRequired:
         fail(QStringLiteral("eula"), tr("A licence agreement must be accepted"),
-             tr("One of the packages requires accepting a licence agreement, which NEXUS Arsenal does not "
-                "do for you. Install it with NEXUS Store or apt to read and accept the agreement."));
+             tr("One of the packages requires accepting a licence agreement, which SHADOW Arsenal does not "
+                "do for you. Install it with SHADOW Store or apt to read and accept the agreement."));
         return;
     case T::ExitKeyRequired:
         fail(QStringLiteral("key"), tr("A repository signing key is not trusted"),
-             tr("A package is signed with a key this system does not trust yet. NEXUS Arsenal does not "
-                "import keys; review the repository in NEXUS Store."));
+             tr("A package is signed with a key this system does not trust yet. SHADOW Arsenal does not "
+                "import keys; review the repository in SHADOW Store."));
         return;
     case T::ExitMediaChangeRequired:
         fail(QStringLiteral("media"), tr("Installation media required"),

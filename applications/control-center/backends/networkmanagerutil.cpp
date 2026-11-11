@@ -91,12 +91,12 @@ QString unset(const QString &value)
 
 bool cliAvailable()
 {
-    return Nexus::Command::available(QStringLiteral("nmcli"));
+    return Shadow::Command::available(QStringLiteral("nmcli"));
 }
 
 void run(QObject *context, const QStringList &args, CliCallback done, int timeoutMs)
 {
-    Nexus::Command::run(context, QStringLiteral("nmcli"), args, [done](const Nexus::CommandResult &r) {
+    Shadow::Command::run(context, QStringLiteral("nmcli"), args, [done](const Shadow::CommandResult &r) {
         if (!done)
             return;
         QString error;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the NEXUS OS wallpapers (original, procedural artwork).
+"""Generate the Shadow OS wallpapers (original, procedural artwork).
 
     assets/src/wallpapers/gen-wallpapers.py [--size 3840x2160] [--only NAME]
 
@@ -9,12 +9,12 @@ dark gradients do not band on 8-bit displays. A fixed random seed keeps the
 output identical from build to build.
 
   horizon   (default) a planet's limb at night: the thin lit edge of a world
-            against obsidian — NEXUS HORIZON
-  lattice   a hexagonal lattice with a few lit connections — the nexus motif
+            against obsidian — Shadow Horizon
+  lattice   a hexagonal lattice with a few lit connections — the shadow motif
   aurora    slow ribbons of the brand colours
   daylight  the horizon at dawn, for the light appearance
 
-Output: assets/wallpapers/nexus-<name>.jpg (+ a 16:10 crop-safe composition:
+Output: assets/wallpapers/shadow-<name>.jpg (+ a 16:10 crop-safe composition:
 all detail sits inside the central 4:3 area).
 """
 import argparse
@@ -27,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / "assets/wallpapers"
-TOK = json.loads((ROOT / "desktop/themes/tokens/nexus-tokens.json").read_text())
+TOK = json.loads((ROOT / "desktop/themes/tokens/shadow-tokens.json").read_text())
 B = TOK["brand"]
 C1, C2, C3, OBS = B["gradientStart"], B["gradientMid"], B["gradientEnd"], B["obsidian"]
 
@@ -162,12 +162,12 @@ def main():
     for name, fn in DESIGNS.items():
         if args.only and name != args.only:
             continue
-        rng = random.Random(f"nexus-{name}")
+        rng = random.Random(f"shadow-{name}")
         with tempfile.TemporaryDirectory() as tmp:
             svg, png = Path(tmp) / "w.svg", Path(tmp) / "w.png"
             svg.write_text(fn(w, h, rng))
             subprocess.run(["rsvg-convert", "-w", str(w), "-h", str(h), str(svg), "-o", str(png)], check=True)
-            target = OUT / f"nexus-{name}.jpg"
+            target = OUT / f"shadow-{name}.jpg"
             # Fine monochrome grain hides banding; strip metadata for reproducible files.
             subprocess.run(["convert", str(png), "-seed", "7", "-attenuate", "0.18", "+noise", "Gaussian",
                             "-strip", "-sampling-factor", "4:4:4", "-quality", "92", str(target)], check=True)

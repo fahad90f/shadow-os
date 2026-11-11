@@ -16,7 +16,7 @@
 
 using namespace NetHw;
 
-NEXUS_CC_DUMP("power", [] {
+SHADOW_CC_DUMP("power", [] {
     PowerBackend backend;
     waitUntilReady(&backend);
     return QJsonValue(backend.toJson());
@@ -47,7 +47,7 @@ const QList<ProfileService> &profileServices()
     return list;
 }
 
-// Defaults of ~/.config/nexus/power.conf — keep in sync with the header.
+// Defaults of ~/.config/shadow/power.conf — keep in sync with the header.
 const QMap<QString, int> &idleDefaults()
 {
     static const QMap<QString, int> defaults = {
@@ -63,7 +63,7 @@ const QMap<QString, int> &idleDefaults()
 
 QSettings powerSettings()
 {
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("power"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("power"));
 }
 
 QString readSysfs(const QString &path)
@@ -773,11 +773,11 @@ void PowerBackend::readLidActionsFromFiles()
     m_lidActionSource = configured ? QStringLiteral("logind.conf") : QStringLiteral("default");
 }
 
-// ---- ~/.config/nexus/power.conf -----------------------------------------------------
+// ---- ~/.config/shadow/power.conf -----------------------------------------------------
 
 QString PowerBackend::settingsFile() const
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/nexus/power.conf");
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/shadow/power.conf");
 }
 
 void PowerBackend::loadSettings()

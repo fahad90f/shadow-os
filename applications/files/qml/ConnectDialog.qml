@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
 // "Connect to server": builds a KIO URL from protocol, host, port, folder and
 // user name. A protocol whose KIO worker is not installed is listed, marked,

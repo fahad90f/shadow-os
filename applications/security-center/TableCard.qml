@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 import "Fmt.js" as Fmt
 
 // A table inside a card for a scrolling page: as tall as its rows up to

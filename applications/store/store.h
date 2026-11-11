@@ -16,14 +16,14 @@
 #include <QVariantList>
 #include <QVariantMap>
 
-// Back-end of NEXUS Store.
+// Back-end of SHADOW Store.
 //
 // Data sources
 //   applications     AppStream (Catalog): the distribution's DEP-11 catalogue and installed metainfo
 //   packages         PackageKit: Resolve, GetDetails, SearchNames/SearchDetails, GetPackages(installed)
 //   changes          PackageKit: InstallPackages / RemovePackages / UpdatePackages (simulated first),
 //                    RefreshCache, RepoEnable — all authorised by PackageKit through polkit
-//   updates          PackageKit: GetUpdates, GetUpdateDetail (NexusPk::UpdateChecker)
+//   updates          PackageKit: GetUpdates, GetUpdateDetail (ShadowPk::UpdateChecker)
 //   repositories     PackageKit GetRepoList; signature state from /etc/apt and /var/lib/apt/lists
 //   installed (fallback when PackageKit is unreachable): dpkg-query, read-only
 //
@@ -73,7 +73,7 @@ public:
     QObject *service() const;
     Catalog *catalog() { return &m_catalog; }
     QObject *catalogObject() { return &m_catalog; }
-    NexusPk::UpdateChecker *updateChecker() { return &m_updates; }
+    ShadowPk::UpdateChecker *updateChecker() { return &m_updates; }
     QObject *updatesObject() { return &m_updates; }
     QObject *job() const { return m_job; }
     bool busy() const { return m_job && m_job->active(); }
@@ -87,7 +87,7 @@ public:
     // "packagekit" | "dpkg" (read-only fallback while PackageKit is unreachable)
     QString installedSource() const { return m_installedSource; }
     QString installedError() const { return m_installedError; }
-    NexusPk::PackageModel *installedPackages() { return &m_installedPackages; }
+    ShadowPk::PackageModel *installedPackages() { return &m_installedPackages; }
     QObject *installedPackagesObject() { return &m_installedPackages; }
     AppListModel *installedApps() { return &m_installedApps; }
     QObject *installedAppsObject() { return &m_installedApps; }
@@ -102,7 +102,7 @@ public:
     // "idle" | "searching" | "done"
     QString appSearchState() const { return m_appSearchState; }
     QString appSearchText() const { return m_appSearchText; }
-    NexusPk::PackageModel *searchPackages() { return &m_searchPackages; }
+    ShadowPk::PackageModel *searchPackages() { return &m_searchPackages; }
     QObject *searchPackagesObject() { return &m_searchPackages; }
     // "idle" | "searching" | "done" | "error" | "unavailable"
     QString packageSearchState() const { return m_packageSearchState; }
@@ -116,7 +116,7 @@ public:
     // "idle" | "loading" | "ready" | "error" | "unavailable"
     QString reposState() const { return m_reposState; }
     QString reposError() const { return m_reposError; }
-    // The APT sources as read from /etc/apt (NexusPk::readAptSources()).
+    // The APT sources as read from /etc/apt (ShadowPk::readAptSources()).
     QVariantList sources() const { return m_sources; }
 
     Q_INVOKABLE void initialize();
@@ -146,7 +146,7 @@ public:
     Q_INVOKABLE bool isInstalled(const QString &packageName) const;
     // Opens http(s) links in the browser; anything else is refused.
     Q_INVOKABLE bool openUrl(const QString &url) const;
-    // Start NEXUS Updater (optionally on one of its pages, e.g. "recovery").
+    // Start SHADOW Updater (optionally on one of its pages, e.g. "recovery").
     Q_INVOKABLE bool openUpdater(const QString &page = QString()) const;
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
 
@@ -165,15 +165,15 @@ Q_SIGNALS:
     void jobFinished(bool success, const QString &kind, const QString &title);
 
 private:
-    void startJob(NexusPk::Job *job, const QString &target);
+    void startJob(ShadowPk::Job *job, const QString &target);
     void onJobFinished(bool success);
     void rebuildInstalledApps();
     void loadInstalledFromDpkg();
     void serviceProbed();
 
     Catalog m_catalog;
-    NexusPk::UpdateChecker m_updates;
-    QPointer<NexusPk::Job> m_job;
+    ShadowPk::UpdateChecker m_updates;
+    QPointer<ShadowPk::Job> m_job;
     QString m_jobTarget;
     QString m_updaterPath;
     bool m_initialized = false;
@@ -181,7 +181,7 @@ private:
     QString m_installedState = QStringLiteral("idle");
     QString m_installedSource;
     QString m_installedError;
-    NexusPk::PackageModel m_installedPackages;
+    ShadowPk::PackageModel m_installedPackages;
     QSet<QString> m_installedNames;
     AppListModel m_installedApps;
     quint64 m_installedSerial = 0;
@@ -193,13 +193,13 @@ private:
     QString m_appSearchState = QStringLiteral("idle");
     QString m_appSearchText;
     quint64 m_appSearchSerial = 0;
-    NexusPk::PackageModel m_searchPackages;
+    ShadowPk::PackageModel m_searchPackages;
     QString m_packageSearchState = QStringLiteral("idle");
     QString m_packageSearchText;
     QString m_packageSearchError;
     bool m_packageSearchTruncated = false;
     quint64 m_packageSearchSerial = 0;
-    QPointer<NexusPk::Query> m_packageSearch;
+    QPointer<ShadowPk::Query> m_packageSearch;
 
     QVariantList m_repos;
     QString m_reposState = QStringLiteral("idle");

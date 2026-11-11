@@ -23,7 +23,7 @@ for combo in $COMBOS; do
     log="$OUT/$fw-$media.log"
     rm -rf "$OUT/$fw-$media"
     if python3 "$HERE/test_live_boot.py" --iso "$ISO" --arch "$ARCH" --firmware "$fw" --media "$media" \
-            --workdir "$OUT/$fw-$media" ${NEXUS_TEST_TIMEOUT:+--timeout "$NEXUS_TEST_TIMEOUT"} > "$log" 2>&1; then
+            --workdir "$OUT/$fw-$media" ${SHADOW_TEST_TIMEOUT:+--timeout "$SHADOW_TEST_TIMEOUT"} > "$log" 2>&1; then
         echo "PASS  $ARCH  $fw  $media" | tee -a "$OUT/summary.txt"
     else
         echo "FAIL  $ARCH  $fw  $media  (see $log)" | tee -a "$OUT/summary.txt"

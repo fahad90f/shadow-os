@@ -7,16 +7,16 @@
 #include <QString>
 #include <QStringList>
 
-// The NEXUS Arsenal profile manifests, as written in arsenal/profiles/*.json
-// (format: schema.json in that directory) and installed by nexus-arsenal-data
-// to /usr/share/nexus/arsenal/profiles.
+// The SHADOW Arsenal profile manifests, as written in arsenal/profiles/*.json
+// (format: schema.json in that directory) and installed by shadow-arsenal-data
+// to /usr/share/shadow/arsenal/profiles.
 namespace Arsenal {
 
 struct Category
 {
     QString id;
     QString name;
-    QString icon;           // NexusUI glyph
+    QString icon;           // ShadowUI glyph
     QString description;
 };
 

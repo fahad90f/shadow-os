@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -247,8 +247,8 @@ NxPage {
     NxSection {
         title: qsTr("Network identity")
         description: !privacy.networkManagerInstalled ? qsTr("NetworkManager is not installed; these are the values its configuration files contain.")
-                   : privacy.nexusPrivacyFile !== "" ? qsTr("System-wide defaults of NetworkManager; the NEXUS privacy defaults are installed (%1). A network can override them in its own settings.").arg(privacy.nexusPrivacyFile)
-                   : qsTr("System-wide defaults of NetworkManager. The NEXUS privacy defaults (80-nexus-privacy.conf) are not installed. A network can override the defaults in its own settings.")
+                   : privacy.shadowPrivacyFile !== "" ? qsTr("System-wide defaults of NetworkManager; the SHADOW privacy defaults are installed (%1). A network can override them in its own settings.").arg(privacy.shadowPrivacyFile)
+                   : qsTr("System-wide defaults of NetworkManager. The SHADOW privacy defaults (80-shadow-privacy.conf) are not installed. A network can override the defaults in its own settings.")
 
         Repeater {
             model: privacy.macSettings

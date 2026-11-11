@@ -6,7 +6,7 @@
 //
 // A module consists of
 //   modules/<name>/*.cpp, *.h     C++ back-end, compiled into horizon-shell
-//   modules/<name>/qml/*.qml      QML, part of the org.nexus.horizon module
+//   modules/<name>/qml/*.qml      QML, part of the org.shadow.horizon module
 //   modules/<name>/module.cmake   optional: find_package / target_link_libraries
 //   modules/<name>/smoke-tests.list (optional, see tests/desktop/smoke.sh)
 //
@@ -31,7 +31,7 @@
 
 #include <functional>
 
-namespace Nexus {
+namespace Shadow {
 class App;
 }
 class Applications;
@@ -49,7 +49,7 @@ class ShellContext
 {
 public:
     // Core services a module may use. Never null while a module's init runs.
-    Nexus::App *app = nullptr;
+    Shadow::App *app = nullptr;
     ShellSettings *settings = nullptr;
     Applications *applications = nullptr;
     WindowModel *windows = nullptr;
@@ -120,7 +120,7 @@ private:
     struct PanelItem { QString source; int order; };
     QList<PanelItem> m_panelItems;
     QVariantList m_surfaces;
-    Nexus::App *m_app = nullptr;
+    Shadow::App *m_app = nullptr;
 };
 
 } // namespace Horizon

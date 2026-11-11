@@ -11,13 +11,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 namespace {
 
 QString tr(const char *text)
 {
-    return QCoreApplication::translate("NexusPk", text);
+    return QCoreApplication::translate("ShadowPk", text);
 }
 
 // "PackageDownloadFailed" -> "package-download-failed"
@@ -428,8 +428,8 @@ QString repoText(const QString &repo)
     QString origin = d.value(QStringLiteral("origin")).toString();
     if (origin == QLatin1String("debian"))
         origin = QStringLiteral("Debian");
-    else if (origin.startsWith(QLatin1String("nexus")))
-        origin = QStringLiteral("NEXUS") + origin.mid(5);
+    else if (origin.startsWith(QLatin1String("shadow")))
+        origin = QStringLiteral("SHADOW") + origin.mid(5);
     return QStringLiteral("%1 · %2 · %3").arg(origin, d.value(QStringLiteral("suite")).toString(),
                                                d.value(QStringLiteral("component")).toString());
 }
@@ -451,7 +451,7 @@ QString systemArchitecture()
     if (!arch.isEmpty())
         return arch;
     // dpkg answers from a compiled-in table and its config directory: instant.
-    const Nexus::CommandResult r = Nexus::Command::runSync(QStringLiteral("dpkg"),
+    const Shadow::CommandResult r = Shadow::Command::runSync(QStringLiteral("dpkg"),
                                                            {QStringLiteral("--print-architecture")}, 3000);
     if (r.ok())
         arch = r.outText().trimmed();
@@ -468,7 +468,7 @@ QString systemArchitecture()
 
 QStringList foreignArchitectures()
 {
-    const Nexus::CommandResult r = Nexus::Command::runSync(QStringLiteral("dpkg"),
+    const Shadow::CommandResult r = Shadow::Command::runSync(QStringLiteral("dpkg"),
                                                            {QStringLiteral("--print-foreign-architectures")}, 3000);
     if (!r.ok())
         return {};
@@ -485,4 +485,4 @@ QString userNameForUid(uint uid)
     return QString::number(uid);
 }
 
-} // namespace NexusPk
+} // namespace ShadowPk

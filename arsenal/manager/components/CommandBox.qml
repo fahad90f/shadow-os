@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // A command line shown exactly as it has to be typed, selectable, with a
 // button that copies it to the clipboard.

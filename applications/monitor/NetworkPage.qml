@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.monitor
+import org.shadow.ui
+import org.shadow.monitor
 
 NxPage {
     id: page

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Window
-import org.nexus.ui
+import org.shadow.ui
 
 // One status notifier item in the panel. Looks and behaves like a
 // PanelButton, but shows the icon the application provides.

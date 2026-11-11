@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Back-end tests of NEXUS Disk Manager against loop devices. Sourced by
+# Back-end tests of SHADOW Disk Manager against loop devices. Sourced by
 # udisks-rig.sh inside one "scripts/dev.sh exec" invocation:
 #
 #   scripts/dev.sh exec --dir disks -- bash /src/applications/disk-manager/tests/udisks-rig.sh /src/applications/disk-manager/tests/run-tests.sh
 #
-# Every action goes through nexus-disks-testctl, i.e. through the same
+# Every action goes through shadow-disks-testctl, i.e. through the same
 # UDisksClient calls the user interface makes; results are checked with
 # independent tools (blkid, lsblk, blockdev, cmp, /proc/mounts).
 # rig_guard is called before every modifying action.
-CTL=nexus-disks-testctl
+CTL=shadow-disks-testctl
 pass=0; fail=0
 ok() { echo "PASS  $1"; pass=$((pass+1)); }
 bad() { echo "FAIL  $1"; fail=$((fail+1)); }
@@ -23,7 +23,7 @@ act() {
     LAST="$out"
 }
 is() { if [ "$2" = "$3" ]; then ok "$1 ($2)"; else bad "$1 (got '$2', expected '$3')"; fi; }
-dump() { nexus-disks --dump "$1" 2>/dev/null; }
+dump() { shadow-disks --dump "$1" 2>/dev/null; }
 jq_py() { python3 -c "import json,sys; d=json.load(sys.stdin); $1"; }
 MIB=1048576
 
@@ -75,8 +75,8 @@ act "unmount p1" ok unmount "${A}p1"
 grep -q "^${A}p1 " /proc/mounts && bad "p1 still mounted" || ok "p1 no longer in /proc/mounts"
 
 echo "--- label, check, repair"
-rig_guard "${A}p1"; act "change label" ok label "${A}p1" NEXUSDATA
-is "new label" "$(blkid -c /dev/null -o value -s LABEL "${A}p1")" NEXUSDATA
+rig_guard "${A}p1"; act "change label" ok label "${A}p1" SHADOWDATA
+is "new label" "$(blkid -c /dev/null -o value -s LABEL "${A}p1")" SHADOWDATA
 act "check p1" ok check "${A}p1"
 rig_guard "${A}p1"; act "repair p1" ok repair "${A}p1"
 
@@ -142,7 +142,7 @@ echo "--- disk images"
 rig_guard "$B"; act "format $B as a whole (no partition table)" ok format "$B" ext4 IMAGEME
 act "mount $B" ok mount "$B"
 mpb="$(grep "^$B " /proc/mounts | awk '{print $2}')"
-echo "nexus image test $(date +%s)" > "$mpb/marker.txt"; dd if=/dev/urandom of="$mpb/blob" bs=1M count=8 status=none
+echo "shadow image test $(date +%s)" > "$mpb/marker.txt"; dd if=/dev/urandom of="$mpb/blob" bs=1M count=8 status=none
 marker="$(cat "$mpb/marker.txt")"
 act "unmount $B" ok unmount "$B"
 act "create image of $B" ok image "$B" "$RIG/b.img"
@@ -206,6 +206,6 @@ is "no partitions left" "$(lsblk -ln -o NAME "$A" | grep -c "^$(basename "$A")p[
 reachable=""
 for real in $(lsblk -dn -o NAME 2>/dev/null | grep -v '^loop'); do [ -b "/dev/$real" ] && reachable="$reachable $real"; done
 [ -z "$reachable" ] && ok "no real disk ($(lsblk -dn -o NAME | grep -v '^loop' | tr '\n' ' ')) is reachable as a block device inside the rig" || bad "real disk nodes reachable:$reachable"
-out="$(NEXUS_DISKS_TEST_LOOP_ONLY=0 $CTL mount "$B" 2>&1)"; is "test driver refuses to run without the loop-only guard" $? 2
+out="$(SHADOW_DISKS_TEST_LOOP_ONLY=0 $CTL mount "$B" 2>&1)"; is "test driver refuses to run without the loop-only guard" $? 2
 
 echo "disk-manager tests: $pass passed, $fail failed"

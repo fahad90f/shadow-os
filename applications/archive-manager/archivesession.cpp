@@ -234,7 +234,7 @@ void ArchiveSession::startTool(const ToolRun &run)
     m_err.clear();
     auto *process = new QProcess(this);
     m_process = process;
-    process->setProcessEnvironment(Nexus::Command::parseEnvironment());
+    process->setProcessEnvironment(Shadow::Command::parseEnvironment());
     process->setProgram(run.program);
     process->setArguments(run.arguments);
     if (run.discardStdout)
@@ -753,7 +753,7 @@ void ArchiveSession::preview(const QString &path)
         QString base = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
         if (base.isEmpty())
             base = QDir::tempPath();
-        m_previewDir = std::make_unique<QTemporaryDir>(base + QStringLiteral("/nexus-archive-preview-XXXXXX"));
+        m_previewDir = std::make_unique<QTemporaryDir>(base + QStringLiteral("/shadow-archive-preview-XXXXXX"));
         if (!m_previewDir->isValid()) {
             m_previewDir.reset();
             Q_EMIT finished(QStringLiteral("preview"), false, tr("A temporary folder for the preview could not be created."), {});
@@ -780,7 +780,7 @@ void ArchiveSession::runExtract(const ExtractRequest &request)
         finish(kind, false, tr("The folder “%1” cannot be created.").arg(request.destination));
         return;
     }
-    m_stage = std::make_unique<QTemporaryDir>(request.destination + QStringLiteral("/.nexus-extract-XXXXXX"));
+    m_stage = std::make_unique<QTemporaryDir>(request.destination + QStringLiteral("/.shadow-extract-XXXXXX"));
     if (!m_stage->isValid()) {
         finish(kind, false, tr("Cannot write to “%1”: %2").arg(request.destination, m_stage->errorString()));
         return;
@@ -925,10 +925,10 @@ void ArchiveSession::finishExtract(const ExtractRequest &request, const QStringL
             // file, so the launcher is run here and its exit status checked.
             QString launcher;
             QStringList arguments;
-            if (Nexus::Command::available(QStringLiteral("xdg-open"))) {
+            if (Shadow::Command::available(QStringLiteral("xdg-open"))) {
                 launcher = QStringLiteral("xdg-open");
                 arguments = {file};
-            } else if (Nexus::Command::available(QStringLiteral("gio"))) {
+            } else if (Shadow::Command::available(QStringLiteral("gio"))) {
                 launcher = QStringLiteral("gio");
                 arguments = {QStringLiteral("open"), file};
             } else {
@@ -939,7 +939,7 @@ void ArchiveSession::finishExtract(const ExtractRequest &request, const QStringL
             const QString name = request.previewName;
             const QString mimeName = mime.name();
             setProgress(-1, tr("Opening…"));
-            Nexus::Command::run(this, launcher, arguments, [this, kind, name, mimeName, details](const Nexus::CommandResult &result) {
+            Shadow::Command::run(this, launcher, arguments, [this, kind, name, mimeName, details](const Shadow::CommandResult &result) {
                 if (result.ok())
                     finish(kind, true, tr("Opened a temporary, read-only copy of “%1”.").arg(name), details);
                 else
@@ -976,7 +976,7 @@ void ArchiveSession::verifyGzip(const QString &kind, const std::function<void()>
 {
     const QFileInfo info(m_path);
     const QString stamp = QString::number(info.size()) + QLatin1Char('/') + QString::number(info.lastModified().toMSecsSinceEpoch());
-    if (m_format.id != QLatin1String("tar.gz") || m_gzipVerified == stamp || !Nexus::Command::available(QStringLiteral("7z"))) {
+    if (m_format.id != QLatin1String("tar.gz") || m_gzipVerified == stamp || !Shadow::Command::available(QStringLiteral("7z"))) {
         next();
         return;
     }
@@ -1148,7 +1148,7 @@ void ArchiveSession::runDelete(const QStringList &selection)
         // Tar has no index to edit: write a new archive without the entries
         // and put it in place of the old one.
         const QFileInfo info(m_path);
-        m_temporaryOutput = info.absolutePath() + QStringLiteral("/.") + info.fileName() + QStringLiteral(".nexus-part");
+        m_temporaryOutput = info.absolutePath() + QStringLiteral("/.") + info.fileName() + QStringLiteral(".shadow-part");
         QFile::remove(m_temporaryOutput);
         run.program = QStringLiteral("bsdtar");
         run.arguments = {QStringLiteral("-c"), QStringLiteral("-f"), m_temporaryOutput};
@@ -1252,7 +1252,7 @@ void ArchiveSession::runAdd(const QStringList &paths)
         };
     } else {
         const QFileInfo info(m_path);
-        m_temporaryOutput = info.absolutePath() + QStringLiteral("/.") + info.fileName() + QStringLiteral(".nexus-part");
+        m_temporaryOutput = info.absolutePath() + QStringLiteral("/.") + info.fileName() + QStringLiteral(".shadow-part");
         QFile::remove(m_temporaryOutput);
         run.program = QStringLiteral("bsdtar");
         run.arguments = {QStringLiteral("-c"), QStringLiteral("-v"), QStringLiteral("-f"), m_temporaryOutput};
@@ -1343,7 +1343,7 @@ void ArchiveSession::runCreate(const QString &output, const QStringList &inputs,
     }
     // Written under a temporary name and renamed when complete, so a failed
     // or cancelled run never leaves a half-written (or replaces a good) file.
-    m_temporaryOutput = targetInfo.absolutePath() + QStringLiteral("/.") + targetInfo.fileName() + QStringLiteral(".nexus-part.")
+    m_temporaryOutput = targetInfo.absolutePath() + QStringLiteral("/.") + targetInfo.fileName() + QStringLiteral(".shadow-part.")
                         + format.extensions.first();
     QFile::remove(m_temporaryOutput);
     const QString temporary = m_temporaryOutput;

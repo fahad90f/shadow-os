@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/fahad90fa/Custom-OS/arsenal/profiles/schema.json",
-  "title": "NEXUS Arsenal profile manifest",
+  "title": "SHADOW Arsenal profile manifest",
   "description": "One security tool profile. Checked by arsenal/tools/validate.py, which implements the keywords used here and adds the cross-file rules listed in arsenal/docs/adding-tools.md (category ids from categories.json, unique packages, resolvable includes).",
   "type": "object",
   "additionalProperties": false,
@@ -39,9 +39,9 @@
       "pattern": "^[a-z][a-z0-9.-]+$"
     },
     "metapackage": {
-      "description": "Binary package that depends on the tools of this profile; always nexus-arsenal-<id>.",
+      "description": "Binary package that depends on the tools of this profile; always shadow-arsenal-<id>.",
       "type": "string",
-      "pattern": "^nexus-arsenal-[a-z][a-z0-9]{1,23}$"
+      "pattern": "^shadow-arsenal-[a-z][a-z0-9]{1,23}$"
     },
     "includes": {
       "description": "Ids of other profiles whose tools belong to this one as well. The tools are referenced, never copied.",
@@ -54,7 +54,7 @@
       }
     },
     "tools": {
-      "description": "Tools installed from Debian main (or the NEXUS security repository) through the package manager.",
+      "description": "Tools installed from Debian main (or the SHADOW security repository) through the package manager.",
       "type": "array",
       "items": { "$ref": "#/$defs/tool" }
     },
@@ -178,7 +178,7 @@
           "maxLength": 200
         },
         "why": {
-          "description": "Why NEXUS does not offer a package.",
+          "description": "Why SHADOW does not offer a package.",
           "type": "object",
           "additionalProperties": false,
           "required": ["reason", "text"],

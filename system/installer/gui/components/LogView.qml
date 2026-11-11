@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 // What the engine reported during this run (its events and its stderr).
 Rectangle {

@@ -40,8 +40,8 @@ QVariantList toList(const QList<qreal> &values)
 SystemMonitor::SystemMonitor(QObject *parent)
     : QObject(parent)
     , m_sampler(std::make_shared<SystemSampler>())
-    , m_worker(u"nexus-monitor-sampler"_s)
-    , m_filesystemWorker(u"nexus-monitor-statvfs"_s)
+    , m_worker(u"shadow-monitor-sampler"_s)
+    , m_filesystemWorker(u"shadow-monitor-statvfs"_s)
 {
     const int stored = QSettings().value(u"sampling/intervalMs"_s, 1000).toInt();
     if (validInterval(stored))
@@ -58,9 +58,9 @@ SystemMonitor::SystemMonitor(QObject *parent)
     });
 
     // Next to this binary first, so an uninstalled build tree works too.
-    const QString local = QCoreApplication::applicationDirPath() + u"/nexus-sysinfo"_s;
+    const QString local = QCoreApplication::applicationDirPath() + u"/shadow-sysinfo"_s;
     m_systemInformation = QFileInfo(local).isExecutable() ? local
-                                                          : QStandardPaths::findExecutable(u"nexus-sysinfo"_s);
+                                                          : QStandardPaths::findExecutable(u"shadow-sysinfo"_s);
 }
 
 SystemMonitor::~SystemMonitor() = default;

@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -46,7 +46,7 @@ NxPage {
         return ""
     }
 
-    // One "after N minutes" setting of ~/.config/nexus/power.conf.
+    // One "after N minutes" setting of ~/.config/shadow/power.conf.
     component IdleRow: NxRow {
         id: idleRow
         property var backend
@@ -302,7 +302,7 @@ NxPage {
     // ---- idle behaviour ----------------------------------------------------------------
     NxSection {
         title: power.hasBattery || !power.available ? qsTr("When idle on mains power") : qsTr("When idle")
-        description: qsTr("Followed by the NEXUS desktop shell. Stored in %1.").arg(power.settingsFile)
+        description: qsTr("Followed by the SHADOW desktop shell. Stored in %1.").arg(power.settingsFile)
 
         IdleRow {
             icon: "monitor"

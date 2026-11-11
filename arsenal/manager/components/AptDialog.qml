@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Shown instead of starting a transaction when PackageKit cannot be reached:
 // says why, and gives the exact apt command that does the same thing.
@@ -39,7 +39,7 @@ Dialog {
             title: arsenal.packageKit.checking ? qsTr("Still contacting PackageKit") : qsTr("PackageKit is not available")
             message: arsenal.packageKit.checking
                 ? qsTr("The package service has not answered yet.")
-                : qsTr("NEXUS Arsenal installs and removes software through the PackageKit system service, which cannot be reached: %1").arg(arsenal.packageKit.error)
+                : qsTr("SHADOW Arsenal installs and removes software through the PackageKit system service, which cannot be reached: %1").arg(arsenal.packageKit.error)
         }
         Text {
             Layout.fillWidth: true

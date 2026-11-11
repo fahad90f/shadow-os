@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 // A password (or passphrase) with its confirmation and plain remarks about
 // concrete weaknesses. There is no strength score or meter: nothing here

@@ -53,7 +53,7 @@ Settings *Settings::instance()
 
 Settings::Settings(QObject *parent)
     : QObject(parent)
-    , m_settings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("terminal"))
+    , m_settings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("terminal"))
 {
 }
 

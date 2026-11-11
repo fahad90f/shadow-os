@@ -527,10 +527,10 @@ void Nm::scheduleRefresh()
 
 void Nm::nmcli(const QStringList &arguments, Done done, int timeoutMs, const QByteArray &stdinData)
 {
-    Nexus::Command::run(this, m_nmcli, arguments, std::move(done), timeoutMs, stdinData);
+    Shadow::Command::run(this, m_nmcli, arguments, std::move(done), timeoutMs, stdinData);
 }
 
-QString Nm::errorText(const Nexus::CommandResult &r)
+QString Nm::errorText(const Shadow::CommandResult &r)
 {
     if (r.exitCode == -2)
         return tr("NetworkManager did not answer in time.");
@@ -1095,7 +1095,7 @@ void Nm::operation(const QString &name, const QString &target, const QStringList
         return;
     }
     beginBusy(target);
-    nmcli(arguments, [this, name, target, after](const Nexus::CommandResult &r) {
+    nmcli(arguments, [this, name, target, after](const Shadow::CommandResult &r) {
         endBusy(target);
         if (after) {
             after(r);
@@ -1345,7 +1345,7 @@ void Nm::activateWithSecret(const QString &uuid, const QString &secret)
     const QString name = con.value(QStringLiteral("name")).toString();
     operation(op, uuid, {QStringLiteral("--wait"), QStringLiteral("60"), QStringLiteral("connection"), QStringLiteral("up"),
                          QStringLiteral("uuid"), uuid, QStringLiteral("passwd-file"), QStringLiteral("/dev/stdin")},
-              75000, input, [this, op, uuid, name](const Nexus::CommandResult &r) {
+              75000, input, [this, op, uuid, name](const Shadow::CommandResult &r) {
         QString message = r.ok() ? tr("“%1” is now active.").arg(name) : errorText(r);
         if (!r.ok() && r.errText().contains(QLatin1String("Secrets were required")))
             message = tr("“%1” was not activated: the password was not accepted or more credentials are needed.").arg(name);
@@ -1620,7 +1620,7 @@ void Nm::importVpn(const QString &type, const QString &path)
     }
     operation(op, path, {QStringLiteral("connection"), QStringLiteral("import"), QStringLiteral("type"), type,
                          QStringLiteral("file"), info.absoluteFilePath()},
-              30000, {}, [this, op, path, type](const Nexus::CommandResult &r) {
+              30000, {}, [this, op, path, type](const Shadow::CommandResult &r) {
         QString message;
         if (r.ok()) {
             // "Connection 'name' (uuid) successfully added."

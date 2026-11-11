@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // One of several mutually exclusive choices, shown as a card with a radio
 // mark, a title, an explanation and optional extra content underneath.

@@ -1,12 +1,12 @@
 # <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
 # One launch per page, so every page's QML is loaded and checked for warnings.
-nexus-network-center
-nexus-network-center --page wifi
-nexus-network-center --page interfaces
-nexus-network-center --page ip
-nexus-network-center --page dns
-nexus-network-center --page routes
-nexus-network-center --page connections
-nexus-network-center --page vpn
-nexus-network-center --page diagnostics
-nexus-network-center --page capture
+shadow-network-center
+shadow-network-center --page wifi
+shadow-network-center --page interfaces
+shadow-network-center --page ip
+shadow-network-center --page dns
+shadow-network-center --page routes
+shadow-network-center --page connections
+shadow-network-center --page vpn
+shadow-network-center --page diagnostics
+shadow-network-center --page capture

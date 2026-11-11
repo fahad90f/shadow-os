@@ -3,9 +3,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtTest
-import org.nexus.ui
+import org.shadow.ui
 
-// Pointer tests of NexusUI with real (synthesised) mouse events.
+// Pointer tests of ShadowUI with real (synthesised) mouse events.
 // Run inside the build chroot — see run-tests.sh in this directory.
 Item {
     id: root
@@ -86,7 +86,7 @@ Item {
 
     TestCase {
         id: tc
-        name: "NexusUIPointer"
+        name: "ShadowUIPointer"
         when: windowShown
 
         function init() { root.log = []; root.mode = 0 }

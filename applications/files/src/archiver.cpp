@@ -116,13 +116,13 @@ bool Archiver::isArchive(const QString &mimeType, const QString &fileName)
 
 bool Archiver::available() const
 {
-    static const bool found = Nexus::Command::available(u"bsdtar"_s);
+    static const bool found = Shadow::Command::available(u"bsdtar"_s);
     return found;
 }
 
 bool Archiver::managerAvailable() const
 {
-    static const bool found = Nexus::Command::available(u"nexus-archive-manager"_s);
+    static const bool found = Shadow::Command::available(u"shadow-archive-manager"_s);
     return found;
 }
 
@@ -163,7 +163,7 @@ void Archiver::runTar(const QString &title, const QString &failureTitle, const Q
                       std::function<QString(bool ok)> finish)
 {
     OperationsModel *jobs = FileOperations::instance()->jobs();
-    auto *context = new QObject(this);          // owns the QProcess Nexus::Command creates
+    auto *context = new QObject(this);          // owns the QProcess Shadow::Command creates
     auto cancelled = std::make_shared<bool>(false);
     const int id = jobs->addExternal(title, [context, cancelled] {
         *cancelled = true;
@@ -171,8 +171,8 @@ void Archiver::runTar(const QString &title, const QString &failureTitle, const Q
         for (QProcess *process : processes)
             process->kill();
     });
-    Nexus::Command::run(context, u"bsdtar"_s, arguments,
-                        [jobs, context, cancelled, id, finish, failureTitle](const Nexus::CommandResult &result) {
+    Shadow::Command::run(context, u"bsdtar"_s, arguments,
+                        [jobs, context, cancelled, id, finish, failureTitle](const Shadow::CommandResult &result) {
         context->deleteLater();
         QString error;
         if (!result.ok() && !*cancelled) {
@@ -337,8 +337,8 @@ void Archiver::openInManager(const QUrl &archive)
 {
     if (!archive.isLocalFile())
         return;
-    if (!QProcess::startDetached(u"nexus-archive-manager"_s, {archive.toLocalFile()})) {
+    if (!QProcess::startDetached(u"shadow-archive-manager"_s, {archive.toLocalFile()})) {
         Interaction::instance()->reportError(tr("Could not start the Archive Manager"),
-                                             tr("nexus-archive-manager failed to start."));
+                                             tr("shadow-archive-manager failed to start."));
     }
 }

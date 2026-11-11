@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
 // One application in a list (category, search results, installed, recently
 // released). The whole row opens the application's page; an optional action

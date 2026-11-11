@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// NEXUS Terminal — terminal emulator (Qt Widgets + QTermWidget).
+// SHADOW Terminal — terminal emulator (Qt Widgets + QTermWidget).
 //
-// The one NEXUS application that does not go through Nexus::App: there is no
+// The one SHADOW application that does not go through Shadow::App: there is no
 // QML engine here. It follows the same contract by its own means —
-// --help/--version/--dump <topic> and the test hooks NEXUS_SMOKE_TEST,
-// NEXUS_SCREENSHOT, NEXUS_SCREENSHOT_DELAY and NEXUS_WINDOW_SIZE
+// --help/--version/--dump <topic> and the test hooks SHADOW_SMOKE_TEST,
+// SHADOW_SCREENSHOT, SHADOW_SCREENSHOT_DELAY and SHADOW_WINDOW_SIZE
 // (docs/applications/development.md).
 #include "mainwindow.h"
 #include "profile.h"
@@ -34,7 +34,7 @@
 
 namespace {
 
-const char kAppId[] = "org.nexus.terminal";
+const char kAppId[] = "org.shadow.terminal";
 
 QStringList dumpTopics()
 {
@@ -158,23 +158,23 @@ int main(int argc, char **argv)
     // The test hooks are for this process only: read them, then take them out
     // of the environment the shells inherit. The same goes for variables a
     // surrounding terminal may have left behind.
-    const bool smoke = qEnvironmentVariableIntValue("NEXUS_SMOKE_TEST") == 1;
-    const QString screenshot = qEnvironmentVariable("NEXUS_SCREENSHOT");
-    const QString forcedSize = qEnvironmentVariable("NEXUS_WINDOW_SIZE");
+    const bool smoke = qEnvironmentVariableIntValue("SHADOW_SMOKE_TEST") == 1;
+    const QString screenshot = qEnvironmentVariable("SHADOW_SCREENSHOT");
+    const QString forcedSize = qEnvironmentVariable("SHADOW_WINDOW_SIZE");
     bool delayOk = false;
-    int delay = qEnvironmentVariableIntValue("NEXUS_SCREENSHOT_DELAY", &delayOk);
+    int delay = qEnvironmentVariableIntValue("SHADOW_SCREENSHOT_DELAY", &delayOk);
     if (!delayOk || delay <= 0)
         delay = smoke && screenshot.isEmpty() ? 1500 : 2500;
-    for (const char *name : {"NEXUS_SMOKE_TEST", "NEXUS_SCREENSHOT", "NEXUS_SCREENSHOT_DELAY", "NEXUS_WINDOW_SIZE",
+    for (const char *name : {"SHADOW_SMOKE_TEST", "SHADOW_SCREENSHOT", "SHADOW_SCREENSHOT_DELAY", "SHADOW_WINDOW_SIZE",
                              "COLUMNS", "LINES", "TERMCAP", "VTE_VERSION", "KONSOLE_VERSION"})
         qunsetenv(name);
 
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     QApplication app(ownArgc, argv);
-    QCoreApplication::setOrganizationName(QStringLiteral("nexus"));
-    QCoreApplication::setOrganizationDomain(QStringLiteral("nexus.org"));
+    QCoreApplication::setOrganizationName(QStringLiteral("shadow"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("shadow.org"));
     QCoreApplication::setApplicationName(QStringLiteral("terminal"));
-    QCoreApplication::setApplicationVersion(QStringLiteral(NEXUS_VERSION));
+    QCoreApplication::setApplicationVersion(QStringLiteral(SHADOW_VERSION));
     QGuiApplication::setApplicationDisplayName(QCoreApplication::translate("main", "Terminal"));
     QGuiApplication::setDesktopFileName(QString::fromLatin1(kAppId));
 
@@ -268,7 +268,7 @@ int main(int argc, char **argv)
         // for the smoke test, not a normal exit.
         QObject::connect(&window, &MainWindow::allTabsClosed, &app, [&hookResult, smoke] {
             if (smoke && hookResult < 0) {
-                std::fprintf(stderr, "NEXUS-SMOKE-FAILED %s: the shell ended before the check\n", kAppId);
+                std::fprintf(stderr, "SHADOW-SMOKE-FAILED %s: the shell ended before the check\n", kAppId);
                 std::fflush(stderr);
                 hookResult = 2;
             }
@@ -278,23 +278,23 @@ int main(int argc, char **argv)
             if (!screenshot.isEmpty()) {
                 const QPixmap image = window.grab();
                 if (image.isNull() || !image.save(screenshot)) {
-                    std::fprintf(stderr, "NEXUS-SCREENSHOT-FAILED %s\n", qPrintable(screenshot));
+                    std::fprintf(stderr, "SHADOW-SCREENSHOT-FAILED %s\n", qPrintable(screenshot));
                     rc = 3;
                 } else {
-                    std::printf("NEXUS-SCREENSHOT-SAVED %s %dx%d\n", qPrintable(screenshot), image.width(),
+                    std::printf("SHADOW-SCREENSHOT-SAVED %s %dx%d\n", qPrintable(screenshot), image.width(),
                                 image.height());
                 }
             }
             if (smoke) {
                 QString reason;
                 if (!window.shellRunning(&reason)) {
-                    std::fprintf(stderr, "NEXUS-SMOKE-FAILED %s: %s\n", kAppId, qPrintable(reason));
+                    std::fprintf(stderr, "SHADOW-SMOKE-FAILED %s: %s\n", kAppId, qPrintable(reason));
                     rc = rc ? rc : 2;
                 } else if (Theme::styleSheetErrors() > 0) {
-                    std::fprintf(stderr, "NEXUS-SMOKE-FAILED %s: the style sheet could not be parsed\n", kAppId);
+                    std::fprintf(stderr, "SHADOW-SMOKE-FAILED %s: the style sheet could not be parsed\n", kAppId);
                     rc = rc ? rc : 2;
                 } else if (rc == 0) {
-                    std::printf("NEXUS-SMOKE-OK %s\n", kAppId);
+                    std::printf("SHADOW-SMOKE-OK %s\n", kAppId);
                 }
             }
             std::fflush(stdout);

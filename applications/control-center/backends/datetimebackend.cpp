@@ -18,7 +18,7 @@
 #include <QStandardPaths>
 #include <QTimeZone>
 
-NEXUS_CC_DUMP("datetime", [] {
+SHADOW_CC_DUMP("datetime", [] {
     DateTimeBackend backend;
     if (!backend.ready()) {
         QEventLoop loop;
@@ -40,7 +40,7 @@ const int kChangeTimeoutMs = 5 * 60 * 1000;
 
 QSettings shellSettings()
 {
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("horizon"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("horizon"));
 }
 
 QString errorText(const QDBusError &error)
@@ -101,7 +101,7 @@ DateTimeBackend::DateTimeBackend(QObject *parent)
 
 QString DateTimeBackend::settingsFile() const
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/nexus/horizon.conf");
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/shadow/horizon.conf");
 }
 
 // ---- time zone list ------------------------------------------------------------------

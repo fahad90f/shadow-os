@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // A small right-aligned figure with a caption above it, for the trailing
 // area of a row ("Read / 1.2 MiB/s"). The minimum width keeps a column of

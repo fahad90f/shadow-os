@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Form for the IPv4 or IPv6 part of a NetworkManager connection profile.
 // load() fills it from a profile; value() returns what it says now, in the

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=System Information
+GenericName=Hardware and Software Summary
+Comment=View details about this computer and the installed system
+Exec=shadow-sysinfo
+Icon=org.shadow.sysinfo
+Terminal=false
+Categories=System;Settings;HardwareSettings;
+Keywords=about;hardware;version;kernel;cpu;memory;firmware;
+StartupNotify=true
+StartupWMClass=org.shadow.sysinfo
+X-SHADOW-Component=sysinfo

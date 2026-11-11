@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Test rig for NEXUS Disk Manager: a private system bus with polkitd, udevd
+# Test rig for SHADOW Disk Manager: a private system bus with polkitd, udevd
 # and udisksd, and loop devices backed by files in /tmp as the only disks
 # that physically exist for the test.
 #
@@ -14,7 +14,7 @@
 #   * In this mount namespace only, the device node of every block device
 #     that is not a loop device (/dev/vda …) is covered by an empty regular
 #     file, so no tool started from the rig can open a real disk.
-#   * NEXUS_DISKS_TEST_LOOP_ONLY=1 is exported: the application back-end then
+#   * SHADOW_DISKS_TEST_LOOP_ONLY=1 is exported: the application back-end then
 #     refuses every modifying action on anything that is not a loop device.
 #   * rig_guard <device> must be called by test scripts before each modifying
 #     action; it aborts unless the device is a loop device created by this rig.
@@ -24,10 +24,10 @@ set -u
 [ "$(id -u)" = 0 ] || { echo "rig: must run as root inside the build chroot" >&2; exit 1; }
 [ -d /src/applications/disk-manager ] || { echo "rig: not inside the build chroot (no /src)" >&2; exit 1; }
 
-RIG="$(mktemp -d /tmp/nexus-disks-rig.XXXXXX)"
+RIG="$(mktemp -d /tmp/shadow-disks-rig.XXXXXX)"
 export RIG
 RIG_LOOPS=()
-export NEXUS_DISKS_TEST_LOOP_ONLY=1
+export SHADOW_DISKS_TEST_LOOP_ONLY=1
 
 rig_log() { echo "rig: $*" >&2; }
 
@@ -102,7 +102,7 @@ mount -t sysfs sysfs /sys 2>/dev/null || mount -o remount,rw /sys
 mkdir -p "$RIG/no-rules" /run/udev/rules.d
 mount --bind "$RIG/no-rules" /usr/lib/udev/rules.d
 [ -d /etc/udev/rules.d ] && mount --bind "$RIG/no-rules" /etc/udev/rules.d
-cat > /run/udev/rules.d/60-nexus-rig.rules <<'RULES'
+cat > /run/udev/rules.d/60-shadow-rig.rules <<'RULES'
 SUBSYSTEM=="block", KERNEL=="loop*", IMPORT{builtin}="blkid"
 RULES
 /usr/lib/systemd/systemd-udevd --daemon >"$RIG/udevd.log" 2>&1

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generate the NEXUS application and category icons.
+"""Generate the SHADOW application and category icons.
 
     assets/src/icons/gen-app-icons.py [--sheet FILE.svg]
 
-Every NEXUS application icon is the same object: an obsidian tile with a thin
-luminous edge, carrying one glyph from the NEXUS symbolic set drawn in a
+Every SHADOW application icon is the same object: an obsidian tile with a thin
+luminous edge, carrying one glyph from the SHADOW symbolic set drawn in a
 two-colour gradient with a soft glow. The gradient encodes the family the
 application belongs to (system, security, network, files, development,
 maintenance), so related tools are recognisable at a glance in the launcher.
@@ -14,7 +14,7 @@ only use a glyph that exists in the system icon set.
 
 Output:
   assets/icons/apps/<app-id>.svg          (installed to hicolor/scalable/apps)
-  assets/icons/categories/nexus-<name>.svg (arsenal categories)
+  assets/icons/categories/shadow-<name>.svg (arsenal categories)
 """
 import argparse
 import importlib.util
@@ -27,7 +27,7 @@ spec = importlib.util.spec_from_file_location("gen_symbolic", ROOT / "assets/src
 sym = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sym)
 
-TOK = json.loads((ROOT / "desktop/themes/tokens/nexus-tokens.json").read_text())
+TOK = json.loads((ROOT / "desktop/themes/tokens/shadow-tokens.json").read_text())
 ACC = {k: v["dark"] for k, v in TOK["accent"].items()}
 OBS = TOK["brand"]["obsidian"]
 
@@ -42,24 +42,24 @@ FAMILIES = {
 
 APPS = {
     # app id                       glyph             family
-    "org.nexus.files":            ("folder",         "files"),
-    "org.nexus.archivemanager":   ("archive",        "files"),
-    "org.nexus.diskmanager":      ("harddrive",      "files"),
-    "org.nexus.terminal":         ("terminal",       "development"),
-    "org.nexus.editor":           ("edit",           "development"),
-    "org.nexus.monitor":          ("activity",       "system"),
-    "org.nexus.taskmanager":      ("list",           "system"),
-    "org.nexus.sysinfo":          ("cpu",            "system"),
-    "org.nexus.controlcenter":    ("settings",       "system"),
-    "org.nexus.screenshot":       ("camera",         "system"),
-    "org.nexus.store":            ("store",          "system"),
-    "org.nexus.updater":          ("arrow-up-circle", "maintenance"),
-    "org.nexus.installer":        ("download",       "maintenance"),
-    "org.nexus.recovery":         ("life-buoy",      "maintenance"),
-    "org.nexus.securitycenter":   ("shield-check",   "security"),
-    "org.nexus.arsenal":          ("target",         "security"),
-    "org.nexus.networkcenter":    ("globe",          "network"),
-    "org.nexus.gallery":          ("layers",         "development"),
+    "org.shadow.files":            ("folder",         "files"),
+    "org.shadow.archivemanager":   ("archive",        "files"),
+    "org.shadow.diskmanager":      ("harddrive",      "files"),
+    "org.shadow.terminal":         ("terminal",       "development"),
+    "org.shadow.editor":           ("edit",           "development"),
+    "org.shadow.monitor":          ("activity",       "system"),
+    "org.shadow.taskmanager":      ("list",           "system"),
+    "org.shadow.sysinfo":          ("cpu",            "system"),
+    "org.shadow.controlcenter":    ("settings",       "system"),
+    "org.shadow.screenshot":       ("camera",         "system"),
+    "org.shadow.store":            ("store",          "system"),
+    "org.shadow.updater":          ("arrow-up-circle", "maintenance"),
+    "org.shadow.installer":        ("download",       "maintenance"),
+    "org.shadow.recovery":         ("life-buoy",      "maintenance"),
+    "org.shadow.securitycenter":   ("shield-check",   "security"),
+    "org.shadow.arsenal":          ("target",         "security"),
+    "org.shadow.networkcenter":    ("globe",          "network"),
+    "org.shadow.gallery":          ("layers",         "development"),
 }
 
 CATEGORIES = {
@@ -130,11 +130,11 @@ def main():
         (apps_dir / f"{app_id}.svg").write_text(icon(glyph, family))
         written.append((app_id, apps_dir / f"{app_id}.svg"))
     for name, (glyph, family) in CATEGORIES.items():
-        (cat_dir / f"nexus-{name}.svg").write_text(icon(glyph, family))
-        written.append((name, cat_dir / f"nexus-{name}.svg"))
-    # The distributor logo doubles as the icon for "NEXUS OS" itself.
-    (apps_dir / "nexus-os.svg").write_text((ROOT / "assets/logos/nexus-symbol-plate.svg").read_text())
-    written.append(("nexus-os", apps_dir / "nexus-os.svg"))
+        (cat_dir / f"shadow-{name}.svg").write_text(icon(glyph, family))
+        written.append((name, cat_dir / f"shadow-{name}.svg"))
+    # The distributor logo doubles as the icon for "Shadow OS" itself.
+    (apps_dir / "shadow-os.svg").write_text((ROOT / "assets/logos/shadow-symbol-plate.svg").read_text())
+    written.append(("shadow-os", apps_dir / "shadow-os.svg"))
 
     if args.sheet:
         cols, cell = 8, 150
@@ -146,7 +146,7 @@ def main():
             x, y = 20 + (i % cols) * cell, 20 + (i // cols) * (cell + 26)
             parts.append(f'<image x="{x + 15}" y="{y}" width="120" height="120" xlink:href="{path}"/>')
             parts.append(f'<text x="{x + cell / 2}" y="{y + 138}" font-family="Inter, sans-serif" font-size="11" '
-                         f'fill="#A3B0C6" text-anchor="middle">{name.replace("org.nexus.", "")}</text>')
+                         f'fill="#A3B0C6" text-anchor="middle">{name.replace("org.shadow.", "")}</text>')
         parts.append("</svg>")
         Path(args.sheet).write_text("\n".join(parts))
     print(f"{len(written)} icons written")

@@ -30,17 +30,17 @@
 #include <limits>
 #include <memory>
 
-using NexusPk::Job;
-using NexusPk::Service;
+using ShadowPk::Job;
+using ShadowPk::Service;
 using T = PackageKit::Transaction;
 
 namespace {
 
 QSettings settings()
 {
-    // ~/.config/nexus/updater.conf, falling back to /etc/xdg/nexus/updater.conf
+    // ~/.config/shadow/updater.conf, falling back to /etc/xdg/shadow/updater.conf
     // for distribution defaults.
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("updater"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("updater"));
 }
 
 int rankOf(const QString &restart)
@@ -59,7 +59,7 @@ Updater::Updater(QObject *parent)
     loadSettings();
     loadLastLog();
 
-    connect(&m_updates, &NexusPk::UpdateChecker::checked, this, [this] {
+    connect(&m_updates, &ShadowPk::UpdateChecker::checked, this, [this] {
         if (m_updates.state() == QLatin1String("ready") || !m_updates.error().isEmpty()) {
             storeCheckResult(m_updates);
             loadSettings();
@@ -79,13 +79,13 @@ QObject *Updater::service() const
 
 QString Updater::settingsPath() const
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/nexus/updater.conf");
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/shadow/updater.conf");
 }
 
 QString Updater::lastLogPath() const
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation)
-           + QStringLiteral("/nexus/updater/last-transaction.log");
+           + QStringLiteral("/shadow/updater/last-transaction.log");
 }
 
 // ---------------------------------------------------------------- settings
@@ -135,7 +135,7 @@ void Updater::setCheckIntervalHours(int hours)
     Q_EMIT settingsChanged();
 }
 
-void Updater::storeCheckResult(const NexusPk::UpdateChecker &checker)
+void Updater::storeCheckResult(const ShadowPk::UpdateChecker &checker)
 {
     QSettings s = settings();
     s.beginGroup(QStringLiteral("LastCheck"));
@@ -255,14 +255,14 @@ void Updater::startUpdate(const QStringList &ids, const QString &title)
 {
     if (ids.isEmpty() || busy())
         return;
-    startJob(NexusPk::Jobs::update(ids, title, this));
+    startJob(ShadowPk::Jobs::update(ids, title, this));
 }
 
 void Updater::repair()
 {
     if (busy())
         return;
-    startJob(NexusPk::Jobs::repair(this));
+    startJob(ShadowPk::Jobs::repair(this));
 }
 
 void Updater::startJob(Job *job)
@@ -367,7 +367,7 @@ void Updater::refreshHistory()
         return;
     m_historyLoading = true;
     Q_EMIT historyChanged();
-    NexusPk::runAsync(this, [] { return NexusPk::readAptHistory(500); }, [this](const QJsonObject &result) {
+    ShadowPk::runAsync(this, [] { return ShadowPk::readAptHistory(500); }, [this](const QJsonObject &result) {
         m_aptHistory = result.value(QStringLiteral("entries")).toArray().toVariantList();
         m_historyError = result.value(QStringLiteral("error")).toString();
         m_historyTruncated = result.value(QStringLiteral("truncated")).toBool();
@@ -381,7 +381,7 @@ void Updater::refreshTransactions()
     if (m_transactionsLoading)
         return;
     m_transactionsLoading = true;
-    NexusPk::fetchOldTransactions(this, 300, [this](const QVariantList &transactions, const QString &error) {
+    ShadowPk::fetchOldTransactions(this, 300, [this](const QVariantList &transactions, const QString &error) {
         m_transactions = transactions;
         m_transactionsError = error;
         m_transactionsLoading = false;
@@ -392,7 +392,7 @@ void Updater::refreshTransactions()
 void Updater::rebuildHistory()
 {
     // APT's log says what changed; PackageKit's records add who asked for it.
-    m_history = NexusPk::mergeHistory(m_aptHistory, m_transactions);
+    m_history = ShadowPk::mergeHistory(m_aptHistory, m_transactions);
     Q_EMIT historyChanged();
 }
 
@@ -404,7 +404,7 @@ void Updater::refreshHealth()
         return;
     m_healthChecking = true;
     Q_EMIT healthChanged();
-    NexusPk::runAsync(this, [] { return NexusPk::checkDpkgHealth(); }, [this](const QJsonObject &result) {
+    ShadowPk::runAsync(this, [] { return ShadowPk::checkDpkgHealth(); }, [this](const QJsonObject &result) {
         m_health = result.toVariantMap();
         m_healthChecking = false;
         Q_EMIT healthChanged();
@@ -416,7 +416,7 @@ void Updater::refreshHealth()
 void Updater::refreshReboot()
 {
     // A handful of stat() calls and two tiny files in /run: fine on this thread.
-    m_reboot = NexusPk::readRebootState().toVariantMap();
+    m_reboot = ShadowPk::readRebootState().toVariantMap();
     Q_EMIT rebootChanged();
 }
 
@@ -521,7 +521,7 @@ void Updater::refreshSources()
         return;
     m_sourcesLoading = true;
     Q_EMIT sourcesChanged();
-    NexusPk::runAsync(this, [] { return NexusPk::readAptSources(); }, [this](const QJsonObject &result) {
+    ShadowPk::runAsync(this, [] { return ShadowPk::readAptSources(); }, [this](const QJsonObject &result) {
         m_sources = result.value(QStringLiteral("sources")).toArray().toVariantList();
         m_sourcesLoading = false;
         Q_EMIT sourcesChanged();
@@ -540,11 +540,11 @@ QString Updater::report() const
     const Service *s = Service::instance();
     QString text;
     QTextStream out(&text);
-    out << "NEXUS Updater " << QCoreApplication::applicationVersion() << " — report of "
+    out << "SHADOW Updater " << QCoreApplication::applicationVersion() << " — report of "
         << QDateTime::currentDateTime().toString(Qt::ISODate) << "\n\n";
     out << "System:        " << QSysInfo::prettyProductName() << "\n";
     out << "Kernel:        " << QSysInfo::kernelVersion() << "\n";
-    out << "Architecture:  " << NexusPk::systemArchitecture() << "\n";
+    out << "Architecture:  " << ShadowPk::systemArchitecture() << "\n";
     if (s->available()) {
         out << "PackageKit:    " << s->daemonVersion() << ", back-end " << s->backendName()
             << " (" << s->backendDescription() << "), network " << s->networkState() << "\n";

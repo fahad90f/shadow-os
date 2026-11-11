@@ -1,2 +1,0 @@
-debian/generated/nexus-archive-keyring.gpg usr/share/keyrings
-debian/generated/nexus.sources etc/apt/sources.list.d

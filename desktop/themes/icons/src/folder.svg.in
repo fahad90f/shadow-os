@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- @@GENERATED@@ -->
-<!-- NEXUS places icon "@@ICON_NAME@@", sizes 32 px and up. Original NEXUS artwork: a
-     folder in the brand gradient with a glyph of the NEXUS symbolic set. -->
+<!-- SHADOW places icon "@@ICON_NAME@@", sizes 32 px and up. Original SHADOW artwork: a
+     folder in the brand gradient with a glyph of the SHADOW symbolic set. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
 <defs>
 <linearGradient id="back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="@{accent.blue}"/><stop offset="1" stop-color="@{mix:accent.blue:brand.obsidian:0.45}"/></linearGradient>

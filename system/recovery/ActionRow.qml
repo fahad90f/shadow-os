@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // One repair action inside an NxSection: what it does, what it changes, the
 // button(s) that start it, and how the last run ended.

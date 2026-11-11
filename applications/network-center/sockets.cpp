@@ -214,7 +214,7 @@ void SocketList::runOwn()
     m_loading = true;
     Q_EMIT loadingChanged();
     const QString ss = Net::findTool(QStringLiteral("ss"));
-    Nexus::Command::run(this, ss.isEmpty() ? QStringLiteral("ss") : ss, kSsArguments, [this](const Nexus::CommandResult &r) {
+    Shadow::Command::run(this, ss.isEmpty() ? QStringLiteral("ss") : ss, kSsArguments, [this](const Shadow::CommandResult &r) {
         if (r.exitCode == -1) {
             setError(tr("The “ss” tool could not be started. Install the iproute2 package."));
             setSockets({});
@@ -241,7 +241,7 @@ void SocketList::runElevated()
     m_loading = true;
     Q_EMIT loadingChanged();
     // The timeout is generous: the user may need a while to authenticate.
-    Nexus::Command::run(this, command, arguments, [this](const Nexus::CommandResult &r) {
+    Shadow::Command::run(this, command, arguments, [this](const Shadow::CommandResult &r) {
         QString failure;
         QVariantList sockets;
         const QJsonObject reply = QJsonDocument::fromJson(r.out).object();

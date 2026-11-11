@@ -1,12 +1,12 @@
-# NEXUS Files
+# SHADOW Files
 
-`nexus-files` (id `org.nexus.files`) is the file manager of NEXUS OS: local
+`shadow-files` (id `org.shadow.files`) is the file manager of Shadow OS: local
 folders, the Trash, removable and internal drives, and network locations in one
 window with tabs, a split view and a preview panel.
 
 ```
-nexus-files [path-or-url...] [--select <file>]
-nexus-files --dump places|devices|list [path-or-url]|protocols
+shadow-files [path-or-url...] [--select <file>]
+shadow-files --dump places|devices|list [path-or-url]|protocols
 ```
 
 Every positional argument opens in its own tab (`/path`, `~`, `trash:/`,
@@ -45,13 +45,13 @@ Alt+Home, Alt+Enter (properties), Delete, Shift+Delete, Backspace, Menu, Escape.
 | File operations, undo | KIO jobs (`KIO::copy/move/link/trash/del/mkdir/chmod/restoreFromTrash/emptyTrash`), `KIO::FileUndoManager`. Jobs run in KIO worker processes/threads, never on the UI thread; their questions are routed to the QML dialogs through `KIO::AskUserActionInterface` (`src/interaction.cpp`). |
 | Thumbnails | `KIO::PreviewJob` (thumbnailer plugins, cache in `~/.cache/thumbnails`); fallback for images Qt can decode: `QImageReader` on a worker thread. |
 | Search | Local: `std::filesystem` walk on a worker thread; other locations: `KIO::listRecursive`. |
-| Archives | `bsdtar` (libarchive-tools) with an argument vector via `Nexus::Command`; extraction goes to a temporary folder inside the destination and is moved into place on success. |
+| Archives | `bsdtar` (libarchive-tools) with an argument vector via `Shadow::Command`; extraction goes to a temporary folder inside the destination and is moved into place on success. |
 | Drives | Solid (`Solid::StorageAccess`, `StorageVolume`, `OpticalDrive`), i.e. UDisks2 on the system bus; UDisks2 authorises mounting through its own polkit policy. Space: `QStorageInfo`. |
 | Network protocols | `KProtocolInfo` (installed KIO workers). Passwords are asked for by KIO's password service (`kpasswdserver` in `kiod6`, started through the session bus), not by this application; it never sees or stores them. |
 | Applications | `KApplicationTrader` / `KIO::ApplicationLauncherJob`; a default is stored in `~/.config/mimeapps.list`. |
-| Terminal | `nexus-terminal --workdir <dir>` (the option nexus-terminal implements), else `x-terminal-emulator` started in the folder. |
-| Icons | freedesktop icon theme by MIME type (Breeze as fallback); symbolic UI glyphs from NexusUI. |
-| Settings | `~/.config/nexus/files.conf`: `[View]`, `[Bookmarks]`, `[Servers]`. |
+| Terminal | `shadow-terminal --workdir <dir>` (the option shadow-terminal implements), else `x-terminal-emulator` started in the folder. |
+| Icons | freedesktop icon theme by MIME type (Breeze as fallback); symbolic UI glyphs from ShadowUI. |
+| Settings | `~/.config/shadow/files.conf`: `[View]`, `[Bookmarks]`, `[Servers]`. |
 
 No operation needs a helper of its own; the application has no polkit action.
 
@@ -59,7 +59,7 @@ No operation needs a helper of its own; the application has no polkit action.
 
 Besides the shared libraries (`libkf6kiocore6`, `libkf6kiogui6`,
 `libkf6kiowidgets6`, `libkf6solid6`, `libkf6service6`, `libkf6coreaddons6`,
-`libkf6configcore6`, Qt 6) and `nexus-ui`:
+`libkf6configcore6`, Qt 6) and `shadow-ui`:
 
 | Package | Needed for |
 |---|---|
@@ -68,8 +68,8 @@ Besides the shared libraries (`libkf6kiocore6`, `libkf6kiogui6`,
 | `breeze-icon-theme`, `shared-mime-info` | File type icons and MIME detection. |
 | `udisks2` | Listing, mounting, unmounting and ejecting drives (recommended). |
 | `kio-extras` | `sftp`, `smb`, `nfs`, `fish` workers and more thumbnailers (recommended; without it these protocols are shown as "not installed"). |
-| `nexus-terminal` | "Open terminal here" (recommended; the entry is hidden without a terminal). |
-| `nexus-archive-manager` | "Open with Archive Manager" (optional; hidden without it). |
+| `shadow-terminal` | "Open terminal here" (recommended; the entry is hidden without a terminal). |
+| `shadow-archive-manager` | "Open with Archive Manager" (optional; hidden without it). |
 | `qt6-image-formats-plugins`, `kdegraphics-thumbnailers`, `ffmpegthumbs` | More thumbnail formats (optional). |
 
 The session must export its display to the D-Bus activation environment
@@ -80,7 +80,7 @@ then reports "Communication with the local password server failed".
 ## Limitations
 
 * The password prompt and the "retry authentication" question for network
-  locations are KIO's own (Qt Widgets) windows, not NexusUI dialogs.
+  locations are KIO's own (Qt Widgets) windows, not ShadowUI dialogs.
 * Untrusted TLS certificates (WebDAVS, FTPS) are refused, never overridden.
 * Archives are created and extracted on local folders only; encrypted
   archives are not supported. Extraction relies on bsdtar's own refusal of
@@ -94,15 +94,15 @@ then reports "Communication with the local password server failed".
 * KIO reports some refusals only as "cancelled" (e.g. deleting inside an
   immutable folder as root); the application then says that the operation
   was stopped without being able to name the exact reason.
-* One window per process: a second `nexus-files` start activates the running
-  instance (Nexus::App single-instance handling).
+* One window per process: a second `shadow-files` start activates the running
+  instance (Shadow::App single-instance handling).
 
 ## Tests
 
 Nothing under `tests/` is installed. All of it runs in the build chroot:
 
 ```
-applications/files/tests/run-ui.sh <scenario>      # nested NEXUS HORIZON session (KWin/Wayland), as root
+applications/files/tests/run-ui.sh <scenario>      # nested Shadow Horizon session (KWin/Wayland), as root
 applications/files/tests/run-user.sh perms-user    # plain X server, as the unprivileged user "nobody"
 scripts/dev.sh exec --dir files -- bash /src/applications/files/tests/devices-udisks.sh
 ```
@@ -132,7 +132,7 @@ the machine: `large` may need a second run when it is slow.
 | `errors` | Immutable folder (`chattr +i`) as root: recognised as read-only (no Paste/New folder), Trash, permanent delete and rename each fail with a visible message and the file stays; a missing folder shows an error state; renaming onto an existing name asks instead of overwriting. |
 | `perms-user` | As `nobody`: read-only folder marker, unreadable source file → Skip/Retry/Stop dialog and the readable file is copied, delete / trash / rename inside a folder without write permission fail with "Access denied", paste is not possible there, a folder without `x` permission shows "You do not have permission…", foreign files explain why their permissions cannot be changed. |
 | `dnd` | Drag onto a folder (move), Ctrl+drag (copy), drag onto the sidebar Trash, drag between the panes of the split view, a drop onto the item's own folder does nothing. |
-| `launch` | F4 and the folder menu start `nexus-terminal --workdir <dir>` (path with a space included; process list checked), "Open with…" starts the chosen application with the file, "always use" writes `mimeapps.list` and Return then uses it. |
+| `launch` | F4 and the folder menu start `shadow-terminal --workdir <dir>` (path with a space included; process list checked), "Open with…" starts the chosen application with the file, "always use" writes `mimeapps.list` and Return then uses it. |
 | `ftp` | Against `tests/ui/ftpd.py`: Connect dialog (protocol, host, typed port), keep in sidebar, listing, download of a file and a folder (compared with `cmp`), upload, new folder, rename and permanent delete on the server. |
 | `ftp-auth` | Server that requires a password: honest error while the password service cannot start; with the session's display exported to the bus, KIO's prompt appears, dismissing it shows "Opening this location was cancelled" (not an empty folder), a wrong password offers a retry, the right one lists the folder. |
 | `devices` | Solid **fake hardware backend** (`SOLID_FAKEHW=tests/ui/fakehw.xml`): list of a USB stick, an internal partition and an optical disc, `--dump devices`, click mounts and opens, unmount, eject, context menus. |

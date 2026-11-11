@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
 // Questions asked by running KIO jobs (see Interaction): name conflicts,
 // errors that can be skipped or retried, confirmations and message boxes of

@@ -26,7 +26,7 @@
 #include <pwd.h>
 #include <unistd.h>
 
-NEXUS_CC_DUMP("users", [] {
+SHADOW_CC_DUMP("users", [] {
     UsersBackend backend;
     if (!backend.ready()) {
         QEventLoop loop;
@@ -70,8 +70,8 @@ QString errorText(const QDBusError &error)
 
 QString helperPath()
 {
-    const QString dir = qEnvironmentVariable("NEXUS_CC_HELPER_DIR");
-    return (dir.isEmpty() ? QStringLiteral("/usr/libexec/nexus") : dir) + QStringLiteral("/users-helper");
+    const QString dir = qEnvironmentVariable("SHADOW_CC_HELPER_DIR");
+    return (dir.isEmpty() ? QStringLiteral("/usr/libexec/shadow") : dir) + QStringLiteral("/users-helper");
 }
 
 bool hasControlCharacters(const QString &text)
@@ -106,7 +106,7 @@ std::optional<QString> autologinUserIn(const QString &path)
     return value;
 }
 // What passwd(1) said when it refused: its prompts are stripped from the text.
-QString passwdFailure(const Nexus::CommandResult &result)
+QString passwdFailure(const Shadow::CommandResult &result)
 {
     if (result.exitCode == -1)
         return UsersBackend::tr("passwd could not be started");
@@ -418,7 +418,7 @@ void UsersBackend::runHelper(const QStringList &arguments, const QByteArray &std
         done(false, tr("the helper %1 is not installed").arg(helper));
         return;
     }
-    const auto finished = [done](const Nexus::CommandResult &result) {
+    const auto finished = [done](const Shadow::CommandResult &result) {
         const QJsonObject reply = QJsonDocument::fromJson(result.out).object();
         if (result.ok() && reply.value(QStringLiteral("ok")).toBool()) {
             done(true, QString());
@@ -434,9 +434,9 @@ void UsersBackend::runHelper(const QStringList &arguments, const QByteArray &std
         done(false, error);
     };
     if (geteuid() == 0)
-        Nexus::Command::run(this, helper, arguments, finished, kAuthTimeoutMs, stdinData);
+        Shadow::Command::run(this, helper, arguments, finished, kAuthTimeoutMs, stdinData);
     else
-        Nexus::Command::run(this, QStringLiteral("pkexec"), QStringList{helper} + arguments, finished, kAuthTimeoutMs, stdinData);
+        Shadow::Command::run(this, QStringLiteral("pkexec"), QStringList{helper} + arguments, finished, kAuthTimeoutMs, stdinData);
 }
 
 void UsersBackend::addUser(const QString &userName, const QString &realName, bool administrator, const QString &password)
@@ -544,7 +544,7 @@ void UsersBackend::setPassword(const QString &userName, const QString &password,
         }
         // passwd asks: current password, new password, new password again.
         const QByteArray input = (currentPassword + QLatin1Char('\n') + password + QLatin1Char('\n') + password + QLatin1Char('\n')).toUtf8();
-        Nexus::Command::run(this, QStringLiteral("passwd"), {}, [this](const Nexus::CommandResult &result) {
+        Shadow::Command::run(this, QStringLiteral("passwd"), {}, [this](const Shadow::CommandResult &result) {
             setBusy(false);
             if (result.ok()) {
                 Q_EMIT succeeded(tr("Your password was changed."));
@@ -596,7 +596,7 @@ void UsersBackend::setAvatar(const QString &userName, const QUrl &imageFile)
     const int side = qMin(source.width(), source.height());
     const QImage picture = source.copy((source.width() - side) / 2, (source.height() - side) / 2, side, side)
                                .scaled(256, 256, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    QTemporaryFile file(QDir::tempPath() + QStringLiteral("/nexus-avatar-XXXXXX.png"));
+    QTemporaryFile file(QDir::tempPath() + QStringLiteral("/shadow-avatar-XXXXXX.png"));
     file.setAutoRemove(false);
     if (!file.open() || !picture.save(&file, "PNG")) {
         Q_EMIT failed(tr("The picture could not be prepared."));

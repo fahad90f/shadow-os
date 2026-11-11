@@ -1,6 +1,6 @@
 # Hardware
 
-> **Nothing on this page has been tested on physical hardware.** NEXUS OS
+> **Nothing on this page has been tested on physical hardware.** Shadow OS
 > has only been booted in QEMU virtual machines with emulated devices. The
 > first sections say what is *in the image*; the later sections say what is
 > *expected* to work because Debian 13 supports it with the same kernel and
@@ -53,7 +53,7 @@ From `10-core.list` and `40-desktop.list`:
 | Bluetooth | `bluez` |
 | Power | `upower`, `power-profiles-daemon` |
 | Storage | `udisks2`, `cryptsetup`, `lvm2`, `e2fsprogs`, `dosfstools`, `btrfs-progs`, `xfsprogs`, `ntfs-3g`, `exfatprogs`, `nvme-cli`, `smartmontools` |
-| Firmware updates | `fwupd` (no NEXUS front-end; use `fwupdmgr`) |
+| Firmware updates | `fwupd` (no SHADOW front-end; use `fwupdmgr`) |
 | Inspection | `pciutils`, `usbutils`, `lshw`, `dmidecode`, `lm-sensors` |
 
 ## Verified (virtual hardware only)
@@ -63,13 +63,13 @@ From `10-core.list` and `40-desktop.list`:
 | QEMU q35 machine, OVMF UEFI, emulated CPU (TCG, no KVM) | minimal image boots from CD and USB; installed systems boot |
 | The same with Secure Boot enforcing (Microsoft keys enrolled) | minimal image boots; whole-disk installation boots |
 | QEMU with SeaBIOS (legacy BIOS) | minimal image boots from CD and USB; whole-disk installation boots |
-| QEMU emulated display without a GPU render node | desktop image reaches the NEXUS HORIZON session with CPU rendering |
+| QEMU emulated display without a GPU render node | desktop image reaches the Shadow Horizon session with CPU rendering |
 | virtio and emulated disks | used by the installation tests |
 
 ## Expected to work on common x86_64 hardware — untested
 
 These expectations rest on Debian 13's hardware support. None has been
-observed with NEXUS OS.
+observed with Shadow OS.
 
 | Hardware | Expectation | Notes |
 |---|---|---|
@@ -98,7 +98,7 @@ CPU time.
 
 | Item | State |
 |---|---|
-| Proprietary NVIDIA driver | not included and not packaged. `nvidia-driver` exists in Debian's `non-free` component, which NEXUS OS does not enable. Installing it is your own responsibility; under Secure Boot its DKMS module must be signed with a key you enrol |
+| Proprietary NVIDIA driver | not included and not packaged. `nvidia-driver` exists in Debian's `non-free` component, which Shadow OS does not enable. Installing it is your own responsibility; under Secure Boot its DKMS module must be signed with a key you enrol |
 | Broadcom `wl` (broadcom-sta) and other DKMS-only drivers | not included; `non-free` is not enabled |
 | Out-of-tree kernel modules | none shipped (`kernel/modules/README.md`) |
 | Hibernation | the engine sets a resume device when you choose a swap partition; hibernation itself is untested. With a swap file no resume device is configured. Kernel lockdown under Secure Boot disables hibernation |
@@ -118,7 +118,7 @@ lsusb                 # USB devices
 sudo dmesg | grep -i -E 'firmware|failed|error'
 nmcli device          # network devices NetworkManager sees
 ls /dev/dri           # renderD* present = GPU acceleration available
-nexus-sysinfo --dump system
+shadow-sysinfo --dump system
 ```
 
 A line such as "firmware: failed to load …" in the kernel log names a

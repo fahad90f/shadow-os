@@ -37,7 +37,7 @@ Service::Service(Session *session, QObject *parent)
     m_idle = new IdleController(m_config, m_source, m_inhibitors, m_screens, session, this);
     m_updates = new UpdateChecker(m_config, m_notifier, this);
     connect(m_updates, &UpdateChecker::openUpdaterRequested, this, [this] {
-        m_session->run(QStringLiteral("nexus-updater"));
+        m_session->run(QStringLiteral("shadow-updater"));
     });
     connect(m_source, &Source::batteryChanged, this, &Service::batteryChanged);
     connect(m_source, &Source::readyChanged, this, &Service::batteryChanged);
@@ -68,7 +68,7 @@ bool Service::ready() const { return m_source->ready() && m_inhibitors->ready();
 
 QString Service::stateFile()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + QStringLiteral("/nexus-horizon-power.json");
+    return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + QStringLiteral("/shadow-horizon-power.json");
 }
 
 // Low battery. The levels and the action are UPower's (UPower.conf:

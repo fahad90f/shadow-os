@@ -4,8 +4,8 @@
   "name": "Core Security",
   "summary": "The foundational toolkit: discovery, packet analysis, TLS checks and network utilities",
   "description": "A compact, broadly useful set of command-line and graphical tools for authorized security work: host and service discovery, a packet analyser, TLS checks, a password manager and the common network utilities the other profiles build on. Like every profile it is installed on demand; start here, the specialised profiles add to it.",
-  "icon": "nexus-reconnaissance",
-  "metapackage": "nexus-arsenal-core",
+  "icon": "shadow-reconnaissance",
+  "metapackage": "shadow-arsenal-core",
   "tools": [
     {
       "package": "nmap",

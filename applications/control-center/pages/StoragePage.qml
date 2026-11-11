@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -371,7 +371,7 @@ NxPage {
         NxRow {
             icon: "wrench"
             title: qsTr("Partition, format and check disks")
-            subtitle: qsTr("Opens NEXUS Disk Manager.")
+            subtitle: qsTr("Opens SHADOW Disk Manager.")
             chevron: true
             onClicked: storage.openDiskManager()
         }

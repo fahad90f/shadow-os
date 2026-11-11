@@ -2,13 +2,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.securitycenter
+import org.shadow.ui
+import org.shadow.securitycenter
 import "Fmt.js" as Fmt
 
 NxWindow {
     id: window
-    title: qsTr("NEXUS Security Center")
+    title: qsTr("SHADOW Security Center")
     width: 1240
     height: 820
 
@@ -62,18 +62,18 @@ NxWindow {
     }
     function launchUpdater() {
         if (!backend.openUpdater())
-            toaster.show(qsTr("NEXUS Updater could not be started"), "danger")
+            toaster.show(qsTr("SHADOW Updater could not be started"), "danger")
     }
 
     Component.onCompleted: {
-        const args = nexusApp.arguments
+        const args = shadowApp.arguments
         if (args.length > 0 && !openPage(args[0]))
             toaster.show(qsTr("There is no page named “%1”").arg(args[0]), "warning")
         backend.refresh()
     }
 
     Connections {
-        target: nexusApp
+        target: shadowApp
         function onActivationRequested(args) {
             if (args.length > 0) window.openPage(args[0])
             window.raise()

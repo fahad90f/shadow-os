@@ -6,22 +6,22 @@
 #include <QQmlEngine>
 #include <QVariantList>
 
-// Firewall page: a front end for /usr/sbin/nexus-firewall (nftables).
+// Firewall page: a front end for /usr/sbin/shadow-firewall (nftables).
 //
-// Reading: "nexus-firewall status --json" needs root. An ordinary user gets
-// the same document through "pkexec nexus-security-status --section firewall"
-// (polkit action org.nexus.security.read-status: no password for an active
+// Reading: "shadow-firewall status --json" needs root. An ordinary user gets
+// the same document through "pkexec shadow-security-status --section firewall"
+// (polkit action org.shadow.security.read-status: no password for an active
 // local session). If neither works, the opened ports are read from the
-// world-readable record /etc/nexus/firewall.json and the live state is
+// world-readable record /etc/shadow/firewall.json and the live state is
 // reported as unknown.
 //
-// Changing: "pkexec nexus-firewall enable|disable|allow|remove|reload|reset"
-// (polkit action org.nexus.firewall.manage, administrator authentication).
+// Changing: "pkexec shadow-firewall enable|disable|allow|remove|reload|reset"
+// (polkit action org.shadow.firewall.manage, administrator authentication).
 // Arguments are validated here with the same patterns the tool uses, and are
 // passed as an argument vector.
 //
-// Test hooks (development only): NEXUS_FIREWALL_TOOL and
-// NEXUS_SECURITY_STATUS_TOOL replace the two program paths.
+// Test hooks (development only): SHADOW_FIREWALL_TOOL and
+// SHADOW_SECURITY_STATUS_TOOL replace the two program paths.
 class FirewallBackend : public QObject
 {
     Q_OBJECT

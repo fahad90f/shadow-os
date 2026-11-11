@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // The quick settings popup (Meta+A, or the status area of the panel).
 // Everything in it reflects a back-end of the "status" object; what a
@@ -23,7 +23,7 @@ PopupSurface {
 
     function openSettings(page) {
         shell.closeOverlays()
-        session.run("nexus-control-center", [page])
+        session.run("shadow-control-center", [page])
     }
 
     function profileLabel(id) {
@@ -53,14 +53,14 @@ PopupSurface {
     screen: shell.primaryScreen
     alignment: "right"
     popupWidth: 404
-    scope: "nexus-quick-settings"
+    scope: "shadow-quick-settings"
 
     Component.onCompleted: {
-        hasControlCenter = session.programExists("nexus-control-center")
+        hasControlCenter = session.programExists("shadow-control-center")
         shell.registerOverlay("quick-settings", popup)
     }
     onOpenChanged: if (open) {
-        hasControlCenter = session.programExists("nexus-control-center")
+        hasControlCenter = session.programExists("shadow-control-center")
         status.brightness.refresh()
     }
 

@@ -3,8 +3,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQml.Models
-import org.nexus.ui
-import org.nexus.screenshot
+import org.shadow.ui
+import org.shadow.screenshot
 
 NxWindow {
     id: window

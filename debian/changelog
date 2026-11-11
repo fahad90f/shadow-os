@@ -1,7 +1,7 @@
-nexus-os (0.1.0) obsidian; urgency=medium
+shadow-os (0.1.0) obsidian; urgency=medium
 
-  * First development release of the NEXUS OS distribution components:
+  * First development release of the Shadow OS distribution components:
     base files, boot management, installer engine, live-session
-    configuration, NexusUI design system and the first applications.
+    configuration, ShadowUI design system and the first applications.
 
- -- NEXUS OS Developers <nexus-os@users.noreply.github.com>  Tue, 10 Nov 2026 20:00:00 +0000
+ -- Shadow OS Developers <shadow-os@users.noreply.github.com>  Tue, 10 Nov 2026 20:00:00 +0000

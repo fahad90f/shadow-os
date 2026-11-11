@@ -14,7 +14,7 @@
 
 #include <functional>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 struct RepoEntry
 {
@@ -132,4 +132,4 @@ struct ResolvedPackage
 void resolvePackages(QObject *context, const QStringList &names,
                      std::function<void(const QHash<QString, ResolvedPackage> &, const QueryResult &)> done);
 
-} // namespace NexusPk
+} // namespace ShadowPk

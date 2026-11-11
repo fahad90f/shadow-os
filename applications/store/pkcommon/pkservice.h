@@ -8,12 +8,12 @@
 
 #include <Transaction>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 // Reachability and identity of the PackageKit daemon (system D-Bus service
 // org.freedesktop.PackageKit).
 //
-// PackageKit is the only way the NEXUS software tools change the system, so
+// PackageKit is the only way the SHADOW software tools change the system, so
 // both applications first establish — with a real D-Bus round trip — whether
 // it can be reached, and keep the exact D-Bus error when it cannot. Nothing
 // else in pkcommon touches PackageKit-Qt unless available() is true: without a
@@ -104,4 +104,4 @@ private:
     QStringList m_roles;
 };
 
-} // namespace NexusPk
+} // namespace ShadowPk

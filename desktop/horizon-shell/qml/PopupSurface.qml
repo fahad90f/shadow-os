@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // A popup hanging under the panel: quick settings, the calendar, the
 // notification centre. It is an overlay (see OverlaySurface): clicking
@@ -23,7 +23,7 @@ OverlaySurface {
     default property alias popupContent: body.data
     readonly property alias card: card
 
-    scope: "nexus-popup"
+    scope: "shadow-popup"
 
     Rectangle {
         id: card

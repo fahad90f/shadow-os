@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 import "Fmt.js" as Fmt
 
-// Section "hardening": kernel settings compared with the NEXUS baseline.
+// Section "hardening": kernel settings compared with the SHADOW baseline.
 SectionPage {
     id: page
 
@@ -20,7 +20,7 @@ SectionPage {
     sectionKey: "hardening"
     title: qsTr("Hardening")
     sectionTitle: qsTr("The hardening state")
-    subtitle: qsTr("Kernel settings of the running system next to the values the NEXUS baseline expects.")
+    subtitle: qsTr("Kernel settings of the running system next to the values the SHADOW baseline expects.")
 
     NxSection {
         visible: page.ready
@@ -45,8 +45,8 @@ SectionPage {
         visible: page.ready
         title: qsTr("Kernel parameters (sysctl)")
         description: page.baselineMissing ? ""
-            : page.sysctlDrift > 0 ? qsTr("%1 of %2 settings differ from the baseline in /usr/lib/sysctl.d/60-nexus-hardening.conf.").arg(page.sysctlDrift).arg(page.sysctl.length)
-            : qsTr("All %1 settings match the baseline in /usr/lib/sysctl.d/60-nexus-hardening.conf.").arg(page.sysctl.length)
+            : page.sysctlDrift > 0 ? qsTr("%1 of %2 settings differ from the baseline in /usr/lib/sysctl.d/60-shadow-hardening.conf.").arg(page.sysctlDrift).arg(page.sysctl.length)
+            : qsTr("All %1 settings match the baseline in /usr/lib/sysctl.d/60-shadow-hardening.conf.").arg(page.sysctl.length)
         NxRow {
             visible: page.baselineMissing !== null
             icon: "alert-triangle"
@@ -86,7 +86,7 @@ SectionPage {
             visible: page.cmdline.length === 0
             icon: "info"
             title: qsTr("No boot-parameter baseline was found")
-            subtitle: qsTr("The tool reads the expected parameters from /etc/default/grub.d/20-nexus-hardening.cfg (package nexus-hardening); that file is missing or lists none.")
+            subtitle: qsTr("The tool reads the expected parameters from /etc/default/grub.d/20-shadow-hardening.cfg (package shadow-hardening); that file is missing or lists none.")
         }
         TableCard {
             visible: page.cmdline.length > 0

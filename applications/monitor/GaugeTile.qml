@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // A gauge with two caption lines under it (what is measured, and the figures).
 ColumnLayout {

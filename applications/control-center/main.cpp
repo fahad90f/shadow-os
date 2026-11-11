@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dumpregistry.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QDir>
 #include <QQmlApplicationEngine>
@@ -9,14 +9,14 @@
 
 int main(int argc, char **argv)
 {
-    Nexus::AppInfo info;
-    info.id = QStringLiteral("org.nexus.controlcenter");
+    Shadow::AppInfo info;
+    info.id = QStringLiteral("org.shadow.controlcenter");
     info.displayName = QStringLiteral("Control Center");
-    info.iconName = QStringLiteral("org.nexus.controlcenter");
-    info.description = QStringLiteral("NEXUS system settings. Pass a page key (e.g. \"wifi\", \"display\") to open it directly.");
+    info.iconName = QStringLiteral("org.shadow.controlcenter");
+    info.description = QStringLiteral("SHADOW system settings. Pass a page key (e.g. \"wifi\", \"display\") to open it directly.");
     info.singleInstance = true;
 
-    Nexus::App app(argc, argv, info);
+    Shadow::App app(argc, argv, info);
     app.parser().addPositionalArgument(QStringLiteral("page"), QStringLiteral("Settings page to open."), QStringLiteral("[page]"));
     app.setDumpTopics(ControlCenter::dumpTopics());
     if (!app.processArguments())
@@ -29,8 +29,8 @@ int main(int argc, char **argv)
         return app.finishDump(value);
     }
     // The page files compiled into this build (see the page table in Main.qml).
-    const QStringList availablePages = QDir(QStringLiteral(":/qt/qml/org/nexus/controlcenter/pages"))
+    const QStringList availablePages = QDir(QStringLiteral(":/qt/qml/org/shadow/controlcenter/pages"))
                                            .entryList({QStringLiteral("*.qml")}, QDir::Files);
     app.engine().rootContext()->setContextProperty(QStringLiteral("availablePages"), availablePages);
-    return app.run(QStringLiteral("org.nexus.controlcenter"));
+    return app.run(QStringLiteral("org.shadow.controlcenter"));
 }

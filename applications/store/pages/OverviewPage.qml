@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
 // Landing page. Everything on it is a fact about this system: what the
 // catalogue contains, what is installed, what can be updated, where software
@@ -25,7 +25,7 @@ NxPage {
     signal openApp(string id)
     signal openView(string view)
 
-    title: qsTr("NEXUS Store")
+    title: qsTr("SHADOW Store")
     subtitle: qsTr("Applications and packages from the software sources configured on this system, installed as DEB packages through PackageKit.")
     maxContentWidth: 980
     actions: [

@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.updater
+import org.shadow.ui
+import org.shadow.updater
 
 PkListPage {
     id: page

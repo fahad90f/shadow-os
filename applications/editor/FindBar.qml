@@ -3,7 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Find and replace for the current tab. All matching is done by the
 // document (EditorDocument.setSearch/findNext/replaceOne/replaceAll).

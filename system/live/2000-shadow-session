@@ -1,0 +1,65 @@
+#!/bin/sh
+# live-config component: Shadow OS session set-up for the live medium.
+#
+# Runs once at boot of the live system (never on an installed system — the
+# installer removes the shadow-live package). It
+#   * logs the live user straight into Shadow Horizon through SDDM, and
+#   * records what the boot menu asked for (shadow.autostart=installer|recovery)
+#     so the session can open the installer or the recovery tool.
+
+. /usr/lib/live/config.sh
+
+Cmdline ()
+{
+	for _PARAMETER in ${LIVE_CONFIG_CMDLINE}
+	do
+		case "${_PARAMETER}" in
+			live-config.noautologin|noautologin)
+				SHADOW_NOAUTOLOGIN="true"
+				;;
+			live-config.username=*|username=*)
+				LIVE_USERNAME="${_PARAMETER#*username=}"
+				;;
+			shadow.autostart=*)
+				SHADOW_AUTOSTART="${_PARAMETER#shadow.autostart=}"
+				;;
+		esac
+	done
+}
+
+Init ()
+{
+	if component_was_executed "shadow-session"
+	then
+		exit 0
+	fi
+	echo -n " shadow-session"
+}
+
+Config ()
+{
+	mkdir -p /run/shadow
+	case "${SHADOW_AUTOSTART}" in
+		installer|recovery)
+			echo "${SHADOW_AUTOSTART}" > /run/shadow/autostart
+			;;
+	esac
+	# Marks the running system as a live session for the shell and the apps.
+	: > /run/shadow/live-session
+
+	if [ -e /usr/share/wayland-sessions/shadow-horizon.desktop ] && \
+	   [ -n "${LIVE_USERNAME}" ] && [ "${SHADOW_NOAUTOLOGIN}" != "true" ]
+	then
+		mkdir -p /etc/sddm.conf.d
+		printf '[Autologin]\nUser=%s\nSession=shadow-horizon\nRelogin=false\n' "${LIVE_USERNAME}" \
+			> /etc/sddm.conf.d/10-shadow-live.conf
+		# live-config's own sddm component assumes a Plasma or LXQt session.
+		rm -f /etc/sddm.conf
+	fi
+
+	touch /var/lib/live/config/shadow-session
+}
+
+Cmdline
+Init
+Config

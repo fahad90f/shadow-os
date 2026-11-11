@@ -1,14 +1,14 @@
-# NEXUS OS build and test pipeline.
+# Shadow OS build and test pipeline.
 #
 #   iso-amd64      packages + desktop ISO, boot tests (UEFI, Secure Boot, BIOS,
 #                  graphical session), uploads the ISO
 #   install-amd64  the installer scenario matrix against that ISO, each one
 #                  followed by booting the installed disk
-#   kernel         the NEXUS kernel packages for amd64 and arm64
+#   kernel         the SHADOW kernel packages for amd64 and arm64
 #   iso-arm64      packages + ISO on a native arm64 runner, UEFI boot test
 #
 # Signing: a development archive key is generated per run unless the
-# NEXUS_SIGNING_KEY secret holds an ASCII-armoured release key. Private keys
+# SHADOW_SIGNING_KEY secret holds an ASCII-armoured release key. Private keys
 # never live in the repository.
 name: build
 
@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NEXUS_JOBS: "4"
+  SHADOW_JOBS: "4"
 
 jobs:
   iso-amd64:
@@ -54,12 +54,12 @@ jobs:
 
       - name: Import release signing key
         env:
-          NEXUS_SIGNING_KEY: ${{ secrets.NEXUS_SIGNING_KEY }}
-        if: env.NEXUS_SIGNING_KEY != ''
+          SHADOW_SIGNING_KEY: ${{ secrets.SHADOW_SIGNING_KEY }}
+        if: env.SHADOW_SIGNING_KEY != ''
         run: |
-          sudo mkdir -p -m 700 /var/lib/nexus-signing
-          printf '%s' "$NEXUS_SIGNING_KEY" | sudo gpg --homedir /var/lib/nexus-signing --batch --import
-          echo "NEXUS_SIGNING_HOME=/var/lib/nexus-signing" >> "$GITHUB_ENV"
+          sudo mkdir -p -m 700 /var/lib/shadow-signing
+          printf '%s' "$SHADOW_SIGNING_KEY" | sudo gpg --homedir /var/lib/shadow-signing --batch --import
+          echo "SHADOW_SIGNING_HOME=/var/lib/shadow-signing" >> "$GITHUB_ENV"
 
       - name: Static checks
         run: |
@@ -80,33 +80,33 @@ jobs:
         run: sudo -E build/iso/build.sh --variant desktop
 
       - name: Verify ISO checksum
-        run: cd build/out/iso && sha256sum -c nexus-os-*-amd64.iso.sha256
+        run: cd build/out/iso && sha256sum -c shadow-os-*-amd64.iso.sha256
 
       - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: nexus-os-amd64-iso
+          name: shadow-os-amd64-iso
           path: |
-            build/out/iso/nexus-os-*-amd64.iso
-            build/out/iso/nexus-os-*-amd64.iso.sha256
-            build/out/iso/nexus-os-*-amd64.manifest
+            build/out/iso/shadow-os-*-amd64.iso
+            build/out/iso/shadow-os-*-amd64.iso.sha256
+            build/out/iso/shadow-os-*-amd64.manifest
           retention-days: 30
           compression-level: 0
 
       - name: Boot test — UEFI, graphical session
         run: |
           sudo -E python3 -u tests/desktop/test_desktop_boot.py \
-            --iso "$(ls build/out/iso/nexus-os-*-amd64.iso)" --shots build/out/shots --keys
+            --iso "$(ls build/out/iso/shadow-os-*-amd64.iso)" --shots build/out/shots --keys
 
       - name: Boot test — UEFI Secure Boot (CD and USB)
         run: |
-          iso="$(ls build/out/iso/nexus-os-*-amd64.iso)"
+          iso="$(ls build/out/iso/shadow-os-*-amd64.iso)"
           sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware uefi-secureboot --media cdrom
           sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware uefi-secureboot --media usb
 
       - name: Boot test — legacy BIOS (CD and USB)
         run: |
-          iso="$(ls build/out/iso/nexus-os-*-amd64.iso)"
+          iso="$(ls build/out/iso/shadow-os-*-amd64.iso)"
           sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware bios --media cdrom
           sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware bios --media usb
 
@@ -114,7 +114,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nexus-os-amd64-screenshots
+          name: shadow-os-amd64-screenshots
           path: build/out/shots/*.png
           if-no-files-found: ignore
 
@@ -123,9 +123,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" --title "NEXUS OS ${GITHUB_REF_NAME}" --generate-notes \
-            build/out/iso/nexus-os-*-amd64.iso build/out/iso/nexus-os-*-amd64.iso.sha256 \
-            build/out/iso/nexus-os-*-amd64.manifest
+          gh release create "${GITHUB_REF_NAME}" --title "Shadow OS ${GITHUB_REF_NAME}" --generate-notes \
+            build/out/iso/shadow-os-*-amd64.iso build/out/iso/shadow-os-*-amd64.iso.sha256 \
+            build/out/iso/shadow-os-*-amd64.manifest
 
   install-amd64:
     needs: iso-amd64
@@ -157,12 +157,12 @@ jobs:
           sudo udevadm trigger --name-match=kvm || true
       - uses: actions/download-artifact@v4
         with:
-          name: nexus-os-amd64-iso
+          name: shadow-os-amd64-iso
           path: iso
       - name: Install scenario ${{ matrix.combo }}
         run: |
           combo='${{ matrix.combo }}'
-          sudo python3 -u tests/installation/test_install.py --iso "$(ls iso/nexus-os-*-amd64.iso)" \
+          sudo python3 -u tests/installation/test_install.py --iso "$(ls iso/shadow-os-*-amd64.iso)" \
             --scenario "${combo%%:*}" --firmware "${combo##*:}" --workdir "$PWD/work"
       - name: Upload logs
         if: failure()
@@ -193,14 +193,14 @@ jobs:
           df -h /
       - name: Host tools
         run: sudo scripts/host-setup.sh --no-test-tools
-      - name: Build the NEXUS kernel (${{ matrix.arch }})
+      - name: Build the SHADOW kernel (${{ matrix.arch }})
         env:
-          NEXUS_KERNEL_DEBUGINFO: none
+          SHADOW_KERNEL_DEBUGINFO: none
         run: sudo -E kernel/build.sh --arch ${{ matrix.arch }} --jobs 4
       - name: Upload kernel packages
         uses: actions/upload-artifact@v4
         with:
-          name: nexus-kernel-${{ matrix.arch }}
+          name: shadow-kernel-${{ matrix.arch }}
           path: |
             build/out/packages/linux-*.deb
             build/out/kernel/config-*
@@ -237,14 +237,14 @@ jobs:
       - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: nexus-os-arm64-iso
+          name: shadow-os-arm64-iso
           path: |
-            build/out/iso/nexus-os-*-arm64.iso
-            build/out/iso/nexus-os-*-arm64.iso.sha256
-            build/out/iso/nexus-os-*-arm64.manifest
+            build/out/iso/shadow-os-*-arm64.iso
+            build/out/iso/shadow-os-*-arm64.iso.sha256
+            build/out/iso/shadow-os-*-arm64.manifest
           retention-days: 30
           compression-level: 0
       - name: Boot test — UEFI (AAVMF)
         run: |
           sudo -E python3 -u tests/boot/test_live_boot.py --arch arm64 \
-            --iso "$(ls build/out/iso/nexus-os-*-arm64.iso)" --firmware uefi
+            --iso "$(ls build/out/iso/shadow-os-*-arm64.iso)" --firmware uefi

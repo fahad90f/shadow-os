@@ -10,7 +10,7 @@ if ! type xdo >/dev/null 2>&1; then
     xdo() { xdotool "$@"; }
     shot() { import -window root -crop 1240x800+0+0 +repage "$SHOT_DIR/$1"; }
 fi
-APP_LOG="$NEXUS_LOGS/app-$SCN.log"; : > "$APP_LOG"
+APP_LOG="$SHADOW_LOGS/app-$SCN.log"; : > "$APP_LOG"
 
 key() { for k in "$@"; do xdo key "$k"; sleep "${KEY_DELAY:-0.4}"; done; }
 type_text() { xdo type --delay 25 "$1"; sleep 0.5; }
@@ -35,11 +35,11 @@ park() { xdo mousemove $((OX + 1235)) $((OY + 795)); sleep 0.2; }   # a resting 
 menu_pick() { park; key Menu; sleep 0.4; for i in $(seq "$1"); do xdo key Down; sleep 0.15; done; sleep 0.2; key Return; sleep 0.8; }
 
 app_start() {
-    nexus-files "$@" >> "$APP_LOG" 2>&1 &
+    shadow-files "$@" >> "$APP_LOG" 2>&1 &
     APP=$!
     sleep "${START_DELAY:-6}"
     if [ "$OX" = 0 ]; then      # no window manager: give the window the keyboard focus
-        xdo windowfocus "$(xdo search --onlyvisible --classname nexus-files | head -1)" 2>/dev/null; sleep 0.4
+        xdo windowfocus "$(xdo search --onlyvisible --classname shadow-files | head -1)" 2>/dev/null; sleep 0.4
     fi
 }
 app_alive() { kill -0 "$APP" 2>/dev/null && echo "app: running" || echo "app: NOT RUNNING"; }

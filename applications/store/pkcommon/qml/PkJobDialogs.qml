@@ -2,9 +2,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
-// The questions a NexusPk::Job can raise, one dialog each. A dialog opens
+// The questions a ShadowPk::Job can raise, one dialog each. A dialog opens
 // when the job's promptKind says so; accepting calls job.answer(true), every
 // other way of closing it (Cancel, Escape) calls job.answer(false) — which
 // ends the job without changing the system.
@@ -17,7 +17,7 @@ import org.nexus.ui
 Item {
     id: root
 
-    // NexusPk::Job (may be null)
+    // ShadowPk::Job (may be null)
     property QtObject job: null
 
     readonly property string kind: job ? job.promptKind : ""

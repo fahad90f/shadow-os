@@ -96,7 +96,7 @@ public:
     QString archRelation() const;
     QString repo() const;
     QString repoText() const;
-    // "debian" | "nexus" | "third-party" | "" (not from a repository / unknown)
+    // "debian" | "shadow" | "third-party" | "" (not from a repository / unknown)
     QString repoCategory() const;
 
     QString summary() const { return m_summary; }
@@ -111,7 +111,7 @@ public:
     // "idle" (nothing to simulate) | "running" | "ready" | "error"
     QString simulationState() const { return m_simulationState; }
     QString simulationError() const { return m_simulationError; }
-    // See NexusPk::summarizeChanges().
+    // See ShadowPk::summarizeChanges().
     QVariantMap changes() const { return m_changes; }
     // "unknown" | "trusted" (every package can be authenticated) | "untrusted"
     QString trust() const { return m_trust; }
@@ -145,7 +145,7 @@ private:
     QString m_name;
     QString m_state = QStringLiteral("idle");
     QString m_error;
-    NexusPk::ResolvedPackage m_resolved;
+    ShadowPk::ResolvedPackage m_resolved;
     QString m_summary, m_description, m_url, m_license, m_group;
     double m_installedSize = -1;
     double m_downloadSize = -1;

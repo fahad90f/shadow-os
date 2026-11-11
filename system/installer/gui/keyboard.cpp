@@ -18,7 +18,7 @@
 
 #include <algorithm>
 
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
 #include <KConfig>
 #include <KConfigGroup>
 #endif
@@ -217,8 +217,8 @@ bool Keyboard::canApply() const
 QString Keyboard::cannotApplyReason() const
 {
     if (!Options::instance().liveSession)
-        return tr("The installer changes the keyboard layout of the running session only in a NEXUS OS live session.");
-#ifndef NEXUS_HAVE_KCONFIG
+        return tr("The installer changes the keyboard layout of the running session only in a Shadow OS live session.");
+#ifndef SHADOW_HAVE_KCONFIG
     return tr("This build of the installer cannot write the session's keyboard configuration (built without KConfig).");
 #else
     if (!sessionKnown())
@@ -330,7 +330,7 @@ bool Keyboard::applyToSession(const QString &layout, const QString &variant)
         return true;
     }
 
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     {
         KConfig xkb(QStringLiteral("kxkbrc"), KConfig::NoGlobals);
         KConfigGroup group = xkb.group(QStringLiteral("Layout"));

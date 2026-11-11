@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.installer
+import org.shadow.installer
 
 // Everything the user has chosen so far, except the two secrets (those go
 // straight to Installer.setPassword()/setPassphrase() and cannot be read
@@ -27,7 +27,7 @@ QtObject {
     property string fullName: ""
     property string userName: ""
     property bool userNameEdited: false
-    property string hostName: "nexus"
+    property string hostName: "shadow"
     property bool autologin: false
 
     property var profiles: []

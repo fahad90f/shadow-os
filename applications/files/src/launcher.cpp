@@ -90,8 +90,8 @@ void Launcher::setStartup(const QList<QUrl> &locations, const QUrl &select)
 
 bool Launcher::terminalAvailable() const
 {
-    static const bool found = Nexus::Command::available(u"nexus-terminal"_s)
-        || Nexus::Command::available(u"x-terminal-emulator"_s);
+    static const bool found = Shadow::Command::available(u"shadow-terminal"_s)
+        || Shadow::Command::available(u"x-terminal-emulator"_s);
     return found;
 }
 
@@ -208,13 +208,13 @@ void Launcher::openTerminal(const QUrl &folder)
     }
     const QString path = folder.toLocalFile();
     bool started = false;
-    if (Nexus::Command::available(u"nexus-terminal"_s))
-        started = QProcess::startDetached(u"nexus-terminal"_s, {u"--workdir"_s, path}, path);
-    else if (Nexus::Command::available(u"x-terminal-emulator"_s))
+    if (Shadow::Command::available(u"shadow-terminal"_s))
+        started = QProcess::startDetached(u"shadow-terminal"_s, {u"--workdir"_s, path}, path);
+    else if (Shadow::Command::available(u"x-terminal-emulator"_s))
         started = QProcess::startDetached(u"x-terminal-emulator"_s, {}, path);
     if (!started) {
         Interaction::instance()->reportError(tr("Could not open a terminal"),
-                                             tr("Neither nexus-terminal nor x-terminal-emulator could be started."));
+                                             tr("Neither shadow-terminal nor x-terminal-emulator could be started."));
     }
 }
 

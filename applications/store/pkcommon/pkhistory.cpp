@@ -13,7 +13,7 @@
 
 #include <algorithm>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 namespace {
 const QString kService = QStringLiteral("org.freedesktop.PackageKit");
@@ -239,4 +239,4 @@ void OldTransactionsRequest::finish(const QString &error)
         done(m_transactions, error);
 }
 
-} // namespace NexusPk
+} // namespace ShadowPk

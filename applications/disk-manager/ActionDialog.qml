@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Input for the actions that do not destroy data:
 //   "unlock"  passphrase of an encrypted volume

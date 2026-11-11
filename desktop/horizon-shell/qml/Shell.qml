@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
-// Root of the NEXUS HORIZON shell: creates the surfaces of every screen and
+// Root of the Shadow Horizon shell: creates the surfaces of every screen and
 // routes global shortcuts.
 QtObject {
     id: shell
@@ -43,12 +43,12 @@ QtObject {
     // passed to the modules through unhandledAction().
     function trigger(name) {
         switch (name) {
-        case "terminal": session.run("nexus-terminal"); break
-        case "files": session.run("nexus-files"); break
-        case "settings": session.run("nexus-control-center"); break
-        case "task-manager": session.run("nexus-monitor", ["--page", "processes"]); break
-        case "screenshot": session.run("nexus-screenshot"); break
-        case "screenshot-region": session.run("nexus-screenshot", ["--region"]); break
+        case "terminal": session.run("shadow-terminal"); break
+        case "files": session.run("shadow-files"); break
+        case "settings": session.run("shadow-control-center"); break
+        case "task-manager": session.run("shadow-monitor", ["--page", "processes"]); break
+        case "screenshot": session.run("shadow-screenshot"); break
+        case "screenshot-region": session.run("shadow-screenshot", ["--region"]); break
         default:
             if (namedOverlays[name]) toggle(namedOverlays[name])
             else shell.unhandledAction(name)
@@ -88,8 +88,8 @@ QtObject {
         registerOverlay("session-menu", sessionMenu)
         loadModules()
         const request = session.takeAutostartRequest()
-        if (request === "installer") session.run("nexus-installer")
-        else if (request === "recovery") session.run("nexus-recovery")
+        if (request === "installer") session.run("shadow-installer")
+        else if (request === "recovery") session.run("shadow-recovery")
     }
 
     property Connections shortcutConnection: Connections {
@@ -97,11 +97,11 @@ QtObject {
         function onTriggered(name) { shell.trigger(name) }
     }
 
-    // Third-party Qt/KDE and GTK applications follow the NEXUS appearance.
+    // Third-party Qt/KDE and GTK applications follow the SHADOW appearance.
     property Connections appearanceSync: Connections {
         target: Appearance
-        function onDarkChanged() { session.run("nexus-apply-appearance") }
-        function onAccentChanged() { session.run("nexus-apply-appearance") }
+        function onDarkChanged() { session.run("shadow-apply-appearance") }
+        function onAccentChanged() { session.run("shadow-apply-appearance") }
     }
 
     property Connections sessionErrors: Connections {
@@ -163,7 +163,7 @@ QtObject {
         id: toast
         screen: shell.primaryScreen
         layer: "overlay"
-        scope: "nexus-shell-toast"
+        scope: "shadow-shell-toast"
         anchorTop: true
         width: Math.min(560, (screen ? screen.width : 1280) - 64)
         height: toastText.implicitHeight + Theme.spaceMd * 2 + Theme.spaceLg

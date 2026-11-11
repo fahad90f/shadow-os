@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=System Monitor
+GenericName=System Monitor
+Comment=Watch processor, memory, disk, network and sensor activity, and manage processes and services
+Exec=shadow-monitor
+Icon=org.shadow.monitor
+Terminal=false
+Categories=System;Monitor;
+Keywords=monitor;cpu;memory;ram;swap;gpu;disk;network;sensors;temperature;battery;processes;services;performance;
+StartupNotify=true
+StartupWMClass=org.shadow.monitor
+X-SHADOW-Component=monitor

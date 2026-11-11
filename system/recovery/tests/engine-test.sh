@@ -1,13 +1,13 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Test of nexus-recovery-engine against a fake installed system on LOOP
+# Test of shadow-recovery-engine against a fake installed system on LOOP
 # DEVICES backed by files in a temporary directory. Run as root inside the
 # build chroot, in ONE invocation:
 #
 #   scripts/dev.sh exec --dir recovery -- bash /src/system/recovery/tests/engine-test.sh
 #
-# Safety: the engine is only ever started with NEXUS_RECOVERY_TEST_DEVICES set
+# Safety: the engine is only ever started with SHADOW_RECOVERY_TEST_DEVICES set
 # to loop devices that this script attached and whose backing files lie in its
 # own work directory (checked again before every call). In that mode the
 # engine lists no other block device, so nothing else can become a target.
@@ -24,13 +24,13 @@ contains() { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1: '$2' does not contain '
 
 # ---- guards of the engine itself -----------------------------------------------------
 note "-- guards"
-out="$(NEXUS_RECOVERY_TEST_DEVICES=/dev/vda python3 "$ENGINE" scan 2>&1)"
-check "a non-loop device in NEXUS_RECOVERY_TEST_DEVICES is refused" "$(result "$out" error.code)" usage
+out="$(SHADOW_RECOVERY_TEST_DEVICES=/dev/vda python3 "$ENGINE" scan 2>&1)"
+check "a non-loop device in SHADOW_RECOVERY_TEST_DEVICES is refused" "$(result "$out" error.code)" usage
 out="$(engine mount --target '../../etc' 2>&1)"; check "a path as target id is refused" "$(result "$out" error.code)" usage
 out="$(engine mount --target 0000-not-there 2>&1)"; check "an unknown target is refused" "$(result "$out" error.code)" not-found
 check "the running root is refused for fsck (unit)" "$(cd "$(dirname "$ENGINE")" && python3 -c '
-from nexus_recovery import target
-from nexus_recovery.util import RecoveryError
+from shadow_recovery import target
+from shadow_recovery.util import RecoveryError
 try:
     target.unmounted_devices_of({"running": True, "mounted_by_recovery": None})
     print("accepted")
@@ -38,7 +38,7 @@ except RecoveryError as e:
     print(e.code)')" running
 check "symbolic links are resolved inside the target (unit)" "$(cd "$(dirname "$ENGINE")" && python3 -c '
 import os, sys, tempfile
-from nexus_recovery import scan
+from shadow_recovery import scan
 d = tempfile.mkdtemp(dir=sys.argv[1])
 os.makedirs(d + "/etc"); open(d + "/etc/inside", "w").write("inside")
 os.symlink("/etc/inside", d + "/etc/abs"); os.symlink("../../../../../etc/hostname", d + "/etc/up"); os.symlink("loop", d + "/etc/loop")
@@ -52,8 +52,8 @@ echo "$scan" > "$WORK/scan.json"
 check "scan: ok" "$(result "$scan" ok)" true
 check "scan: one installation (the data file system is not one)" "$(tail -n1 <<<"$scan" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["installations"]))')" 1
 check "scan: id is the root UUID" "$(result "$scan" installations.0.id)" "$ROOT_UUID"
-check "scan: name from os-release (through the relative link)" "$(result "$scan" installations.0.name)" "NEXUS OS 1.0 (test)"
-check "scan: NEXUS OS" "$(result "$scan" installations.0.is_nexus)" true
+check "scan: name from os-release (through the relative link)" "$(result "$scan" installations.0.name)" "Shadow OS 1.0 (test)"
+check "scan: Shadow OS" "$(result "$scan" installations.0.is_shadow)" true
 check "scan: host name (through the absolute link, inside the target)" "$(result "$scan" installations.0.hostname)" recovery-test-host
 check "scan: not the running system" "$(result "$scan" installations.0.running)" false
 check "scan: root device" "$(result "$scan" installations.0.root.device)" "$ROOT_DEV"
@@ -116,7 +116,7 @@ check "scan sees it as mounted by recovery" "$(result "$(engine scan)" installat
 note "-- repair-boot / repair-packages"
 out="$(engine repair-boot --target "$ROOT_UUID" --dry-run)"
 check "repair-boot --dry-run: the command sequence" "$(result "$out" steps | python3 -c 'import json,sys; print(" ; ".join(s["command"] for s in json.load(sys.stdin)))')" \
-    "chroot $MP update-initramfs -u -k all ; chroot $MP nexus-grub-install --verbose ; chroot $MP update-grub"
+    "chroot $MP update-initramfs -u -k all ; chroot $MP shadow-grub-install --verbose ; chroot $MP update-grub"
 check "repair-boot --dry-run: nothing was run" "$([ -e "$MP/var/log/stub-calls.log" ] && echo ran || echo not-run)" not-run
 out="$(engine repair-packages --target "$ROOT_UUID" --dry-run)"
 check "repair-packages --dry-run: the command sequence" "$(result "$out" steps | python3 -c 'import json,sys; print(" ; ".join(s["command"] for s in json.load(sys.stdin)))')" \
@@ -124,18 +124,18 @@ check "repair-packages --dry-run: the command sequence" "$(result "$out" steps |
 # With the stand-ins: order, chroot, live output, failure handling. NOT the real tools.
 out="$(engine repair-boot --target "$ROOT_UUID")"
 check "repair-boot (stand-in tools): ok" "$(result "$out" ok)" true
-check "repair-boot (stand-in tools): called in order, inside the target" "$(tr '\n' ';' < "$MP/var/log/stub-calls.log")" "update-initramfs -u -k all;nexus-grub-install --verbose;update-grub ;"
-contains "repair-boot: output is passed on line by line" "$out" '{"event": "output", "line": "[nexus-grub-install] called with: --verbose"}'
-: > "$MP/var/log/stub-calls.log"; touch "$MP/etc/stub-fail-nexus-grub-install"
+check "repair-boot (stand-in tools): called in order, inside the target" "$(tr '\n' ';' < "$MP/var/log/stub-calls.log")" "update-initramfs -u -k all;shadow-grub-install --verbose;update-grub ;"
+contains "repair-boot: output is passed on line by line" "$out" '{"event": "output", "line": "[shadow-grub-install] called with: --verbose"}'
+: > "$MP/var/log/stub-calls.log"; touch "$MP/etc/stub-fail-shadow-grub-install"
 out="$(engine repair-boot --target "$ROOT_UUID")"; code=$?
 check "repair-boot: a failing step stops the sequence" "$(result "$out" failed_step)/$(result "$out" ok)/$code" "grub-install/false/1"
 check "repair-boot: the step after the failure did not run" "$(grep -c update-grub "$MP/var/log/stub-calls.log")" 0
-rm "$MP/etc/stub-fail-nexus-grub-install"
+rm "$MP/etc/stub-fail-shadow-grub-install"
 out="$(engine repair-packages --target "$ROOT_UUID")"; check "repair-packages (stand-in tools): ok" "$(result "$out" ok)" true
-mv "$MP/etc/nexus/boot.conf" "$MP/etc/nexus/boot.conf.off"
-# (is_nexus stays true through os-release)
+mv "$MP/etc/shadow/boot.conf" "$MP/etc/shadow/boot.conf.off"
+# (is_shadow stays true through os-release)
 out="$(engine repair-boot --target "$ROOT_UUID" --dry-run)"; check "repair-boot without boot.conf is refused" "$(result "$out" error.code)" no-boot-conf
-mv "$MP/etc/nexus/boot.conf.off" "$MP/etc/nexus/boot.conf"
+mv "$MP/etc/shadow/boot.conf.off" "$MP/etc/shadow/boot.conf"
 umount "$MP/boot/efi"
 out="$(engine repair-boot --target "$ROOT_UUID" --dry-run)"; check "repair-boot with the ESP not mounted is refused" "$(result "$out" error.code)" not-mounted
 guard "$ESP_DEV"; mount -t "$ESP_FS" "$ESP_DEV" "$MP/boot/efi"
@@ -161,10 +161,10 @@ note "-- logs"
 out="$(engine logs --target "$ROOT_UUID" --output "$WORK/logs.tar.gz")"
 check "logs: ok" "$(result "$out" ok)" true
 members="$(tar -tzf "$WORK/logs.tar.gz" | tr '\n' ' ')"
-for member in target/etc/fstab target/etc/nexus/boot.conf target/var/log/installer/install-20260101.log target/var/log/apt/history.log recovery/installation.json recovery/lsblk.txt recovery/not-included.txt; do
+for member in target/etc/fstab target/etc/shadow/boot.conf target/var/log/installer/install-20260101.log target/var/log/apt/history.log recovery/installation.json recovery/lsblk.txt recovery/not-included.txt; do
     contains "logs: contains $member" "$members" "$member"
 done
-check "logs: the target's os-release, not this system's" "$(tar -xzOf "$WORK/logs.tar.gz" target/etc/os-release | grep -c 'NEXUS OS 1.0 (test)')" 1
+check "logs: the target's os-release, not this system's" "$(tar -xzOf "$WORK/logs.tar.gz" target/etc/os-release | grep -c 'Shadow OS 1.0 (test)')" 1
 check "logs: no shadow file" "$(grep -c shadow <<<"$members")" 0
 check "logs: private file" "$(stat -c %a "$WORK/logs.tar.gz")" 600
 out="$(engine logs --target "$ROOT_UUID" --output "$WORK/logs.tar.gz")"; check "logs: an existing file is not overwritten" "$(result "$out" error.code)" exists
@@ -208,12 +208,12 @@ for kind in btrfs xfs; do
     extra="$(attach "$WORK/$kind.img")"; guard "$extra"
     if [ "$kind" = btrfs ]; then mkfs.btrfs -q -f "$extra"; else mkfs.xfs -q -f "$extra"; fi
     mkdir -p "$WORK/extra"; mount "$extra" "$WORK/extra"
-    mkdir -p "$WORK/extra/etc/nexus" "$WORK/extra/usr/lib"
-    printf 'PRETTY_NAME="NEXUS OS on %s"\nID=nexus\n' "$kind" > "$WORK/extra/usr/lib/os-release"; ln -s ../usr/lib/os-release "$WORK/extra/etc/os-release"
+    mkdir -p "$WORK/extra/etc/shadow" "$WORK/extra/usr/lib"
+    printf 'PRETTY_NAME="Shadow OS on %s"\nID=shadow\n' "$kind" > "$WORK/extra/usr/lib/os-release"; ln -s ../usr/lib/os-release "$WORK/extra/etc/os-release"
     umount "$WORK/extra"; sync
     before="$(md5sum < "$WORK/$kind.img")"
-    out="$(NEXUS_RECOVERY_TEST_DEVICES="$extra" engine scan)"
-    check "scan: $kind root found" "$(result "$out" installations.0.name)/$(result "$out" installations.0.root.fstype)" "NEXUS OS on $kind/$kind"
+    out="$(SHADOW_RECOVERY_TEST_DEVICES="$extra" engine scan)"
+    check "scan: $kind root found" "$(result "$out" installations.0.name)/$(result "$out" installations.0.root.fstype)" "Shadow OS on $kind/$kind"
     check "scan: wrote nothing to the $kind image" "$(md5sum < "$WORK/$kind.img")" "$before"
 done
 
@@ -222,6 +222,6 @@ mkdir -p /shots/nested-logs/recovery 2>/dev/null && cp "$WORK"/log/*.log /shots/
 cp "$WORK/scan.json" /shots/nested-logs/recovery/engine-test-scan.json 2>/dev/null
 note "== $pass ok, $fail failed"
 note "not tested here: LUKS unlock/lock and LVM activation (kernel without device-mapper: see the unlock line above),"
-note "  the real update-initramfs / nexus-grub-install / update-grub / dpkg / apt-get (stand-ins were called),"
+note "  the real update-initramfs / shadow-grub-install / update-grub / dpkg / apt-get (stand-ins were called),"
 note "  journal export (the fake system has no journal), efivars, and the running system as target."
 [ "$fail" -eq 0 ]

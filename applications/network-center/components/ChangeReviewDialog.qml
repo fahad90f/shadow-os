@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Shows exactly what an edit of a connection profile will change before it
 // is applied: every property with its old and new value, and warnings.

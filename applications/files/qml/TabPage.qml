@@ -2,8 +2,8 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
 // The content of one tab: a folder pane, or two side by side (split view).
 Item {

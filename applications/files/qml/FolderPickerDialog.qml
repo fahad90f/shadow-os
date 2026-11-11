@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
 // Chooses a destination folder ("Extract to…", "Copy to…", "Move to…").
 // A small folder browser on its own FolderModel: sub-folders only.

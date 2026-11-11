@@ -266,12 +266,12 @@ void GpuSource::queryNvidia(QList<GpuInfo> &gpus)
     }
 
     if (m_nvidiaSmi == 0)
-        m_nvidiaSmi = Nexus::Command::available(u"nvidia-smi"_s) ? 1 : -1;
+        m_nvidiaSmi = Shadow::Command::available(u"nvidia-smi"_s) ? 1 : -1;
     QString failure;
     if (m_nvidiaSmi < 0) {
         failure = tr("nvidia-smi is not installed, so the NVIDIA driver's figures cannot be read");
     } else if (anyAwake) {
-        const Nexus::CommandResult r = Nexus::Command::runSync(u"nvidia-smi"_s, {
+        const Shadow::CommandResult r = Shadow::Command::runSync(u"nvidia-smi"_s, {
             u"--query-gpu=pci.bus_id,utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw"_s,
             u"--format=csv,noheader,nounits"_s,
         }, 4000);

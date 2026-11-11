@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -53,7 +53,7 @@ NxPage {
         visible: lang.ready && lang.available && lang.usesHelperToApply && !lang.helperAvailable
         kind: "warning"
         title: qsTr("Language settings cannot be changed")
-        message: qsTr("This system does not let systemd-localed change the locale (Debian policy); it is written by /usr/libexec/nexus/language-helper through pkexec instead, and that helper or pkexec is not installed.")
+        message: qsTr("This system does not let systemd-localed change the locale (Debian policy); it is written by /usr/libexec/shadow/language-helper through pkexec instead, and that helper or pkexec is not installed.")
     }
     NxBanner {
         visible: lang.busy || (lang.dirty && lang.toGenerate.length > 0)
@@ -61,7 +61,7 @@ NxPage {
         title: lang.busy ? lang.busyText : qsTr("%1 must be installed first").arg(lang.toGenerate.join(", "))
         message: lang.busy ? "" : lang.helperAvailable
             ? qsTr("“Apply” generates it on this computer (locale-gen) before switching. You are asked for an administrator password; generating takes up to a minute.")
-            : qsTr("The helper that generates locales (/usr/libexec/nexus/language-helper, run through pkexec) is not installed, so this selection cannot be applied.")
+            : qsTr("The helper that generates locales (/usr/libexec/shadow/language-helper, run through pkexec) is not installed, so this selection cannot be applied.")
     }
 
     NxSection {

@@ -9,13 +9,13 @@
 #include <QVariantMap>
 #include <qqmlregistration.h>
 
-// Back-end of NEXUS Security Center.
+// Back-end of SHADOW Security Center.
 //
 // It owns no security knowledge of its own: every state shown by the UI is a
-// field of the JSON report printed by nexus-security-status, and every change
-// to the firewall is one invocation of nexus-firewall. Both tools are run
+// field of the JSON report printed by shadow-security-status, and every change
+// to the firewall is one invocation of shadow-firewall. Both tools are run
 // through pkexec with an argument vector (polkit actions
-// org.nexus.security.read-status and org.nexus.firewall.manage), always
+// org.shadow.security.read-status and org.shadow.firewall.manage), always
 // asynchronously.
 //
 // Developer override (build chroot, tests): the tools can be called directly,
@@ -52,8 +52,8 @@ public:
 
     // Called once from main() before any instance exists.
     //   toolsDir   directory holding the tools (either flat, or the repository
-    //              layout <dir>/audit/nexus-security-status and
-    //              <dir>/firewall/nexus-firewall); empty → /usr/sbin through pkexec
+    //              layout <dir>/audit/shadow-security-status and
+    //              <dir>/firewall/shadow-firewall); empty → /usr/sbin through pkexec
     static void configure(const QString &toolsDir, const QString &initialPage);
     static QStringList sectionNames();          // the tool's sections, in display order
     static QJsonObject toolsJson();             // for --dump tools
@@ -85,8 +85,8 @@ public:
     // Specific sections (used by --dump <section>).
     void refreshSections(const QStringList &sections);
 
-    // ---- firewall (nexus-firewall) ------------------------------------------
-    // "" if valid, otherwise the reason — the same rules nexus-firewall applies.
+    // ---- firewall (shadow-firewall) ------------------------------------------
+    // "" if valid, otherwise the reason — the same rules shadow-firewall applies.
     Q_INVOKABLE QString portError(const QString &port) const;
     Q_INVOKABLE QString nameError(const QString &name) const;
     Q_INVOKABLE void firewallEnable();

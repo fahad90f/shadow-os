@@ -28,7 +28,7 @@ class QDBusMessage;
 // Time zones are listed from tzdata: /usr/share/zoneinfo/zone1970.tab with
 // country names from iso3166.tab (falling back to the zones Qt knows).
 //
-// The panel clock options are the [Panel] keys of ~/.config/nexus/horizon.conf
+// The panel clock options are the [Panel] keys of ~/.config/shadow/horizon.conf
 // (see desktop/horizon-shell/src/shellsettings.h); the shell watches the file.
 class DateTimeBackend : public QObject
 {

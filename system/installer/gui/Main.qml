@@ -2,14 +2,14 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 NxWindow {
     id: window
 
-    title: Installer.testMode ? qsTr("TEST MODE: synthetic hardware, cannot install — NEXUS OS Installer")
-                              : qsTr("NEXUS OS Installer")
+    title: Installer.testMode ? qsTr("TEST MODE: synthetic hardware, cannot install — Shadow OS Installer")
+                              : qsTr("Shadow OS Installer")
     width: 1024
     height: 700
     minimumWidth: 960
@@ -176,12 +176,12 @@ NxWindow {
                     Layout.margins: Theme.spaceSm
                     Layout.bottomMargin: Theme.spaceMd
                     spacing: Theme.spaceMd
-                    NxIcon { name: "nexus"; size: Theme.iconLarge; color: Theme.accent }
+                    NxIcon { name: "shadow"; size: Theme.iconLarge; color: Theme.accent }
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 0
                         Text {
-                            text: qsTr("NEXUS OS")
+                            text: qsTr("Shadow OS")
                             color: Theme.textPrimary
                             font.family: Theme.fontUi
                             font.pixelSize: Theme.fontSizeBodyLarge

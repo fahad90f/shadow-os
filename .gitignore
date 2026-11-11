@@ -9,8 +9,8 @@
 /debian/*.substvars
 /debian/*.debhelper.log
 /debian/debhelper-build-stamp
-/debian/nexus-*/
-/debian/libnexus*/
+/debian/shadow-*/
+/debian/libshadow*/
 /debian/linux-*/
 *.deb
 *.buildinfo

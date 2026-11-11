@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // Full-screen layer above everything, for the launcher, menus and dialogs.
 // Clicking outside the content (on the scrim) or pressing Escape dismisses

@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Sourced by engine-test.sh and gui-test.sh: builds a fake installed NEXUS OS
+# Sourced by engine-test.sh and gui-test.sh: builds a fake installed Shadow OS
 # on LOOP DEVICES backed by files in a fresh temporary directory, and removes
 # all of it again when the script ends.
 #
-# Safety: the engine is only ever started with NEXUS_RECOVERY_TEST_DEVICES set
+# Safety: the engine is only ever started with SHADOW_RECOVERY_TEST_DEVICES set
 # to loop devices that this file attached and whose backing files lie in its
 # own work directory (checked again before every use). In that mode the
 # engine lists no other block device, so nothing else can become a target.
@@ -12,9 +12,9 @@
 #
 # Provides: $WORK, $ENGINE, $ROOT_DEV $ESP_DEV $LUKS_DEV $OTHER_DEV $FAT_DEV,
 # $ROOT_UUID, $ESP_FS, $LUKS_OK, and the functions note, guard, engine.
-ENGINE="${ENGINE:-/src/system/recovery/engine/nexus-recovery-engine}"
-WORK="$(mktemp -d /tmp/nexus-recovery-test.XXXXXX)"
-export NEXUS_RECOVERY_STATE_DIR="$WORK/state" NEXUS_RECOVERY_LOG_DIR="$WORK/log"
+ENGINE="${ENGINE:-/src/system/recovery/engine/shadow-recovery-engine}"
+WORK="$(mktemp -d /tmp/shadow-recovery-test.XXXXXX)"
+export SHADOW_RECOVERY_STATE_DIR="$WORK/state" SHADOW_RECOVERY_LOG_DIR="$WORK/log"
 export PYTHONDONTWRITEBYTECODE=1
 
 note() { echo "$*"; }
@@ -35,8 +35,8 @@ guard() {       # die unless $1 is a loop device backed by a file of ours
 }
 engine() {      # the only way this script starts the engine
     local device
-    [ -n "${NEXUS_RECOVERY_TEST_DEVICES:-}" ] || { echo "GUARD: no test devices set" >&2; exit 99; }
-    for device in ${NEXUS_RECOVERY_TEST_DEVICES//,/ }; do guard "$device"; done
+    [ -n "${SHADOW_RECOVERY_TEST_DEVICES:-}" ] || { echo "GUARD: no test devices set" >&2; exit 99; }
+    for device in ${SHADOW_RECOVERY_TEST_DEVICES//,/ }; do guard "$device"; done
     python3 "$ENGINE" "$@"
 }
 result() {      # result <json-lines> <path.to.field>  — from the last ("result") line
@@ -92,10 +92,10 @@ truncate -s 96M "$WORK/root.img"; truncate -s 40M "$WORK/esp.img"; truncate -s 2
 truncate -s 48M "$WORK/other.img"; truncate -s 40M "$WORK/fat.img"
 ROOT_DEV="$(attach "$WORK/root.img")"; ESP_DEV="$(attach "$WORK/esp.img")"
 LUKS_DEV="$(attach "$WORK/luks.img")"; OTHER_DEV="$(attach "$WORK/other.img")"; FAT_DEV="$(attach "$WORK/fat.img")"
-export NEXUS_RECOVERY_TEST_DEVICES="$ROOT_DEV,$ESP_DEV,$LUKS_DEV,$OTHER_DEV,$FAT_DEV"
+export SHADOW_RECOVERY_TEST_DEVICES="$ROOT_DEV,$ESP_DEV,$LUKS_DEV,$OTHER_DEV,$FAT_DEV"
 note "loop devices: root=$ROOT_DEV esp=$ESP_DEV luks=$LUKS_DEV other=$OTHER_DEV fat=$FAT_DEV (work: $WORK)"
 
-guard "$ROOT_DEV"; mkfs.ext4 -q -F -L nexus-root "$ROOT_DEV"
+guard "$ROOT_DEV"; mkfs.ext4 -q -F -L shadow-root "$ROOT_DEV"
 # The ESP is FAT. A kernel without vfat (the build host's) cannot mount one, so
 # there the "ESP" of the fake system is ext4 and FAT is only checked (fsck.vfat
 # needs no kernel support) on a second, data file system.
@@ -112,15 +112,15 @@ if echo -n "correct horse" | cryptsetup luksFormat --type luks2 --batch-mode --p
 
 mkdir "$WORK/build"; mount "$ROOT_DEV" "$WORK/build"
 R="$WORK/build"
-mkdir -p "$R"/{etc/nexus,etc/pam.d,usr/lib,usr/bin,usr/sbin,boot/efi,dev,proc,sys,run,root,tmp,var/log/installer,var/log/apt,home/alice}
+mkdir -p "$R"/{etc/shadow,etc/pam.d,usr/lib,usr/bin,usr/sbin,boot/efi,dev,proc,sys,run,root,tmp,var/log/installer,var/log/apt,home/alice}
 ln -s usr/bin "$R/bin"; ln -s usr/sbin "$R/sbin"; ln -s usr/lib "$R/lib"; ln -s usr/lib64 "$R/lib64"; mkdir -p "$R/usr/lib64"
-printf 'PRETTY_NAME="NEXUS OS 1.0 (test)"\nNAME="NEXUS OS"\nVERSION_ID="1.0"\nID=nexus\nID_LIKE=debian\n' > "$R/usr/lib/os-release"
+printf 'PRETTY_NAME="Shadow OS 1.0 (test)"\nNAME="Shadow OS"\nVERSION_ID="1.0"\nID=shadow\nID_LIKE=debian\n' > "$R/usr/lib/os-release"
 ln -s ../usr/lib/os-release "$R/etc/os-release"            # as on Debian: a relative link
 echo "recovery-test-host" > "$R/etc/hostname.real"
 ln -s /etc/hostname.real "$R/etc/hostname"                 # an absolute link: must resolve INSIDE the target
 printf 'UUID=%s / ext4 errors=remount-ro 0 1\nUUID=%s /boot/efi %s defaults 0 2\nUUID=00000000-0000-0000-0000-00000000dead /var xfs defaults 0 2\nUUID=%s /data vfat defaults 0 2\n/swapfile none swap sw 0 0\n' \
     "$ROOT_UUID" "$ESP_UUID" "$ESP_FS" "$FAT_UUID" > "$R/etc/fstab"
-printf 'FIRMWARE=uefi\nESP_MOUNT=/boot/efi\nESP_REMOVABLE=yes\nESP_NVRAM=no\n' > "$R/etc/nexus/boot.conf"
+printf 'FIRMWARE=uefi\nESP_MOUNT=/boot/efi\nESP_REMOVABLE=yes\nESP_NVRAM=no\n' > "$R/etc/shadow/boot.conf"
 printf 'root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\nalice:x:1000:1000:Alice Example,,,:/home/alice:/bin/bash\nsvc:x:1001:1001::/nonexistent:/usr/sbin/nologin\n' > "$R/etc/passwd"
 printf 'root:!:19000:0:99999:7:::\ndaemon:*:19000:0:99999:7:::\nalice:$6$oldsalt$oldhasholdhasholdhash:19000:0:99999:7:::\nsvc:!:19000::::::\n' > "$R/etc/shadow"
 chmod 600 "$R/etc/shadow"
@@ -140,7 +140,7 @@ for lib in $(ldd "$PAMDIR/pam_unix.so" | grep -o '/[^ ]*') $(find /usr/lib -name
     mkdir -p "$R$(dirname "$lib")"; [ -e "$R$lib" ] || cp -L "$lib" "$R$lib"
 done
 # Stand-ins (they only record how they were called) for what cannot run here.
-for tool in update-initramfs nexus-grub-install update-grub; do stub "$R/usr/sbin/$tool"; done
+for tool in update-initramfs shadow-grub-install update-grub; do stub "$R/usr/sbin/$tool"; done
 for tool in dpkg apt-get; do stub "$R/usr/bin/$tool"; done
 umount "$WORK/build"
 

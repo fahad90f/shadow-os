@@ -9,7 +9,7 @@
 #include <QQmlEngine>
 #include <QVariantList>
 
-// polkit authentication agent of the NEXUS HORIZON session.
+// polkit authentication agent of the Shadow Horizon session.
 //
 // When a privileged action needs authorisation, polkit asks the session's
 // agent to authenticate one of the permitted identities. The agent only

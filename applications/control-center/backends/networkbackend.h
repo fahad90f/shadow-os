@@ -28,7 +28,7 @@ class Watcher;
 // inet_pton, prefix lengths, interface names, UUIDs).
 //
 // Proxy — two places, written together by applyProxy():
-//   ~/.config/environment.d/90-nexus-proxy.conf   read by systemd --user at
+//   ~/.config/environment.d/90-shadow-proxy.conf   read by systemd --user at
 //       login and inherited by the session: http_proxy, https_proxy,
 //       all_proxy (SOCKS), no_proxy and their upper-case twins; auto_proxy
 //       with the PAC URL in automatic mode. The file is removed for "none".

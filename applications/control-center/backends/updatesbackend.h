@@ -9,20 +9,20 @@
 
 // Updates page: how this computer looks for and installs updates.
 //
-// * ~/.config/nexus/updater.conf — the settings file of NEXUS Updater
+// * ~/.config/shadow/updater.conf — the settings file of SHADOW Updater
 //   (applications/updater/README.md). Read and written: Updates/AutoCheck,
 //   Updates/CheckIntervalHours. Read only: the result of the last check
 //   (LastCheck/Time, Updates, Security, Error, RefreshError), which
-//   "nexus-updater --check" records. "Check now" runs exactly that command.
+//   "shadow-updater --check" records. "Check now" runs exactly that command.
 // * unattended-upgrades: installed when /usr/bin/unattended-upgrade exists;
 //   the effective APT::Periodic values come from "apt-config dump" (all of
 //   apt.conf.d, not just one file), with /etc/apt/apt.conf.d/20auto-upgrades
 //   parsed directly when apt-config is missing. Changed through
-//   "pkexec /usr/libexec/nexus/updates-helper set-auto-upgrades <0|1> <0|1>"
-//   (polkit action org.nexus.controlcenter.updates.configure).
+//   "pkexec /usr/libexec/shadow/updates-helper set-auto-upgrades <0|1> <0|1>"
+//   (polkit action org.shadow.controlcenter.updates.configure).
 // * /run/reboot-required for the restart notice.
 //
-// Test hook (development only): NEXUS_CC_HELPER_DIR replaces /usr/libexec/nexus.
+// Test hook (development only): SHADOW_CC_HELPER_DIR replaces /usr/libexec/shadow.
 class UpdatesBackend : public QObject
 {
     Q_OBJECT

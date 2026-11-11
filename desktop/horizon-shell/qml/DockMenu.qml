@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Context menu of a dock entry, shown above it.
 OverlaySurface {
     id: root
 
-    scope: "nexus-dock-menu"
+    scope: "shadow-dock-menu"
 
     property int row: -1
     property real centerX: 0

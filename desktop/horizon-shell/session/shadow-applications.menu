@@ -1,0 +1,20 @@
+<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+ "http://www.freedesktop.org/standards/menu-spec/1.0/menu.dtd">
+<!--
+  Shadow Horizon application menu (selected with XDG_MENU_PREFIX=shadow-).
+
+  The freedesktop application database used by the launcher, the dock and
+  "Open with" is built from this file: an application that the menu does not
+  include does not exist as far as the desktop is concerned. Shadow Horizon
+  groups applications itself (by their Categories), so the menu is flat and
+  simply includes every installed application.
+-->
+<Menu>
+  <Name>Applications</Name>
+  <DefaultAppDirs/>
+  <DefaultDirectoryDirs/>
+  <DefaultMergeDirs/>
+  <Include>
+    <All/>
+  </Include>
+</Menu>

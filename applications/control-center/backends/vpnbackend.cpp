@@ -16,7 +16,7 @@
 
 using namespace NetHw;
 
-NEXUS_CC_DUMP("vpn", [] {
+SHADOW_CC_DUMP("vpn", [] {
     VpnBackend backend;
     waitUntilReady(&backend, 12000);
     return QJsonValue(backend.toJson());

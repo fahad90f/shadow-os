@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
 // What is installed: applications (installed packages that have a catalogue
 // entry) and all packages. Removing goes through PackageKit, after a

@@ -6,7 +6,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 
-namespace Nexus {
+namespace Shadow {
 
 QProcessEnvironment Command::parseEnvironment()
 {
@@ -51,7 +51,7 @@ void Command::run(QObject *context, const QString &program, const QStringList &a
     });
     QObject::connect(process, &QProcess::errorOccurred, context, [finish, process](QProcess::ProcessError e) {
         if (e == QProcess::FailedToStart) {
-            process->setProperty("nexusFailedToStart", true);
+            process->setProperty("shadowFailedToStart", true);
             finish(-1);
         }
     });
@@ -96,4 +96,4 @@ CommandResult Command::runSync(const QString &program, const QStringList &argume
     return r;
 }
 
-} // namespace Nexus
+} // namespace Shadow

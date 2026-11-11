@@ -20,7 +20,7 @@ class DBusProperties;
 // its change notification, which KWin's own configuration watcher reacts
 // to — the same mechanism the Control Center's display page uses. When
 // Night Light is switched on while its schedule is "automatic" (sunrise and
-// sunset from a location service, which NEXUS does not run) the schedule is
+// sunset from a location service, which SHADOW does not run) the schedule is
 // changed to fixed times, like the Control Center does.
 //
 //   enabled   Night Light is switched on in KWin's settings

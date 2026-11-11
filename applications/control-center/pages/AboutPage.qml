@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -29,7 +29,7 @@ NxPage {
                     GradientStop { position: 0.55; color: Theme.brandGradientMid }
                     GradientStop { position: 1; color: Theme.brandGradientEnd }
                 }
-                NxIcon { anchors.centerIn: parent; name: "nexus"; size: 52; color: Theme.brandObsidian }
+                NxIcon { anchors.centerIn: parent; name: "shadow"; size: 52; color: Theme.brandObsidian }
             }
             ColumnLayout {
                 Layout.fillWidth: true
@@ -67,7 +67,7 @@ NxPage {
             icon: "info"
             title: qsTr("Hardware and firmware details")
             subtitle: about.systemInformationAvailable ? qsTr("Processor, memory, graphics, firmware and Secure Boot state")
-                                                       : qsTr("NEXUS System Information is not installed")
+                                                       : qsTr("SHADOW System Information is not installed")
             chevron: about.systemInformationAvailable
             enabled: about.systemInformationAvailable
             onClicked: if (!about.openSystemInformation()) ApplicationWindow.window.toaster.show(qsTr("Could not start System Information"), "danger")

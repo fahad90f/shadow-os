@@ -6,15 +6,15 @@
 #include <QQmlEngine>
 #include <QStringList>
 
-// Desktop-shell configuration, stored in ~/.config/nexus/horizon.conf with the
-// distribution default in /etc/xdg/nexus/horizon.conf.
+// Desktop-shell configuration, stored in ~/.config/shadow/horizon.conf with the
+// distribution default in /etc/xdg/shadow/horizon.conf.
 //
 //   [Desktop]
-//   Wallpaper=/usr/share/backgrounds/nexus/nexus-horizon.jpg   image shown in dark appearance
-//   WallpaperLight=/usr/share/backgrounds/nexus/nexus-daylight.jpg   image shown in light appearance
+//   Wallpaper=/usr/share/backgrounds/shadow/shadow-horizon.jpg   image shown in dark appearance
+//   WallpaperLight=/usr/share/backgrounds/shadow/shadow-daylight.jpg   image shown in light appearance
 //   WallpaperFill=crop            crop | fit | stretch | center | tile
 //   [Dock]
-//   Pinned=org.nexus.files.desktop,org.nexus.terminal.desktop,…   desktop ids, in order
+//   Pinned=org.shadow.files.desktop,org.shadow.terminal.desktop,…   desktop ids, in order
 //   AutoHide=false
 //   IconSize=44                   32–72
 //   [Panel]

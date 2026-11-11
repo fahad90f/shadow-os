@@ -5,13 +5,13 @@
 # CMakeLists.txt after the horizon-shell target exists.
 #
 #   KF6::PulseAudioQt   volume and microphone through the PulseAudio protocol
-#                       (pipewire-pulse on NEXUS)
+#                       (pipewire-pulse on SHADOW)
 #   KF6::BluezQt        Bluetooth adapters and connected devices (BlueZ)
 #   KF6::ConfigCore     switching KWin's Night Light on and off (kwinrc, with
 #                       the change notification KWin listens to)
 #
 # NetworkManager, UPower, power-profiles-daemon, logind and MPRIS are reached
-# with plain QtDBus (already linked through Nexus::App).
+# with plain QtDBus (already linked through Shadow::App).
 find_package(KF6PulseAudioQt REQUIRED)
 find_package(KF6BluezQt REQUIRED)
 find_package(KF6Config REQUIRED)

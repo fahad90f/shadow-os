@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 import "Fmt.js" as Fmt
 
 // Sections "listening" and "connections": what this computer offers to the
@@ -41,7 +41,7 @@ SectionPage {
             ? qsTr("%1 socket(s) listen on addresses other computers can reach — the firewall decides which are reachable").arg(page.ls.exposed_count)
             : qsTr("%1 socket(s) listen on addresses other computers can reach, and the firewall is not active").arg(page.ls.exposed_count)
         message: page.fw && page.fw.active
-            ? qsTr("From other computers, the NEXUS ruleset accepts new connections only on the opened ports (%1), unless additional rules were added under /etc/nftables.d.")
+            ? qsTr("From other computers, the SHADOW ruleset accepts new connections only on the opened ports (%1), unless additional rules were added under /etc/nftables.d.")
                   .arg(Fmt.list(page.fw.allowed).length > 0 ? Fmt.list(page.fw.allowed).map(r => r.port + "/" + r.protocol).join(", ") : qsTr("none"))
             : qsTr("Every one of them accepts connections from the network.")
         actionText: qsTr("Open Firewall")

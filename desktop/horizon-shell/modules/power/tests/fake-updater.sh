@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Test double of "nexus-updater" for the power module's session test: speaks
+# Test double of "shadow-updater" for the power module's session test: speaks
 # the documented --check contract (one JSON object, exit status 0/10/11/1)
 # with the result named in $FAKE_UPDATER_DIR/result, and records every start
 # in $FAKE_UPDATER_DIR/runs. It checks nothing.

@@ -32,7 +32,7 @@ CodeWidget::CodeWidget(QWidget *parent)
 {
     m_gutter = new Gutter(this);
     setFrameShape(QFrame::NoFrame);
-    // Scroll bars are drawn by the QML side in the NEXUS style.
+    // Scroll bars are drawn by the QML side in the SHADOW style.
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setLineWrapMode(QPlainTextEdit::NoWrap);

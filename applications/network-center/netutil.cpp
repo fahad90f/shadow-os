@@ -263,11 +263,11 @@ QString findTool(const QString &name)
 
 QString helperPath()
 {
-    const QString installed = QStringLiteral(NEXUS_NETWORK_HELPER);
+    const QString installed = QStringLiteral(SHADOW_NETWORK_HELPER);
     if (QFileInfo(installed).isFile())
         return installed;
-    // Uninstalled build tree: <build>/bin/<app> next to <build>/libexec/nexus/.
-    const QString local = QCoreApplication::applicationDirPath() + QStringLiteral("/../libexec/nexus/network-helper");
+    // Uninstalled build tree: <build>/bin/<app> next to <build>/libexec/shadow/.
+    const QString local = QCoreApplication::applicationDirPath() + QStringLiteral("/../libexec/shadow/network-helper");
     const QFileInfo info(local);
     return info.isFile() ? info.canonicalFilePath() : QString();
 }

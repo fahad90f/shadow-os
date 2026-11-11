@@ -1,10 +1,10 @@
-# NEXUS Monitor
+# SHADOW Monitor
 
-System monitor and task manager of NEXUS OS: binary `nexus-monitor`, QML module
-`org.nexus.monitor`, application id `org.nexus.monitor`. Two launchers start
-the same program: **System Monitor** (`org.nexus.monitor.desktop`) opens the
-overview, **Task Manager** (`org.nexus.taskmanager.desktop`) runs
-`nexus-monitor --page processes`.
+System monitor and task manager of Shadow OS: binary `shadow-monitor`, QML module
+`org.shadow.monitor`, application id `org.shadow.monitor`. Two launchers start
+the same program: **System Monitor** (`org.shadow.monitor.desktop`) opens the
+overview, **Task Manager** (`org.shadow.taskmanager.desktop`) runs
+`shadow-monitor --page processes`.
 
 Everything on screen is read from the running system. A value the kernel or a
 driver does not provide is shown as not available, with the reason — nothing
@@ -12,7 +12,7 @@ is estimated or filled in.
 
 | Page | Shows |
 |---|---|
-| Overview | gauges for processor, memory, graphics and the root file system; load average, processor temperature, process count, uptime; 2-minute histories of processor, memory, network and disk activity; every logical CPU; a hardware summary with a button that opens `nexus-sysinfo` |
+| Overview | gauges for processor, memory, graphics and the root file system; load average, processor temperature, process count, uptime; 2-minute histories of processor, memory, network and disk activity; every logical CPU; a hardware summary with a button that opens `shadow-sysinfo` |
 | Processes | name, PID, user, CPU share, resident memory, state, nice value, command line; sortable by every column, searchable (name, user, PID, command line), optional tree view, own processes only, kernel threads; end (SIGTERM), force kill (SIGKILL), suspend (SIGSTOP), continue (SIGCONT) and change priority (nice value), each after confirmation |
 | Services | systemd service units with state and start-up setting; start, stop, restart, enable, disable through systemd's D-Bus API |
 | Disks | usage of every mounted file system; read/write rates, busy time and totals of every physical drive |
@@ -20,8 +20,8 @@ is estimated or filled in.
 | Sensors | temperatures, fans, graphics devices (utilisation, temperature, video memory, power) and batteries |
 
 ```
-nexus-monitor [--page <key> | <key>]      key: overview processes services disks network sensors
-nexus-monitor --dump <topic>              topic: cpu memory gpu disks network processes services sensors battery
+shadow-monitor [--page <key> | <key>]      key: overview processes services disks network sensors
+shadow-monitor --dump <topic>              topic: cpu memory gpu disks network processes services sensors battery
 ```
 
 The application is single-instance: a second launch hands its page to the
@@ -33,7 +33,7 @@ row's context menu and behind the “…” button; the arrow keys move the sele
 ## Sampling
 
 `SystemMonitor` takes a sample every 1, 2 or 5 seconds (selectable in the side
-bar, stored in `~/.config/nexus/monitor.conf`) on a worker thread; the process
+bar, stored in `~/.config/shadow/monitor.conf`) on a worker thread; the process
 table is scanned on a second thread and only while the Processes page is
 shown; file-system usage is read every 5 seconds on a third thread, because
 `statvfs()` blocks for as long as a network file server takes to answer.
@@ -86,8 +86,8 @@ Conventions worth knowing when comparing with other tools:
 
 ## Runtime dependencies
 
-Debian package names, beyond the shared NEXUS UI runtime every application
-links (`desktop/ui`: the `org.nexus.ui` and `org.nexus.style` QML modules with
+Debian package names, beyond the shared SHADOW UI runtime every application
+links (`desktop/ui`: the `org.shadow.ui` and `org.shadow.style` QML modules with
 Qt 6 Quick, Quick Controls, Quick Shapes, SVG and D-Bus):
 
 | Package | Needed for |
@@ -99,10 +99,10 @@ Qt 6 Quick, Quick Controls, Quick Shapes, SVG and D-Bus):
 | `pci.ids` | product names of graphics devices (optional: the driver name is shown otherwise) |
 | `util-linux` | `lscpu`, only where `/proc/cpuinfo` has no model name |
 | `nvidia-smi` (non-free) | figures of the proprietary NVIDIA driver (optional) |
-| NEXUS System Information (`nexus-sysinfo`) | the "System Information" button (optional: disabled with an explanation otherwise) |
+| SHADOW System Information (`shadow-sysinfo`) | the "System Information" button (optional: disabled with an explanation otherwise) |
 
-The launchers use the icons `org.nexus.monitor` and `org.nexus.taskmanager`
-from the NEXUS icon set; the application ships none itself.
+The launchers use the icons `org.shadow.monitor` and `org.shadow.taskmanager`
+from the SHADOW icon set; the application ships none itself.
 
 ## Privileged operations
 
@@ -149,7 +149,7 @@ In `tests/`, all run inside the build chroot through `scripts/dev.sh run`
 | `ui-processes.sh` | real key presses and clicks (xdotool) on the Processes page, one scenario per run: search, Delete / Shift+Delete, confirmation and Escape, SIGTERM and SIGKILL reaching exactly the selected process, the End process button, arrow-key selection across refreshes, suspend and continue (SIGSTOP / SIGCONT) from the context menu, the priority dialog (nice value applied directly; a lower one needs the administrator path), refusal of PID 1, the administrator path without a polkit authority, sorting, menus, tree view, second launch, stored interval |
 | `ui-services.sh` | the Services page against `mock-systemd.py`: start, stop with keyboard confirmation, refused action, a job that ends as failed, enable, filters |
 | `soak.sh` | runs the monitor on one page for several minutes and prints its own CPU share, resident memory, file descriptors and threads every 30 s; fails if memory or descriptors keep growing |
-| `ui-window.sh` | sampling stops while the window is unmapped and resumes; the System Information button starts `nexus-sysinfo` |
+| `ui-window.sh` | sampling stops while the window is unmapped and resumes; the System Information button starts `shadow-sysinfo` |
 
 ## Limitations
 
@@ -196,7 +196,7 @@ In `tests/`, all run inside the build chroot through `scripts/dev.sh run`
   follow systemd's `PropertiesChanged` signals.
 * Battery "time remaining" is the device's own figure where it has one,
   otherwise energy ÷ power of the moment, labelled "about".
-* The gauges and bars animate each change for 340 ms (NexusUI). With software
+* The gauges and bars animate each change for 340 ms (ShadowUI). With software
   rendering this costs noticeable CPU time on the Overview page. Measured
   with `tests/soak.sh` under llvmpipe on a 4-CPU virtual machine that was
   itself fully loaded, at the 1-second interval and 1280x860: Overview 28–39 %

@@ -16,7 +16,7 @@
 #include <QLocale>
 #include <QTimer>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 namespace {
 const QString kService = QStringLiteral("org.freedesktop.PackageKit");
@@ -217,4 +217,4 @@ QJsonObject Service::toJson() const
     return o;
 }
 
-} // namespace NexusPk
+} // namespace ShadowPk

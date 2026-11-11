@@ -23,20 +23,20 @@
 //     - one's own password: passwd(1) is run as the user, with the current and
 //       the new password on its standard input, so PAM checks the current one;
 //     - another account's password (administrator action):
-//       "pkexec /usr/libexec/nexus/users-helper set-password" with
+//       "pkexec /usr/libexec/shadow/users-helper set-password" with
 //       "<user>:<password>" on standard input, which the helper passes to
 //       chpasswd(8) the same way.
 // * Automatic login: SDDM's [Autologin] User, read from /usr/lib/sddm/sddm.conf.d,
 //   /etc/sddm.conf.d and /etc/sddm.conf in SDDM's order; changed with
 //   "pkexec users-helper set-autologin <user> | clear-autologin"
-//   (polkit action org.nexus.controlcenter.users.manage).
+//   (polkit action org.shadow.controlcenter.users.manage).
 // * Who is signed in: org.freedesktop.login1 ListUsers (when logind runs).
 //
 // Blocks that cannot be overridden: the account the Control Center runs as
 // and accounts that are signed in cannot be removed; the last administrator
 // can neither be removed nor made a standard user.
 //
-// Test hook (development only): NEXUS_CC_HELPER_DIR replaces /usr/libexec/nexus.
+// Test hook (development only): SHADOW_CC_HELPER_DIR replaces /usr/libexec/shadow.
 class UsersBackend : public QObject
 {
     Q_OBJECT

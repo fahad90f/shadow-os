@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "udisksclient.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QJsonArray>
 #include <QJsonObject>
 
 int main(int argc, char **argv)
 {
-    Nexus::App app(argc, argv, {
-        QStringLiteral("org.nexus.diskmanager"),
+    Shadow::App app(argc, argv, {
+        QStringLiteral("org.shadow.diskmanager"),
         QStringLiteral("Disk Manager"),
-        QStringLiteral("org.nexus.diskmanager"),
+        QStringLiteral("org.shadow.diskmanager"),
         QStringLiteral("Drives, partitions, file systems and disk images"),
         true,
     });
@@ -54,5 +54,5 @@ int main(int argc, char **argv)
     }
 
     app.expose(QStringLiteral("disks"), client);
-    return app.run(QStringLiteral("org.nexus.diskmanager"));
+    return app.run(QStringLiteral("org.shadow.diskmanager"));
 }

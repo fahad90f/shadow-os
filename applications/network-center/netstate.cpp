@@ -301,7 +301,7 @@ void NetState::startMonitor()
     // `ip monitor` prints one line per netlink event. Only the fact that
     // something changed is used; the state itself is re-read as JSON.
     m_monitor = new QProcess(this);
-    m_monitor->setProcessEnvironment(Nexus::Command::parseEnvironment());
+    m_monitor->setProcessEnvironment(Shadow::Command::parseEnvironment());
     m_monitor->setProgram(ip);
     m_monitor->setArguments({QStringLiteral("monitor"), QStringLiteral("link"), QStringLiteral("address"),
                              QStringLiteral("route")});
@@ -341,16 +341,16 @@ void NetState::refresh()
     const QString ip = Net::findTool(QStringLiteral("ip"));
     const QString program = ip.isEmpty() ? QStringLiteral("ip") : ip;
     const QString j = QStringLiteral("-j"), details = QStringLiteral("-details");
-    Nexus::Command::run(this, program, {j, QStringLiteral("-s"), details, QStringLiteral("address"), QStringLiteral("show")},
-                        [this](const Nexus::CommandResult &r) { m_addrResult = r; stepDone(); }, 10000);
-    Nexus::Command::run(this, program, {j, QStringLiteral("-4"), details, QStringLiteral("route"), QStringLiteral("show"),
+    Shadow::Command::run(this, program, {j, QStringLiteral("-s"), details, QStringLiteral("address"), QStringLiteral("show")},
+                        [this](const Shadow::CommandResult &r) { m_addrResult = r; stepDone(); }, 10000);
+    Shadow::Command::run(this, program, {j, QStringLiteral("-4"), details, QStringLiteral("route"), QStringLiteral("show"),
                                         QStringLiteral("table"), QStringLiteral("all")},
-                        [this](const Nexus::CommandResult &r) { m_route4Result = r; stepDone(); }, 10000);
-    Nexus::Command::run(this, program, {j, QStringLiteral("-6"), details, QStringLiteral("route"), QStringLiteral("show"),
+                        [this](const Shadow::CommandResult &r) { m_route4Result = r; stepDone(); }, 10000);
+    Shadow::Command::run(this, program, {j, QStringLiteral("-6"), details, QStringLiteral("route"), QStringLiteral("show"),
                                         QStringLiteral("table"), QStringLiteral("all")},
-                        [this](const Nexus::CommandResult &r) { m_route6Result = r; stepDone(); }, 10000);
-    Nexus::Command::run(this, program, {j, QStringLiteral("neigh"), QStringLiteral("show")},
-                        [this](const Nexus::CommandResult &r) { m_neighResult = r; stepDone(); }, 10000);
+                        [this](const Shadow::CommandResult &r) { m_route6Result = r; stepDone(); }, 10000);
+    Shadow::Command::run(this, program, {j, QStringLiteral("neigh"), QStringLiteral("show")},
+                        [this](const Shadow::CommandResult &r) { m_neighResult = r; stepDone(); }, 10000);
 }
 
 void NetState::stepDone()

@@ -9,7 +9,7 @@
 
 #include <functional>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 // PackageKit's own record of past transactions (GetOldTransactions): the
 // installations, removals and updates made through it, newest first.
@@ -36,7 +36,7 @@ void fetchOldTransactions(QObject *context, uint count,
 // program — taken from the matching PackageKit transaction — plus PackageKit
 // transactions that failed before APT logged anything. Newest first.
 //
-// Added to APT entries:  startedBy ("alice (uid 1000)"), client ("nexus-updater"),
+// Added to APT entries:  startedBy ("alice (uid 1000)"), client ("shadow-updater"),
 //                        kind: "apt"
 // Extra entries:         kind: "packagekit-failed", start, startText, summary,
 //                        startedBy, client, packageCount, packages
@@ -69,4 +69,4 @@ private:
     bool m_finished = false;
 };
 
-} // namespace NexusPk
+} // namespace ShadowPk

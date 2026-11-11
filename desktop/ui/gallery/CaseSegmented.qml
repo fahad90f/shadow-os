@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Test page: the ways applications use NxSegmented.currentIndex.
 //   1 unbound                — the selector keeps its own state
@@ -12,7 +12,7 @@ import org.nexus.ui
 //   5 bound, handler re-creates the binding (older work-around)
 NxWindow {
     id: window
-    title: "NexusUI Gallery — segmented"
+    title: "ShadowUI Gallery — segmented"
     width: 900
     height: 640
 

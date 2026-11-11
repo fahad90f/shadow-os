@@ -3,7 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Templates as T
 import QtQuick.Window
-import org.nexus.ui
+import org.shadow.ui
 
 T.Menu {
     id: control

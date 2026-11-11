@@ -196,7 +196,7 @@ void setProperty(QWidget *widget, const char *name, const QVariant &value)
 // ---- Switch ---------------------------------------------------------------------
 
 namespace {
-// Geometry of the NEXUS switch (desktop/ui/style/Switch.qml).
+// Geometry of the SHADOW switch (desktop/ui/style/Switch.qml).
 constexpr int kTrackWidth = 40;
 constexpr int kTrackHeight = 22;
 constexpr int kKnob = 16;

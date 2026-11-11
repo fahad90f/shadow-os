@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Rendered at build time by scripts/gen-tokens.py from
-// desktop/themes/tokens/nexus-tokens.json (template: src/tokens.h.in).
-// The design-token values NEXUS Terminal needs as C++ constants; colours are
+// desktop/themes/tokens/shadow-tokens.json (template: src/tokens.h.in).
+// The design-token values SHADOW Terminal needs as C++ constants; colours are
 // not here — they depend on the appearance mode and come from Theme.
 #pragma once
 

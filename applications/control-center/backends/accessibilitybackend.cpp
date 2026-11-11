@@ -18,12 +18,12 @@
 #include <QStandardPaths>
 #include <QTimer>
 
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
 #include <KConfig>
 #include <KConfigGroup>
 #endif
 
-NEXUS_CC_DUMP("accessibility", [] {
+SHADOW_CC_DUMP("accessibility", [] {
     AccessibilityBackend backend;
     if (!backend.ready()) {
         QEventLoop loop;
@@ -130,7 +130,7 @@ AccessibilityBackend::AccessibilityBackend(QObject *parent)
 
 bool AccessibilityBackend::canPersist() const
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     return true;
 #else
     return false;
@@ -147,7 +147,7 @@ void AccessibilityBackend::setRunning(bool running)
         m_shortcutKeys.clear();
         m_shortcutsAvailable = false;
         m_statusMessage = tr("The KWin compositor is not running in this session, so its accessibility effects cannot be "
-                             "switched. They are available in the NEXUS HORIZON desktop session.");
+                             "switched. They are available in the Shadow Horizon desktop session.");
     } else {
         m_statusMessage.clear();
     }
@@ -277,7 +277,7 @@ void AccessibilityBackend::fetchShortcuts()
 void AccessibilityBackend::loadStored()
 {
     m_stored.clear();
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     KConfig config(QStringLiteral("kwinrc"), KConfig::NoGlobals);
     const KConfigGroup plugins = config.group(QStringLiteral("Plugins"));
     for (const EffectInfo &info : effectTable()) {
@@ -324,7 +324,7 @@ QVariantList AccessibilityBackend::effects() const
 
 bool AccessibilityBackend::store(const QString &id, bool enabled)
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     KConfig config(QStringLiteral("kwinrc"), KConfig::NoGlobals);
     KConfigGroup plugins = config.group(QStringLiteral("Plugins"));
     plugins.writeEntry(id + QStringLiteral("Enabled"), enabled);
@@ -407,7 +407,7 @@ void AccessibilityBackend::setColorblindMode(int mode)
 {
     if (mode < 0 || mode > 2 || mode == m_colorblindMode)
         return;
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     KConfig config(QStringLiteral("kwinrc"), KConfig::NoGlobals);
     config.group(QStringLiteral("Effect-colorblindnesscorrection")).writeEntry("Mode", mode);
     if (!config.sync()) {
@@ -432,7 +432,7 @@ void AccessibilityBackend::loadCursor()
 {
     int size = 24;
     QString theme;
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     const KConfig config(QStringLiteral("kcminputrc"), KConfig::NoGlobals);
     const KConfigGroup mouse = config.group(QStringLiteral("Mouse"));
     size = mouse.readEntry("cursorSize", 24);
@@ -467,7 +467,7 @@ void AccessibilityBackend::setCursorSize(int size)
 {
     if (size < 16 || size > 256 || size == m_cursorSize)
         return;
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     KConfig config(QStringLiteral("kcminputrc"), KConfig::NoGlobals);
     KConfigGroup mouse = config.group(QStringLiteral("Mouse"));
     mouse.writeEntry("cursorSize", size, KConfig::Notify);

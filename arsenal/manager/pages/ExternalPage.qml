@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.arsenal
+import org.shadow.ui
+import org.shadow.arsenal
 
 // Every well-known tool the profiles mention that is not packaged.
 NxPage {
@@ -13,7 +13,7 @@ NxPage {
     signal message(string text, string kind)
 
     title: qsTr("External tools")
-    subtitle: qsTr("Well-known tools that are not in Debian main and therefore not installable from NEXUS repositories. NEXUS Arsenal does not download, repackage or update them: follow the vendor's own instructions, and check what you download.")
+    subtitle: qsTr("Well-known tools that are not in Debian main and therefore not installable from SHADOW repositories. SHADOW Arsenal does not download, repackage or update them: follow the vendor's own instructions, and check what you download.")
     maxContentWidth: 860
 
     NxEmptyState {

@@ -8,7 +8,7 @@
 #include "thumbnails.h"
 #include "util.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QCommandLineOption>
 #include <QDir>
@@ -22,7 +22,7 @@
 using namespace Qt::StringLiterals;
 
 // Built-in fallback for the "svg" icon engine (src/svgiconengine.cpp).
-Q_IMPORT_PLUGIN(NexusFilesSvgIconPlugin)
+Q_IMPORT_PLUGIN(ShadowFilesSvgIconPlugin)
 
 namespace {
 
@@ -57,7 +57,7 @@ void ensureApplicationsMenu()
     const QString menuName = qEnvironmentVariable("XDG_MENU_PREFIX") + u"applications.menu"_s;
     if (!QStandardPaths::locate(QStandardPaths::GenericConfigLocation, u"menus/"_s + menuName).isEmpty())
         return;
-    const QString root = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + u"/nexus/files-xdg"_s;
+    const QString root = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + u"/shadow/files-xdg"_s;
     const QString path = root + u"/menus/"_s + menuName;
     if (!QFile::exists(path)) {
         if (!QDir().mkpath(root + u"/menus"_s))
@@ -84,10 +84,10 @@ void ensureApplicationsMenu()
 
 int main(int argc, char **argv)
 {
-    Nexus::App app(argc, argv, {
-        QStringLiteral("org.nexus.files"),
+    Shadow::App app(argc, argv, {
+        QStringLiteral("org.shadow.files"),
         QStringLiteral("Files"),
-        QStringLiteral("org.nexus.files"),
+        QStringLiteral("org.shadow.files"),
         QStringLiteral("Browse and manage files, drives and network locations"),
     });
 
@@ -163,5 +163,5 @@ int main(int argc, char **argv)
     FileOperations::instance();
     app.engine().addImageProvider(QStringLiteral("nxthumb"), new ThumbnailImageProvider);
 
-    return app.run(QStringLiteral("org.nexus.files"));
+    return app.run(QStringLiteral("org.shadow.files"));
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // The system tray in the panel: one icon per status notifier item that is
 // not passive. Takes no space while there is none.

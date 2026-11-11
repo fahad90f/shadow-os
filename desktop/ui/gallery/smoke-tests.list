@@ -1,11 +1,11 @@
-nexus-ui-gallery
-nexus-ui-gallery --case dialogs --selftest
-nexus-ui-gallery --case segmented --selftest
-nexus-ui-gallery --case rows --selftest
-nexus-ui-gallery --case table --selftest
-nexus-ui-gallery --case toast --selftest
-nexus-ui-gallery --case page --selftest
-nexus-ui-gallery --case motion --selftest
-nexus-ui-gallery --case glyphs
-nexus-ui-gallery --case filedialog
-nexus-ui-gallery --case folderdialog
+shadow-ui-gallery
+shadow-ui-gallery --case dialogs --selftest
+shadow-ui-gallery --case segmented --selftest
+shadow-ui-gallery --case rows --selftest
+shadow-ui-gallery --case table --selftest
+shadow-ui-gallery --case toast --selftest
+shadow-ui-gallery --case page --selftest
+shadow-ui-gallery --case motion --selftest
+shadow-ui-gallery --case glyphs
+shadow-ui-gallery --case filedialog
+shadow-ui-gallery --case folderdialog

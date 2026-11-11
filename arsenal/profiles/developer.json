@@ -3,9 +3,9 @@
   "id": "developer",
   "name": "Developer",
   "summary": "Compilers, debuggers, code-security analysers and container tooling",
-  "description": "A software-development and secure-coding toolkit: toolchains for C/C++, Python, Go and Rust, build systems and debuggers, static analysers and secret scanners, container and virtualization tools, and editors. Aimed at developers building and reviewing software securely on NEXUS OS.",
-  "icon": "nexus-development",
-  "metapackage": "nexus-arsenal-developer",
+  "description": "A software-development and secure-coding toolkit: toolchains for C/C++, Python, Go and Rust, build systems and debuggers, static analysers and secret scanners, container and virtualization tools, and editors. Aimed at developers building and reviewing software securely on Shadow OS.",
+  "icon": "shadow-development",
+  "metapackage": "shadow-arsenal-developer",
   "tools": [
     {
       "package": "build-essential",

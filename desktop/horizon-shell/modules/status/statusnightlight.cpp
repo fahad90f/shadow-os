@@ -76,7 +76,7 @@ void NightLightBackend::setEnabled(bool enabled)
         KConfigGroup group = config.group(QStringLiteral("NightColor"));
         group.writeEntry("Active", enabled, KConfig::Notify);
         // "Automatic" takes sunrise and sunset from a location service that
-        // feeds KWin, which NEXUS does not run; fixed times work everywhere.
+        // feeds KWin, which SHADOW does not run; fixed times work everywhere.
         if (enabled && m_mode == QLatin1String("automatic"))
             group.writeEntry("Mode", QStringLiteral("Times"), KConfig::Notify);
         if (!config.sync()) {

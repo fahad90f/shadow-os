@@ -1,0 +1,279 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "shadowapp.h"
+
+#include "../iconprovider.h"
+
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusInterface>
+#include <QEventLoop>
+#include <QFont>
+#include <QIcon>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QQmlContext>
+#include <QQmlError>
+#include <QQuickWindow>
+#include <QTimer>
+
+#include <cstdio>
+
+namespace Shadow {
+
+namespace {
+const char *kDBusPath = "/org/shadow/Application";
+const char *kDBusInterface = "org.shadow.Application";
+} // namespace
+
+AppContext::AppContext(const AppInfo &info, QObject *parent)
+    : QObject(parent), m_info(info)
+{
+}
+
+QString AppContext::version() const
+{
+    return QStringLiteral(SHADOW_VERSION);
+}
+
+void AppContext::setArguments(const QStringList &args)
+{
+    m_arguments = args;
+    Q_EMIT argumentsChanged();
+}
+
+void AppContext::activate(const QStringList &arguments)
+{
+    Q_EMIT activationRequested(arguments);
+}
+
+App::App(int &argc, char **argv, const AppInfo &info)
+    : m_info(info)
+{
+    // Diagnostic mode never opens a window, so it must work without a display
+    // server (serial console, SSH, CI).
+    for (int i = 1; i < argc; ++i) {
+        const QByteArray arg(argv[i]);
+        if (arg == "--dump" || arg.startsWith("--dump=")) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            break;
+        }
+    }
+
+    // The SHADOW Qt Quick Controls style; an explicit user/test override wins.
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE"))
+        qputenv("QT_QUICK_CONTROLS_STYLE", "org.shadow.style");
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+    // File, folder, colour, font and message dialogs: never the "native" ones.
+    // In a SHADOW session the platform theme plugin that answers for
+    // XDG_CURRENT_DESKTOP=…:KDE would otherwise put up its own widget dialogs,
+    // which know nothing of the SHADOW theme (white, different controls). With
+    // this attribute Qt Quick Dialogs uses its Qt Quick implementation, which
+    // org.shadow.style draws (desktop/ui/style/dialogs/).
+    // SHADOW_NATIVE_DIALOGS=1 restores the platform's dialogs for comparison.
+    if (qEnvironmentVariableIntValue("SHADOW_NATIVE_DIALOGS") != 1)
+        QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+
+    m_app = std::make_unique<QApplication>(argc, argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("shadow"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("shadow.org"));
+    QCoreApplication::setApplicationName(info.id.section(QLatin1Char('.'), -1));
+    QCoreApplication::setApplicationVersion(QStringLiteral(SHADOW_VERSION));
+    QGuiApplication::setApplicationDisplayName(info.displayName);
+    QGuiApplication::setDesktopFileName(info.id);
+    if (!info.iconName.isEmpty())
+        QGuiApplication::setWindowIcon(QIcon::fromTheme(info.iconName));
+
+    QFont font(QStringLiteral("Inter Variable"));
+    font.setPixelSize(13);
+    font.setStyleHint(QFont::SansSerif);
+    QGuiApplication::setFont(font);
+
+    m_parser.setApplicationDescription(info.description.isEmpty() ? info.displayName : info.description);
+    m_parser.addHelpOption();
+    m_parser.addVersionOption();
+
+    m_context = new AppContext(info, m_app.get());
+
+    m_engine = std::make_unique<QQmlApplicationEngine>();
+    m_engine->addImageProvider(QStringLiteral("nxicon"), new SymbolicIconProvider);
+    m_engine->addImageProvider(QStringLiteral("nxtheme"), new ThemeIconProvider);
+    m_engine->rootContext()->setContextProperty(QStringLiteral("shadowApp"), m_context);
+
+    QObject::connect(m_engine.get(), &QQmlEngine::warnings, m_app.get(),
+                     [this](const QList<QQmlError> &warnings) {
+        for (const QQmlError &w : warnings)
+            m_qmlWarnings << w.toString();
+    });
+}
+
+App::~App()
+{
+    // The engine must go before the application object.
+    m_engine.reset();
+}
+
+void App::setDumpTopics(const QStringList &topics)
+{
+    m_dumpTopics = topics;
+}
+
+int App::finishDump(const QJsonValue &value) const
+{
+    QJsonDocument doc;
+    if (value.isArray())
+        doc = QJsonDocument(value.toArray());
+    else if (value.isObject())
+        doc = QJsonDocument(value.toObject());
+    else
+        doc = QJsonDocument(QJsonObject{{QStringLiteral("value"), value}});
+    std::fputs(doc.toJson(QJsonDocument::Indented).constData(), stdout);
+    std::fflush(stdout);
+    return 0;
+}
+
+int App::dumpError(const QString &message) const
+{
+    std::fprintf(stderr, "%s: %s\n", qPrintable(m_info.id), qPrintable(message));
+    if (!m_dumpTopics.isEmpty())
+        std::fprintf(stderr, "available topics: %s\n", qPrintable(m_dumpTopics.join(QStringLiteral(", "))));
+    return 2;
+}
+
+bool App::waitFor(QObject *sender, const char *signal, int timeoutMs)
+{
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(sender, signal, &loop, SLOT(quit()));
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timer.start(timeoutMs);
+    loop.exec();
+    return timer.isActive();    // still running → the signal ended the loop
+}
+
+bool App::processArguments()
+{
+    QCommandLineOption dumpOption(QStringLiteral("dump"),
+        m_dumpTopics.isEmpty()
+            ? QStringLiteral("Print diagnostic data for <topic> as JSON and exit.")
+            : QStringLiteral("Print diagnostic data for <topic> as JSON and exit. Topics: %1.")
+                  .arg(m_dumpTopics.join(QStringLiteral(", "))),
+        QStringLiteral("topic"));
+    m_parser.addOption(dumpOption);
+    m_parser.process(*m_app);
+    m_argumentsProcessed = true;
+    m_context->setArguments(m_parser.positionalArguments());
+    if (m_parser.isSet(dumpOption)) {
+        m_dumpTopic = m_parser.value(dumpOption);
+        return true;
+    }
+
+    if (!m_info.singleInstance || !qEnvironmentVariableIsEmpty("SHADOW_SMOKE_TEST")
+        || !qEnvironmentVariableIsEmpty("SHADOW_SCREENSHOT"))
+        return true;
+
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return true; // no session bus (e.g. recovery console): just run
+
+    if (bus.registerService(m_info.id)) {
+        bus.registerObject(QString::fromLatin1(kDBusPath), QString::fromLatin1(kDBusInterface),
+                           m_context, QDBusConnection::ExportAllSlots);
+        return true;
+    }
+
+    // Another instance owns the name: hand over our arguments and leave.
+    QDBusInterface other(m_info.id, QString::fromLatin1(kDBusPath), QString::fromLatin1(kDBusInterface), bus);
+    other.call(QDBus::NoBlock, QStringLiteral("activate"), m_parser.positionalArguments());
+    return false;
+}
+
+void App::expose(const QString &name, QObject *object)
+{
+    m_engine->rootContext()->setContextProperty(name, object);
+}
+
+void App::setupTestHooks()
+{
+    const bool smoke = qEnvironmentVariableIntValue("SHADOW_SMOKE_TEST") == 1;
+    const QString shot = qEnvironmentVariable("SHADOW_SCREENSHOT");
+    const QString forcedSize = qEnvironmentVariable("SHADOW_WINDOW_SIZE");
+
+    QQuickWindow *window = nullptr;
+    const auto roots = m_engine->rootObjects();
+    for (QObject *o : roots) {
+        if ((window = qobject_cast<QQuickWindow *>(o)))
+            break;
+    }
+
+    if (window && !forcedSize.isEmpty()) {
+        const QStringList wh = forcedSize.split(QLatin1Char('x'));
+        if (wh.size() == 2) {
+            window->setWidth(wh.at(0).toInt());
+            window->setHeight(wh.at(1).toInt());
+        }
+    }
+
+    if (!smoke && shot.isEmpty())
+        return;
+
+    bool ok = false;
+    int delay = qEnvironmentVariableIntValue("SHADOW_SCREENSHOT_DELAY", &ok);
+    if (!ok || delay <= 0)
+        delay = smoke && shot.isEmpty() ? 1500 : 2500;
+
+    QTimer::singleShot(delay, m_app.get(), [this, window, shot, smoke] {
+        int rc = 0;
+        if (!shot.isEmpty()) {
+            if (!window) {
+                std::fprintf(stderr, "SHADOW-SCREENSHOT-FAILED no window\n");
+                rc = 3;
+            } else {
+                const QImage image = window->grabWindow();
+                if (image.isNull() || !image.save(shot)) {
+                    std::fprintf(stderr, "SHADOW-SCREENSHOT-FAILED %s\n", qPrintable(shot));
+                    rc = 3;
+                } else {
+                    std::printf("SHADOW-SCREENSHOT-SAVED %s %dx%d\n", qPrintable(shot), image.width(), image.height());
+                }
+            }
+        }
+        if (smoke) {
+            if (!m_qmlWarnings.isEmpty()) {
+                for (const QString &w : std::as_const(m_qmlWarnings))
+                    std::fprintf(stderr, "QML-WARNING %s\n", qPrintable(w));
+                std::fprintf(stderr, "SHADOW-SMOKE-FAILED %s (%d QML warnings)\n",
+                             qPrintable(m_info.id), int(m_qmlWarnings.size()));
+                rc = rc ? rc : 2;
+            } else if (rc == 0) {
+                std::printf("SHADOW-SMOKE-OK %s\n", qPrintable(m_info.id));
+            }
+        }
+        std::fflush(stdout);
+        std::fflush(stderr);
+        QCoreApplication::exit(rc);
+    });
+}
+
+int App::run(const QString &uri, const QString &type)
+{
+    if (!m_argumentsProcessed && !processArguments())
+        return 0;
+
+    QObject::connect(m_engine.get(), &QQmlApplicationEngine::objectCreationFailed, m_app.get(), [this] {
+        for (const QString &w : std::as_const(m_qmlWarnings))
+            std::fprintf(stderr, "QML-ERROR %s\n", qPrintable(w));
+        std::fprintf(stderr, "SHADOW-LOAD-FAILED %s\n", qPrintable(m_info.id));
+        QCoreApplication::exit(1);
+    }, Qt::QueuedConnection);
+
+    m_engine->loadFromModule(uri, type);
+    if (m_engine->rootObjects().isEmpty())
+        return 1;
+
+    setupTestHooks();
+    return m_app->exec();
+}
+
+} // namespace Shadow

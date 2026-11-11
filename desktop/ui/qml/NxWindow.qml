@@ -2,9 +2,9 @@
 import QtQuick
 import QtQuick.Controls
 
-// Top-level window of a NEXUS application: token-driven default and minimum
+// Top-level window of a SHADOW application: token-driven default and minimum
 // sizes, the base background, and a ready-made toaster.
-//   NxWindow { title: "NEXUS Files"; ... ; Component.onCompleted: toaster.show("Hi") }
+//   NxWindow { title: "SHADOW Files"; ... ; Component.onCompleted: toaster.show("Hi") }
 ApplicationWindow {
     id: root
 

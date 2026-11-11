@@ -1,0 +1,1157 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""shadow-security-status — the security state of this system, as JSON.
+
+    shadow-security-status [--section NAME[,NAME…]] [--pretty]
+
+One read-only report that the Security Center and the Control Center render.
+Every field is the result of an actual check made when the program runs:
+nothing is cached, estimated or scored. A check that cannot be performed
+reports {"available": false, "reason": "..."} instead of a guess.
+
+Sections:
+    firewall     nftables: SHADOW table loaded? start at boot? opened ports
+    apparmor     kernel module state, profile counts by mode, confined processes
+    encryption   LUKS: is the root filesystem / home / swap on encrypted storage
+    secureboot   firmware type, Secure Boot and setup mode, kernel lockdown, shim/MOK
+    updates      pending package upgrades, security upgrades, restart required
+    listening    listening TCP/UDP sockets with owning process
+    connections  established connections with owning process
+    services     running system services
+    logins       current sessions, recent logins, failed authentication attempts
+    audit        auditd state, loaded rules, event counts by rule key
+    hardening    kernel hardening settings compared with the SHADOW baseline,
+                 CPU vulnerability mitigations, boot-loader refresh state
+    recommendations  findings derived from the sections above
+
+It needs root to see everything (other users' sockets, AppArmor profile list,
+the nftables ruleset, audit and authentication logs). Graphical tools run it
+through pkexec; the polkit action org.shadow.security.read-status lets an
+active local session do so without a password prompt because the program is
+strictly read-only and takes no input beyond the section names.
+"""
+import argparse
+import glob
+import gzip
+import json
+import os
+import pwd
+import re
+import struct
+import subprocess
+import sys
+import time
+
+SECTIONS = ["firewall", "apparmor", "encryption", "secureboot", "updates", "listening", "connections",
+            "services", "logins", "audit", "hardening"]
+
+BASELINE_SYSCTL = "/usr/lib/sysctl.d/60-shadow-hardening.conf"
+BASELINE_CMDLINE = "/etc/default/grub.d/20-shadow-hardening.cfg"
+BASELINE_MODPROBE = "/usr/lib/modprobe.d/shadow-hardening.conf"
+AUDIT_RULES = "/etc/audit/rules.d/50-shadow.rules"
+# Rule keys of security/audit/50-shadow.rules; used when the installed rules
+# file cannot be read (the keys are then still the ones SHADOW ships).
+AUDIT_KEYS = ["identity", "privilege", "auth-config", "firewall", "mac-policy", "audit-config", "modules",
+              "time-change", "boot", "apt-sources"]
+RECENT_EVENTS_MAX = 50
+
+# Roots of the kernel interfaces. They are constants of the program (never
+# taken from the environment or the command line); tests/security/ points
+# them at fabricated trees.
+PROC = "/proc"
+SYS = "/sys"
+BOOT = "/boot"
+APT_HISTORY_GLOB = "/var/log/apt/history.log*"
+DPKG_LOG_GLOB = "/var/log/dpkg.log*"
+FIREWALL_TABLE = ("inet", "shadow_filter")
+
+
+def run(argv, timeout=20):
+    env = dict(os.environ, LC_ALL="C.UTF-8", LANGUAGE="C")
+    try:
+        # stdin is /dev/null: ausearch and aureport read events from stdin
+        # instead of the logs when it is a pipe (as it is under pkexec/QProcess).
+        p = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           env=env, timeout=timeout)
+        return p.returncode, p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
+    except FileNotFoundError:
+        return 127, "", f"{argv[0]}: not installed"
+    except subprocess.TimeoutExpired:
+        return 124, "", f"{argv[0]}: timed out"
+
+
+def read(path, default=None):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read().strip()
+    except OSError:
+        return default
+
+
+def unavailable(reason):
+    return {"available": False, "reason": reason}
+
+
+def probe(info, key, func, empty=None):
+    """info[key] = func(); a failing probe yields `empty` plus info[key + "_reason"].
+
+    func returns the value, or (value, reason) when it has something to say
+    about a value it could not (fully) determine. One broken probe never takes
+    the rest of its section down.
+    """
+    try:
+        result = func()
+    except Exception as exc:  # noqa: BLE001
+        result = (empty, f"internal error: {exc!r}")
+    value, reason = result if isinstance(result, tuple) else (result, None)
+    info[key] = value
+    if reason:
+        info[key + "_reason"] = reason
+
+
+def iso_utc(epoch):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def systemd_running():
+    return os.path.isdir("/run/systemd/system")
+
+
+def unit_state(unit):
+    if not systemd_running():
+        return {"active": None, "enabled": None}
+    rc_a, out_a, _ = run(["systemctl", "is-active", unit])
+    rc_e, out_e, _ = run(["systemctl", "is-enabled", unit])
+    return {"active": out_a.strip() == "active", "enabled": out_e.strip() in ("enabled", "static", "alias"),
+            "active_state": out_a.strip() or None, "enabled_state": out_e.strip() or None}
+
+
+# --------------------------------------------------------------------------- firewall
+def section_firewall():
+    rc, out, err = run(["shadow-firewall", "status", "--json"])
+    if rc in (0, 3) and out.strip().startswith("{"):
+        info = json.loads(out)
+        info["available"] = True
+        if "ruleset" not in info:       # a shadow-firewall that does not report it yet
+            probe(info, "ruleset", lambda: _firewall_ruleset(info.get("active")))
+        return info
+    return unavailable((err or out).strip() or "shadow-firewall is not installed")
+
+
+def _firewall_ruleset(active):
+    if not active:
+        return None, "The firewall table is not loaded."
+    rc, out, err = run(["nft", "list", "table", *FIREWALL_TABLE])
+    if rc != 0:
+        return None, (err or out).strip() or f"nft exited with status {rc}"
+    return out
+
+
+# --------------------------------------------------------------------------- apparmor
+def _parse_label(value):
+    """'/usr/sbin/cupsd (enforce)' → (profile, mode); 'unconfined' → (None, 'unconfined')."""
+    value = value.strip().rstrip("\x00").strip()
+    if value == "unconfined":
+        return None, "unconfined"
+    m = re.match(r"^(.*) \((\w+)\)$", value)
+    if m:
+        return m.group(1), m.group(2)
+    return value, None      # a label without a mode suffix: report it as it is
+
+
+def _is_kernel_thread(pid):
+    stat = read(f"{PROC}/{pid}/stat")
+    if not stat or ")" not in stat:
+        return False
+    fields = stat[stat.rindex(")") + 1:].split()
+    try:
+        return bool(int(fields[6]) & 0x00200000)        # PF_KTHREAD in the flags field
+    except (IndexError, ValueError):
+        return False
+
+
+def _apparmor_processes():
+    """Every user-space process with the profile it runs under (kernel threads are left out)."""
+    rows, unreadable = [], 0
+    for entry in os.listdir(PROC):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        # attr/apparmor/current is AppArmor's own file; attr/current belongs to
+        # whichever LSM is "first" and is only AppArmor's on kernels without the former.
+        label = read(f"{PROC}/{pid}/attr/apparmor/current")
+        if label is None:
+            label = read(f"{PROC}/{pid}/attr/current")
+        if label is None or label == "":
+            if os.path.isdir(f"{PROC}/{pid}"):
+                unreadable += 1
+            continue
+        if _is_kernel_thread(pid):
+            continue
+        profile, mode = _parse_label(label)
+        rows.append({"process": read(f"{PROC}/{pid}/comm"), "pid": pid, "profile": profile, "mode": mode})
+    rows.sort(key=lambda r: r["pid"])
+    reason = f"The AppArmor label of {unreadable} process(es) could not be read." if unreadable else None
+    return rows, reason
+def section_apparmor():
+    enabled = read(f"{SYS}/module/apparmor/parameters/enabled")
+    if enabled is None:
+        return {"available": True, "enabled": False, "reason": "The AppArmor kernel module is not loaded."}
+    info = {"available": True, "enabled": enabled == "Y",
+            "lsm": (read(f"{SYS}/kernel/security/lsm") or "").split(","),
+            "profiles": {"enforce": 0, "complain": 0, "kill": 0, "unconfined": 0, "other": 0},
+            # Names per mode, with the same keys as "profiles" (a mode the
+            # kernel reports that is none of the first four is under "other").
+            "profile_names": {"enforce": [], "complain": [], "kill": [], "unconfined": [], "other": []},
+            "confined_processes": None,
+            "processes": None}
+    listing = read(f"{SYS}/kernel/security/apparmor/profiles")
+    if listing is None:
+        info["profiles"] = None
+        info["profile_names"] = None
+        info["reason"] = "The profile list is not readable (securityfs not mounted or insufficient privilege)."
+        info["profile_names_reason"] = info["reason"]
+        if info["enabled"]:
+            probe(info, "processes", _apparmor_processes)
+        else:
+            info["processes_reason"] = "AppArmor is not enabled."
+        return info
+    for line in listing.splitlines():
+        m = re.match(r"^(.*) \((\w+)\)$", line.strip())
+        if not m:
+            continue
+        mode = m.group(2)
+        key = mode if mode in info["profiles"] else "other"
+        info["profiles"][key] += 1
+        info["profile_names"][key].append(m.group(1))
+    confined = 0
+    for attr in glob.glob(f"{PROC}/[0-9]*/attr/current"):
+        value = read(attr)
+        if value and value != "unconfined":
+            confined += 1
+    info["confined_processes"] = confined
+    probe(info, "processes", _apparmor_processes)
+    info["service"] = unit_state("apparmor.service")
+    return info
+
+
+# --------------------------------------------------------------------------- encryption
+def _lsblk():
+    rc, out, _ = run(["lsblk", "-J", "-o", "NAME,KNAME,PATH,TYPE,FSTYPE,MOUNTPOINTS,PKNAME"])
+    return json.loads(out)["blockdevices"] if rc == 0 and out.strip() else []
+
+
+def _ancestry(devices):
+    """path → list of (type, fstype) from the device up to its disk."""
+    chains = {}
+
+    def walk(node, chain):
+        here = chain + [(node.get("type"), node.get("fstype"), node.get("path"))]
+        chains[node.get("path")] = here
+        for child in node.get("children", []) or []:
+            walk(child, here)
+
+    for dev in devices:
+        walk(dev, [])
+    return chains
+
+
+def section_encryption():
+    devices = _lsblk()
+    if not devices:
+        return unavailable("lsblk returned no block devices")
+    chains = _ancestry(devices)
+
+    def on_luks(mountpoint_test):
+        for path, chain in chains.items():
+            node_mounts = None
+            for dev in _iter(devices):
+                if dev.get("path") == path:
+                    node_mounts = [m for m in (dev.get("mountpoints") or []) if m]
+            if node_mounts and any(mountpoint_test(m) for m in node_mounts):
+                return any(t == "crypt" or fs == "crypto_LUKS" for t, fs, _ in chain), path
+        return None, None
+
+    root_enc, root_dev = on_luks(lambda m: m == "/")
+    home_enc, home_dev = on_luks(lambda m: m == "/home")
+    swap_enc, swap_dev = on_luks(lambda m: m == "[SWAP]")
+    luks = []
+    for dev in _iter(devices):
+        if dev.get("fstype") == "crypto_LUKS":
+            entry = {"device": dev.get("path"), "version": None, "cipher": None, "pbkdf": None,
+                     "unlocked": bool(dev.get("children"))}
+            rc, out, _ = run(["cryptsetup", "luksDump", dev["path"]])
+            if rc == 0:
+                m = re.search(r"^Version:\s+(\d+)", out, re.M)
+                entry["version"] = int(m.group(1)) if m else None
+                m = re.search(r"cipher:\s+(\S+)", out) or re.search(r"^Cipher name:\s+(\S+)", out, re.M)
+                entry["cipher"] = m.group(1) if m else None
+                m = re.search(r"PBKDF:\s+(\S+)", out)
+                entry["pbkdf"] = m.group(1) if m else None
+            luks.append(entry)
+    live = os.path.exists("/run/shadow/live-session") or "boot=live" in (read("/proc/cmdline") or "")
+    info = {"available": True, "live_session": live,
+            "root": {"encrypted": root_enc, "device": root_dev},
+            "home": {"separate": home_dev is not None, "encrypted": home_enc if home_dev else root_enc,
+                     "device": home_dev},
+            "swap": {"present": swap_dev is not None or bool(read("/proc/swaps", "").splitlines()[1:]),
+                     "encrypted": swap_enc if swap_dev else (root_enc if _swapfile_on_root() else None),
+                     "device": swap_dev},
+            "luks_devices": luks}
+    probe(info, "filesystems", _mounted_filesystems)
+    return info
+
+
+# Mounted file systems and the block-device stack beneath each of them.
+PSEUDO_FSTYPES = {
+    "autofs", "bdev", "binfmt_misc", "bpf", "cgroup", "cgroup2", "configfs", "debugfs", "devpts", "devtmpfs",
+    "efivarfs", "fusectl", "hugetlbfs", "mqueue", "nsfs", "overlay", "proc", "pstore", "ramfs", "rpc_pipefs",
+    "securityfs", "selinuxfs", "sysfs", "tmpfs", "tracefs", "squashfs_pseudo", "fuse.portal", "fuse.gvfsd-fuse",
+}
+NETWORK_FSTYPES = {"nfs", "nfs4", "cifs", "smb3", "9p", "ceph", "glusterfs", "fuse.sshfs", "afs", "virtiofs"}
+
+
+def _unescape_mount(text):
+    return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), text)
+
+
+def _sys_block_dir(major, minor):
+    path = f"{SYS}/dev/block/{major}:{minor}"
+    return os.path.realpath(path) if os.path.exists(path) else None
+
+
+def _stack_has_crypt(sysdir, seen=None, depth=0):
+    """True/False: is there a dm-crypt device in the stack of this block device? None: cannot tell."""
+    seen = set() if seen is None else seen
+    if sysdir in seen or depth > 16:
+        return False
+    seen.add(sysdir)
+    uuid = read(os.path.join(sysdir, "dm", "uuid"))
+    if uuid and uuid.startswith("CRYPT-"):
+        return True
+    if os.path.exists(os.path.join(sysdir, "partition")):      # a partition: continue with its disk
+        return _stack_has_crypt(os.path.dirname(sysdir), seen, depth + 1)
+    result = False
+    slaves = os.path.join(sysdir, "slaves")
+    if os.path.isdir(slaves):
+        for name in sorted(os.listdir(slaves)):
+            below = _stack_has_crypt(os.path.realpath(os.path.join(slaves, name)), seen, depth + 1)
+            if below:
+                return True
+            if below is None:
+                result = None
+    backing = read(os.path.join(sysdir, "loop", "backing_file"))
+    if backing is not None:
+        # A loop device is as encrypted as the file system that holds its image.
+        try:
+            dev = os.stat(backing.replace(" (deleted)", "")).st_dev
+        except OSError:
+            return None
+        below_dir = _sys_block_dir(os.major(dev), os.minor(dev)) if os.major(dev) else None
+        if below_dir is None:
+            return None
+        return _stack_has_crypt(below_dir, seen, depth + 1)
+    return result
+
+
+def _mounted_filesystems():
+    """[{mountpoint, device, fstype, encrypted}] for the mounted file systems that live on storage.
+
+    encrypted: True when a dm-crypt mapping (LUKS or plain) is somewhere in
+    the block-device stack below the file system, False when the stack was
+    walked down to its disks without finding one, None (with "reason") when
+    the stack cannot be walked. Kernel-internal and network file systems are
+    not listed.
+    """
+    text = read(f"{PROC}/self/mountinfo")
+    if text is None:
+        return None, f"{PROC}/self/mountinfo is not readable"
+    rows = {}
+    for line in text.splitlines():
+        left, sep, right = line.partition(" - ")
+        lf, rf = left.split(), right.split()
+        if not sep or len(lf) < 5 or len(rf) < 2:
+            continue
+        fstype, source = rf[0], _unescape_mount(rf[1])
+        mountpoint = _unescape_mount(lf[4])
+        if fstype in PSEUDO_FSTYPES or fstype in NETWORK_FSTYPES:
+            continue
+        major, _, minor = lf[2].partition(":")
+        entry = {"mountpoint": mountpoint, "device": source if source.startswith("/") else None,
+                 "fstype": fstype, "encrypted": None}
+        sysdir = None
+        if major.isdigit() and minor.isdigit() and int(major) != 0:
+            sysdir = _sys_block_dir(int(major), int(minor))
+        if sysdir is None and source.startswith("/dev/"):
+            # btrfs and others use an anonymous device number: go by the source device.
+            try:
+                st = os.stat(source)
+                sysdir = _sys_block_dir(os.major(st.st_rdev), os.minor(st.st_rdev))
+            except OSError:
+                sysdir = None
+        if sysdir is None:
+            if fstype in ("zfs", "bcachefs"):
+                entry["device"] = source
+                entry["reason"] = f"{fstype} manages its own devices; they are not examined."
+            elif not source.startswith("/dev/"):
+                continue        # no block device behind it (a pseudo file system not in the list above)
+            else:
+                entry["reason"] = "The block device of this file system is not visible in sysfs."
+        else:
+            entry["encrypted"] = _stack_has_crypt(sysdir)
+            if entry["encrypted"] is None:
+                entry["reason"] = "The device stack below this file system could not be followed to a disk."
+        rows[mountpoint] = entry        # a later mount on the same mount point hides the earlier one
+    return sorted(rows.values(), key=lambda r: r["mountpoint"])
+
+
+def _iter(devices):
+    for dev in devices:
+        yield dev
+        yield from _iter(dev.get("children", []) or [])
+
+
+def _swapfile_on_root():
+    lines = (read("/proc/swaps", "") or "").splitlines()[1:]
+    return any(line.split()[1] == "file" for line in lines if len(line.split()) > 1)
+
+
+# --------------------------------------------------------------------------- secure boot
+def _efivar_byte(name):
+    try:
+        with open(f"{SYS}/firmware/efi/efivars/{name}-8be4df61-93ca-11d2-aa0d-00e098032b8c", "rb") as fh:
+            data = fh.read()
+        return data[4] if len(data) >= 5 else None
+    except OSError:
+        return None
+
+
+def _kernel_lockdown():
+    lockdown = read(f"{SYS}/kernel/security/lockdown")
+    if lockdown is None:
+        return None, "The kernel does not expose its lockdown state (securityfs not mounted, or no lockdown LSM)."
+    m = re.search(r"\[(\w+)\]", lockdown)
+    if not m:
+        return None, f"Unexpected content of the lockdown file: {lockdown[:80]!r}"
+    return m.group(1)
+
+
+def _bzimage_release(path):
+    """Kernel release recorded in an x86 boot image header, or None (other formats, unreadable)."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(0x210)
+            if len(head) < 0x210 or head[0x202:0x206] != b"HdrS":
+                return None
+            offset = struct.unpack_from("<H", head, 0x20E)[0]
+            if not offset:
+                return None
+            fh.seek(offset + 0x200)
+            text = fh.read(128).split(b"\0")[0].decode("ascii", "replace")
+        return text.split()[0] if text.split() else None
+    except OSError:
+        return None
+
+
+def _kernel_image():
+    """Path of the image the running kernel was started from."""
+    release = os.uname().release
+    for name in ("vmlinuz", "vmlinux", "Image", "kernel"):
+        path = f"{BOOT}/{name}-{release}"
+        if os.path.isfile(path):
+            return path
+    # Live session: the kernel sits on the boot medium under a name without
+    # the release. Accept a file only if its own header names the running release.
+    for path in sorted(glob.glob("/run/live/medium/live/vmlinuz*") + glob.glob("/usr/lib/live/mount/medium/live/vmlinuz*")):
+        if os.path.isfile(path) and _bzimage_release(path) == release:
+            return path
+    return None, f"No kernel image for the running release {release} was found in {BOOT} or on a live medium."
+
+
+def pe_signature_present(path):
+    """Does this file carry an Authenticode signature table? → (True/False/None, reason).
+
+    Reads the PE/COFF headers: data directory 4 ("certificate table") holds
+    the file offset and size of the WIN_CERTIFICATE entries that sbsign
+    appends. Presence is all that is checked — not whether the signature is
+    valid or made with a key this machine's firmware trusts.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as fh:
+            dos = fh.read(64)
+            if dos[:2] == b"\x1f\x8b":
+                return None, "The image is gzip-compressed; a signature inside it cannot be inspected."
+            if len(dos) < 64 or dos[:2] != b"MZ":
+                return False, "The image is not an EFI (PE/COFF) binary, so it cannot carry a Secure Boot signature."
+            pe_offset = struct.unpack_from("<I", dos, 0x3C)[0]
+            fh.seek(pe_offset)
+            head = fh.read(24)
+            if len(head) < 24 or head[:4] != b"PE\0\0":
+                return False, "The image is not an EFI (PE/COFF) binary, so it cannot carry a Secure Boot signature."
+            opt_size = struct.unpack_from("<H", head, 20)[0]
+            opt = fh.read(opt_size)
+            if len(opt) < 2:
+                return None, "The PE optional header is truncated."
+            magic = struct.unpack_from("<H", opt, 0)[0]
+            if magic == 0x10B:
+                count_at, dirs_at = 92, 96
+            elif magic == 0x20B:
+                count_at, dirs_at = 108, 112
+            else:
+                return None, f"Unknown PE optional header type 0x{magic:x}."
+            if len(opt) < dirs_at:
+                return None, "The PE optional header is truncated."
+            count = struct.unpack_from("<I", opt, count_at)[0]
+            if count < 5 or len(opt) < dirs_at + 5 * 8:
+                return False, None      # no certificate table directory at all
+            cert_offset, cert_size = struct.unpack_from("<II", opt, dirs_at + 4 * 8)
+            if cert_offset == 0 or cert_size == 0:
+                return False, None
+            if cert_offset + cert_size > size or cert_size < 8:
+                return None, "The certificate table points outside the file."
+            fh.seek(cert_offset)
+            length, _revision, cert_type = struct.unpack("<IHH", fh.read(8))
+            if length < 8 or length > cert_size:
+                return None, "The certificate table is malformed."
+            if cert_type != 0x0002:     # WIN_CERT_TYPE_PKCS_SIGNED_DATA
+                return None, f"The certificate table holds an entry of unknown type 0x{cert_type:04x}."
+            return True, None
+    except (OSError, struct.error) as exc:
+        return None, f"The image could not be read: {exc}"
+
+
+def _kernel_signed(image):
+    """(True/False/None, reason, method): does the kernel image carry a signature?"""
+    if not image:
+        return None, "The kernel image was not found.", None
+    rc, out, err = run(["sbverify", "--list", image])
+    if rc == 0:
+        if re.search(r"^signature \d+", out, re.M):
+            return True, None, "sbverify"
+        if "No signature table present" in out + err:
+            return False, None, "sbverify"
+    signed, reason = pe_signature_present(image)
+    return signed, reason, "pe-header"
+
+
+def _secureboot_kernel(info):
+    probe(info, "kernel_lockdown", _kernel_lockdown)
+    probe(info, "kernel_image", _kernel_image)
+    try:
+        signed, reason, method = _kernel_signed(info["kernel_image"])
+    except Exception as exc:  # noqa: BLE001
+        signed, reason, method = None, f"internal error: {exc!r}", None
+    # "Signed" means the image carries a signature table; its validity against
+    # the firmware's keys is not verified here.
+    info["kernel_signed"] = signed
+    info["kernel_signed_method"] = method
+    if reason:
+        info["kernel_signed_reason"] = reason
+
+
+def section_secureboot():
+    if not os.path.isdir(f"{SYS}/firmware/efi"):
+        info = {"available": True, "firmware": "bios", "supported": False, "enabled": False,
+                "reason": "This system was started in legacy BIOS mode, which has no Secure Boot."}
+        _secureboot_kernel(info)
+        return info
+    sb, setup = _efivar_byte("SecureBoot"), _efivar_byte("SetupMode")
+    info = {"available": True, "firmware": "uefi", "supported": sb is not None,
+            "enabled": sb == 1 if sb is not None else None, "setup_mode": setup == 1 if setup is not None else None,
+            "kernel_lockdown": None,
+            "shim_installed": bool(glob.glob("/boot/efi/EFI/*/shim*.efi")) or None,
+            "mok_keys": None}
+    _secureboot_kernel(info)
+    rc, out, _ = run(["mokutil", "--list-enrolled", "--short"])
+    if rc == 0:
+        info["mok_keys"] = len([l for l in out.splitlines() if l.strip()])
+    info["boot_loader_refresh_failed"] = read("/var/lib/shadow/boot-loader-refresh-failed")
+    return info
+
+
+# --------------------------------------------------------------------------- updates
+def _log_text(path):
+    try:
+        if path.endswith(".gz"):
+            with gzip.open(path, "rt", encoding="utf-8", errors="replace") as fh:
+                return fh.read()
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except (OSError, EOFError):
+        return None
+
+
+def _local_to_epoch(date, clock):
+    """'2026-02-09', '19:44:00' in this machine's local time (how apt and dpkg log) → epoch."""
+    return time.mktime(time.strptime(f"{date} {clock}", "%Y-%m-%d %H:%M:%S"))
+
+
+def _last_upgrade():
+    """Time of the last transaction that upgraded a package → ISO 8601 UTC.
+
+    Source 1: apt's history (entries with an "Upgrade:" line; their End-Date).
+    Source 2: dpkg's log (" upgrade <package> <old> <new>" lines) — also sees
+    upgrades made with dpkg -i. Both are written in local time.
+    """
+    latest, seen_any = None, False
+    for path in glob.glob(APT_HISTORY_GLOB):
+        text = _log_text(path)
+        if text is None:
+            continue
+        seen_any = True
+        for block in re.split(r"\n\s*\n", text):
+            if not re.search(r"^Upgrade: ", block, re.M):
+                continue
+            m = re.search(r"^End-Date: (\d{4}-\d\d-\d\d)\s+(\d\d:\d\d:\d\d)", block, re.M) \
+                or re.search(r"^Start-Date: (\d{4}-\d\d-\d\d)\s+(\d\d:\d\d:\d\d)", block, re.M)
+            if m:
+                try:
+                    latest = max(latest or 0, _local_to_epoch(m.group(1), m.group(2)))
+                except (ValueError, OverflowError):
+                    pass
+    for path in glob.glob(DPKG_LOG_GLOB):
+        text = _log_text(path)
+        if text is None:
+            continue
+        seen_any = True
+        for m in re.finditer(r"^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) upgrade \S+ \S+ \S+$", text, re.M):
+            try:
+                latest = max(latest or 0, _local_to_epoch(m.group(1), m.group(2)))
+            except (ValueError, OverflowError):
+                pass
+    if latest:
+        return iso_utc(latest)
+    if not seen_any:
+        return None, "Neither apt's history nor dpkg's log is readable, so the time of the last upgrade is unknown."
+    return None, ("The apt history and dpkg log on this system record no package upgrade "
+                  "(they may have been rotated away, or nothing was upgraded since installation).")
+
+
+def section_updates():
+    rc, out, err = run(["apt-get", "-s", "-o", "Debug::NoLocking=true", "dist-upgrade"], timeout=120)
+    if rc != 0:
+        return unavailable((err or out).strip().splitlines()[-1] if (err or out).strip() else "apt-get failed")
+    upgrades = []
+    for line in out.splitlines():
+        m = re.match(r"^Inst (\S+) \[(\S+)\] \((\S+) ([^)]*)\)", line) or re.match(r"^Inst (\S+) ()\((\S+) ([^)]*)\)", line)
+        if m:
+            origin = m.group(4)
+            upgrades.append({"package": m.group(1), "installed": m.group(2) or None, "candidate": m.group(3),
+                             "security": "-security" in origin or "Debian-Security" in origin})
+    lists = glob.glob("/var/lib/apt/lists/*_InRelease") + glob.glob("/var/lib/apt/lists/*_Release")
+    last_refresh = max((os.path.getmtime(p) for p in lists), default=None)
+    reboot_pkgs = (read("/run/reboot-required.pkgs") or "").split()
+    info = {"available": True, "upgradable": len(upgrades), "security": sum(1 for u in upgrades if u["security"]),
+            "packages": upgrades[:200],
+            "lists_present": bool(lists),
+            "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last_refresh)) if last_refresh else None,
+            "last_refresh_age_days": round((time.time() - last_refresh) / 86400, 1) if last_refresh else None,
+            "reboot_required": os.path.exists("/run/reboot-required"), "reboot_required_packages": reboot_pkgs}
+    probe(info, "last_upgrade", _last_upgrade)
+    return info
+
+
+# --------------------------------------------------------------------------- sockets
+def _parse_ss(out):
+    rows = []
+    for line in out.splitlines():
+        f = line.split()
+        if len(f) < 5:
+            continue
+        if f[1].isdigit():              # some filters make ss omit the State column
+            f.insert(1, "ESTAB")
+        proto, state = f[0], f[1]
+        local, peer = f[4], f[5] if len(f) > 5 else ""
+        rest = " ".join(f[6:])
+        m = re.search(r'users:\(\("([^"]+)",pid=(\d+)', rest)
+        addr, _, port = local.rpartition(":")
+        paddr, _, pport = peer.rpartition(":")
+        rows.append({"protocol": proto, "state": state, "local_address": addr.strip("[]"), "local_port": port,
+                     "peer_address": paddr.strip("[]"), "peer_port": pport,
+                     "process": m.group(1) if m else None, "pid": int(m.group(2)) if m else None})
+    return rows
+
+
+def _scope(address):
+    a = address.split("%")[0]
+    if a in ("127.0.0.1", "::1") or a.startswith("127."):
+        return "loopback"
+    if a in ("0.0.0.0", "*", "::", ""):
+        return "all-interfaces"
+    return "specific-address"
+
+
+def section_listening():
+    rc, out, err = run(["ss", "-H", "-tulpn"])
+    if rc != 0:
+        return unavailable(err.strip() or "ss failed")
+    rows = _parse_ss(out)
+    for r in rows:
+        r["scope"] = _scope(r["local_address"])
+    exposed = [r for r in rows if r["scope"] != "loopback"]
+    return {"available": True, "sockets": rows, "count": len(rows), "exposed_count": len(exposed)}
+
+
+def section_connections():
+    rc, out, err = run(["ss", "-H", "-tunp", "state", "connected"])
+    if rc != 0:
+        return unavailable(err.strip() or "ss failed")
+    rows = _parse_ss(out)
+    rows = [r for r in rows if r["peer_address"] not in ("", "*", "0.0.0.0", "::")]
+    return {"available": True, "connections": rows[:500], "count": len(rows)}
+
+
+# --------------------------------------------------------------------------- services
+def section_services():
+    if not systemd_running():
+        return unavailable("systemd is not the running init system")
+    rc, out, err = run(["systemctl", "list-units", "--type=service", "--state=running", "--no-legend",
+                        "--plain", "--output=json"])
+    if rc != 0:
+        return unavailable(err.strip())
+    try:
+        units = json.loads(out)
+    except json.JSONDecodeError:
+        return unavailable("could not parse systemctl output")
+    rc, failed, _ = run(["systemctl", "list-units", "--state=failed", "--no-legend", "--plain", "--output=json"])
+    try:
+        failed_units = [u["unit"] for u in json.loads(failed)] if rc == 0 and failed.strip() else []
+    except json.JSONDecodeError:
+        failed_units = []
+    return {"available": True, "running": [{"unit": u["unit"], "description": u.get("description", "")} for u in units],
+            "running_count": len(units), "failed": failed_units}
+
+
+# --------------------------------------------------------------------------- logins
+def section_logins():
+    info = {"available": True, "sessions": [], "recent": [], "failed": [], "failed_count_7d": None}
+    rc, out, _ = run(["loginctl", "list-sessions", "--output=json", "--no-legend"])
+    if rc == 0 and out.strip():
+        try:
+            for s in json.loads(out):
+                info["sessions"].append({"user": s.get("user"), "seat": s.get("seat"), "tty": s.get("tty"),
+                                         "class": s.get("class"), "id": str(s.get("session"))})
+        except json.JSONDecodeError:
+            pass
+    rc, out, err = run(["journalctl", "-q", "--no-pager", "-o", "json", "--since", "-7 days",
+                        "--facility=authpriv", "--facility=auth"], timeout=60)
+    if rc != 0:
+        info["journal"] = unavailable(err.strip() or "journalctl failed")
+        return info
+    failed, opened = [], []
+    for line in out.splitlines():
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        msg = e.get("MESSAGE")
+        if not isinstance(msg, str):
+            continue
+        when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(e.get("__REALTIME_TIMESTAMP", "0")) / 1e6))
+        who = e.get("SYSLOG_IDENTIFIER") or e.get("_COMM")
+        if re.search(r"authentication failure|FAILED LOGIN|Failed password|incorrect password|"
+                     r"conversation failed|maximum authentication attempts", msg, re.I):
+            m = re.search(r"\buser=(\S+)|for (?:invalid user )?(\S+) from|user (\S+)", msg)
+            user = next((g for g in (m.groups() if m else ()) if g), None)
+            m = re.search(r"rhost=(\S+)|from (\S+) port", msg)
+            src = next((g for g in (m.groups() if m else ()) if g), None)
+            failed.append({"time": when, "service": who, "user": user, "source": src, "message": msg[:300]})
+        elif "session opened for user" in msg:
+            m = re.search(r"session opened for user (\S+?)(?:\(uid=\d+\))? ", msg + " ")
+            opened.append({"time": when, "service": who, "user": m.group(1) if m else None})
+    info["failed"] = failed[-100:]
+    info["failed_count_7d"] = len(failed)
+    info["recent"] = [o for o in opened if o["service"] not in ("cron", "CRON", "systemd-user")][-50:]
+    return info
+
+
+# --------------------------------------------------------------------------- audit
+def _audit_keys():
+    """The rule keys of the SHADOW audit rules (the installed file, else the shipped set)."""
+    text = read(AUDIT_RULES)
+    keys = []
+    if text:
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("#"):
+                continue
+            for m in re.finditer(r"(?:^|\s)(?:-k\s+|-F\s+key=)(\S+)", line):
+                if m.group(1) not in keys:
+                    keys.append(m.group(1))
+    return keys or list(AUDIT_KEYS)
+
+
+def _audit_value(raw):
+    """Value of an audit field: quoted text, or hex when the kernel had to encode it."""
+    if raw.startswith('"'):
+        return raw.strip('"')
+    if len(raw) >= 2 and len(raw) % 2 == 0 and re.fullmatch(r"[0-9A-Fa-f]+", raw):
+        try:
+            return bytes.fromhex(raw).decode("utf-8", "replace")
+        except ValueError:
+            pass
+    return raw
+
+
+_AUDIT_FIELD = re.compile(r'(\w[\w-]*)=("(?:[^"]*)"|\S*)')
+_AUDIT_HEAD = re.compile(r"^(?:node=\S+ )?type=(\S+) msg=audit\((\d+)\.(\d+):(\d+)\):\s?(.*)$")
+
+
+def _user_name(uid):
+    if uid is None or not uid.isdigit():
+        return None
+    if uid == "4294967295":
+        return None                     # "unset": no login user (a system service)
+    try:
+        return pwd.getpwuid(int(uid)).pw_name
+    except (KeyError, OverflowError):
+        return f"uid {uid}"
+
+
+def _event_summary(records):
+    """One line built only from fields present in the event's records."""
+    sys_fields, paths, module = {}, [], None
+    for rtype, fields in records:
+        if rtype == "SYSCALL" and not sys_fields:
+            sys_fields = fields
+        elif rtype == "PATH" and fields.get("nametype") != "PARENT" and "name" in fields:
+            name = _audit_value(fields["name"])
+            if name not in ("(null)", "") and name not in paths:
+                paths.append(name)
+        elif rtype == "KERN_MODULE" and "name" in fields:
+            module = _audit_value(fields["name"])
+        elif rtype == "CONFIG_CHANGE" and not sys_fields:
+            sys_fields = fields
+    parts = []
+    who = _user_name(sys_fields.get("auid"))
+    acting = _user_name(sys_fields.get("uid"))
+    program = _audit_value(sys_fields["exe"]) if "exe" in sys_fields else \
+        (_audit_value(sys_fields["comm"]) if "comm" in sys_fields else None)
+    if who and acting and who != acting:
+        parts.append(f"{who} (as {acting})")
+    elif who or acting:
+        parts.append(who or acting)
+    if program:
+        parts.append(f"ran {program}" if parts else program)
+    if module:
+        parts.append(f"module {module}")
+    elif paths:
+        parts.append("on " + ", ".join(paths[:3]) + (" …" if len(paths) > 3 else ""))
+    elif "op" in sys_fields:
+        parts.append(f"operation {_audit_value(sys_fields['op'])}")
+    text = " ".join(parts)
+    if "success" in sys_fields:
+        outcome = "succeeded" if sys_fields["success"] == "yes" else f"failed (exit {sys_fields.get('exit', '?')})"
+    elif "res" in sys_fields:
+        outcome = "succeeded" if sys_fields["res"] in ("1", "success") else "failed"
+    else:
+        return text
+    return f"{text} — {outcome}" if text else outcome
+
+
+def parse_audit_events(raw, keys):
+    """ausearch --format raw output → [{time, key, type, summary}], oldest first, keys ⊆ `keys` only."""
+    events, order = {}, []
+    for line in raw.splitlines():
+        m = _AUDIT_HEAD.match(line.strip())
+        if not m:
+            continue
+        rtype, sec, _msec, serial, rest = m.groups()
+        ident = (sec, serial)
+        if ident not in events:
+            events[ident] = {"epoch": int(sec), "records": [], "key": None, "type": None}
+            order.append(ident)
+        fields = {k: v for k, v in _AUDIT_FIELD.findall(rest)}
+        ev = events[ident]
+        ev["records"].append((rtype, fields))
+        if "key" in fields and ev["key"] is None:
+            # Several rules can match one event; their keys are then joined with \x01.
+            for key in _audit_value(fields["key"]).split("\x01"):
+                if key in keys:
+                    ev["key"], ev["type"] = key, rtype
+                    break
+    out = []
+    for ident in order:
+        ev = events[ident]
+        if ev["key"] is None:
+            continue
+        kinds = [r for r, _ in ev["records"]]
+        # A module load/unload is recorded as SYSCALL + KERN_MODULE: name the specific one.
+        rtype = "KERN_MODULE" if "KERN_MODULE" in kinds else ev["type"]
+        out.append({"time": iso_utc(ev["epoch"]), "key": ev["key"], "type": rtype,
+                    "summary": _event_summary(ev["records"])})
+    out.sort(key=lambda e: e["time"])
+    return out
+
+
+def _recent_audit_events(extra_args=()):
+    """The last RECENT_EVENTS_MAX events of the last 7 days that carry a SHADOW rule key."""
+    keys = _audit_keys()
+    # Rule-matched events are SYSCALL events (file watches included) carrying
+    # key=…; ausearch -k matches substrings and takes one key only, so the
+    # exact key filter is applied here.
+    rc, out, err = run(["ausearch", "--input-logs", "-m", "SYSCALL", "-ts", "week-ago", "--format", "raw",
+                        *extra_args], timeout=90)
+    if rc == 127:
+        return [], "ausearch is not installed (package auditd)."
+    if rc == 124:
+        return [], "ausearch did not finish within 90 seconds."
+    if rc != 0 and "<no matches>" in err + out:
+        return []
+    if rc != 0:
+        return [], (err or out).strip().splitlines()[-1] if (err or out).strip() else f"ausearch exited with status {rc}"
+    return parse_audit_events(out, keys)[-RECENT_EVENTS_MAX:]
+
+
+def section_audit():
+    info = {"available": True, "service": unit_state("auditd.service"), "enabled": None, "rules": None,
+            "lost": None, "backlog": None, "events_by_key_7d": None}
+    # Reads the audit logs, so it works whether or not the audit system is running now.
+    probe(info, "recent_events", _recent_audit_events, empty=[])
+    rc, out, err = run(["auditctl", "-s"])
+    if rc != 0:
+        info["available"] = False
+        info["reason"] = (err or out).strip() or "auditctl failed"
+        return info
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].lstrip("-").isdigit():
+            if parts[0] in ("enabled", "lost", "backlog"):
+                info[parts[0] if parts[0] != "enabled" else "enabled"] = int(parts[1])
+    rc, out, _ = run(["auditctl", "-l"])
+    if rc == 0:
+        rules = [l for l in out.splitlines() if l.strip() and l.strip() != "No rules"]
+        info["rules"] = len(rules)
+    rc, out, _ = run(["aureport", "--key", "--summary", "-ts", "week-ago"], timeout=60)
+    if rc == 0:
+        counts = {}
+        for line in out.splitlines():
+            m = re.match(r"^(\d+)\s+(\S+)$", line.strip())
+            if m:
+                counts[m.group(2)] = int(m.group(1))
+        info["events_by_key_7d"] = counts
+    return info
+
+
+# --------------------------------------------------------------------------- hardening
+def _baseline_sysctls():
+    wanted = {}
+    text = read(BASELINE_SYSCTL)
+    if text is None:
+        return None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition("=")
+        wanted[key.strip().lstrip("-")] = (value.strip(), line.startswith("-"))
+    return wanted
+
+
+def _baseline_modules():
+    """[(module, expected)] from the modprobe.d baseline, or None when it is not installed."""
+    text = read(BASELINE_MODPROBE)
+    if text is None:
+        return None
+    wanted = []
+    for line in text.splitlines():
+        f = line.split("#")[0].split()
+        if len(f) >= 2 and f[0] == "blacklist":
+            wanted.append((f[1], "blacklisted"))
+        elif len(f) >= 3 and f[0] == "install" and f[2] in ("/bin/false", "/bin/true", "/usr/bin/false",
+                                                           "/usr/bin/true"):
+            wanted.append((f[1], "disabled"))
+    return wanted
+
+
+def _module_restrictions():
+    """Module restrictions of the baseline against the modules loaded now.
+
+    expected "blacklisted": the baseline keeps the module from being loaded
+    automatically (root may still load it by name). actual is "loaded" or
+    "not loaded" from /proc/modules; ok means it is not loaded.
+    """
+    wanted = _baseline_modules()
+    if wanted is None:
+        return None, f"{BASELINE_MODPROBE} is not installed (package shadow-hardening)"
+    listing = read(f"{PROC}/modules")
+    if listing is None:
+        return ([{"module": m, "expected": e, "actual": None, "ok": None} for m, e in wanted],
+                f"{PROC}/modules is not readable, so it is unknown which modules are loaded.")
+    loaded = {line.split()[0] for line in listing.splitlines() if line.split()}
+    rows = []
+    for module, expected in wanted:
+        is_loaded = module.replace("-", "_") in loaded      # the kernel names modules with underscores
+        rows.append({"module": module, "expected": expected, "actual": "loaded" if is_loaded else "not loaded",
+                     "ok": not is_loaded})
+    return rows
+
+
+def _vulnerable_parts(status):
+    """The parts of a /sys/…/vulnerabilities status in which the kernel says "vulnerable".
+
+    "Mitigation: Retpolines; IBPB: conditional; BHI: Vulnerable" → ["BHI: Vulnerable"]
+    "Mitigation: Clear CPU buffers; SMT vulnerable"              → ["SMT vulnerable"]
+    """
+    return [part.strip() for part in re.split(r"[;,]", status) if re.search(r"\bvulnerable\b", part, re.I)
+            and not re.search(r"\bnot\s+vulnerable\b", part, re.I)]
+
+
+def section_hardening():
+    info = {"available": True, "sysctl": [], "cmdline": [], "mitigations": [], "kernel": os.uname().release,
+            "tainted": None}
+    probe(info, "modules", _module_restrictions)
+    wanted = _baseline_sysctls()
+    if wanted is None:
+        info["sysctl_baseline"] = unavailable(f"{BASELINE_SYSCTL} is not installed (package shadow-hardening)")
+    else:
+        for key, (expected, optional) in wanted.items():
+            actual = read(f"{PROC}/sys/" + key.replace(".", "/"))
+            if actual is None and optional:
+                continue
+            info["sysctl"].append({"key": key, "expected": expected, "actual": actual,
+                                   "ok": actual is not None and actual.split() == expected.split()})
+    cmdline = (read("/proc/cmdline") or "").split()
+    cfg = read(BASELINE_CMDLINE)
+    if cfg:
+        m = re.search(r'GRUB_CMDLINE_LINUX="\$GRUB_CMDLINE_LINUX ([^"]*)"', cfg)
+        for param in (m.group(1).split() if m else []):
+            info["cmdline"].append({"parameter": param, "ok": param in cmdline})
+    for path in sorted(glob.glob(f"{SYS}/devices/system/cpu/vulnerabilities/*")):
+        status = read(path) or ""
+        parts = _vulnerable_parts(status)
+        # vulnerable: the kernel's status says "vulnerable" anywhere — as the
+        # whole verdict ("Vulnerable", "Vulnerable: no microcode") or for one
+        # aspect of an otherwise mitigated issue ("…; BHI: Vulnerable",
+        # "…; SMT vulnerable"). vulnerable_parts names those aspects.
+        info["mitigations"].append({"name": os.path.basename(path), "status": status,
+                                    "vulnerable": bool(parts), "vulnerable_parts": parts})
+    tainted = read(f"{PROC}/sys/kernel/tainted")
+    info["tainted"] = int(tainted) if tainted and tainted.isdigit() else None
+    return info
+
+
+# --------------------------------------------------------------------------- recommendations
+def recommendations(r):
+    out = []
+
+    def add(rid, severity, title, detail, action=None):
+        out.append({"id": rid, "severity": severity, "title": title, "detail": detail, "action": action})
+
+    fw = r.get("firewall", {})
+    if fw.get("available") and not fw.get("active"):
+        add("firewall-inactive", "high", "The firewall is not active",
+            "Inbound connections to this computer are not filtered.", "firewall-enable")
+    elif fw.get("available") and not fw.get("enabled_at_boot"):
+        add("firewall-not-at-boot", "medium", "The firewall will not start at boot",
+            "It is active now but is not enabled as a service.", "firewall-enable")
+
+    aa = r.get("apparmor", {})
+    if aa.get("available") and not aa.get("enabled"):
+        add("apparmor-disabled", "high", "AppArmor is not enabled",
+            "Application confinement is unavailable. Check the kernel command line for apparmor=0.")
+
+    enc = r.get("encryption", {})
+    if enc.get("available") and not enc.get("live_session") and enc.get("root", {}).get("encrypted") is False:
+        add("root-unencrypted", "medium", "The system disk is not encrypted",
+            "Anyone with physical access to this computer can read its data. Encryption is chosen at "
+            "installation time; converting an installed system requires reinstalling or a manual migration.")
+
+    sb = r.get("secureboot", {})
+    if sb.get("available") and sb.get("firmware") == "uefi" and sb.get("enabled") is False:
+        add("secureboot-off", "medium", "Secure Boot is disabled",
+            "The firmware does not verify the boot loader and kernel. Shadow OS is installed Secure Boot ready; "
+            "enable it in the firmware setup.")
+    if sb.get("boot_loader_refresh_failed"):
+        add("bootloader-stale", "high", "The boot loader could not be updated",
+            "A GRUB or shim security update was installed but could not be copied to the boot partition "
+            f"(since {sb['boot_loader_refresh_failed']}). Run: sudo shadow-grub-install --verbose")
+
+    up = r.get("updates", {})
+    if up.get("available"):
+        if up.get("security"):
+            add("security-updates", "high", f"{up['security']} security update(s) are waiting",
+                "Install them to close known vulnerabilities.", "open-updater")
+        elif up.get("upgradable"):
+            add("updates", "low", f"{up['upgradable']} update(s) are available", "", "open-updater")
+        if not up.get("lists_present"):
+            add("no-package-lists", "medium", "Update information has never been downloaded",
+                "The system cannot know whether updates exist until the package lists are refreshed.", "open-updater")
+        elif (up.get("last_refresh_age_days") or 0) > 14:
+            add("stale-package-lists", "medium",
+                f"Update information is {up['last_refresh_age_days']:.0f} days old",
+                "Refresh the package lists to see current security updates.", "open-updater")
+        if up.get("reboot_required"):
+            add("reboot-required", "medium", "A restart is required to finish installing updates",
+                "Updated components (" + ", ".join(up.get("reboot_required_packages", [])[:6]) + ") are not in use yet.")
+
+    ls = r.get("listening", {})
+    if ls.get("available"):
+        exposed = [s for s in ls["sockets"] if s["scope"] != "loopback"]
+        if exposed and fw.get("available") and not fw.get("active"):
+            names = sorted({f"{s['process'] or 'unknown'}:{s['local_port']}/{s['protocol']}" for s in exposed})
+            add("exposed-services", "high", f"{len(exposed)} network service(s) are reachable from other computers",
+                "With the firewall inactive these accept connections from the network: " + ", ".join(names[:8]))
+
+    au = r.get("audit", {})
+    if au.get("available") is False or (au.get("service", {}).get("active") is False):
+        add("audit-inactive", "low", "The audit service is not running",
+            "Security-relevant events (identity, privilege and kernel module changes) are not being recorded.")
+
+    hd = r.get("hardening", {})
+    bad = [s for s in hd.get("sysctl", []) if not s["ok"]]
+    if bad:
+        add("sysctl-drift", "medium", f"{len(bad)} kernel hardening setting(s) differ from the SHADOW baseline",
+            ", ".join(f"{s['key']}={s['actual']} (baseline {s['expected']})" for s in bad[:6]))
+    missing = [c["parameter"] for c in hd.get("cmdline", []) if not c["ok"]]
+    if missing and not enc.get("live_session"):
+        add("cmdline-drift", "low", "Kernel hardening boot parameters are not in effect",
+            "Missing from the running kernel's command line: " + " ".join(missing)
+            + ". Run 'sudo update-grub' and restart.")
+    vulnerable = [m for m in hd.get("mitigations", []) if m["vulnerable"]]
+    if vulnerable:
+        add("cpu-vulnerable", "medium", "CPU vulnerabilities without full mitigation",
+            "The kernel reports a vulnerable state for: "
+            + "; ".join(f"{m['name']} ({', '.join(m.get('vulnerable_parts') or [m['status']])})" for m in vulnerable)
+            + ". A firmware/microcode update or a change of the SMT setting may be required.")
+
+    lg = r.get("logins", {})
+    if (lg.get("failed_count_7d") or 0) >= 10:
+        add("failed-logins", "medium", f"{lg['failed_count_7d']} failed authentication attempts in the last 7 days",
+            "Review the login activity for attempts you do not recognise.")
+    order = {"high": 0, "medium": 1, "low": 2}
+    return sorted(out, key=lambda x: order[x["severity"]])
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="shadow-security-status", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--section", default="", help="comma-separated section names (default: all)")
+    ap.add_argument("--pretty", action="store_true", help="indent the JSON output")
+    args = ap.parse_args()
+    wanted = [s for s in args.section.split(",") if s] or SECTIONS + ["recommendations"]
+    unknown = [s for s in wanted if s not in SECTIONS + ["recommendations"]]
+    if unknown:
+        print(f"shadow-security-status: unknown section(s): {', '.join(unknown)}", file=sys.stderr)
+        return 2
+
+    need = SECTIONS if "recommendations" in wanted else [s for s in wanted if s in SECTIONS]
+    report = {"generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "privileged": os.geteuid() == 0}
+    for name in need:
+        try:
+            report[name] = globals()[f"section_{name}"]()
+        except Exception as exc:  # noqa: BLE001 — one failing check must not hide the others
+            report[name] = unavailable(f"internal error: {exc!r}")
+    if "recommendations" in wanted:
+        report["recommendations"] = recommendations(report)
+    for name in list(report):
+        if name in SECTIONS and name not in wanted:
+            del report[name]
+    json.dump(report, sys.stdout, indent=2 if args.pretty else None)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,6 @@
+debian/generated/os-release usr/lib
+debian/generated/issue etc
+debian/generated/issue.net etc
+debian/generated/shadow-release usr/share/shadow
+system/services/shadow-sulogin.conf usr/lib/systemd/system/rescue.service.d
+system/services/shadow-sulogin.conf usr/lib/systemd/system/emergency.service.d

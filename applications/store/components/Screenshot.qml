@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
 // One AppStream screenshot. The picture is on the catalogue's media server
 // and is only requested while the page is shown. Until it is there — or if it

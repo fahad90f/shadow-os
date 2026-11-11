@@ -1,16 +1,16 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Test wrapper: nexus-security-status plus the proposed "ruleset" field.
+"""Test wrapper: shadow-security-status plus the proposed "ruleset" field.
 
 The Security Center shows the active ruleset when the firewall section of the
 report carries it as text ("ruleset"). The shipped tool does not have that
 field yet (see README.md, "Additions requested from the tools"). This wrapper
 runs the real tool unchanged and adds exactly the proposed field —
-`nft list table inet nexus_filter` — so the viewer can be tested against a
+`nft list table inet shadow_filter` — so the viewer can be tested against a
 real ruleset:
 
-    NEXUS_SECURITY_STATUS_TOOL=.../tests/status-with-ruleset \
-    NEXUS_FIREWALL_TOOL=/src/security/firewall/nexus-firewall nexus-security-center
+    SHADOW_SECURITY_STATUS_TOOL=.../tests/status-with-ruleset \
+    SHADOW_FIREWALL_TOOL=/src/security/firewall/shadow-firewall shadow-security-center
 
 It is a test aid and is not installed.
 """
@@ -19,14 +19,14 @@ import os
 import subprocess
 import sys
 
-real = os.environ.get("NEXUS_SC_REAL_STATUS_TOOL", "/src/security/audit/nexus-security-status")
+real = os.environ.get("SHADOW_SC_REAL_STATUS_TOOL", "/src/security/audit/shadow-security-status")
 p = subprocess.run([sys.executable, real] + sys.argv[1:], stdout=subprocess.PIPE)
 if p.returncode != 0:
     sys.exit(p.returncode)
 report = json.loads(p.stdout)
 fw = report.get("firewall")
 if isinstance(fw, dict) and fw.get("available") and fw.get("active"):
-    q = subprocess.run(["nft", "list", "table", "inet", "nexus_filter"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    q = subprocess.run(["nft", "list", "table", "inet", "shadow_filter"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     fw["ruleset"] = q.stdout.decode("utf-8", "replace") if q.returncode == 0 else None
 json.dump(report, sys.stdout)
 sys.stdout.write("\n")

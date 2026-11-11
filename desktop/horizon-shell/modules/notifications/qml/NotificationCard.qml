@@ -3,7 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
-import org.nexus.ui
+import org.shadow.ui
 
 // One notification: as a popup, or as an entry of the notification centre.
 //

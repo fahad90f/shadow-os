@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Read-only monospaced output of a running tool. Follows the end of the text
 // while it grows, unless the user has scrolled away from it.

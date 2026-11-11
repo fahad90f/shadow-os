@@ -1,9 +1,9 @@
-# NEXUS System Information — hardware and software summary.
-# This is also the reference implementation of a NEXUS application; see
+# SHADOW System Information — hardware and software summary.
+# This is also the reference implementation of a SHADOW application; see
 # docs/applications/development.md.
-nexus_add_app(nexus-sysinfo
-    URI org.nexus.sysinfo
+shadow_add_app(shadow-sysinfo
+    URI org.shadow.sysinfo
     SOURCES main.cpp systeminfo.cpp systeminfo.h
     QML Main.qml
-    DESKTOP org.nexus.sysinfo.desktop
+    DESKTOP org.shadow.sysinfo.desktop
 )

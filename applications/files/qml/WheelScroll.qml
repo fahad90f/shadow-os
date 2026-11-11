@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // Mouse-wheel / touchpad scrolling for a Flickable whose `interactive` is off.
 //

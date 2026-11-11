@@ -2,10 +2,10 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
-// One package (a row of NexusPk::PackageModel) in "All packages" lists.
+// One package (a row of ShadowPk::PackageModel) in "All packages" lists.
 Rectangle {
     id: row
 

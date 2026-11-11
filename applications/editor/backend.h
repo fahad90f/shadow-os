@@ -31,9 +31,9 @@ public:
     QStringList monospaceFamilies() const;
     QVariantList syntaxes() const;     // [{ name, section }]
     qreal maxFileBytes() const;
-    // NEXUS_EDITOR_BENCH=1: time loading, rendering and editing of the file given
+    // SHADOW_EDITOR_BENCH=1: time loading, rendering and editing of the file given
     // on the command line, print the figures and quit (see README, "Large files").
-    bool benchmark() const { return qEnvironmentVariableIntValue("NEXUS_EDITOR_BENCH") == 1; }
+    bool benchmark() const { return qEnvironmentVariableIntValue("SHADOW_EDITOR_BENCH") == 1; }
 
     Q_INVOKABLE void addRecentFile(const QString &path);
     Q_INVOKABLE void clearRecentFiles();

@@ -173,7 +173,7 @@ void Diagnostics::run(const QString &program, const QStringList &arguments, int 
 
     auto *process = new QProcess(this);
     m_process = process;
-    process->setProcessEnvironment(Nexus::Command::parseEnvironment());
+    process->setProcessEnvironment(Shadow::Command::parseEnvironment());
     process->setProcessChannelMode(QProcess::MergedChannels);
     process->setStandardInputFile(QProcess::nullDevice());
     process->setChildProcessModifier([] { ::prctl(PR_SET_PDEATHSIG, SIGTERM); });
@@ -782,8 +782,8 @@ void Diagnostics::mtuStart(const QString &address)
         proceed(QString());
         return;
     }
-    Nexus::Command::run(this, ip, {QStringLiteral("-j"), QStringLiteral("route"), QStringLiteral("get"), address},
-                        [proceed](const Nexus::CommandResult &r) {
+    Shadow::Command::run(this, ip, {QStringLiteral("-j"), QStringLiteral("route"), QStringLiteral("get"), address},
+                        [proceed](const Shadow::CommandResult &r) {
         const QJsonArray routes = QJsonDocument::fromJson(r.out).array();
         proceed(routes.isEmpty() ? QString() : routes.at(0).toObject().value(QLatin1String("dev")).toString());
     }, 5000);
@@ -1091,10 +1091,10 @@ void Diagnostics::tsGatewayProbe(QList<QVariantMap> candidates, QStringList fail
         // No echo reply. If its hardware address resolved, the gateway is on
         // the link and merely ignores ping.
         const QString ip = Net::findTool(QStringLiteral("ip"));
-        Nexus::Command::run(this, ip.isEmpty() ? QStringLiteral("ip") : ip,
+        Shadow::Command::run(this, ip.isEmpty() ? QStringLiteral("ip") : ip,
                             {QStringLiteral("-j"), QStringLiteral("neigh"), QStringLiteral("show"), QStringLiteral("to"), gateway,
                              QStringLiteral("dev"), device},
-                            [this, generation, candidates, failures, gateway, device](const Nexus::CommandResult &r) {
+                            [this, generation, candidates, failures, gateway, device](const Shadow::CommandResult &r) {
             if (generation != m_generation)
                 return;
             QString mac, state;

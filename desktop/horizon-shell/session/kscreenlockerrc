@@ -1,9 +1,9 @@
-# System defaults of the screen locker for NEXUS HORIZON.
+# System defaults of the screen locker for Shadow Horizon.
 # The Control Center (Power, Privacy) writes the user's values to
 # ~/.config/kscreenlockerrc.
 [Daemon]
 # Locking after a period without input is done by the shell's power module
-# from the user's power settings (~/.config/nexus/power.conf), so the
+# from the user's power settings (~/.config/shadow/power.conf), so the
 # locker's own timer is off; it still locks when the system suspends.
 Autolock=false
 Timeout=10

@@ -1,4 +1,4 @@
-# Installing NEXUS OS
+# Installing Shadow OS
 
 This guide takes you from the boot menu of the installation medium to a
 restarted, installed system.
@@ -32,20 +32,20 @@ and boot from it. Menu entries are described in
 
 * **Live session** starts the desktop from the medium; nothing is written to
   your disks. Use it to try your hardware first.
-* **Install NEXUS OS** starts the same live session and opens the installer.
+* **Install Shadow OS** starts the same live session and opens the installer.
 * **Live session (safe graphics)** if the screen stays black.
 
-In the live session you are logged in automatically as the user `nexus`
+In the live session you are logged in automatically as the user `shadow`
 (password `live`; `sudo` works without a password). The system runs from a
 read-only image with a writable overlay in memory: changes are lost at
 shutdown.
 
 To start the installer from a running live session, use the **Install**
-button in the top panel, or find "Install NEXUS OS" in the launcher.
+button in the top panel, or find "Install Shadow OS" in the launcher.
 
 ## 2. The graphical installer, step by step
 
-The installer (`nexus-installer`, package `nexus-installer-gui`) collects
+The installer (`shadow-installer`, package `shadow-installer-gui`) collects
 your choices, asks the installation engine what they mean, shows the
 engine's plan word for word and lets the engine carry it out after you
 confirm. It runs as the live user; the engine is started through polkit
@@ -60,7 +60,7 @@ before you confirm the Summary.**
 | 4 | Time zone | Choose region and zone |
 | 5 | Disk | Choose the target disk and the mode (below); optionally encryption, a separate `/home`, and the kind of swap |
 | 6 | User | Full name, user name, password, host name, optional automatic login |
-| 7 | Software | Optionally select NEXUS Arsenal tool profiles. The step is hidden if no profiles are present on the medium |
+| 7 | Software | Optionally select SHADOW Arsenal tool profiles. The step is hidden if no profiles are present on the medium |
 | 8 | Summary | Review the engine's plan: every step, what is destroyed, and warnings. Tick the acknowledgement. If a step is destructive, type the name of the device that loses data |
 | 9 | Installation | Watch the steps as the engine reports them. It cannot be cancelled, and the window refuses to close while the engine runs |
 | 10 | Finish | Restart, or stay in the live session. After a failure: the engine's message, a hint, and the log location |
@@ -96,7 +96,7 @@ Destroys **everything** on the selected disk and creates a new GPT:
 | `/home` | rest, ext4 | only if you chose a separate `/home` |
 
 With **encryption** the last partition is a LUKS2 container holding an LVM
-volume group (`nexus`) with the logical volumes `root`, optionally `home`
+volume group (`shadow`) with the logical volumes `root`, optionally `home`
 and optionally `swap`.
 
 With a separate `/home`, root gets 35 % of the available space, but not less
@@ -115,8 +115,8 @@ disk. Existing partitions are not modified.
   other system's own tool (for Windows: Disk Management), then start the
   installer again.
 * On UEFI an existing EFI System Partition on that disk is **reused without
-  formatting**; NEXUS OS adds its own directory to it.
-* Other operating systems found by os-prober are added to the NEXUS boot
+  formatting**; Shadow OS adds its own directory to it.
+* Other operating systems found by os-prober are added to the SHADOW boot
   menu.
 * If the installation fails, the partitions this attempt created are removed
   again.
@@ -174,13 +174,13 @@ Parameters and trade-offs: [../security/hardening.md](../security/hardening.md).
   partitions (or have the recovery key at hand), and shrink the Windows
   partition from within Windows. Dual boot with Windows has not been tested;
   the automated test uses a small Linux "other system".
-* **Debian on the same ESP:** NEXUS OS installs its loader to `EFI/debian`,
+* **Debian on the same ESP:** Shadow OS installs its loader to `EFI/debian`,
   the directory Debian uses too. The two would overwrite each other's
   loader. Do not share an ESP with a Debian installation
   ([../architecture/boot.md](../architecture/boot.md)).
-* The firmware boot entry is labelled "NEXUS OS". Entries of other systems
+* The firmware boot entry is labelled "Shadow OS". Entries of other systems
   are not removed.
-* With Secure Boot enabled, other systems started from the NEXUS boot menu
+* With Secure Boot enabled, other systems started from the SHADOW boot menu
   must themselves be signed.
 
 ## 7. What gets written where
@@ -191,18 +191,18 @@ On the target system the engine:
 |---|---|
 | Partitioning | the partition table (`sgdisk`), signatures wiped on new partitions |
 | Encryption | LUKS2 header, LVM volume group and volumes |
-| Formatting | ext4 / FAT32 / swap, labels `nexus-root`, `nexus-home`, `nexus-boot`, `NEXUS-ESP`, `nexus-swap` |
+| Formatting | ext4 / FAT32 / swap, labels `shadow-root`, `shadow-home`, `shadow-boot`, `SHADOW-ESP`, `shadow-swap` |
 | Copy | the contents of `live/filesystem.squashfs` to the target |
 | Configuration | `/etc/fstab` (by UUID), `/etc/crypttab`, `/etc/initramfs-tools/conf.d/resume`, `/etc/hostname`, `/etc/hosts`, `/etc/locale.gen` and `/etc/default/locale`, `/etc/localtime` and `/etc/timezone`, `/etc/default/keyboard`, `/etc/X11/xorg.conf.d/00-keyboard.conf`, `/etc/xdg/kxkbrc`, an empty `/etc/machine-id` (generated at first boot), `/swapfile` |
 | User | your account with a home directory, member of `sudo` and the usual desktop groups; the root account is locked; `/etc/sddm.conf.d/20-autologin.conf` if you chose automatic login |
-| Clean-up | removes the live-session packages (`live-boot`, `live-config`, `live-tools`, `user-setup`, `nexus-live`, `nexus-installer`, `nexus-installer-gui`) and their leftovers |
+| Clean-up | removes the live-session packages (`live-boot`, `live-config`, `live-tools`, `user-setup`, `shadow-live`, `shadow-installer`, `shadow-installer-gui`) and their leftovers |
 | Initramfs | a new initramfs for every installed kernel |
-| Boot loader | `/etc/nexus/boot.conf`, `/etc/default/grub.d/60-nexus-installer.cfg`, GRUB on the ESP or in the boot sector (`nexus-grub-install`), the firmware boot entry, `/boot/grub/grub.cfg` |
+| Boot loader | `/etc/shadow/boot.conf`, `/etc/default/grub.d/60-shadow-installer.cfg`, GRUB on the ESP or in the boot sector (`shadow-grub-install`), the firmware boot entry, `/boot/grub/grub.cfg` |
 | Profiles | only if selected with "install now": see the note below |
 | Finish | `/var/log/installer/install.log` and `plan.json`; everything is unmounted |
 
 > **Tool profiles during installation.** The engine installs the selected
-> `nexus-arsenal-<profile>` metapackages with
+> `shadow-arsenal-<profile>` metapackages with
 > `apt-get install --no-install-recommends`. The metapackages list their
 > tools as *Recommends*, so as implemented this installs the metapackage
 > without its tools. A failure of this step does not fail the installation.
@@ -216,7 +216,7 @@ packages, already configured, not a fresh package installation.
 
 | Where | What |
 |---|---|
-| `/var/log/nexus-installer/install-<date>-<time>.log` in the live session | the engine's full log: every command, its output, every event. Root only (mode 0600) |
+| `/var/log/shadow-installer/install-<date>-<time>.log` in the live session | the engine's full log: every command, its output, every event. Root only (mode 0600) |
 | `/var/log/installer/install.log`, `/var/log/installer/plan.json` on the installed system | copy of that log and the executed plan. Root only |
 | "Copy log" in the installer | what the engine sent to the wizard in this run (events and error output), not the file above |
 
@@ -227,7 +227,7 @@ If the installation fails, note the message and hint, then read the log in
 the live session:
 
 ```sh
-sudo less /var/log/nexus-installer/install-*.log
+sudo less /var/log/shadow-installer/install-*.log
 ```
 
 See [../troubleshooting/README.md](../troubleshooting/README.md).
@@ -239,7 +239,7 @@ Log in with the account you created. Then:
 
 * connect to a network and install updates
   ([../security/updates.md](../security/updates.md));
-* check the firewall state: `sudo nexus-firewall status`;
+* check the firewall state: `sudo shadow-firewall status`;
 * read [../limitations.md](../limitations.md).
 
 ## Installing without the graphical installer

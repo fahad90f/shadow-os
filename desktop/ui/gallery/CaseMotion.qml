@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Test page: many gauges and meters whose values change once per second, the
 // way a monitoring page drives them. Used to measure what the value
@@ -11,7 +11,7 @@ import org.nexus.ui
 // the scene is rendered in software or "reduce motion" is on.
 NxWindow {
     id: window
-    title: "NexusUI Gallery — motion"
+    title: "ShadowUI Gallery — motion"
     width: 1100
     height: 720
 

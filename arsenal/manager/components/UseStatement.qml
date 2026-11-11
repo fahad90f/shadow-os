@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // The conditions of use, worded once and shown both in the first-start
 // acknowledgement and on the permanent "Responsible use" page.
@@ -16,11 +16,11 @@ ColumnLayout {
         { icon: "flag", title: qsTr("The law that applies to you"),
           text: qsTr("Accessing or disrupting computer systems without authorisation, intercepting other people's communications and bypassing access controls are criminal offences in most countries. Radio transmission and possession of some kinds of software are regulated in some. You are responsible for knowing and following the law where you are and where the target is.") },
         { icon: "lab", title: qsTr("Practise in a lab"),
-          text: qsTr("Learn on an isolated practice environment — virtual machines on a host-only network — not on the internet or on a network you share with others. The documentation shipped with NEXUS Arsenal describes how to build one.") },
+          text: qsTr("Learn on an isolated practice environment — virtual machines on a host-only network — not on the internet or on a network you share with others. The documentation shipped with SHADOW Arsenal describes how to build one.") },
         { icon: "privacy", title: qsTr("Protect what you find"),
           text: qsTr("Data you come across during a test belongs to someone else. Collect only what the engagement needs, keep it encrypted, report weaknesses to the owner and delete the data when the work is done.") },
         { icon: "alert-triangle", title: qsTr("No warranty"),
-          text: qsTr("The tools are free software from the Debian archive and come without any warranty. Several can interrupt services or damage data when used carelessly. Neither NEXUS OS nor the authors of the tools are liable for what you do with them.") }
+          text: qsTr("The tools are free software from the Debian archive and come without any warranty. Several can interrupt services or damage data when used carelessly. Neither Shadow OS nor the authors of the tools are liable for what you do with them.") }
     ]
 
     Repeater {

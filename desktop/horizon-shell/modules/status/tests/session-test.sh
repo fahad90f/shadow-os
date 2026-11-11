@@ -5,10 +5,10 @@
 # a null output and a virtual microphone, and the MPRIS test player of this
 # directory. Sourced by the session script of scripts/dev.sh:
 #
-#   NEXUS_JOBS=2 scripts/dev.sh build --dir modstatus --only horizon-shell --modules status
+#   SHADOW_JOBS=2 scripts/dev.sh build --dir modstatus --only horizon-shell --modules status
 #   scripts/dev.sh exec -- cmake -S /src/desktop/horizon-shell/modules/status/tests -B /build/modstatus-tests -G Ninja
 #   scripts/dev.sh exec -- ninja -C /build/modstatus-tests
-#   NEXUS_RUN_TIMEOUT=400 scripts/dev.sh nested --dir modstatus --wait 1 -- \
+#   SHADOW_RUN_TIMEOUT=400 scripts/dev.sh nested --dir modstatus --wait 1 -- \
 #       '. /src/desktop/horizon-shell/modules/status/tests/session-test.sh'
 #
 # Results: build/work/shots/nested-logs/modstatus/session-test.log (one
@@ -19,7 +19,7 @@
 # hardware: NetworkManager, BlueZ, UPower, power-profiles-daemon, logind
 # brightness, /dev/rfkill.
 : "${STATUS_TEST_SIZE:=1600}"            # width of the nested screen
-LOG="$NEXUS_LOGS/session-test.log"
+LOG="$SHADOW_LOGS/session-test.log"
 : > "$LOG"
 failures=0
 note() { echo "$*" | tee -a "$LOG"; }
@@ -45,13 +45,13 @@ wireplumber > "$HOME/wireplumber.log" 2>&1 &
 sleep 1
 pipewire-pulse > "$HOME/pipewire-pulse.log" 2>&1 &
 sleep 3
-pactl load-module module-null-sink sink_name=nexus_test_out \
+pactl load-module module-null-sink sink_name=shadow_test_out \
     sink_properties=device.description=Test-Speakers > /dev/null
-pactl load-module module-null-sink media.class=Audio/Source/Virtual sink_name=nexus_test_mic \
+pactl load-module module-null-sink media.class=Audio/Source/Virtual sink_name=shadow_test_mic \
     sink_properties=device.description=Test-Microphone > /dev/null
 sleep 1
-pactl set-default-sink nexus_test_out
-pactl set-default-source nexus_test_mic
+pactl set-default-sink shadow_test_out
+pactl set-default-source shadow_test_mic
 # PipeWire only applies a volume to a node that is in use: keep both busy.
 pacat --playback /dev/zero > /dev/null 2>&1 &
 pacat --record > /dev/null 2>&1 &
@@ -66,14 +66,14 @@ sleep 8
 
 # ---- panel item and --dump status --------------------------------------------------
 shot modstatus-1-panel.png
-dump > "$NEXUS_LOGS/dump-status.json"
-check "dump: audio available" "$(field audio.available < "$NEXUS_LOGS/dump-status.json")" true
-check "dump: output device" "$(field audio.output.name < "$NEXUS_LOGS/dump-status.json")" nexus_test_out
-check "dump: output volume" "$(field audio.output.volumePercent < "$NEXUS_LOGS/dump-status.json")" 40
-check "dump: input device" "$(field audio.input.name < "$NEXUS_LOGS/dump-status.json")" nexus_test_mic
-check "dump: media available, no player" "$(field media.hasPlayer < "$NEXUS_LOGS/dump-status.json")" false
-check "dump: network unavailable without a system bus" "$(field network.available < "$NEXUS_LOGS/dump-status.json")" false
-note "dump: nightLight $(field nightLight < "$NEXUS_LOGS/dump-status.json")"
+dump > "$SHADOW_LOGS/dump-status.json"
+check "dump: audio available" "$(field audio.available < "$SHADOW_LOGS/dump-status.json")" true
+check "dump: output device" "$(field audio.output.name < "$SHADOW_LOGS/dump-status.json")" shadow_test_out
+check "dump: output volume" "$(field audio.output.volumePercent < "$SHADOW_LOGS/dump-status.json")" 40
+check "dump: input device" "$(field audio.input.name < "$SHADOW_LOGS/dump-status.json")" shadow_test_mic
+check "dump: media available, no player" "$(field media.hasPlayer < "$SHADOW_LOGS/dump-status.json")" false
+check "dump: network unavailable without a system bus" "$(field network.available < "$SHADOW_LOGS/dump-status.json")" false
+note "dump: nightLight $(field nightLight < "$SHADOW_LOGS/dump-status.json")"
 
 # ---- volume, microphone and brightness keys, on-screen display --------------------
 xdo key XF86AudioRaiseVolume; sleep 0.7
@@ -150,13 +150,13 @@ shot modstatus-15-opened-by-click.png
 xdo mousemove $((STATUS_TEST_SIZE - 130)) 86 click 1; sleep 1.5
 shot modstatus-16-light.png
 check "dark mode tile switches the appearance" \
-    "$(sed -n 's/^ColorScheme=//p' "$HOME/.config/nexus/appearance.conf")" light
+    "$(sed -n 's/^ColorScheme=//p' "$HOME/.config/shadow/appearance.conf")" light
 xdo mousemove $((STATUS_TEST_SIZE - 130)) 86 click 1; sleep 1
 check "dark mode tile switches back" \
-    "$(sed -n 's/^ColorScheme=//p' "$HOME/.config/nexus/appearance.conf")" dark
+    "$(sed -n 's/^ColorScheme=//p' "$HOME/.config/shadow/appearance.conf")" dark
 xdo key Escape; sleep 0.5
 
-cp "$HOME/shell.log" "$NEXUS_LOGS/shell.log"
-cp "$HOME/player.log" "$NEXUS_LOGS/player.log"
+cp "$HOME/shell.log" "$SHADOW_LOGS/shell.log"
+cp "$HOME/player.log" "$SHADOW_LOGS/player.log"
 note "shell warnings: $(grep -c -i 'warn\|error\|TypeError\|ReferenceError' "$HOME/shell.log")"
 note "FAILED: $failures"

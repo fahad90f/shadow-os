@@ -2,13 +2,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Test page: a long NxPage. The header with its actions stays visible while
 // the content scrolls.
 NxWindow {
     id: window
-    title: "NexusUI Gallery — page"
+    title: "ShadowUI Gallery — page"
     width: 1000
     height: 640
 
@@ -38,7 +38,7 @@ NxWindow {
         Label { id: lastItem; text: "End of the page" }
     }
 
-    Component.onCompleted: if (nexusApp.arguments.indexOf("scrolled") >= 0) Qt.callLater(() => page.flickable.contentY = 420)
+    Component.onCompleted: if (shadowApp.arguments.indexOf("scrolled") >= 0) Qt.callLater(() => page.flickable.contentY = 420)
 
     CaseChecks {
         name: "page"

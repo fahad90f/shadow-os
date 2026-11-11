@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Boot the desktop ISO and verify that the live session reaches NEXUS HORIZON.
+"""Boot the desktop ISO and verify that the live session reaches Shadow Horizon.
 
-    tests/desktop/test_desktop_boot.py --iso build/out/iso/nexus-os-<ver>-<arch>.iso
+    tests/desktop/test_desktop_boot.py --iso build/out/iso/shadow-os-<ver>-<arch>.iso
         [--firmware uefi|uefi-secureboot|bios] [--shots DIR]
 
 Verified from inside the guest (serial console) while the graphical session
 runs on the emulated display:
   * the display manager started and logged the live user into the
-    "nexus-horizon" Wayland session without a password prompt
+    "shadow-horizon" Wayland session without a password prompt
   * the compositor (kwin_wayland) and the shell (horizon-shell) are running
     and the shell did not restart (crash loop)
   * the session's D-Bus services exist: notification-independent core ones
@@ -64,7 +64,7 @@ def run(args):
         report("horizon-shell running", True, f"{time.time() - t0:.0f}s after power-on")
 
         _, out = vm.run("loginctl list-sessions --no-legend; "
-                        "loginctl show-session $(loginctl list-sessions --no-legend | awk '$3==\"nexus\" && $0 ~ /seat0/ {print $1; exit}') "
+                        "loginctl show-session $(loginctl list-sessions --no-legend | awk '$3==\"shadow\" && $0 ~ /seat0/ {print $1; exit}') "
                         "-p Type -p Desktop -p Active -p Class 2>&1", check=False)
         report("graphical login session", "Type=wayland" in out, out.strip().replace("\n", " | "))
 
@@ -111,7 +111,7 @@ if __name__ == "__main__":
     ap.add_argument("--workdir", default="build/work/tests/desktop-boot")
     ap.add_argument("--shots", default="build/work/shots")
     ap.add_argument("--memory", type=int, default=4096)
-    ap.add_argument("--user", default="nexus")
+    ap.add_argument("--user", default="shadow")
     ap.add_argument("--password", default="live")
     ap.add_argument("--timeout", type=float, default=900)
     ap.add_argument("--session-timeout", type=float, default=1200)

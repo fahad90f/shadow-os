@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the NEXUS OS Debian packages inside the build chroot.
+# Build the Shadow OS Debian packages inside the build chroot.
 #
 #   build/packages/build.sh [--arch amd64|arm64] [--indep | --arch-only]
 #
@@ -13,7 +13,7 @@
 # files that are not ignored), so the build never sees editor backups, old
 # build directories or anything else that is not part of the project.
 #
-# Output: $NEXUS_OUT/packages/*.deb
+# Output: $SHADOW_OUT/packages/*.deb
 
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
@@ -31,48 +31,48 @@ done
 
 need_root
 ensure_foreign_arch "$ARCH"
-CHROOT="$NEXUS_WORK/chroot-build-$ARCH"
-[ -e "$CHROOT/.nexus-bootstrap-complete" ] || die "build chroot missing — run build/chroot/create.sh --arch $ARCH"
+CHROOT="$SHADOW_WORK/chroot-build-$ARCH"
+[ -e "$CHROOT/.shadow-bootstrap-complete" ] || die "build chroot missing — run build/chroot/create.sh --arch $ARCH"
 
-PKG_OUT="$NEXUS_OUT/packages"
+PKG_OUT="$SHADOW_OUT/packages"
 mkdir -p "$PKG_OUT"
 
-VERSION="$(sed -n '1s/^[^(]*(\([^)]*\)).*/\1/p' "$NEXUS_ROOT/debian/changelog")"
-[ "$VERSION" = "$NEXUS_VERSION" ] || die "debian/changelog version ($VERSION) differs from distro/base/nexus.conf ($NEXUS_VERSION)"
+VERSION="$(sed -n '1s/^[^(]*(\([^)]*\)).*/\1/p' "$SHADOW_ROOT/debian/changelog")"
+[ "$VERSION" = "$SHADOW_VERSION" ] || die "debian/changelog version ($VERSION) differs from distro/base/shadow.conf ($SHADOW_VERSION)"
 
-SRC="/build/pkg/nexus-os-$VERSION"
+SRC="/build/pkg/shadow-os-$VERSION"
 log "exporting source tree to chroot:$SRC"
 rm -rf "$CHROOT/build/pkg"
 mkdir -p "$CHROOT$SRC"
 # Tracked files with their working-tree content. Untracked files are left
 # out so unfinished work cannot break a package build;
-# NEXUS_EXPORT_UNTRACKED=1 includes them.
+# SHADOW_EXPORT_UNTRACKED=1 includes them.
 ls_flags="-c"
-[ -n "${NEXUS_EXPORT_UNTRACKED:-}" ] && ls_flags="-co --exclude-standard"
+[ -n "${SHADOW_EXPORT_UNTRACKED:-}" ] && ls_flags="-co --exclude-standard"
 # shellcheck disable=SC2086
 # Committed work in progress is left out too (build/packages/wip.exclude).
 excludes=()
 while IFS= read -r line; do
     case "$line" in ''|'#'*) continue ;; esac
     excludes+=(":(exclude,glob)$line" ":(exclude,glob)$line/**")
-done < "$NEXUS_ROOT/build/packages/wip.exclude"
+done < "$SHADOW_ROOT/build/packages/wip.exclude"
 # shellcheck disable=SC2086
-(cd "$NEXUS_ROOT" && git ls-files $ls_flags -z -- . "${excludes[@]}") \
-    | (cd "$NEXUS_ROOT" && while IFS= read -r -d "" f; do [ -e "$f" ] && printf '%s\0' "$f"; done) \
-    | rsync -a --from0 --files-from=- "$NEXUS_ROOT/" "$CHROOT$SRC/"
+(cd "$SHADOW_ROOT" && git ls-files $ls_flags -z -- . "${excludes[@]}") \
+    | (cd "$SHADOW_ROOT" && while IFS= read -r -d "" f; do [ -e "$f" ] && printf '%s\0' "$f"; done) \
+    | rsync -a --from0 --files-from=- "$SHADOW_ROOT/" "$CHROOT$SRC/"
 
-# The archive public key ships in nexus-archive-keyring.
-"$NEXUS_ROOT/build/packages/signing-key.sh" >/dev/null
-cp "$NEXUS_OUT/keys/nexus-archive-keyring.gpg" "$CHROOT/build/pkg/archive-key.gpg"
+# The archive public key ships in shadow-archive-keyring.
+"$SHADOW_ROOT/build/packages/signing-key.sh" >/dev/null
+cp "$SHADOW_OUT/keys/shadow-archive-keyring.gpg" "$CHROOT/build/pkg/archive-key.gpg"
 
-log "dpkg-buildpackage $MODE ($ARCH, $NEXUS_JOBS jobs)"
+log "dpkg-buildpackage $MODE ($ARCH, $SHADOW_JOBS jobs)"
 in_chroot "$CHROOT" -- /bin/bash -euc '
     cd "$1"
-    export NEXUS_ARCHIVE_KEY=/build/pkg/archive-key.gpg
-    export NEXUS_REPO_URL="$2"
+    export SHADOW_ARCHIVE_KEY=/build/pkg/archive-key.gpg
+    export SHADOW_REPO_URL="$2"
     export DEB_BUILD_OPTIONS="parallel=$3"
     dpkg-buildpackage -us -uc --no-sign "$4"
-' build "$SRC" "${NEXUS_REPO_URL:-}" "$NEXUS_JOBS" "$MODE"
+' build "$SRC" "${SHADOW_REPO_URL:-}" "$SHADOW_JOBS" "$MODE"
 
 count=0
 for deb in "$CHROOT"/build/pkg/*.deb; do

@@ -2,13 +2,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Test page: the level glyphs (Wi-Fi signal, battery charge, volume) at the
 // sizes the shell and the applications use, in three colours.
 NxWindow {
     id: window
-    title: "NexusUI Gallery — glyphs"
+    title: "ShadowUI Gallery — glyphs"
     width: 1000
     height: 560
 

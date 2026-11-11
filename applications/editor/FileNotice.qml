@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Message bar above the text of one file. Unlike NxBanner it does not hide
 // itself when dismissed: visibility stays bound to the document's state, so

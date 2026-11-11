@@ -3,16 +3,16 @@
 # distribution's repositories are ever enabled (docs/packaging/repositories.md).
 rm -f /etc/apt/sources.list
 cat > /etc/apt/sources.list.d/debian.sources <<SRC
-# Debian ${NEXUS_DEBIAN_VERSION} "${NEXUS_DEBIAN_SUITE}" — the upstream base of NEXUS OS.
+# Debian ${SHADOW_DEBIAN_VERSION} "${SHADOW_DEBIAN_SUITE}" — the upstream base of Shadow OS.
 Types: deb
 URIs: https://deb.debian.org/debian
-Suites: ${NEXUS_DEBIAN_SUITE} ${NEXUS_DEBIAN_SUITE}-updates
+Suites: ${SHADOW_DEBIAN_SUITE} ${SHADOW_DEBIAN_SUITE}-updates
 Components: main contrib non-free-firmware
 Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp
 
 Types: deb
 URIs: https://deb.debian.org/debian-security
-Suites: ${NEXUS_DEBIAN_SUITE}-security
+Suites: ${SHADOW_DEBIAN_SUITE}-security
 Components: main contrib non-free-firmware
 Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp
 SRC

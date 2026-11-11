@@ -5,7 +5,7 @@
 #include "nmclient.h"
 #include "sockets.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -24,7 +24,7 @@ const char *kPages = "overview, wifi, interfaces, ip, dns, routes, connections, 
 // "--page <key>" and "--page=<key>" are spellings of the positional page
 // argument. They are folded into it before the command line is parsed, so
 // that a second launch hands the page to the running instance the same way
-// (Nexus::App forwards positional arguments).
+// (Shadow::App forwards positional arguments).
 std::vector<char *> foldPageOption(int argc, char **argv)
 {
     std::vector<char *> out;
@@ -58,7 +58,7 @@ bool waitUntil(const std::function<bool()> &done, int timeoutMs = 30000)
     return done();
 }
 
-int runDump(Nexus::App &app)
+int runDump(Shadow::App &app)
 {
     const QString topic = app.dumpTopic();
     const auto is = [&topic](const char *name) { return topic == QLatin1String(name); };
@@ -185,16 +185,16 @@ int main(int argc, char **argv)
     std::vector<char *> arguments = foldPageOption(argc, argv);
     int count = int(arguments.size()) - 1;
 
-    Nexus::AppInfo info;
-    info.id = QStringLiteral("org.nexus.networkcenter");
+    Shadow::AppInfo info;
+    info.id = QStringLiteral("org.shadow.networkcenter");
     info.displayName = QStringLiteral("Network Center");
-    info.iconName = QStringLiteral("org.nexus.networkcenter");
-    info.description = QStringLiteral("NEXUS Network Center: network status, configuration and diagnostics.\n"
+    info.iconName = QStringLiteral("org.shadow.networkcenter");
+    info.description = QStringLiteral("SHADOW Network Center: network status, configuration and diagnostics.\n"
                                       "Pass a page key (or --page <key>) to open a page directly: %1.")
                            .arg(QLatin1String(kPages));
     info.singleInstance = true;
 
-    Nexus::App app(count, arguments.data(), info);
+    Shadow::App app(count, arguments.data(), info);
     app.parser().addPositionalArgument(QStringLiteral("page"), QStringLiteral("Page to open: %1.").arg(QLatin1String(kPages)),
                                        QStringLiteral("[page]"));
     app.setDumpTopics({QStringLiteral("overview"), QStringLiteral("interfaces"), QStringLiteral("addresses"),
@@ -204,5 +204,5 @@ int main(int argc, char **argv)
         return 0;
     if (!app.dumpTopic().isEmpty())
         return runDump(app);
-    return app.run(QStringLiteral("org.nexus.networkcenter"));
+    return app.run(QStringLiteral("org.shadow.networkcenter"));
 }

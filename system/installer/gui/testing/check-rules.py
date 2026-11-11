@@ -3,11 +3,11 @@
 """Compare the installer's mirrored input rules (validation.cpp) with the engine.
 
 Feeds a list of user names, host names, full names, passwords and passphrases
-to `nexus-installer --dump rules` and to the engine's own answer validation
-(nexus_installer.answers.parse) and reports every disagreement.
+to `shadow-installer --dump rules` and to the engine's own answer validation
+(shadow_installer.answers.parse) and reports every disagreement.
 
     scripts/dev.sh exec --dir installer -- python3 \
-        /src/system/installer/gui/testing/check-rules.py /build/installer/bin/nexus-installer
+        /src/system/installer/gui/testing/check-rules.py /build/installer/bin/shadow-installer
 
 The front-end is allowed to be stricter in exactly one way: it also rejects a
 user name that exists as a system account or group on the running system
@@ -26,14 +26,14 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "engine"))
-from nexus_installer import answers as A  # noqa: E402
-from nexus_installer.util import InstallError  # noqa: E402
+from shadow_installer import answers as A  # noqa: E402
+from shadow_installer.util import InstallError  # noqa: E402
 
 USERNAMES = sorted(A.RESERVED_USERS) + [
     "ada", "a", "_svc", "a-b_c9", "a" * 32, "a" * 33, "Ada", "9lives", "-dash", "ada lovelace", "ädä", "ada.l",
-    "", "user$", "x_", "tty", "disk", "nexus", "ada\n",
+    "", "user$", "x_", "tty", "disk", "shadow", "ada\n",
 ]
-HOSTNAMES = ["nexus", "a", "a-b", "-a", "a-", "A", "a_b", "a.b", "a" * 63, "a" * 64, "", "9", "nexus-01", "ho st", "a\n"]
+HOSTNAMES = ["shadow", "a", "a-b", "-a", "a-", "A", "a_b", "a.b", "a" * 63, "a" * 64, "", "9", "shadow-01", "ho st", "a\n"]
 FULLNAMES = ["", "Ada Lovelace", "A:B", "A,B", "A=B", "Zoë Ångström", "x" * 120, "x" * 121, "a\nb", "名前"]
 PASSPHRASES = ["", "short", "12345678", "1234567", "éèàùçâê", "éèàùçâêô", "with\nbreak", "correct horse battery staple", "😀" * 8, "😀" * 7]
 PASSWORDS = ["", "x", "with\nbreak", "with\rbreak", " ", "pässword"]
@@ -56,12 +56,12 @@ def engine_accepts(**override) -> bool:
 
 
 def main() -> int:
-    binary = sys.argv[1] if len(sys.argv) > 1 else "nexus-installer"
+    binary = sys.argv[1] if len(sys.argv) > 1 else "shadow-installer"
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
         json.dump({"usernames": USERNAMES, "hostnames": HOSTNAMES, "fullnames": FULLNAMES,
                    "passphrases": PASSPHRASES, "passwords": PASSWORDS}, fh)
     try:
-        out = subprocess.run([binary, "--dump", "rules"], env=dict(os.environ, NEXUS_INSTALLER_RULES_INPUT=fh.name),
+        out = subprocess.run([binary, "--dump", "rules"], env=dict(os.environ, SHADOW_INSTALLER_RULES_INPUT=fh.name),
                              stdout=subprocess.PIPE, check=True).stdout
     finally:
         os.unlink(fh.name)

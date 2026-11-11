@@ -2,10 +2,10 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
-// The applications of one NEXUS category.
+// The applications of one SHADOW category.
 PkListPage {
     id: page
 

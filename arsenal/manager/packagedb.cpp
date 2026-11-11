@@ -136,9 +136,9 @@ void PackageDb::refresh(const QStringList &packages)
 
     // dpkg-query exits 1 when one of the names is unknown to dpkg, but still
     // prints the others — only a missing program or no output at all is an error.
-    Nexus::Command::run(this, QStringLiteral("dpkg-query"),
+    Shadow::Command::run(this, QStringLiteral("dpkg-query"),
                         QStringList{QStringLiteral("-W"), QStringLiteral("-f"), kDpkgFormat} + packages,
-                        [this, serial](const Nexus::CommandResult &result) {
+                        [this, serial](const Shadow::CommandResult &result) {
         if (serial != m_serial)
             return;
         if (result.exitCode == -1) {
@@ -162,9 +162,9 @@ void PackageDb::refresh(const QStringList &packages)
         finishOne();
     }, 30000);
 
-    Nexus::Command::run(this, QStringLiteral("apt-cache"),
+    Shadow::Command::run(this, QStringLiteral("apt-cache"),
                         QStringList{QStringLiteral("show"), QStringLiteral("--no-all-versions")} + packages,
-                        [this, serial](const Nexus::CommandResult &result) {
+                        [this, serial](const Shadow::CommandResult &result) {
         if (serial != m_serial)
             return;
         if (result.exitCode == -1) {
@@ -237,8 +237,8 @@ void PackageDb::runNextEstimate()
 
     const QStringList arguments = QStringList{QStringLiteral("install"), QStringLiteral("--simulate"),
                                               QStringLiteral("-qq")} + packages;
-    Nexus::Command::run(this, QStringLiteral("apt-get"), arguments,
-                        [this, key, serial](const Nexus::CommandResult &simulation) {
+    Shadow::Command::run(this, QStringLiteral("apt-get"), arguments,
+                        [this, key, serial](const Shadow::CommandResult &simulation) {
         if (serial != m_estimateSerial)
             return;
         SizeEstimate estimate;
@@ -258,8 +258,8 @@ void PackageDb::runNextEstimate()
             finishEstimate(key, estimate);
             return;
         }
-        Nexus::Command::run(this, QStringLiteral("apt-cache"), QStringList{QStringLiteral("show")} + planned,
-                            [this, key, serial, estimate](const Nexus::CommandResult &shown) mutable {
+        Shadow::Command::run(this, QStringLiteral("apt-cache"), QStringList{QStringLiteral("show")} + planned,
+                            [this, key, serial, estimate](const Shadow::CommandResult &shown) mutable {
             if (serial != m_estimateSerial)
                 return;
             if (shown.exitCode < 0) {

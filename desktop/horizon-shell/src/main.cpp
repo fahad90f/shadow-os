@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// horizon-shell — the NEXUS HORIZON desktop shell: wallpaper, panel, dock,
+// horizon-shell — the Shadow Horizon desktop shell: wallpaper, panel, dock,
 // launcher, session menu and authentication dialogs, as layer-shell surfaces
 // on the Wayland compositor.
 #include "applications.h"
@@ -13,7 +13,7 @@
 #include "tasks.h"
 #include "workspaces.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -21,13 +21,13 @@
 
 int main(int argc, char **argv)
 {
-    Nexus::AppInfo info;
-    info.id = QStringLiteral("org.nexus.horizon.shell");
-    info.displayName = QStringLiteral("NEXUS HORIZON");
-    info.iconName = QStringLiteral("nexus-os");
-    info.description = QStringLiteral("The NEXUS HORIZON desktop shell. Started by the session; not meant to be run by hand.");
+    Shadow::AppInfo info;
+    info.id = QStringLiteral("org.shadow.horizon.shell");
+    info.displayName = QStringLiteral("Shadow Horizon");
+    info.iconName = QStringLiteral("shadow-os");
+    info.description = QStringLiteral("The Shadow Horizon desktop shell. Started by the session; not meant to be run by hand.");
 
-    Nexus::App app(argc, argv, info);
+    Shadow::App app(argc, argv, info);
     QGuiApplication::setQuitOnLastWindowClosed(false);
     app.setDumpTopics(QStringList{QStringLiteral("apps"), QStringLiteral("settings"), QStringLiteral("workspaces"),
                                   QStringLiteral("session"), QStringLiteral("shortcuts"), QStringLiteral("modules")}
@@ -126,5 +126,5 @@ int main(int argc, char **argv)
                      "(no login session, or another agent is running)");
     });
 
-    return app.run(QStringLiteral("org.nexus.horizon"), QStringLiteral("Shell"));
+    return app.run(QStringLiteral("org.shadow.horizon"), QStringLiteral("Shell"));
 }

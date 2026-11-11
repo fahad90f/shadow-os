@@ -19,7 +19,7 @@ namespace {
 const QString kLogin1 = QStringLiteral("org.freedesktop.login1");
 const QString kLogin1Path = QStringLiteral("/org/freedesktop/login1");
 const QString kLogin1Manager = QStringLiteral("org.freedesktop.login1.Manager");
-const QString kAutostartFile = QStringLiteral("/run/nexus/autostart");
+const QString kAutostartFile = QStringLiteral("/run/shadow/autostart");
 } // namespace
 
 Session::Session(QObject *parent)
@@ -32,7 +32,7 @@ Session::Session(QObject *parent)
     if (m_fullName.isEmpty())
         m_fullName = m_userName;
     m_hostName = QSysInfo::machineHostName();
-    m_live = QFile::exists(QStringLiteral("/run/nexus/live-session"));
+    m_live = QFile::exists(QStringLiteral("/run/shadow/live-session"));
     queryCapabilities();
 }
 
@@ -71,7 +71,7 @@ QString Session::takeAutostartRequest()
     // Only honour it once per boot; the file lives on tmpfs and is root-owned,
     // so record that it was consumed in the user's runtime directory.
     const QString marker = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation)
-                           + QStringLiteral("/nexus-autostart-done");
+                           + QStringLiteral("/shadow-autostart-done");
     if (QFile::exists(marker))
         return {};
     QFile m(marker);

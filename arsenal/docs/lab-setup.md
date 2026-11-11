@@ -70,7 +70,7 @@ give the guests static addresses; use this for malware analysis.
 Attach **every** lab machine to the `lab` network only. A machine with a second
 interface on the default (NAT) network is a bridge out of the lab.
 
-* **Attacker machine**: a NEXUS OS installation in a VM with the profiles you
+* **Attacker machine**: a Shadow OS installation in a VM with the profiles you
   want. Install the profiles *before* moving its interface to the lab network
   (or keep a second, clean VM for downloads), and do not move it back and forth
   while targets are running.

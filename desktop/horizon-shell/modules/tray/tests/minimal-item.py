@@ -8,14 +8,14 @@
 #
 #   minimal-item.py THEME_DIR SECONDS
 #
-# THEME_DIR must contain nexus-test-one.png and nexus-test-two.png. Prints an
+# THEME_DIR must contain shadow-test-one.png and shadow-test-two.png. Prints an
 # "item ..." line for every call it receives. Needs python3-gi; nested test
 # session only.
 import sys
 
 from gi.repository import Gio, GLib
 
-PATH = "/org/ayatana/NotificationItem/nexus_test"
+PATH = "/org/ayatana/NotificationItem/shadow_test"
 IFACE = "org.kde.StatusNotifierItem"
 XML = """<node><interface name='org.kde.StatusNotifierItem'>
 <property name='Id' type='s' access='read'/>
@@ -32,7 +32,7 @@ XML = """<node><interface name='org.kde.StatusNotifierItem'>
 <signal name='NewIcon'/>
 </interface></node>"""
 
-state = {"icon": "nexus-test-one"}
+state = {"icon": "shadow-test-one"}
 
 
 def out(*words):
@@ -50,7 +50,7 @@ def main():
 
     def get(_bus, _sender, _path, _iface, name):
         values = {
-            "Id": GLib.Variant("s", "nexus-minimal-item"),
+            "Id": GLib.Variant("s", "shadow-minimal-item"),
             "Title": GLib.Variant("s", "Minimal item"),
             "Category": GLib.Variant("s", "ApplicationStatus"),
             "Status": GLib.Variant("s", "Active"),
@@ -71,7 +71,7 @@ def main():
         out("registration failed:", error.message)
 
     def change():
-        state["icon"] = "nexus-test-two"
+        state["icon"] = "shadow-test-two"
         bus.emit_signal(None, PATH, IFACE, "NewIcon", None)
         out("icon changed")
         return False

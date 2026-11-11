@@ -18,11 +18,11 @@
 #include <memory>
 
 // The wizard's connection to the installation engine
-// (system/installer/engine, /usr/sbin/nexus-installer-engine).
+// (system/installer/engine, /usr/sbin/shadow-installer-engine).
 //
 // The engine is a root-only program with three verbs. This class starts it
 // with an argument vector — through pkexec (polkit action
-// org.nexus.installer.run) when the installer runs as an ordinary user —
+// org.shadow.installer.run) when the installer runs as an ordinary user —
 // and turns its output into properties:
 //
 //   probe                       → probe (JSON report of the machine)

@@ -2,7 +2,7 @@
 
 Status indicators in the panel, the quick settings popup, the on-screen
 display for the volume / brightness / media keys, and the calendar popup of
-the NEXUS HORIZON shell. Compiled into `horizon-shell`; removing this
+the Shadow Horizon shell. Compiled into `horizon-shell`; removing this
 directory removes these features and nothing else.
 
 | Part | File | Registered as |
@@ -30,7 +30,7 @@ All asynchronous; nothing blocks the shell's start, nothing is polled.
 
 | Back-end | Source | Writes |
 |---|---|---|
-| `audio` (`statusaudio.*`) | PulseAudio protocol through KF6 PulseAudioQt (pipewire-pulse on NEXUS): default sink and default source. PipeWire's `auto_null` placeholder is not a device; a monitor source is not a microphone. Reconnects when the sound server appears later. | sink/source volume (never above 100 %) and mute |
+| `audio` (`statusaudio.*`) | PulseAudio protocol through KF6 PulseAudioQt (pipewire-pulse on SHADOW): default sink and default source. PipeWire's `auto_null` placeholder is not a device; a monitor source is not a microphone. Reconnects when the sound server appears later. | sink/source volume (never above 100 %) and mute |
 | `network` (`statusnetwork.*`) | NetworkManager, system bus: manager, devices, active connections, access point in use; `org.freedesktop.DBus.Properties` + `PropertiesChanged` | `WirelessEnabled` (polkit decides) |
 | `bluetooth` (`statusbluetooth.*`) | BlueZ through KF6 BluezQt: adapters, connected devices, rfkill block | adapter `Powered`; lifts a soft rfkill block first |
 | `radio` (`statusradio.*`) | `/dev/rfkill` events. Airplane mode = every radio blocked. Available only with at least one radio and write access (logind `uaccess`). | one `RFKILL_OP_CHANGE_ALL` event |
@@ -47,7 +47,7 @@ Disturb without the `notifications` context property, Night Light unless
 KWin reports it, the microphone and brightness sliders, the battery row
 without a battery, the power-profile row without the daemon, the media card
 without a player, the lock button unless `session.canLock`, and the
-Control Center buttons unless `nexus-control-center` is installed. Without
+Control Center buttons unless `shadow-control-center` is installed. Without
 Wi-Fi hardware (or without NetworkManager) the Wi-Fi tile is replaced by a
 read-only "Network" tile that says what is known and why it cannot switch.
 
@@ -59,8 +59,8 @@ read-only "Network" tile that says what is known and why it cannot switch.
 `kwin-wayland` — each optional at run time: without it the corresponding
 part reports "unavailable" and is hidden or explained. Build:
 `libkf6pulseaudioqt-dev`, `libkf6bluezqt-dev`, `libkf6config-dev`.
-`nexus-control-center` is opened for the Wi-Fi, network and Bluetooth pages
-(`nexus-control-center wifi|network|bluetooth`) and by the footer button.
+`shadow-control-center` is opened for the Wi-Fi, network and Bluetooth pages
+(`shadow-control-center wifi|network|bluetooth`) and by the footer button.
 
 ## Tests
 
@@ -81,13 +81,13 @@ part reports "unavailable" and is hidden or explained. Build:
   Python's date arithmetic.
 
 ```
-NEXUS_JOBS=2 scripts/dev.sh build --dir modstatus --only horizon-shell --modules status
+SHADOW_JOBS=2 scripts/dev.sh build --dir modstatus --only horizon-shell --modules status
 tests/desktop/smoke.sh --dir modstatus horizon-shell
 scripts/dev.sh run --dir modstatus horizon-shell --dump status
 scripts/dev.sh exec --dir modstatus -- cmake -S /src/desktop/horizon-shell/modules/status/tests -B /build/modstatus-tests -G Ninja
 scripts/dev.sh exec --dir modstatus -- ninja -C /build/modstatus-tests
-NEXUS_RUN_TIMEOUT=400 scripts/dev.sh nested --dir modstatus --wait 1 -- '. /src/desktop/horizon-shell/modules/status/tests/session-test.sh'
-NEXUS_RUN_TIMEOUT=400 scripts/dev.sh nested --dir modstatus --wait 1 -- '. /src/desktop/horizon-shell/modules/status/tests/session-test-fixture.sh'
+SHADOW_RUN_TIMEOUT=400 scripts/dev.sh nested --dir modstatus --wait 1 -- '. /src/desktop/horizon-shell/modules/status/tests/session-test.sh'
+SHADOW_RUN_TIMEOUT=400 scripts/dev.sh nested --dir modstatus --wait 1 -- '. /src/desktop/horizon-shell/modules/status/tests/session-test-fixture.sh'
 scripts/dev.sh exec --dir modstatus -- bash -c 'LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 TZ=America/New_York QT_QPA_PLATFORM=offscreen horizon-shell --dump status | python3 /src/desktop/horizon-shell/modules/status/tests/check-calendar.py 7'
 ```
 

@@ -3,7 +3,7 @@ import QtQuick
 import QtQuick.Window
 
 // An application / file-type icon resolved through the freedesktop icon theme.
-//   NxAppIcon { name: "org.nexus.files"; size: 48 }
+//   NxAppIcon { name: "org.shadow.files"; size: 48 }
 Image {
     id: root
 

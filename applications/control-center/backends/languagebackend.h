@@ -29,8 +29,8 @@
 //
 // Offered locales: the UTF-8 entries of /usr/share/i18n/SUPPORTED (glibc) plus
 // whatever "locale -a" reports as generated. A locale that is not generated
-// yet is generated first by /usr/libexec/nexus/language-helper, run through
-// pkexec (polkit action org.nexus.controlcenter.language.configure), which
+// yet is generated first by /usr/libexec/shadow/language-helper, run through
+// pkexec (polkit action org.shadow.controlcenter.language.configure), which
 // enables its line in /etc/locale.gen and runs locale-gen.
 //
 // The page works on a selection (language plus the LC_TIME, LC_NUMERIC,

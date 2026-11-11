@@ -14,7 +14,7 @@
 
 #include <functional>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 // What a transaction would do, grouped the way people read it. Built from
 // the packages a *simulated* PackageKit transaction reports.
@@ -216,4 +216,4 @@ Job *repair(QObject *parent);
 Job *repoEnable(const QString &repoId, bool enable, const QString &title, QObject *parent);
 } // namespace Jobs
 
-} // namespace NexusPk
+} // namespace ShadowPk

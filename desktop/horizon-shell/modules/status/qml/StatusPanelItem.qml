@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // The status area of the panel: network, volume and battery at a glance, in
 // one button that opens the quick settings.

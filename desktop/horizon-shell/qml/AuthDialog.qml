@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Authentication prompt of the session's polkit agent. It is shown on the
 // overlay layer with exclusive keyboard focus, so no application window can
@@ -10,7 +10,7 @@ import org.nexus.ui
 OverlaySurface {
     id: root
 
-    scope: "nexus-authentication"
+    scope: "shadow-authentication"
     scrimOpacity: 0.72
     modal: true
     open: polkitAgent.active

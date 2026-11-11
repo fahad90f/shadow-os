@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "updater.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <Daemon>
 #include <pkhistory.h>
@@ -20,12 +20,12 @@
 
 #include <cstdio>
 
-using NexusPk::Service;
+using ShadowPk::Service;
 
 namespace {
 
 // Wait until PackageKit's reachability is known.
-void probeService(Nexus::App &app)
+void probeService(Shadow::App &app)
 {
     Service *service = Service::instance();
     service->probe();
@@ -36,20 +36,20 @@ QJsonObject statusJson()
 {
     return QJsonObject{
         {QStringLiteral("packagekit"), Service::instance()->toJson()},
-        {QStringLiteral("architecture"), NexusPk::systemArchitecture()},
-        {QStringLiteral("foreignArchitectures"), QJsonArray::fromStringList(NexusPk::foreignArchitectures())},
+        {QStringLiteral("architecture"), ShadowPk::systemArchitecture()},
+        {QStringLiteral("foreignArchitectures"), QJsonArray::fromStringList(ShadowPk::foreignArchitectures())},
         {QStringLiteral("settings"), Updater::settingsJson()},
-        {QStringLiteral("restartRequired"), NexusPk::readRebootState().value(QStringLiteral("required"))},
+        {QStringLiteral("restartRequired"), ShadowPk::readRebootState().value(QStringLiteral("required"))},
     };
 }
 
-// `nexus-updater --check`: one headless check for the session (the shell runs
+// `shadow-updater --check`: one headless check for the session (the shell runs
 // it periodically when "automatic checking" is on and turns the result into a
 // notification). Prints one JSON object; the exit code carries the summary:
 //   0  no updates      10  updates available      11  security updates available
 //   1  the check failed (PackageKit unreachable, lists could not be read, or
 //      refreshing failed and no update is known)
-int runCheck(Nexus::App &app)
+int runCheck(Shadow::App &app)
 {
     Service *service = Service::instance();
     // Never pop up an authentication dialog from a background check.
@@ -61,11 +61,11 @@ int runCheck(Nexus::App &app)
         out.insert(QStringLiteral("ok"), false);
         out.insert(QStringLiteral("error"), service->error());
         std::fputs(QJsonDocument(out).toJson(QJsonDocument::Indented).constData(), stdout);
-        std::fprintf(stderr, "nexus-updater: PackageKit service is not reachable: %s\n", qPrintable(service->error()));
+        std::fprintf(stderr, "shadow-updater: PackageKit service is not reachable: %s\n", qPrintable(service->error()));
         return 1;
     }
 
-    NexusPk::UpdateChecker checker;
+    ShadowPk::UpdateChecker checker;
     checker.check(true);
     const bool finished = app.waitFor(&checker, SIGNAL(checked()), 15 * 60 * 1000);
     if (!finished) {
@@ -73,13 +73,13 @@ int runCheck(Nexus::App &app)
         out.insert(QStringLiteral("ok"), false);
         out.insert(QStringLiteral("error"), QStringLiteral("timed out waiting for PackageKit"));
         std::fputs(QJsonDocument(out).toJson(QJsonDocument::Indented).constData(), stdout);
-        std::fprintf(stderr, "nexus-updater: timed out waiting for PackageKit\n");
+        std::fprintf(stderr, "shadow-updater: timed out waiting for PackageKit\n");
         return 1;
     }
     Updater::storeCheckResult(checker);
 
     // So that the caller can also announce a pending restart.
-    out.insert(QStringLiteral("restartRequired"), NexusPk::readRebootState().value(QStringLiteral("required")));
+    out.insert(QStringLiteral("restartRequired"), ShadowPk::readRebootState().value(QStringLiteral("required")));
     const bool listed = checker.state() == QLatin1String("ready");
     const int updates = checker.count();
     const int security = checker.securityCount();
@@ -102,9 +102,9 @@ int runCheck(Nexus::App &app)
     std::fflush(stdout);
 
     if (!checker.refreshError().isEmpty())
-        std::fprintf(stderr, "nexus-updater: refreshing the software lists failed: %s\n", qPrintable(checker.refreshError()));
+        std::fprintf(stderr, "shadow-updater: refreshing the software lists failed: %s\n", qPrintable(checker.refreshError()));
     if (!listed)
-        std::fprintf(stderr, "nexus-updater: the update list could not be read: %s\n", qPrintable(checker.error()));
+        std::fprintf(stderr, "shadow-updater: the update list could not be read: %s\n", qPrintable(checker.error()));
     if (!ok)
         return 1;
     return security > 0 ? 11 : updates > 0 ? 10 : 0;
@@ -123,14 +123,14 @@ int main(int argc, char **argv)
         }
     }
 
-    Nexus::AppInfo info;
-    info.id = QStringLiteral("org.nexus.updater");
-    info.displayName = QStringLiteral("NEXUS Updater");
-    info.iconName = QStringLiteral("org.nexus.updater");
+    Shadow::AppInfo info;
+    info.id = QStringLiteral("org.shadow.updater");
+    info.displayName = QStringLiteral("SHADOW Updater");
+    info.iconName = QStringLiteral("org.shadow.updater");
     info.description = QStringLiteral("Install system updates, review update history and repair the package system.");
     info.singleInstance = true;
 
-    Nexus::App app(argc, argv, info);
+    Shadow::App app(argc, argv, info);
     const QCommandLineOption checkOption(
         QStringLiteral("check"),
         QStringLiteral("Check for updates without opening a window and print the result as JSON. "
@@ -151,11 +151,11 @@ int main(int argc, char **argv)
     if (!app.dumpTopic().isEmpty()) {
         const QString topic = app.dumpTopic();
         if (topic == QLatin1String("reboot"))
-            return app.finishDump(NexusPk::readRebootState());
+            return app.finishDump(ShadowPk::readRebootState());
         if (topic == QLatin1String("health"))
-            return app.finishDump(NexusPk::checkDpkgHealth());
+            return app.finishDump(ShadowPk::checkDpkgHealth());
         if (topic == QLatin1String("sources"))
-            return app.finishDump(NexusPk::readAptSources());
+            return app.finishDump(ShadowPk::readAptSources());
         if (topic == QLatin1String("settings"))
             return app.finishDump(Updater::settingsJson());
 
@@ -166,7 +166,7 @@ int main(int argc, char **argv)
         if (topic == QLatin1String("updates")) {
             // Reads the lists on disk; it does not refresh them (no network, no polkit).
             probeService(app);
-            NexusPk::UpdateChecker checker;
+            ShadowPk::UpdateChecker checker;
             checker.check(false);
             app.waitFor(&checker, SIGNAL(checked()), 5 * 60 * 1000);
             QJsonObject out = checker.toJson();
@@ -178,7 +178,7 @@ int main(int argc, char **argv)
             // GetUpdateDetail (changelog, CVE and bug references, restart need)
             // for each available update. Read-only; the lists are not refreshed.
             probeService(app);
-            NexusPk::UpdateChecker checker;
+            ShadowPk::UpdateChecker checker;
             checker.check(false);
             app.waitFor(&checker, SIGNAL(checked()), 5 * 60 * 1000);
             QJsonObject out{{QStringLiteral("packagekitReachable"), Service::instance()->available()},
@@ -187,7 +187,7 @@ int main(int argc, char **argv)
                 out.insert(QStringLiteral("error"), checker.error());
             const int limit = 60;
             QStringList ids;
-            for (const NexusPk::PackageEntry &e : checker.model()->entries()) {
+            for (const ShadowPk::PackageEntry &e : checker.model()->entries()) {
                 if (ids.size() < limit)
                     ids << e.id;
             }
@@ -228,10 +228,10 @@ int main(int argc, char **argv)
                 timeout.setSingleShot(true);
                 QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
                 bool done = false;
-                NexusPk::Query::run(&loop, PackageKit::Daemon::getRepoList(PackageKit::Transaction::FilterNone),
-                                    [&](const NexusPk::QueryResult &result) {
+                ShadowPk::Query::run(&loop, PackageKit::Daemon::getRepoList(PackageKit::Transaction::FilterNone),
+                                    [&](const ShadowPk::QueryResult &result) {
                     QJsonArray repos;
-                    for (const NexusPk::RepoEntry &r : result.repos) {
+                    for (const ShadowPk::RepoEntry &r : result.repos) {
                         repos.append(QJsonObject{{QStringLiteral("repoId"), r.id},
                                                  {QStringLiteral("description"), r.description},
                                                  {QStringLiteral("enabled"), r.enabled}});
@@ -250,19 +250,19 @@ int main(int argc, char **argv)
             }
             return app.finishDump(QJsonObject{
                 {QStringLiteral("packagekit"), pk},
-                {QStringLiteral("aptSources"), NexusPk::readAptSources().value(QStringLiteral("sources"))},
+                {QStringLiteral("aptSources"), ShadowPk::readAptSources().value(QStringLiteral("sources"))},
             });
         }
         if (topic == QLatin1String("history")) {
             probeService(app);
-            QJsonObject out{{QStringLiteral("apt"), NexusPk::readAptHistory(0)}};
+            QJsonObject out{{QStringLiteral("apt"), ShadowPk::readAptHistory(0)}};
             QJsonObject pk{{QStringLiteral("reachable"), Service::instance()->available()}};
             QEventLoop loop;
             QTimer timeout;
             timeout.setSingleShot(true);
             QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
             bool done = false;
-            NexusPk::fetchOldTransactions(&loop, 200, [&](const QVariantList &transactions, const QString &error) {
+            ShadowPk::fetchOldTransactions(&loop, 200, [&](const QVariantList &transactions, const QString &error) {
                 pk.insert(QStringLiteral("transactions"), QJsonArray::fromVariantList(transactions));
                 if (!error.isEmpty())
                     pk.insert(QStringLiteral("error"), error);
@@ -276,7 +276,7 @@ int main(int argc, char **argv)
                 pk.insert(QStringLiteral("error"), QStringLiteral("timed out waiting for PackageKit"));
             out.insert(QStringLiteral("packagekit"), pk);
             // The list as the History page shows it.
-            out.insert(QStringLiteral("entries"), QJsonArray::fromVariantList(NexusPk::mergeHistory(
+            out.insert(QStringLiteral("entries"), QJsonArray::fromVariantList(ShadowPk::mergeHistory(
                 out.value(QStringLiteral("apt")).toObject().value(QStringLiteral("entries")).toArray().toVariantList(),
                 pk.value(QStringLiteral("transactions")).toArray().toVariantList())));
             return app.finishDump(out);
@@ -284,5 +284,5 @@ int main(int argc, char **argv)
         return app.dumpError(QStringLiteral("unknown dump topic '%1'").arg(topic));
     }
 
-    return app.run(QStringLiteral("org.nexus.updater"));
+    return app.run(QStringLiteral("org.shadow.updater"));
 }

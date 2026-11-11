@@ -13,7 +13,7 @@
 
 using namespace NetHw;
 
-NEXUS_CC_DUMP("mouse", [] {
+SHADOW_CC_DUMP("mouse", [] {
     MouseBackend backend;
     waitUntilReady(&backend);
     return QJsonValue(backend.toJson());

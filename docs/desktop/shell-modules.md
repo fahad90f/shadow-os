@@ -1,4 +1,4 @@
-# NEXUS HORIZON shell modules
+# Shadow Horizon shell modules
 
 `horizon-shell` is one process. Its core (wallpaper, panel, dock, launcher,
 session menu, polkit agent) lives in `desktop/horizon-shell/src` and `qml`.
@@ -11,7 +11,7 @@ feature and nothing else.
 ```
 modules/<name>/
     *.cpp, *.h          C++ back-end (compiled into horizon-shell, AUTOMOC)
-    qml/*.qml           QML; becomes part of the org.nexus.horizon QML module
+    qml/*.qml           QML; becomes part of the org.shadow.horizon QML module
     module.cmake        optional: find_package(), target_link_libraries(horizon-shell PRIVATE ...)
     smoke-tests.list    optional, see tests/desktop/smoke.sh
     README.md           what it does, D-Bus names it owns, what was tested

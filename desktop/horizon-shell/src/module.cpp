@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "module.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QHash>
 #include <QUrl>
@@ -29,7 +29,7 @@ QHash<QString, ModuleDump> &dumpTable()
 
 QString moduleUrl(const QString &qmlFile)
 {
-    return QStringLiteral("qrc:/qt/qml/org/nexus/horizon/") + qmlFile;
+    return QStringLiteral("qrc:/qt/qml/org/shadow/horizon/") + qmlFile;
 }
 
 } // namespace

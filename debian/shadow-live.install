@@ -1,0 +1,2 @@
+system/live/shadow.conf etc/live/config.conf.d
+system/live/2000-shadow-session usr/lib/live/config

@@ -6,11 +6,11 @@ import QtQuick.Dialogs
 import QtQuick.Dialogs.quickimpl
 import QtQuick.Layouts
 import QtQuick.Templates as T
-import org.nexus.ui
+import org.shadow.ui
 
 import "." as Parts
 
-// NEXUS look of Qt Quick Dialogs' FolderDialog — see FileDialog.qml.
+// SHADOW look of Qt Quick Dialogs' FolderDialog — see FileDialog.qml.
 FolderDialogImpl {
     id: control
 

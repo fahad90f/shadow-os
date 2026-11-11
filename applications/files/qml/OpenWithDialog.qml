@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
 // "Open with…": applications registered for the file's type first, every
 // other installed application below, with a filter.

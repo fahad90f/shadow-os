@@ -79,7 +79,7 @@ CpuInfo CpuInfo::read()
 
     if (info.model.isEmpty()) {
         // AArch64 has no "model name"; lscpu resolves implementer/part to a name.
-        const Nexus::CommandResult r = Nexus::Command::runSync(u"lscpu"_s, {}, 3000);
+        const Shadow::CommandResult r = Shadow::Command::runSync(u"lscpu"_s, {}, 3000);
         if (r.ok()) {
             const QStringList out = r.outText().split(u'\n');
             for (const QString &line : out) {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Templates as T
-import org.nexus.ui
+import org.shadow.ui
 
 T.TabBar {
     id: control

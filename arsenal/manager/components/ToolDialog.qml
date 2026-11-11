@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Details of one tool: what it is, its state in the package database, how to
 // start it, and install / remove.
@@ -229,7 +229,7 @@ Dialog {
                         Text {
                             Layout.fillWidth: true
                             visible: !arsenal.terminalAvailable
-                            text: qsTr("NEXUS Terminal (package nexus-terminal) is not installed, so the usage cannot be opened from here.")
+                            text: qsTr("SHADOW Terminal (package shadow-terminal) is not installed, so the usage cannot be opened from here.")
                             color: Theme.textMuted
                             font.family: Theme.fontUi
                             font.pixelSize: Theme.fontSizeSmall

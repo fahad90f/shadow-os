@@ -1,4 +1,4 @@
-# Build dependencies installed into the NEXUS build chroot.
+# Build dependencies installed into the SHADOW build chroot.
 # Keep in sync with Build-Depends in debian/control (tests/packages checks this).
 
 # toolchain / packaging

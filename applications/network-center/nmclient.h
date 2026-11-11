@@ -177,7 +177,7 @@ private Q_SLOTS:
     void onDeviceStateChanged(uint newState, uint oldState, uint reason, const QDBusMessage &message);
 
 private:
-    using Done = std::function<void(const Nexus::CommandResult &)>;
+    using Done = std::function<void(const Shadow::CommandResult &)>;
     using Reply = std::function<void(const QDBusMessage &)>;
 
     // An activation in progress, by the path of its active-connection object.
@@ -220,7 +220,7 @@ private:
     void finishRefresh();
     void loadVpnPlugins();
     void clearData();
-    static QString errorText(const Nexus::CommandResult &r);
+    static QString errorText(const Shadow::CommandResult &r);
 
     bool m_active = false;
     bool m_refreshing = false;

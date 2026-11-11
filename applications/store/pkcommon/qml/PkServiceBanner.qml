@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Shown wherever a view needs PackageKit and the daemon cannot be reached.
 // It states exactly that, with the D-Bus error, and offers to ask again.
 NxBanner {
     id: root
 
-    // NexusPk::Service
+    // ShadowPk::Service
     required property QtObject service
     // What the user cannot do right now, e.g. "Software cannot be installed, removed or updated."
     property string consequence: qsTr("Software cannot be installed, removed or updated until it is available.")

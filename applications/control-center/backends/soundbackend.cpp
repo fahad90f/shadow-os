@@ -16,7 +16,7 @@
 
 #include <cmath>
 
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
 // <PulseAudioQt/Card> is deliberately not used: it pulls in libpulse's own
 // headers (pulse/introspect.h), which a PulseAudioQt build environment need
 // not have. Cards are reached through CardModel and their Qt properties.
@@ -33,7 +33,7 @@
 
 using namespace NetHw;
 
-NEXUS_CC_DUMP("sound", [] {
+SHADOW_CC_DUMP("sound", [] {
     SoundBackend backend;
     waitUntilReady(&backend);
     return QJsonValue(backend.toJson());
@@ -57,10 +57,10 @@ const QStringList kCardRoles = {
 
 QSettings pageSettings()
 {
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("controlcenter"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("controlcenter"));
 }
 
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
 using PulseAudioQt::Context;
 
 int toPercent(qint64 volume)
@@ -150,7 +150,7 @@ SoundBackend::SoundBackend(QObject *parent)
         m_meterGotData = false;
     });
 
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     Context *context = Context::instance();
     connect(context, &Context::stateChanged, this, &SoundBackend::updateState);
     connect(context, &Context::autoConnectingChanged, this, &SoundBackend::updateState);
@@ -249,7 +249,7 @@ void SoundBackend::scheduleRebuild()
 
 void SoundBackend::updateState()
 {
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     Context *context = Context::instance();
     const Context::State contextState = context->state();
     if (contextState == Context::State::Ready && m_serverSynced) {
@@ -272,7 +272,7 @@ void SoundBackend::updateState()
             setState(QStringLiteral("connecting"), tr("Connecting to the sound server…"), QString());
         } else {
             setState(QStringLiteral("no-server"),
-                     tr("No sound server is reachable. NEXUS uses PipeWire with its PulseAudio service: check that "
+                     tr("No sound server is reachable. SHADOW uses PipeWire with its PulseAudio service: check that "
                         "pipewire, wireplumber and pipewire-pulse are running in this session."), QString());
         }
     }
@@ -294,7 +294,7 @@ void SoundBackend::updateState()
 
 void SoundBackend::reconnect()
 {
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     m_connectTimedOut = false;
     m_connectTimer.start();
     Context::instance()->reconnectDaemon();
@@ -307,7 +307,7 @@ void SoundBackend::rebuild()
     QVariantList sinks, sources, streams, cards;
     QString defaultSink, defaultSource, defaultSourceDescription;
 
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     Context *context = Context::instance();
     if (context->state() == Context::State::Ready && m_serverSynced) {
         const auto sinkObjects = context->sinks();
@@ -411,15 +411,15 @@ void SoundBackend::setAllowOveramplification(bool allow)
     Q_EMIT overamplificationChanged();
 }
 
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
-#define NEXUS_SOUND_OBJECT(type, list, index) \
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
+#define SHADOW_SOUND_OBJECT(type, list, index) \
     PulseAudioQt::type *object = available() ? byIndex(Context::instance()->list(), index) : nullptr; \
     if (!object) { \
         Q_EMIT failed(tr("The device or stream is no longer there.")); \
         return; \
     }
 #else
-#define NEXUS_SOUND_OBJECT(type, list, index) \
+#define SHADOW_SOUND_OBJECT(type, list, index) \
     Q_UNUSED(index) \
     Q_EMIT failed(m_statusMessage); \
     return;
@@ -427,8 +427,8 @@ void SoundBackend::setAllowOveramplification(bool allow)
 
 void SoundBackend::setSinkVolume(int index, int percent)
 {
-    NEXUS_SOUND_OBJECT(Sink, sinks, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(Sink, sinks, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     object->setVolume(fromPercent(qBound(0, percent, maxVolume())));
 #else
     Q_UNUSED(percent)
@@ -437,8 +437,8 @@ void SoundBackend::setSinkVolume(int index, int percent)
 
 void SoundBackend::setSinkMuted(int index, bool muted)
 {
-    NEXUS_SOUND_OBJECT(Sink, sinks, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(Sink, sinks, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     object->setMuted(muted);
 #else
     Q_UNUSED(muted)
@@ -447,8 +447,8 @@ void SoundBackend::setSinkMuted(int index, bool muted)
 
 void SoundBackend::setDefaultSink(int index)
 {
-    NEXUS_SOUND_OBJECT(Sink, sinks, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(Sink, sinks, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     // By name through the context: Sink::setDefault() does nothing when
     // PulseAudioQt (sometimes wrongly, while lists are loading) thinks the
     // device already is the default.
@@ -458,8 +458,8 @@ void SoundBackend::setDefaultSink(int index)
 
 void SoundBackend::setSinkPort(int index, int portIndex)
 {
-    NEXUS_SOUND_OBJECT(Sink, sinks, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(Sink, sinks, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     if (portIndex >= 0 && portIndex < object->ports().size())
         object->setActivePortIndex(quint32(portIndex));
 #else
@@ -469,8 +469,8 @@ void SoundBackend::setSinkPort(int index, int portIndex)
 
 void SoundBackend::setSourceVolume(int index, int percent)
 {
-    NEXUS_SOUND_OBJECT(Source, sources, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(Source, sources, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     object->setVolume(fromPercent(qBound(0, percent, maxVolume())));
 #else
     Q_UNUSED(percent)
@@ -479,8 +479,8 @@ void SoundBackend::setSourceVolume(int index, int percent)
 
 void SoundBackend::setSourceMuted(int index, bool muted)
 {
-    NEXUS_SOUND_OBJECT(Source, sources, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(Source, sources, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     object->setMuted(muted);
 #else
     Q_UNUSED(muted)
@@ -489,16 +489,16 @@ void SoundBackend::setSourceMuted(int index, bool muted)
 
 void SoundBackend::setDefaultSource(int index)
 {
-    NEXUS_SOUND_OBJECT(Source, sources, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(Source, sources, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     Context::instance()->setDefaultSource(object->name());
 #endif
 }
 
 void SoundBackend::setSourcePort(int index, int portIndex)
 {
-    NEXUS_SOUND_OBJECT(Source, sources, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(Source, sources, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     if (portIndex >= 0 && portIndex < object->ports().size())
         object->setActivePortIndex(quint32(portIndex));
 #else
@@ -508,8 +508,8 @@ void SoundBackend::setSourcePort(int index, int portIndex)
 
 void SoundBackend::setStreamVolume(int index, int percent)
 {
-    NEXUS_SOUND_OBJECT(SinkInput, sinkInputs, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(SinkInput, sinkInputs, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     object->setVolume(fromPercent(qBound(0, percent, maxVolume())));
 #else
     Q_UNUSED(percent)
@@ -518,8 +518,8 @@ void SoundBackend::setStreamVolume(int index, int percent)
 
 void SoundBackend::setStreamMuted(int index, bool muted)
 {
-    NEXUS_SOUND_OBJECT(SinkInput, sinkInputs, index)
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+    SHADOW_SOUND_OBJECT(SinkInput, sinkInputs, index)
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     object->setMuted(muted);
 #else
     Q_UNUSED(muted)
@@ -528,7 +528,7 @@ void SoundBackend::setStreamMuted(int index, bool muted)
 
 void SoundBackend::setCardProfile(int index, int profileIndex)
 {
-#ifdef NEXUS_HAVE_PULSEAUDIOQT
+#ifdef SHADOW_HAVE_PULSEAUDIOQT
     for (const QVariant &row : std::as_const(m_allCards)) {
         const QVariantMap card = row.toMap();
         if (card.value(QStringLiteral("cardIndex")).toInt() != index)
@@ -547,7 +547,7 @@ void SoundBackend::setCardProfile(int index, int profileIndex)
 #endif
 }
 
-#undef NEXUS_SOUND_OBJECT
+#undef SHADOW_SOUND_OBJECT
 
 // ---- test tone ------------------------------------------------------------------
 
@@ -636,7 +636,7 @@ void SoundBackend::playTestTone(int sinkIndex)
         return;
     }
 
-    auto *file = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/nexus-test-tone-XXXXXX.wav"), this);
+    auto *file = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/shadow-test-tone-XXXXXX.wav"), this);
     const QByteArray wav = testToneWav();
     if (!file->open() || file->write(wav) != wav.size() || !file->flush()) {
         delete file;
@@ -646,11 +646,11 @@ void SoundBackend::playTestTone(int sinkIndex)
 
     QString program;
     QStringList arguments;
-    if (Nexus::Command::available(QStringLiteral("paplay"))) {
+    if (Shadow::Command::available(QStringLiteral("paplay"))) {
         program = QStringLiteral("paplay");
-        arguments = {QStringLiteral("--device=") + sinkName, QStringLiteral("--client-name=NEXUS Control Center"),
+        arguments = {QStringLiteral("--device=") + sinkName, QStringLiteral("--client-name=SHADOW Control Center"),
                      QStringLiteral("--stream-name=Test tone"), file->fileName()};
-    } else if (Nexus::Command::available(QStringLiteral("pw-play"))) {
+    } else if (Shadow::Command::available(QStringLiteral("pw-play"))) {
         program = QStringLiteral("pw-play");
         arguments = {QStringLiteral("--target"), sinkName, file->fileName()};
     } else {
@@ -663,7 +663,7 @@ void SoundBackend::playTestTone(int sinkIndex)
     m_toneFile = file;
     m_testing = true;
     Q_EMIT testingChanged();
-    Nexus::Command::run(this, program, arguments, [this](const Nexus::CommandResult &result) {
+    Shadow::Command::run(this, program, arguments, [this](const Shadow::CommandResult &result) {
         delete m_toneFile;
         m_toneFile = nullptr;
         m_testing = false;
@@ -717,7 +717,7 @@ void SoundBackend::restartMeter()
         Q_EMIT meterChanged();
         return;
     }
-    if (!Nexus::Command::available(QStringLiteral("parec"))) {
+    if (!Shadow::Command::available(QStringLiteral("parec"))) {
         m_meterStatus = tr("The level meter needs parec from the pulseaudio-utils package.");
         Q_EMIT meterChanged();
         return;
@@ -727,8 +727,8 @@ void SoundBackend::restartMeter()
     m_meter->setProgram(QStringLiteral("parec"));
     m_meter->setArguments({QStringLiteral("--device=") + wanted, QStringLiteral("--raw"), QStringLiteral("--format=s16le"),
                            QStringLiteral("--rate=8000"), QStringLiteral("--channels=1"), QStringLiteral("--latency-msec=40"),
-                           QStringLiteral("--client-name=NEXUS Control Center"), QStringLiteral("--stream-name=Input level meter")});
-    m_meter->setProcessEnvironment(Nexus::Command::parseEnvironment());
+                           QStringLiteral("--client-name=SHADOW Control Center"), QStringLiteral("--stream-name=Input level meter")});
+    m_meter->setProcessEnvironment(Shadow::Command::parseEnvironment());
     m_meter->setStandardErrorFile(QProcess::nullDevice());
     connect(m_meter, &QProcess::readyReadStandardOutput, this, &SoundBackend::readMeter);
     const auto stopped = [this] {

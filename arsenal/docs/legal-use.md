@@ -1,7 +1,7 @@
 # Legal and responsible use
 
-NEXUS OS is made for security professionals, students and developers who do
-**authorised** testing, research, defence and forensics. The tools NEXUS
+Shadow OS is made for security professionals, students and developers who do
+**authorised** testing, research, defence and forensics. The tools SHADOW
 Arsenal installs are ordinary free software from the Debian archive. Many of
 them are dual-use: the scanner that shows an administrator what is exposed
 shows the same thing to anyone else. What makes their use legitimate is
@@ -84,25 +84,25 @@ publishes, and only as long as you follow its rules.
 Practise on an environment you built for the purpose: virtual machines on an
 isolated network, with targets that are meant to be attacked. See
 [lab-setup.md](lab-setup.md). Malware samples and other hazardous material are
-not part of NEXUS OS and should only ever be handled in such an environment.
+not part of Shadow OS and should only ever be handled in such an environment.
 
-## What NEXUS OS does and does not do
+## What Shadow OS does and does not do
 
 * No tool is installed unless you ask for a profile or a tool.
 * Every package comes from Debian `main` and is installed by the package
-  manager, with signature verification. NEXUS Arsenal contains no exploit code,
+  manager, with signature verification. SHADOW Arsenal contains no exploit code,
   payloads, malware samples, credentials or word lists.
 * Tools that are not in Debian `main` are only *listed*, with a link to their
-  vendor; NEXUS Arsenal never downloads or repackages them.
-* NEXUS Arsenal asks every user once to acknowledge these conditions. The
-  acknowledgement is stored in `~/.config/nexus/arsenal.conf`. It records that
+  vendor; SHADOW Arsenal never downloads or repackages them.
+* SHADOW Arsenal asks every user once to acknowledge these conditions. The
+  acknowledgement is stored in `~/.config/shadow/arsenal.conf`. It records that
   you were told; it does not authorise anything.
 
 ## No warranty
 
-The tools and NEXUS OS are distributed in the hope that they are useful, but
+The tools and Shadow OS are distributed in the hope that they are useful, but
 **without any warranty**, to the extent permitted by law — see the licence of
 each package under `/usr/share/doc/<package>/copyright`. Several tools can
-interrupt services or destroy data when used carelessly. The NEXUS OS
+interrupt services or destroy data when used carelessly. The Shadow OS
 developers and the authors of the tools are not liable for what you do with
 them.

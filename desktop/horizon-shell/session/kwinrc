@@ -1,4 +1,4 @@
-# System defaults of the compositor (KWin) for NEXUS HORIZON.
+# System defaults of the compositor (KWin) for Shadow Horizon.
 # Installed as /etc/xdg/kwinrc; a user's ~/.config/kwinrc overrides it.
 
 [Desktops]

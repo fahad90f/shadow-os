@@ -16,7 +16,7 @@ class Launcher : public QObject
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    // nexus-terminal or x-terminal-emulator is installed
+    // shadow-terminal or x-terminal-emulator is installed
     Q_PROPERTY(bool terminalAvailable READ terminalAvailable CONSTANT)
     // [{scheme, label, available, defaultPort, package}] for "Connect to server"
     Q_PROPERTY(QVariantList protocols READ protocols CONSTANT)

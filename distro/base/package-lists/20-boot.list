@@ -1,7 +1,7 @@
 # Boot chain. The *-bin and *-signed packages only ship files under /usr/lib;
 # nothing here writes to a disk at package-install time. Installing GRUB to a
-# disk and keeping it current afterwards is the job of the nexus-boot package
-# (system/boot/nexus-boot), which replaces Debian's grub-pc/grub-efi-* front-ends.
+# disk and keeping it current afterwards is the job of the shadow-boot package
+# (system/boot/shadow-boot), which replaces Debian's grub-pc/grub-efi-* front-ends.
 
 grub-common
 grub2-common

@@ -9,7 +9,7 @@
 
 #include <sys/utsname.h>
 
-NEXUS_CC_DUMP("about", [] { return QJsonValue(AboutBackend().toJson()); })
+SHADOW_CC_DUMP("about", [] { return QJsonValue(AboutBackend().toJson()); })
 
 AboutBackend::AboutBackend(QObject *parent)
     : QObject(parent)
@@ -43,12 +43,12 @@ AboutBackend::AboutBackend(QObject *parent)
 
 bool AboutBackend::systemInformationAvailable() const
 {
-    return !QStandardPaths::findExecutable(QStringLiteral("nexus-sysinfo")).isEmpty();
+    return !QStandardPaths::findExecutable(QStringLiteral("shadow-sysinfo")).isEmpty();
 }
 
 bool AboutBackend::openSystemInformation() const
 {
-    return QProcess::startDetached(QStringLiteral("nexus-sysinfo"), {});
+    return QProcess::startDetached(QStringLiteral("shadow-sysinfo"), {});
 }
 
 QJsonObject AboutBackend::toJson() const

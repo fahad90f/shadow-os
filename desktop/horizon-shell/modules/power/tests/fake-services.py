@@ -210,7 +210,7 @@ class Fakes:
         elif method == "GetCapabilities":
             invocation.return_value(GLib.Variant("(as)", (["actions", "body"],)))
         else:
-            invocation.return_value(GLib.Variant("(ssss)", ("fake-services", "NEXUS tests", "1", "1.2")))
+            invocation.return_value(GLib.Variant("(ssss)", ("fake-services", "SHADOW tests", "1", "1.2")))
 
     # ---- control -----------------------------------------------------------
     def command(self, line):

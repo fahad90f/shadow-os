@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // One level of the quick settings: a caption (what is being set), an icon
 // (a mute button where muting exists), the slider and the value in percent.

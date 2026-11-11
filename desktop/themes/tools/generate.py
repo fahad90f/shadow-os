@@ -8,7 +8,7 @@
     desktop/themes/tools/generate.py --list       print every output and the template it comes from
 
 Colours, fonts, radii and durations are never typed into a theme file: they
-come from desktop/themes/tokens/nexus-tokens.json through
+come from desktop/themes/tokens/shadow-tokens.json through
 "scripts/gen-tokens.py render". This script only decides which template is
 rendered into which file, in which mode (dark/light) and with which accent,
 and adds what a plain render cannot express:
@@ -18,11 +18,11 @@ and adds what a plain render cannot express:
     @{light:EXPR}     the same for light mode
     kde-rgb filter    "Key=#RRGGBB" → "Key=r,g,b", the notation of KDE colour files
     merge-groups      INI groups that occur twice are merged (kdeglobals)
-    tinted icons      a NEXUS symbolic icon (desktop/ui/icons) with currentColor
+    tinted icons      a SHADOW symbolic icon (desktop/ui/icons) with currentColor
                       replaced by a token colour, for QML that cannot tint
 
 Generated files are committed so the themes can be used straight from the
-source tree (sddm-greeter --theme desktop/themes/sddm/nexus); the CMake build
+source tree (sddm-greeter --theme desktop/themes/sddm/shadow); the CMake build
 regenerates them into the build directory and installs those, so an installed
 system always matches the tokens.
 
@@ -42,7 +42,7 @@ from pathlib import Path
 THEMES = Path(__file__).resolve().parents[1]
 ROOT = THEMES.parents[1]
 GEN_TOKENS = ROOT / "scripts/gen-tokens.py"
-TOKENS = THEMES / "tokens/nexus-tokens.json"
+TOKENS = THEMES / "tokens/shadow-tokens.json"
 SYMBOLIC_ICONS = ROOT / "desktop/ui/icons"
 LOGOS = ROOT / "assets/logos"
 
@@ -56,7 +56,7 @@ def tokens() -> dict:
 
 def render(text: str, mode: str, accent: str) -> str:
     """Resolve the @{...} placeholders of 'text' with scripts/gen-tokens.py."""
-    with tempfile.TemporaryDirectory(prefix="nexus-themes-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="shadow-themes-") as tmp:
         src, dst = Path(tmp) / "in", Path(tmp) / "out"
         src.write_text(text, encoding="utf-8")
         proc = subprocess.run([sys.executable, str(GEN_TOKENS), "render", str(src), str(dst),
@@ -154,7 +154,7 @@ class Job:
         return f"desktop/themes/{self.template}"
 
 
-# Places icons of the NEXUS icon theme: icon name → glyph of the NEXUS symbolic
+# Places icons of the SHADOW icon theme: icon name → glyph of the SHADOW symbolic
 # set drawn on the folder ("" = plain folder). Several names per folder are
 # the spellings different desktops and toolkits ask for.
 PLACES = {
@@ -196,7 +196,7 @@ def cap(s: str) -> str:
 
 
 def scheme_id(mode: str, accent: str, default_accent: str) -> str:
-    return f"Nexus{cap(mode)}" + ("" if accent == default_accent else cap(accent))
+    return f"Shadow{cap(mode)}" + ("" if accent == default_accent else cap(accent))
 
 
 def jobs() -> list[Job]:
@@ -208,24 +208,24 @@ def jobs() -> list[Job]:
     for mode in ("dark", "light"):
         for accent, spec in tok["accent"].items():
             sid = scheme_id(mode, accent, default)
-            name = f"NEXUS {cap(mode)}" + ("" if accent == default else f" ({spec['label']})")
-            out.append(Job(f"colorschemes/{sid}.colors", "colorschemes/Nexus.colors.in", mode, accent,
+            name = f"SHADOW {cap(mode)}" + ("" if accent == default else f" ({spec['label']})")
+            out.append(Job(f"colorschemes/{sid}.colors", "colorschemes/Shadow.colors.in", mode, accent,
                            {"SCHEME_ID": sid, "SCHEME_NAME": name}, ("kde-rgb",)))
 
     # ---- system defaults ---------------------------------------------------------
     out.append(Job("defaults/kdeglobals", "defaults/kdeglobals.in", "dark", default,
                    {"SCHEME_ID": scheme_id("dark", default, default), "COLOR_GROUPS": "<colour groups>"},
                    ("kde-rgb", "merge-groups")))
-    for name in ("gtk-3.0/settings.ini", "gtk-4.0/settings.ini", "90_nexus-desktop.gschema.override",
-                 "nexus-appearance.conf"):
+    for name in ("gtk-3.0/settings.ini", "gtk-4.0/settings.ini", "90_shadow-desktop.gschema.override",
+                 "shadow-appearance.conf"):
         if (THEMES / f"defaults/{name}.in").exists():
             out.append(Job(f"defaults/{name}", f"defaults/{name}.in", "dark", default))
 
     # ---- login and lock screen: shared token file and tinted icons -------------------
     screens = {
-        "sddm/nexus": ("power", "refresh", "moon", "eye", "eye-off", "chevron-up", "keyboard", "users", "monitor",
+        "sddm/shadow": ("power", "refresh", "moon", "eye", "eye-off", "chevron-up", "keyboard", "users", "monitor",
                        "check"),
-        "lockscreen/org.nexus.horizon/contents/lockscreen": ("eye", "eye-off", "lock"),
+        "lockscreen/org.shadow.horizon/contents/lockscreen": ("eye", "eye-off", "lock"),
     }
     for base, icons in screens.items():
         if not (THEMES / base).is_dir():
@@ -240,7 +240,7 @@ def jobs() -> list[Job]:
         out.append(Job(f"{base}/icons/alert-triangle-danger.svg", icon="alert-triangle", tint="danger"))
 
     # ---- icon theme: places icons from the original folder templates ---------------------
-    for theme, mode in (("nexus", "dark"), ("nexus-light", "light")):
+    for theme, mode in (("shadow", "dark"), ("shadow-light", "light")):
         for name, glyph in PLACES.items():
             out.append(Job(f"icons/{theme}/64/places/{name}.svg", "icons/src/folder.svg.in", mode, default,
                            {"GLYPH": glyph_markup(glyph), "ICON_NAME": name}))

@@ -227,8 +227,8 @@ void Capture::refreshCapability()
 
     // The decisive test: can dumpcap open a device? Listing the link-layer
     // types of the loopback interface requires exactly that and captures nothing.
-    Nexus::Command::run(this, path, {QStringLiteral("-L"), QStringLiteral("-i"), QStringLiteral("lo")},
-                        [this, serial, dumpcap, capabilities, root](const Nexus::CommandResult &r) mutable {
+    Shadow::Command::run(this, path, {QStringLiteral("-L"), QStringLiteral("-i"), QStringLiteral("lo")},
+                        [this, serial, dumpcap, capabilities, root](const Shadow::CommandResult &r) mutable {
         if (serial != m_capabilitySerial)
             return;
         dumpcap.insert(QStringLiteral("probeExitCode"), r.exitCode);
@@ -262,7 +262,7 @@ void Capture::finishCapability(QVariantMap dumpcap, bool dumpcapUsable)
     if (tcpdump.isEmpty())
         helperProblems << tr("tcpdump is not installed (package tcpdump).");
     if (helper.isEmpty())
-        helperProblems << tr("The Network Center helper (%1) is not installed.").arg(QStringLiteral(NEXUS_NETWORK_HELPER));
+        helperProblems << tr("The Network Center helper (%1) is not installed.").arg(QStringLiteral(SHADOW_NETWORK_HELPER));
     if (!root && pkexec.isEmpty())
         helperProblems << tr("pkexec is not installed (package pkexec), so the helper cannot be started with administrator rights.");
     const bool helperUsable = helperProblems.isEmpty();
@@ -335,8 +335,8 @@ void Capture::compileFilter(const QString &interface, const QString &expression,
     if (m_capability.value(QStringLiteral("backend")) == QLatin1String("dumpcap")) {
         // -d: print the compiled filter program and exit without capturing.
         const QString dumpcap = m_capability.value(QStringLiteral("dumpcap")).toMap().value(QStringLiteral("path")).toString();
-        Nexus::Command::run(this, dumpcap, {QStringLiteral("-i"), interface, QStringLiteral("-f"), expression, QStringLiteral("-d")},
-                            [done](const Nexus::CommandResult &r) {
+        Shadow::Command::run(this, dumpcap, {QStringLiteral("-i"), interface, QStringLiteral("-f"), expression, QStringLiteral("-d")},
+                            [done](const Shadow::CommandResult &r) {
             if (r.ok())
                 done(QStringLiteral("valid"), QString());
             else if (r.exitCode < 0)
@@ -354,13 +354,13 @@ void Capture::compileFilter(const QString &interface, const QString &expression,
     // tcpdump compiles a filter for the link type of its input. Reading an
     // empty capture file of the interface's link type needs no privilege,
     // unlike opening the interface itself.
-    auto file = std::make_shared<QTemporaryFile>(QDir::tempPath() + QStringLiteral("/nexus-netcenter-XXXXXX.pcap"));
+    auto file = std::make_shared<QTemporaryFile>(QDir::tempPath() + QStringLiteral("/shadow-netcenter-XXXXXX.pcap"));
     if (!file->open() || file->write(CaptureStream::pcapFileHeader(linkTypeFor(interface))) != 24 || !file->flush()) {
         done(QStringLiteral("unavailable"), tr("A temporary file for checking the filter could not be written."));
         return;
     }
-    Nexus::Command::run(this, tcpdump, {QStringLiteral("-d"), QStringLiteral("-r"), file->fileName(), QStringLiteral("--"), expression},
-                        [file, done](const Nexus::CommandResult &r) {
+    Shadow::Command::run(this, tcpdump, {QStringLiteral("-d"), QStringLiteral("-r"), file->fileName(), QStringLiteral("--"), expression},
+                        [file, done](const Shadow::CommandResult &r) {
         if (r.ok())
             done(QStringLiteral("valid"), QString());
         else if (r.exitCode < 0)
@@ -538,7 +538,7 @@ void Capture::launch()
 
     auto *process = new QProcess(this);
     m_process = process;
-    process->setProcessEnvironment(Nexus::Command::parseEnvironment());
+    process->setProcessEnvironment(Shadow::Command::parseEnvironment());
     process->setProgram(program);
     process->setArguments(arguments);
     process->setChildProcessModifier([] { ::prctl(PR_SET_PDEATHSIG, SIGTERM); });

@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 // The engine's plan for the choices made — its words, not a paraphrase — and
 // the confirmation without which nothing is written.

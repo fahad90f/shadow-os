@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Confirmation for the actions that destroy data: format, delete partition,
 // new partition table, restore image. It names the device, lists exactly

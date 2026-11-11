@@ -2,13 +2,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
     title: qsTr("Updates")
-    subtitle: qsTr("How this computer looks for updates and whether it installs them by itself. Updates are reviewed and installed in NEXUS Updater.")
+    subtitle: qsTr("How this computer looks for updates and whether it installs them by itself. Updates are reviewed and installed in SHADOW Updater.")
 
     // Bumped when a change is refused, so switches show the real value again.
     property int revision: 0
@@ -38,10 +38,10 @@ NxPage {
     actions: [
         NxButton {
             visible: updates.updaterAvailable
-            text: qsTr("Open NEXUS Updater")
+            text: qsTr("Open SHADOW Updater")
             kind: "primary"
             iconName: "external-link"
-            onClicked: if (!updates.openUpdater()) page.ApplicationWindow.window.toaster.show(qsTr("Could not start NEXUS Updater"), "danger")
+            onClicked: if (!updates.openUpdater()) page.ApplicationWindow.window.toaster.show(qsTr("Could not start SHADOW Updater"), "danger")
         }
     ]
 
@@ -57,8 +57,8 @@ NxPage {
     NxBanner {
         visible: !updates.updaterAvailable
         kind: "warning"
-        title: qsTr("NEXUS Updater is not installed")
-        message: qsTr("The settings below are stored, but nothing on this computer checks for updates with them until the nexus-updater program is installed.")
+        title: qsTr("SHADOW Updater is not installed")
+        message: qsTr("The settings below are stored, but nothing on this computer checks for updates with them until the shadow-updater program is installed.")
     }
 
     NxBanner {
@@ -86,7 +86,7 @@ NxPage {
                  : updates.lastSecurity > 0 ? qsTr("%1 update(s) were available, %2 of them security updates").arg(updates.lastUpdates).arg(updates.lastSecurity)
                  : qsTr("%1 update(s) were available").arg(updates.lastUpdates)
             subtitle: {
-                if (!updates.lastCheckKnown) return qsTr("NEXUS Updater records each check in %1.").arg(updates.settingsFile)
+                if (!updates.lastCheckKnown) return qsTr("SHADOW Updater records each check in %1.").arg(updates.settingsFile)
                 const parts = [qsTr("Checked %1").arg(updates.lastCheck.toLocaleString(Qt.locale(), Locale.ShortFormat))]
                 if (updates.lastError !== "") parts.push(updates.lastError)
                 else if (updates.lastRefreshError !== "") parts.push(qsTr("The package lists could not be refreshed: %1").arg(updates.lastRefreshError))
@@ -105,7 +105,7 @@ NxPage {
 
     NxSection {
         title: qsTr("Checking for updates")
-        description: qsTr("Used by NEXUS Updater. Stored in %1.").arg(updates.settingsFile)
+        description: qsTr("Used by SHADOW Updater. Stored in %1.").arg(updates.settingsFile)
 
         NxRow {
             icon: "refresh"
@@ -151,7 +151,7 @@ NxPage {
             visible: updates.systemReady && !updates.unattendedInstalled
             icon: "info"
             title: qsTr("Automatic installation is not available")
-            subtitle: qsTr("The unattended-upgrades package is not installed. Updates are installed only when you start them in NEXUS Updater.")
+            subtitle: qsTr("The unattended-upgrades package is not installed. Updates are installed only when you start them in SHADOW Updater.")
         }
         NxRow {
             visible: updates.systemReady && !updates.periodicKnown

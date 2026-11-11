@@ -44,7 +44,7 @@ QString imageUrl(const char *kind, const Notification &n)
 
 QSettings config()
 {
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"),
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"),
                      QStringLiteral("notifications"));
 }
 
@@ -96,7 +96,7 @@ int hintInt(const QVariantMap &hints, const char *key, int fallback)
 // the notification service could otherwise read everybody's notifications.
 bool debugDetails()
 {
-    static const bool enabled = qEnvironmentVariableIntValue("NEXUS_NOTIFICATIONS_DEBUG") == 1;
+    static const bool enabled = qEnvironmentVariableIntValue("SHADOW_NOTIFICATIONS_DEBUG") == 1;
     return enabled;
 }
 
@@ -276,7 +276,7 @@ NotificationServer::~NotificationServer() = default;
 QString NotificationServer::configPath()
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-        + QStringLiteral("/nexus/notifications.conf");
+        + QStringLiteral("/shadow/notifications.conf");
 }
 
 bool NotificationServer::readDoNotDisturb()
@@ -1263,12 +1263,12 @@ void NotificationAdaptor::CloseNotification(uint id, const QDBusMessage &message
 
 QString NotificationAdaptor::GetServerInformation(QString &vendor, QString &version, QString &specVersion)
 {
-    vendor = QStringLiteral("NEXUS");
+    vendor = QStringLiteral("SHADOW");
     version = QCoreApplication::applicationVersion();
     if (version.isEmpty())
         version = QStringLiteral("1.0");
     specVersion = QStringLiteral("1.2");
-    return QStringLiteral("NEXUS HORIZON");
+    return QStringLiteral("Shadow Horizon");
 }
 
 NotificationDebugAdaptor::NotificationDebugAdaptor(NotificationServer *server)

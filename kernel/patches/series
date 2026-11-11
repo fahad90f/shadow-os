@@ -1,9 +1,9 @@
 # Patches applied on top of Debian's kernel source, in order (quilt format).
 #
 # The series is intentionally empty. Debian's source already carries the
-# out-of-tree hardening changes NEXUS wants (for example the perf_event_open
+# out-of-tree hardening changes SHADOW wants (for example the perf_event_open
 # restriction and the Secure Boot lockdown integration), and everything else
-# NEXUS changes is configuration. A patch is added here only when it meets the
+# SHADOW changes is configuration. A patch is added here only when it meets the
 # policy in docs/kernel/patches.md: it fixes or hardens something that
 # configuration cannot, it is small enough to re-review at every stable
 # update, and it has been submitted upstream or is not upstreamable for a

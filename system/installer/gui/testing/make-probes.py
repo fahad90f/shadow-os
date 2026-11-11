@@ -3,12 +3,12 @@
 """Generate the synthetic probe reports in testing/probes/.
 
 These files describe machines that do not exist. They are test fixtures for
-the graphical installer (`nexus-installer --probe-file …`, which then runs in
+the graphical installer (`shadow-installer --probe-file …`, which then runs in
 TEST MODE and can never install) and are not shipped in any package.
 
 The disks are made up here; everything the engine derives from them — the
 "usable" verdict of each disk and the list of checks — is computed by the
-engine's own code (nexus_installer.probe), so the fixtures always have the
+engine's own code (shadow_installer.probe), so the fixtures always have the
 shape and the rules of the engine they are generated with. Re-run after the
 engine's probe format changes:
 
@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1] / "engine"))
 sys.dont_write_bytecode = True
 
-from nexus_installer import probe as PR  # noqa: E402
+from shadow_installer import probe as PR  # noqa: E402
 
 MIB, GIB = 1024**2, 1024**3
 ESP = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
@@ -94,9 +94,9 @@ def report(disks, *, fw="uefi", bits=64, arch="amd64", secure=True, efivars=True
 def usb_medium(path="/dev/sdb"):
     return disk(path, 30_752_636_928, model="Ultra Fit", vendor="SanDisk", serial="4C530001230521", transport="usb",
                 removable=True, table="dos", live=True, parts=[
-                    part(f"{path}1", 0, 3_100 * MIB, "iso9660", "0x0", label="NEXUS_OS_0_1_0",
+                    part(f"{path}1", 0, 3_100 * MIB, "iso9660", "0x0", label="SHADOW_OS_0_1_0",
                          mounts=["/run/live/medium"]),
-                    part(f"{path}2", 3_100 * MIB, 10 * MIB, "vfat", "0xef", label="NEXUS-EFI"),
+                    part(f"{path}2", 3_100 * MIB, 10 * MIB, "vfat", "0xef", label="SHADOW-EFI"),
                 ])
 
 

@@ -1,0 +1,3 @@
+system/boot/shadow-boot/shadow-grub-install usr/sbin
+system/boot/shadow-boot/grub etc/default
+system/boot/shadow-boot/10-shadow.cfg etc/default/grub.d

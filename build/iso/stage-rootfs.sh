@@ -4,25 +4,25 @@
 # script exits, successfully or not.
 #
 # Inputs (environment, exported by build.sh):
-#   ARCH VARIANT COMP IMG BASE STAGING REPO_DIR NEXUS_PKGS ISO_NAME + NEXUS_*
+#   ARCH VARIANT COMP IMG BASE STAGING REPO_DIR SHADOW_PKGS ISO_NAME + SHADOW_*
 
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 [ -n "${BASE:-}" ] && [ -n "${IMG:-}" ] && [ -n "${STAGING:-}" ] || die "stage-rootfs.sh must be started by build.sh"
 
 MERGED="$IMG/merged"
-mount -t overlay nexus-rootfs \
+mount -t overlay shadow-rootfs \
     -o "lowerdir=$BASE,upperdir=$IMG/upper,workdir=$IMG/ovl-work" "$MERGED"
-rm -f "$MERGED/.nexus-base-complete"
+rm -f "$MERGED/.shadow-base-complete"
 
 # Environment handed to every command run inside the image.
 IMG_ENV=(
-    "NEXUS_NAME=$NEXUS_NAME" "NEXUS_ID=$NEXUS_ID" "NEXUS_VERSION=$NEXUS_VERSION"
-    "NEXUS_CODENAME=$NEXUS_CODENAME" "NEXUS_CHANNEL=$NEXUS_CHANNEL"
-    "NEXUS_DESKTOP=$NEXUS_DESKTOP" "NEXUS_VENDOR=$NEXUS_VENDOR"
-    "NEXUS_DEBIAN_SUITE=$NEXUS_DEBIAN_SUITE" "NEXUS_DEBIAN_VERSION=$NEXUS_DEBIAN_VERSION"
-    "NEXUS_HOME_URL=$NEXUS_HOME_URL" "NEXUS_BUG_URL=$NEXUS_BUG_URL"
-    "NEXUS_REPO_URL=$NEXUS_REPO_URL" "NEXUS_ARCH=$ARCH" "NEXUS_VARIANT=$VARIANT"
+    "SHADOW_NAME=$SHADOW_NAME" "SHADOW_ID=$SHADOW_ID" "SHADOW_VERSION=$SHADOW_VERSION"
+    "SHADOW_CODENAME=$SHADOW_CODENAME" "SHADOW_CHANNEL=$SHADOW_CHANNEL"
+    "SHADOW_DESKTOP=$SHADOW_DESKTOP" "SHADOW_VENDOR=$SHADOW_VENDOR"
+    "SHADOW_DEBIAN_SUITE=$SHADOW_DEBIAN_SUITE" "SHADOW_DEBIAN_VERSION=$SHADOW_DEBIAN_VERSION"
+    "SHADOW_HOME_URL=$SHADOW_HOME_URL" "SHADOW_BUG_URL=$SHADOW_BUG_URL"
+    "SHADOW_REPO_URL=$SHADOW_REPO_URL" "SHADOW_ARCH=$ARCH" "SHADOW_VARIANT=$VARIANT"
 )
 run() { in_chroot "$MERGED" "$@"; }
 
@@ -35,64 +35,64 @@ chmod 755 "$MERGED/usr/sbin/policy-rc.d"
 # 80-apt-sources hook afterwards.
 [ -s "$MERGED/etc/apt/sources.list" ] || die "base layer has no build-time sources.list"
 
-# ---- NEXUS packages from the locally built, signed repository --------------
-if [ -z "${NEXUS_PKGS:-}" ]; then
+# ---- SHADOW packages from the locally built, signed repository --------------
+if [ -z "${SHADOW_PKGS:-}" ]; then
     run -- apt-get -q update
 else
-    log "installing NEXUS packages: $NEXUS_PKGS"
-    install -D -m 644 "$REPO_DIR/nexus-archive-keyring.gpg" "$MERGED/etc/apt/keyrings/nexus-image-build.gpg"
-    cat > "$MERGED/etc/apt/sources.list.d/nexus-image-build.list" <<EOF
-deb [signed-by=/etc/apt/keyrings/nexus-image-build.gpg] file:///run/nexus-repo $NEXUS_CODENAME core security community
+    log "installing SHADOW packages: $SHADOW_PKGS"
+    install -D -m 644 "$REPO_DIR/shadow-archive-keyring.gpg" "$MERGED/etc/apt/keyrings/shadow-image-build.gpg"
+    cat > "$MERGED/etc/apt/sources.list.d/shadow-image-build.list" <<EOF
+deb [signed-by=/etc/apt/keyrings/shadow-image-build.gpg] file:///run/shadow-repo $SHADOW_CODENAME core security community
 EOF
-    run --bind "$REPO_DIR:/run/nexus-repo:ro" -- apt-get -q update
+    run --bind "$REPO_DIR:/run/shadow-repo:ro" -- apt-get -q update
     # shellcheck disable=SC2086
-    run --bind "$REPO_DIR:/run/nexus-repo:ro" -- apt-get -q -y --no-install-recommends \
-        -o Dpkg::Options::=--force-confnew install $NEXUS_PKGS
-    rm -f "$MERGED/etc/apt/sources.list.d/nexus-image-build.list" \
-          "$MERGED/etc/apt/keyrings/nexus-image-build.gpg"
+    run --bind "$REPO_DIR:/run/shadow-repo:ro" -- apt-get -q -y --no-install-recommends \
+        -o Dpkg::Options::=--force-confnew install $SHADOW_PKGS
+    rm -f "$MERGED/etc/apt/sources.list.d/shadow-image-build.list" \
+          "$MERGED/etc/apt/keyrings/shadow-image-build.gpg"
 
-    # The NEXUS packages of this release also ship on the system as a signed
-    # local APT repository. It is what makes the nexus-arsenal-* profile
-    # metapackages installable (and NEXUS packages re-installable) on a
-    # machine that has no NEXUS network repository configured. Debug-symbol
+    # The SHADOW packages of this release also ship on the system as a signed
+    # local APT repository. It is what makes the shadow-arsenal-* profile
+    # metapackages installable (and SHADOW packages re-installable) on a
+    # machine that has no SHADOW network repository configured. Debug-symbol
     # packages are left out.
     if [ -x "$MERGED/usr/bin/horizon-shell" ]; then
-        log "adding the local NEXUS package repository"
-        LOCAL_REPO="$MERGED/usr/share/nexus/repository"
+        log "adding the local SHADOW package repository"
+        LOCAL_REPO="$MERGED/usr/share/shadow/repository"
         mkdir -p "$LOCAL_REPO"
         rsync -a --exclude '*-dbgsym_*' "$REPO_DIR/dists" "$REPO_DIR/pool" "$LOCAL_REPO/"
         {
-            echo "# NEXUS OS $NEXUS_VERSION packages that came with this installation"
-            echo "# (/usr/share/nexus/repository), authenticated with the NEXUS archive key."
+            echo "# Shadow OS $SHADOW_VERSION packages that came with this installation"
+            echo "# (/usr/share/shadow/repository), authenticated with the SHADOW archive key."
             echo "Types: deb"
-            echo "URIs: file:///usr/share/nexus/repository"
-            echo "Suites: $NEXUS_CODENAME"
+            echo "URIs: file:///usr/share/shadow/repository"
+            echo "Suites: $SHADOW_CODENAME"
             echo "Components: core security community"
-            echo "Signed-By: /usr/share/keyrings/nexus-archive-keyring.gpg"
-        } > "$MERGED/etc/apt/sources.list.d/nexus-local.sources"
+            echo "Signed-By: /usr/share/keyrings/shadow-archive-keyring.gpg"
+        } > "$MERGED/etc/apt/sources.list.d/shadow-local.sources"
     fi
 fi
 
 # ---- static rootfs overlay ---------------------------------------------------
-if [ -d "$NEXUS_ROOT/distro/base/rootfs" ]; then
+if [ -d "$SHADOW_ROOT/distro/base/rootfs" ]; then
     log "applying rootfs overlay"
-    (cd "$NEXUS_ROOT/distro/base/rootfs" && find . -mindepth 1 ! -name .gitkeep -print0 \
+    (cd "$SHADOW_ROOT/distro/base/rootfs" && find . -mindepth 1 ! -name .gitkeep -print0 \
         | cpio --null --quiet -pdm --owner=0:0 "$MERGED")
 fi
 
 # ---- configuration hooks -----------------------------------------------------
-for hook in "$NEXUS_ROOT"/distro/base/hooks/[0-9]*.sh; do
+for hook in "$SHADOW_ROOT"/distro/base/hooks/[0-9]*.sh; do
     [ -f "$hook" ] || continue
     log "hook $(basename "$hook")"
-    run --bind "$NEXUS_ROOT/distro/base/hooks:/run/nexus-hooks:ro" -- \
-        env "${IMG_ENV[@]}" /bin/bash -eu "/run/nexus-hooks/$(basename "$hook")"
+    run --bind "$SHADOW_ROOT/distro/base/hooks:/run/shadow-hooks:ro" -- \
+        env "${IMG_ENV[@]}" /bin/bash -eu "/run/shadow-hooks/$(basename "$hook")"
 done
 
 # ---- package manifest --------------------------------------------------------
-mkdir -p "$NEXUS_OUT/iso"
+mkdir -p "$SHADOW_OUT/iso"
 run -- dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
-    | sort > "$NEXUS_OUT/iso/$ISO_NAME.manifest"
-log "image contains $(wc -l < "$NEXUS_OUT/iso/$ISO_NAME.manifest") packages"
+    | sort > "$SHADOW_OUT/iso/$ISO_NAME.manifest"
+log "image contains $(wc -l < "$SHADOW_OUT/iso/$ISO_NAME.manifest") packages"
 
 # ---- boot loader binaries (taken from the image itself, so they always match
 #      the GRUB version that the installed system will run) ---------------------
@@ -130,7 +130,7 @@ rm -f "$MERGED/usr/sbin/policy-rc.d"
 rm -f "$MERGED/var/lib/dbus/machine-id"
 
 # Anything that still references the build host must not ship.
-if grep -rIl -e "$NEXUS_BUILD_MIRROR" "$MERGED/etc/apt" 2>/dev/null | grep -q .; then
+if grep -rIl -e "$SHADOW_BUILD_MIRROR" "$MERGED/etc/apt" 2>/dev/null | grep -q .; then
     die "build-time mirror URL leaked into the image's APT configuration"
 fi
 
@@ -153,7 +153,7 @@ find "$MERGED" -xdev -newermt "@$SOURCE_DATE_EPOCH" -print0 \
 # (ldconfig, hwdb, journal catalog, sysusers) and wastes tens of seconds.
 usr_ns="$(stat -c %.9Y "$MERGED/usr" | tr -d .)"
 for d in etc var; do
-    printf '# Written by the NEXUS OS image build (equivalent to systemd-update-done).\nTIMESTAMP_NSEC=%s\n' \
+    printf '# Written by the Shadow OS image build (equivalent to systemd-update-done).\nTIMESTAMP_NSEC=%s\n' \
         "$usr_ns" > "$MERGED/$d/.updated"
     touch -r "$MERGED/usr" "$MERGED/$d/.updated"
 done
@@ -165,7 +165,7 @@ case "$COMP" in
 esac
 log "creating squashfs ($COMP)"
 mksquashfs "$MERGED" "$STAGING/live/filesystem.squashfs" \
-    -noappend -no-progress -processors "$NEXUS_JOBS" "${COMP_OPTS[@]}" \
+    -noappend -no-progress -processors "$SHADOW_JOBS" "${COMP_OPTS[@]}" \
     -wildcards -e 'boot/initrd.img-*' -e 'proc/*' -e 'sys/*' -e 'run/*' -e 'tmp/*' -e 'dev/*' \
     >/dev/null
 du -sb "$MERGED" 2>/dev/null | cut -f1 > "$STAGING/live/filesystem.size"

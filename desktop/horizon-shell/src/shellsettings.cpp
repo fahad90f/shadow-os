@@ -9,7 +9,7 @@
 namespace {
 QSettings settings()
 {
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("horizon"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("horizon"));
 }
 const QStringList kFillModes = {QStringLiteral("crop"), QStringLiteral("fit"), QStringLiteral("stretch"),
                                 QStringLiteral("center"), QStringLiteral("tile")};
@@ -17,7 +17,7 @@ const QStringList kFillModes = {QStringLiteral("crop"), QStringLiteral("fit"), Q
 
 QString ShellSettings::configPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/nexus/horizon.conf");
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/shadow/horizon.conf");
 }
 
 ShellSettings::ShellSettings(QObject *parent)
@@ -46,9 +46,9 @@ void ShellSettings::load()
     s.sync();
 
     const QString wallpaper = s.value(QStringLiteral("Desktop/Wallpaper"),
-                                      QStringLiteral("/usr/share/backgrounds/nexus/nexus-horizon.jpg")).toString();
+                                      QStringLiteral("/usr/share/backgrounds/shadow/shadow-horizon.jpg")).toString();
     const QString wallpaperLight = s.value(QStringLiteral("Desktop/WallpaperLight"),
-                                           QStringLiteral("/usr/share/backgrounds/nexus/nexus-daylight.jpg")).toString();
+                                           QStringLiteral("/usr/share/backgrounds/shadow/shadow-daylight.jpg")).toString();
     QString fill = s.value(QStringLiteral("Desktop/WallpaperFill"), QStringLiteral("crop")).toString();
     if (!kFillModes.contains(fill))
         fill = QStringLiteral("crop");
@@ -60,14 +60,14 @@ void ShellSettings::load()
     }
 
     // QSettings turns a comma-separated value into a list; a single entry stays a string.
-    // Until the user pins or unpins something, the dock shows the NEXUS
+    // Until the user pins or unpins something, the dock shows the SHADOW
     // defaults; entries whose application is not installed are skipped by the dock.
     static const QStringList defaultPins{
-        QStringLiteral("org.nexus.files.desktop"), QStringLiteral("firefox-esr.desktop"),
-        QStringLiteral("org.nexus.terminal.desktop"), QStringLiteral("org.nexus.editor.desktop"),
-        QStringLiteral("org.nexus.store.desktop"), QStringLiteral("org.nexus.arsenal.desktop"),
-        QStringLiteral("org.nexus.securitycenter.desktop"), QStringLiteral("org.nexus.monitor.desktop"),
-        QStringLiteral("org.nexus.controlcenter.desktop")};
+        QStringLiteral("org.shadow.files.desktop"), QStringLiteral("firefox-esr.desktop"),
+        QStringLiteral("org.shadow.terminal.desktop"), QStringLiteral("org.shadow.editor.desktop"),
+        QStringLiteral("org.shadow.store.desktop"), QStringLiteral("org.shadow.arsenal.desktop"),
+        QStringLiteral("org.shadow.securitycenter.desktop"), QStringLiteral("org.shadow.monitor.desktop"),
+        QStringLiteral("org.shadow.controlcenter.desktop")};
     const QStringList pinned = s.contains(QStringLiteral("Dock/Pinned"))
         ? s.value(QStringLiteral("Dock/Pinned")).toStringList() : defaultPins;
     QStringList clean;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Controls
-import org.nexus.ui
+import org.shadow.ui
 
 // A clickable area in the top panel: icon and/or text, with hover and
 // "open" (checked) states.

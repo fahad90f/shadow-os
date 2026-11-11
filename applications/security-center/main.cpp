@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "securitycenter.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QCommandLineOption>
 #include <QJsonObject>
@@ -33,19 +33,19 @@ int main(int argc, char **argv)
     int count = int(args.size());
     args.push_back(nullptr);
 
-    Nexus::AppInfo info;
-    info.id = QStringLiteral("org.nexus.securitycenter");
-    info.displayName = QStringLiteral("NEXUS Security Center");
-    info.iconName = QStringLiteral("org.nexus.securitycenter");
+    Shadow::AppInfo info;
+    info.id = QStringLiteral("org.shadow.securitycenter");
+    info.displayName = QStringLiteral("SHADOW Security Center");
+    info.iconName = QStringLiteral("org.shadow.securitycenter");
     info.description = QStringLiteral("The security state of this computer and its firewall.");
     info.singleInstance = true;
 
-    Nexus::App app(count, args.data(), info);
+    Shadow::App app(count, args.data(), info);
     const QCommandLineOption toolsDir(
         QStringLiteral("tools-dir"),
-        QStringLiteral("Developer override: run nexus-security-status and nexus-firewall directly (without pkexec) "
+        QStringLiteral("Developer override: run shadow-security-status and shadow-firewall directly (without pkexec) "
                        "from <dir> (flat, or the repository layout <dir>/audit and <dir>/firewall). "
-                       "Environment: NEXUS_SECURITY_TOOLS_DIR, NEXUS_SECURITY_STATUS_TOOL, NEXUS_FIREWALL_TOOL."),
+                       "Environment: SHADOW_SECURITY_TOOLS_DIR, SHADOW_SECURITY_STATUS_TOOL, SHADOW_FIREWALL_TOOL."),
         QStringLiteral("dir"));
     const QCommandLineOption pageOption(
         QStringLiteral("page"), QStringLiteral("Page to open (same as the positional argument)."), QStringLiteral("name"));
@@ -92,5 +92,5 @@ int main(int argc, char **argv)
         }
         return app.finishDump(center.reportJson().value(topic));
     }
-    return app.run(QStringLiteral("org.nexus.securitycenter"));
+    return app.run(QStringLiteral("org.shadow.securitycenter"));
 }

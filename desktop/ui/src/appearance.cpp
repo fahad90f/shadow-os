@@ -8,7 +8,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 
-namespace Nexus {
+namespace Shadow {
 
 namespace {
 const QStringList kAccents = {
@@ -18,11 +18,11 @@ const QStringList kAccents = {
 
 QSettings settings()
 {
-    // Native format on Linux is ~/.config/nexus/appearance.conf, with automatic
-    // fallback to /etc/xdg/nexus/appearance.conf — where the distribution
+    // Native format on Linux is ~/.config/shadow/appearance.conf, with automatic
+    // fallback to /etc/xdg/shadow/appearance.conf — where the distribution
     // default is installed.
     return QSettings(QSettings::NativeFormat, QSettings::UserScope,
-                     QStringLiteral("nexus"), QStringLiteral("appearance"));
+                     QStringLiteral("shadow"), QStringLiteral("appearance"));
 }
 } // namespace
 
@@ -55,7 +55,7 @@ bool Appearance::softwareRendering()
 QString Appearance::configPath()
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-           + QStringLiteral("/nexus/appearance.conf");
+           + QStringLiteral("/shadow/appearance.conf");
 }
 
 Appearance::Appearance(QObject *parent)
@@ -159,4 +159,4 @@ void Appearance::setFontScale(qreal scale)
     Q_EMIT fontScaleChanged();
 }
 
-} // namespace Nexus
+} // namespace Shadow

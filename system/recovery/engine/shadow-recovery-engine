@@ -1,0 +1,15 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""SHADOW Recovery engine (see shadow_recovery/__init__.py)."""
+import os
+import sys
+
+# Installed: /usr/sbin/shadow-recovery-engine + /usr/lib/shadow-recovery/shadow_recovery.
+# From a source tree the package sits next to this file.
+_here = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, _here if os.path.isdir(os.path.join(_here, "shadow_recovery")) else "/usr/lib/shadow-recovery")
+sys.dont_write_bytecode = True
+
+from shadow_recovery.__main__ import main  # noqa: E402
+
+sys.exit(main())

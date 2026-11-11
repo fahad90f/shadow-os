@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Task Manager
+GenericName=Process Manager
+Comment=See running processes and end the ones that stopped responding
+Exec=shadow-monitor --page processes
+Icon=org.shadow.taskmanager
+Terminal=false
+Categories=System;Monitor;
+Keywords=task;process;kill;end;terminate;top;ps;
+StartupNotify=true
+StartupWMClass=org.shadow.monitor
+X-SHADOW-Component=monitor

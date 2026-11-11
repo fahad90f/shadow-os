@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 import "Fmt.js" as Fmt
 
 // Section "secureboot" plus the running kernel from section "hardening".
@@ -24,7 +24,7 @@ SectionPage {
         visible: page.ready && Fmt.has(page.sb.boot_loader_refresh_failed) && page.sb.boot_loader_refresh_failed !== ""
         kind: "danger"
         title: qsTr("The boot loader could not be updated")
-        message: qsTr("A GRUB or shim update was installed but could not be copied to the boot partition (since %1). In a terminal: sudo nexus-grub-install --verbose")
+        message: qsTr("A GRUB or shim update was installed but could not be copied to the boot partition (since %1). In a terminal: sudo shadow-grub-install --verbose")
             .arg(page.sb.boot_loader_refresh_failed || "")
     }
 

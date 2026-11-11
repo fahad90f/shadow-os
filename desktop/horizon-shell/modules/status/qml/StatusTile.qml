@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // A quick-settings tile: a switch with an icon, a title and its current
 // state, and optionally a second button that opens the full settings.

@@ -6,7 +6,7 @@
 #   scripts/dev.sh exec --dir disks -- bash /src/applications/disk-manager/tests/udisks-rig.sh /src/applications/disk-manager/tests/gui-shots.sh
 #
 # The window runs on a private Xvfb; "click X Y" sends real mouse input.
-CTL=nexus-disks-testctl
+CTL=shadow-disks-testctl
 MIB=1048576
 rig_loop 2048; A="$RIG_DEV"
 rig_loop 64;   B="$RIG_DEV"
@@ -20,9 +20,9 @@ dd if=/dev/urandom of="$mp/data.bin" bs=1M count=180 status=none; sync
 rig_guard "$B"; $CTL format "$B" ext4 Stick
 udevadm settle
 
-export HOME="$RIG/home"; mkdir -p "$HOME/.config/nexus" "$HOME/Documents"
+export HOME="$RIG/home"; mkdir -p "$HOME/.config/shadow" "$HOME/Documents"
 export XDG_RUNTIME_DIR="$RIG/run"; mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.nexus.style QT_LOGGING_RULES="qt.qpa.*=false"
+export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.shadow.style QT_LOGGING_RULES="qt.qpa.*=false"
 export DISPLAY=":$(( 700 + RANDOM % 200 ))"
 Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp >"$RIG/xvfb.log" 2>&1 &
 XVFB=$!
@@ -30,7 +30,7 @@ sleep 1.5
 snap() { import -window root "/shots/$1"; echo "shot $1"; }
 click() { xdotool mousemove "$1" "$2" click 1; sleep "${3:-1.2}"; }
 
-NEXUS_WINDOW_SIZE=1280x900 dbus-run-session -- nexus-disks >"$RIG/app.log" 2>&1 &
+SHADOW_WINDOW_SIZE=1280x900 dbus-run-session -- shadow-disks >"$RIG/app.log" 2>&1 &
 APP=$!
 sleep 6
 # No window manager on this X server: place the window and give it the input focus by hand.

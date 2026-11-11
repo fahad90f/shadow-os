@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.updater
+import org.shadow.ui
+import org.shadow.updater
 
 // The APT sources updates come from, and whether each one is signed.
 NxPage {
@@ -16,7 +16,7 @@ NxPage {
         return sources.filter(s => s.category === category)
     }
     readonly property var debianSources: inCategory("debian")
-    readonly property var nexusSources: inCategory("nexus")
+    readonly property var shadowSources: inCategory("shadow")
     readonly property var otherSources: inCategory("third-party")
     readonly property int unsignedCount: sources.filter(s => s.enabled && (s.verification === "unsigned" || s.verification === "signature-check-disabled")).length
 
@@ -34,7 +34,7 @@ NxPage {
         visible: page.unsignedCount > 0
         kind: "danger"
         title: qsTr("%1 enabled source(s) are not verified").arg(page.unsignedCount)
-        message: qsTr("Packages from an unsigned source cannot be authenticated. NEXUS Updater refuses to install them unless you explicitly allow it for a transaction.")
+        message: qsTr("Packages from an unsigned source cannot be authenticated. SHADOW Updater refuses to install them unless you explicitly allow it for a transaction.")
     }
 
     component SourceRows: Repeater {
@@ -73,20 +73,20 @@ NxPage {
     }
 
     NxSection {
-        title: qsTr("NEXUS")
-        description: qsTr("The NEXUS repository: the NEXUS HORIZON desktop and the NEXUS applications.")
-        SourceRows { model: page.nexusSources }
+        title: qsTr("SHADOW")
+        description: qsTr("The SHADOW repository: the Shadow Horizon desktop and the SHADOW applications.")
+        SourceRows { model: page.shadowSources }
         NxRow {
-            visible: page.nexusSources.length === 0
+            visible: page.shadowSources.length === 0
             icon: "info"
-            title: page.updater.sourcesLoading ? qsTr("Reading the APT sources…") : qsTr("No NEXUS repository is configured on this system")
-            subtitle: page.updater.sourcesLoading ? "" : qsTr("NEXUS packages installed here are not updated from a repository.")
+            title: page.updater.sourcesLoading ? qsTr("Reading the APT sources…") : qsTr("No SHADOW repository is configured on this system")
+            subtitle: page.updater.sourcesLoading ? "" : qsTr("SHADOW packages installed here are not updated from a repository.")
         }
     }
 
     NxSection {
         title: qsTr("Third-party sources")
-        description: qsTr("Repositories that belong neither to Debian nor to NEXUS.")
+        description: qsTr("Repositories that belong neither to Debian nor to SHADOW.")
         visible: page.otherSources.length > 0
         SourceRows { model: page.otherSources }
     }

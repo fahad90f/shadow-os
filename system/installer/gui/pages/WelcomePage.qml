@@ -2,15 +2,15 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 StepPage {
     id: page
     required property WizardState wiz
 
-    title: qsTr("Welcome to NEXUS OS")
-    subtitle: qsTr("This assistant installs NEXUS OS on this computer. Nothing is written to any disk until you "
+    title: qsTr("Welcome to Shadow OS")
+    subtitle: qsTr("This assistant installs Shadow OS on this computer. Nothing is written to any disk until you "
                  + "have seen and confirmed the exact plan at the end. First choose the language of the installed system.")
     ready: Locales.problem !== "" || Locales.contains(wiz.locale)
     blockReason: ready ? "" : qsTr("Choose a language.")

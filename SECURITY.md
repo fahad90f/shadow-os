@@ -7,15 +7,15 @@
 | Current development version (the `main` branch; 0.1.0 "obsidian", channel `dev`) | yes — fixes are made here |
 | Anything else | no |
 
-There has been no stable release. NEXUS OS 0.1.0 is a development version
+There has been no stable release. Shadow OS 0.1.0 is a development version
 that has only been tested in virtual machines; do not rely on it to protect
 anything important ([docs/limitations.md](docs/limitations.md)).
 
-Be aware of how fixes reach users today: **no hosted NEXUS package
-repository exists**, so a fix in a NEXUS component reaches a system only
+Be aware of how fixes reach users today: **no hosted SHADOW package
+repository exists**, so a fix in a SHADOW component reaches a system only
 through a newly built image or packages you build yourself. Fixes for the
 Debian base system arrive through Debian's security archive, which is
-enabled on every NEXUS OS system
+enabled on every Shadow OS system
 ([docs/security/updates.md](docs/security/updates.md)).
 
 ## Reporting a vulnerability
@@ -29,15 +29,15 @@ maintainers can see.
 
 Please include:
 
-* the component and file (for example `security/firewall/nexus-firewall`,
+* the component and file (for example `security/firewall/shadow-firewall`,
   `applications/network-center/network-helper`), and the commit or image
   you examined;
 * what an attacker can do, and what they need for it (local user, network
   position, physical access, a malicious file or D-Bus client);
 * steps to reproduce, or a proof of concept. Keep it minimal, and do not
   include other people's data;
-* whether the problem is in NEXUS's own code or configuration, or in a
-  Debian package that NEXUS ships;
+* whether the problem is in SHADOW's own code or configuration, or in a
+  Debian package that SHADOW ships;
 * how you would like to be credited, if at all.
 
 If you are unsure whether something is a vulnerability, report it this way
@@ -59,9 +59,9 @@ In scope — code and configuration in this repository:
 * the installer engine and graphical installer (`system/installer`);
 * boot-loader management (`system/boot`) and the live-media boot menu;
 * the security baseline (`security/`): sysctl and kernel command-line
-  settings, the nftables ruleset and `nexus-firewall`, audit rules,
-  `nexus-security-status`, polkit policies;
-* privileged helpers and polkit actions of NEXUS applications
+  settings, the nftables ruleset and `shadow-firewall`, audit rules,
+  `shadow-security-status`, polkit policies;
+* privileged helpers and polkit actions of SHADOW applications
   (for example `applications/network-center/network-helper`), and anything
   started through `pkexec`;
 * the shell (`desktop/horizon-shell`), in particular the polkit
@@ -69,7 +69,7 @@ In scope — code and configuration in this repository:
   process input from other programs on the session bus;
 * the login-screen theme and the lock screen (`desktop/themes`), including
   the PAM files shipped for the lock screen;
-* NEXUS applications (`applications/`, `arsenal/manager`);
+* SHADOW applications (`applications/`, `arsenal/manager`);
 * the build system (`build/`, `scripts/`, `debian/`, `kernel/`) as far as a
   flaw affects what is shipped — for example the image's APT configuration,
   repository signing, file permissions in the image, or secrets ending up
@@ -79,20 +79,20 @@ In scope — code and configuration in this repository:
 
 Out of scope here — report to the upstream project instead:
 
-* vulnerabilities in **Debian packages** that NEXUS OS ships unmodified:
+* vulnerabilities in **Debian packages** that Shadow OS ships unmodified:
   the Linux kernel, GRUB, shim, systemd, KWin, Qt, KDE Frameworks, SDDM,
   PackageKit, NetworkManager, Firefox and so on. Report them to Debian
   (<https://www.debian.org/security/>) or to the upstream project. If the
-  problem is in how NEXUS **configures or uses** such a component, it is in
+  problem is in how SHADOW **configures or uses** such a component, it is in
   scope;
-* vulnerabilities in the **security tools** that NEXUS Arsenal can install.
+* vulnerabilities in the **security tools** that SHADOW Arsenal can install.
   They are unmodified Debian packages; the tools listed as "external" are
-  not distributed by NEXUS at all;
+  not distributed by SHADOW at all;
 * the known limitations listed in
   [docs/limitations.md](docs/limitations.md) and the documented exceptions
   in [docs/security/hardening.md](docs/security/hardening.md) — for example
   that the development archive key has no passphrase, that the GRUB menu
-  has no password, that NEXUS ships no AppArmor profiles, or that the live
+  has no password, that SHADOW ships no AppArmor profiles, or that the live
   session grants passwordless `sudo`. Proposals to change them are welcome
   as ordinary issues or pull requests;
 * attacks that require an administrator (`sudo`) on the machine already,
@@ -100,9 +100,9 @@ Out of scope here — report to the upstream project instead:
   kernel lockdown, disk encryption at rest);
 * findings from using the security tools against systems you do not own.
 
-## Using NEXUS OS responsibly
+## Using Shadow OS responsibly
 
-The tools NEXUS Arsenal installs are for authorised testing, research,
+The tools SHADOW Arsenal installs are for authorised testing, research,
 defence and education only. Use them only on systems you own or have
 explicit written permission to test:
 [arsenal/docs/legal-use.md](arsenal/docs/legal-use.md).

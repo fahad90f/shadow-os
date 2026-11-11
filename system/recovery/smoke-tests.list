@@ -1,3 +1,3 @@
 # <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
-nexus-recovery
-nexus-recovery --scan-file /src/system/recovery/tests/scan-sample.json
+shadow-recovery
+shadow-recovery --scan-file /src/system/recovery/tests/scan-sample.json

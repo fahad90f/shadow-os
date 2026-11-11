@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // On-screen display for the volume, microphone, brightness and media keys.
 // The keys arrive as shell actions (shell.unhandledAction); the display
@@ -61,7 +61,7 @@ ShellSurface {
 
     screen: shell.primaryScreen
     layer: "overlay"
-    scope: "nexus-osd"
+    scope: "shadow-osd"
     anchorBottom: true
     keyboard: "none"
     flags: Qt.FramelessWindowHint | Qt.WindowTransparentForInput | Qt.WindowDoesNotAcceptFocus

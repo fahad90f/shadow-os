@@ -185,7 +185,7 @@ public:
     bool externalPowerOnline() const { return m_snapshot.power.externalPowerOnline; }
 
     bool systemInformationAvailable() const { return !m_systemInformation.isEmpty(); }
-    // Start NEXUS System Information; false if it could not be started.
+    // Start SHADOW System Information; false if it could not be started.
     Q_INVOKABLE bool openSystemInformation() const;
 
 Q_SIGNALS:

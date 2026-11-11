@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 import "Fmt.js" as Fmt
 
 // Section "updates": what apt would upgrade, from the package lists on disk.
@@ -78,16 +78,16 @@ SectionPage {
         NxRow {
             title: qsTr("Last installation of updates")
             subtitle: Fmt.has(page.up.last_upgrade) ? ""
-                : qsTr("The status tool reports when the package lists were refreshed, not when updates were last installed. NEXUS Updater shows the update history.")
+                : qsTr("The status tool reports when the package lists were refreshed, not when updates were last installed. SHADOW Updater shows the update history.")
             value: Fmt.has(page.up.last_upgrade) ? page.center.localTime(page.up.last_upgrade) : qsTr("not reported")
         }
         NxRow {
             visible: page.center.updaterInstalled
             icon: "arrow-up-circle"
-            title: qsTr("NEXUS Updater")
+            title: qsTr("SHADOW Updater")
             subtitle: qsTr("Refresh the package lists, install updates and see the update history.")
             NxButton {
-                text: qsTr("Open NEXUS Updater")
+                text: qsTr("Open SHADOW Updater")
                 iconName: "external-link"
                 kind: "primary"
                 onClicked: page.updaterRequested()
@@ -96,8 +96,8 @@ SectionPage {
         NxRow {
             visible: !page.center.updaterInstalled
             icon: "info"
-            title: qsTr("NEXUS Updater is not installed")
-            subtitle: qsTr("Install the package nexus-updater to install updates from the desktop, or use “sudo apt full-upgrade” in a terminal.")
+            title: qsTr("SHADOW Updater is not installed")
+            subtitle: qsTr("Install the package shadow-updater to install updates from the desktop, or use “sudo apt full-upgrade” in a terminal.")
         }
     }
 

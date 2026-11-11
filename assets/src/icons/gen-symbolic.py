@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the NEXUS symbolic icon set.
+"""Generate the SHADOW symbolic icon set.
 
     assets/src/icons/gen-symbolic.py [--out DIR] [--sheet FILE.svg]
 
@@ -9,7 +9,7 @@ tint one file for any theme, accent or state (see NxIcon / SymbolicIconProvider)
 
 The geometry is authored here, in code, so the set stays consistent and
 reviewable: adding an icon means adding one entry to ICONS and re-running the
-script. Output goes to desktop/ui/icons/ (compiled into libnexusui).
+script. Output goes to desktop/ui/icons/ (compiled into libshadowui).
 """
 from __future__ import annotations
 
@@ -266,7 +266,7 @@ ICONS: dict[str, str] = {
     "store": p("M5.5 8h13l-1 11a1.5 1.5 0 0 1-1.5 1.5H8a1.5 1.5 0 0 1-1.5-1.5zM9 8V7a3 3 0 0 1 6 0v1"),
     "arrow-up-circle": c(12, 12, 8.5) + p("M12 16.5v-9M8.3 11.2L12 7.5l3.7 3.7"),
     "pie": p("M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z") + p("M15 3.9A8.5 8.5 0 0 1 20.1 9H15z"),
-    "nexus": hexagon(rad=9.3) + p("M8.6 15.8V8.2l6.8 7.6V8.2") + dot(8.6, 8.2, 1.25) + dot(15.4, 15.8, 1.25),
+    "shadow": hexagon(rad=9.3) + p("M8.6 15.8V8.2l6.8 7.6V8.2") + dot(8.6, 8.2, 1.25) + dot(15.4, 15.8, 1.25),
     "app-generic": r(4, 4, 16, 16, 4.5) + dot(9, 9, 1.3) + dot(15, 9, 1.3) + dot(9, 15, 1.3) + dot(15, 15, 1.3),
 }
 

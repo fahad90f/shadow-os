@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.monitor
+import org.shadow.ui
+import org.shadow.monitor
 
 NxWindow {
     id: appWindow
@@ -13,7 +13,7 @@ NxWindow {
     minimumWidth: 980
     minimumHeight: 600
 
-    // key: stable identifier, also the command-line argument ("nexus-monitor --page <key>").
+    // key: stable identifier, also the command-line argument ("shadow-monitor --page <key>").
     readonly property var pages: [
         { key: "overview",  title: qsTr("Overview"),  icon: "gauge",       section: qsTr("System") },
         { key: "processes", title: qsTr("Processes"), icon: "list",        section: qsTr("System") },
@@ -24,8 +24,8 @@ NxWindow {
     ]
     readonly property var intervals: [1000, 2000, 5000]
     // The page named on the command line, otherwise the overview.
-    property string currentKey: nexusApp.arguments.length > 0 && isPage(nexusApp.arguments[0])
-        ? nexusApp.arguments[0] : "overview"
+    property string currentKey: shadowApp.arguments.length > 0 && isPage(shadowApp.arguments[0])
+        ? shadowApp.arguments[0] : "overview"
 
     function isPage(key) {
         for (let i = 0; i < pages.length; i++) {
@@ -43,7 +43,7 @@ NxWindow {
     // A second launch (for example the Task Manager launcher while the monitor
     // is open) hands its page over to this window.
     Connections {
-        target: nexusApp
+        target: shadowApp
         function onActivationRequested(args) {
             if (args.length > 0) appWindow.openPage(args[0])
             appWindow.show()

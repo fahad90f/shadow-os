@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 import "Fmt.js" as Fmt
 
 // Common frame of the pages that render one section of the report: refresh
@@ -48,7 +48,7 @@ NxPage {
         visible: !page.loaded && page.center.loading
         icon: "refresh"
         title: qsTr("Reading the security state…")
-        message: qsTr("nexus-security-status is checking this computer.")
+        message: qsTr("shadow-security-status is checking this computer.")
     }
     NxEmptyState {
         Layout.fillWidth: true

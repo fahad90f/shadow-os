@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.monitor
+import org.shadow.ui
+import org.shadow.monitor
 
 NxPage {
     id: page
@@ -259,7 +259,7 @@ NxPage {
         title: qsTr("Hardware")
         description: page.monitor.systemInformationAvailable
             ? qsTr("System Information has the full details of this computer.")
-            : qsTr("NEXUS System Information (nexus-sysinfo) is not installed, so the detailed view cannot be opened.")
+            : qsTr("SHADOW System Information (shadow-sysinfo) is not installed, so the detailed view cannot be opened.")
         headerActions: NxButton {
             text: qsTr("System Information")
             iconName: "external-link"

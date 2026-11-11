@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
 // Icon of an application: a local file or icon-theme icon when there is one,
 // otherwise the icon from the catalogue's media server, fetched lazily. While

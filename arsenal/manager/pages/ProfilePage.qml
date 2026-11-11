@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.arsenal
+import org.shadow.ui
+import org.shadow.arsenal
 
 // One profile: what it is, its state, install / remove, its tools grouped by
 // category, and the well-known tools that are not packaged.
@@ -78,7 +78,7 @@ NxPage {
             title: qsTr("Profile package")
             subtitle: page.profile.metapackageInstalled ? qsTr("Installed; removing it also removes the tools it brought in that nothing else needs")
                     : page.profile.metapackageAvailable ? qsTr("Installs all tools of the profile and keeps them together")
-                    : arsenal.stateReady ? qsTr("Not offered by the repositories enabled on this system (it is published in the NEXUS security repository)") : ""
+                    : arsenal.stateReady ? qsTr("Not offered by the repositories enabled on this system (it is published in the SHADOW security repository)") : ""
             value: page.profile.metapackage || ""
             monoValue: true
         }
@@ -98,7 +98,7 @@ NxPage {
             icon: "alert-triangle"
             iconColor: Theme.warning
             title: qsTr("Not in the configured repositories")
-            subtitle: qsTr("These tools cannot be installed until the package lists offer them; refresh the lists with NEXUS Updater")
+            subtitle: qsTr("These tools cannot be installed until the package lists offer them; refresh the lists with SHADOW Updater")
             value: (page.profile.unavailableCount === 1 ? qsTr("1 tool") : qsTr("%1 tools").arg(page.profile.unavailableCount))
         }
         RowLayout {
@@ -210,7 +210,7 @@ NxPage {
             Layout.leftMargin: Theme.spaceXs
             spacing: Theme.spaceXxs
             Text {
-                text: qsTr("Not installable from NEXUS repositories")
+                text: qsTr("Not installable from SHADOW repositories")
                 color: Theme.textPrimary
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSizeBodyLarge
@@ -218,7 +218,7 @@ NxPage {
             }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Well-known tools of this field that Debian main does not carry. NEXUS Arsenal never downloads them; get them from their vendors.")
+                text: qsTr("Well-known tools of this field that Debian main does not carry. SHADOW Arsenal never downloads them; get them from their vendors.")
                 color: Theme.textMuted
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSizeSmall

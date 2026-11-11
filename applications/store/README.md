@@ -1,13 +1,13 @@
-# NEXUS Store
+# SHADOW Store
 
-Graphical software store of NEXUS OS (`nexus-store`, `org.nexus.store`).
+Graphical software store of Shadow OS (`shadow-store`, `org.shadow.store`).
 Applications come from the AppStream catalogue, packages and every change to
 the system go through PackageKit. Nothing is simulated: without PackageKit the
 catalogue can still be browsed, and every action that needs it is disabled with
 the D-Bus error shown.
 
 `pkcommon/` in this directory is the PackageKit/APT plumbing shared with
-NEXUS Updater (`applications/updater`); it is a static library plus a few QML
+SHADOW Updater (`applications/updater`); it is a static library plus a few QML
 components compiled into both applications.
 
 ## What it does
@@ -25,7 +25,7 @@ components compiled into both applications.
 | Updates | PackageKit `GetUpdates` (+ `GetUpdateDetail` for changelogs); security updates are the ones PackageKit reports with info `security` |
 | Repositories | PackageKit `GetRepoList`, `RepoEnable`; `RefreshCache` |
 
-Transactions (`NexusPk::Job` in `pkcommon/pkjob.*`): simulate → (untrusted
+Transactions (`ShadowPk::Job` in `pkcommon/pkjob.*`): simulate → (untrusted
 prompt) → (confirmation) → run, with status, percentage, per-package progress,
 download remaining/rate, a log that can be copied, and Cancel for as long as
 PackageKit reports `AllowCancel`. Licence agreements, repository signing keys
@@ -41,13 +41,13 @@ authorises through polkit (`org.freedesktop.packagekit.*` actions).
 ## Command line
 
 ```
-nexus-store                       overview
-nexus-store <AppStream ID | package name | appstream://ID>
-nexus-store --search <text>
-nexus-store --page overview|installed|updates|repos|<category key>
-nexus-store --dump status|categories|installed|repos|updates
-nexus-store --dump search <text>         AppStream search + PackageKit SearchNames ("packages")
-nexus-store --dump component <ID|package>  AppStream component + PackageKit Resolve/GetDetails/DependsOn/simulation
+shadow-store                       overview
+shadow-store <AppStream ID | package name | appstream://ID>
+shadow-store --search <text>
+shadow-store --page overview|installed|updates|repos|<category key>
+shadow-store --dump status|categories|installed|repos|updates
+shadow-store --dump search <text>         AppStream search + PackageKit SearchNames ("packages")
+shadow-store --dump component <ID|package>  AppStream component + PackageKit Resolve/GetDetails/DependsOn/simulation
 ```
 
 All `--dump` topics are read-only (the PackageKit calls are queries and
@@ -60,8 +60,8 @@ simulations; nothing is refreshed, installed or removed).
 polkit authentication agent in the session, `dpkg`, `ca-certificates`,
 `qt6-image-formats-plugins` (WebP screenshots), Qt 6 (`libqt6core6`,
 `libqt6gui6`, `libqt6qml6`, `libqt6quick6`, `libqt6dbus6`, `libqt6network6`,
-`libqt6concurrent6`), the NEXUS UI library. Optional: `nexus-updater`
-(“Open NEXUS Updater”, repair).
+`libqt6concurrent6`), the SHADOW UI library. Optional: `shadow-updater`
+(“Open SHADOW Updater”, repair).
 
 ## Limitations
 
@@ -79,7 +79,7 @@ polkit authentication agent in the session, `dpkg`, `ca-certificates`,
 
 Build chroot (Debian 13, PackageKit 1.3.1, PackageKit-Qt 1.1.2, AppStream 1.0.5):
 
-* `NEXUS_JOBS=2 scripts/dev.sh build --dir store --only "store;updater"` — builds without warnings.
+* `SHADOW_JOBS=2 scripts/dev.sh build --dir store --only "store;updater"` — builds without warnings.
 * `tests/desktop/smoke.sh --dir store store` — 9 passed, 0 failed (no QML warnings); no system bus in this mode: all PackageKit states show "not reachable".
 * `--dump status|categories|search|component|repos|updates|installed` without a system bus (AppStream catalogue: 2592 components, 2104 applications) — and against a real `packagekitd`:
 
@@ -92,7 +92,7 @@ directory to `/tmp/store-pktest` in the chroot and run
 Results seen:
 
 * all `--dump` topics of both applications (`dumps.sh`): repositories matched to APT sources and "signed", `SearchNames editor` → 101 packages, `component kate` → candidate, sizes, 51 direct dependencies, simulation "74 to install, 43.9 MiB, trusted", installed list from PackageKit (1002 packages).
-* with `nexus-pkcommon-cli` (the same `Job` code; `tx.sh`, `tx2.sh`): remove with the question declined → cancelled, nothing changed; install `hello` → installed; remove `--yes` → removed; install `kate` cancelled during download → cancelled, not installed; `RefreshCache`; `RepoEnable` off/on (sources file rewritten by PackageKit); unsigned local repository → package reported untrusted, install refused when declined, installed only with the explicit answer.
+* with `shadow-pkcommon-cli` (the same `Job` code; `tx.sh`, `tx2.sh`): remove with the question declined → cancelled, nothing changed; install `hello` → installed; remove `--yes` → removed; install `kate` cancelled during download → cancelled, not installed; `RefreshCache`; `RepoEnable` off/on (sources file rewritten by PackageKit); unsigned local repository → package reported untrusted, install refused when declined, installed only with the explicit answer.
 * in the GUI under Xvfb with `xdotool` (`gui2.sh`): Installed → Remove → confirmation dialog → removed; application page → Install → Cancel during download → "Cancelled"; untrusted-package dialog; "All packages" search; updates list with security updates; repositories page with an unsigned third-party source.
 
 Screenshots in `build/work/shots/`: `store-st-*.png` (no PackageKit),

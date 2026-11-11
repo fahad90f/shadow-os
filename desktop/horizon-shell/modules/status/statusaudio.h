@@ -16,7 +16,7 @@ namespace StatusModule {
 // Volume and microphone of the session's sound server.
 //
 // Source: the PulseAudio protocol through PulseAudioQt — PipeWire's
-// pipewire-pulse on NEXUS; a real PulseAudio daemon works the same way.
+// pipewire-pulse on SHADOW; a real PulseAudio daemon works the same way.
 // PulseAudioQt reports every change as a signal, so the values are live.
 //
 //   output   the server's default sink. PipeWire's "auto_null" stand-in

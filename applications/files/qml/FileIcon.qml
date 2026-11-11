@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // A small file-type or application icon.
 //

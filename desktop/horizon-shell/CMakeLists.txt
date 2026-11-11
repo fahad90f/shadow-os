@@ -1,4 +1,4 @@
-# horizon-shell — the NEXUS HORIZON desktop shell (panel, dock, launcher,
+# horizon-shell — the Shadow Horizon desktop shell (panel, dock, launcher,
 # wallpaper, session menu, authentication agent) and the session that starts
 # it on KWin (Wayland).
 find_package(Qt6 REQUIRED COMPONENTS WaylandClient)
@@ -12,7 +12,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 
 # Core QML plus the QML of every shell module (modules/<name>/qml/). All of
-# it forms one QML module, org.nexus.horizon, so file names must be unique.
+# it forms one QML module, org.shadow.horizon, so file names must be unique.
 #
 # HORIZON_MODULES restricts the build to the named modules ("-" for none), so
 # a module can be developed while others are unfinished. Default: all.
@@ -62,7 +62,7 @@ qt_add_executable(horizon-shell
 qt6_generate_wayland_protocol_client_sources(horizon-shell
     FILES ${PLASMA_WAYLAND_PROTOCOLS_DIR}/plasma-window-management.xml)
 qt_add_qml_module(horizon-shell
-    URI org.nexus.horizon
+    URI org.shadow.horizon
     VERSION 1.0
     NO_PLUGIN
     QML_FILES ${HORIZON_QML}
@@ -73,22 +73,22 @@ foreach(dir IN LISTS HORIZON_MODULE_DIRS)
     target_include_directories(horizon-shell PRIVATE ${dir})
 endforeach()
 target_link_libraries(horizon-shell PRIVATE
-    Nexus::App Qt6::WaylandClient PkgConfig::WAYLAND_CLIENT
+    Shadow::App Qt6::WaylandClient PkgConfig::WAYLAND_CLIENT
     KF6::Service KF6::KIOGui KF6::WindowSystem KF6::GlobalAccel
     PolkitQt6-1::Agent PolkitQt6-1::Core)
 
 install(TARGETS horizon-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ---- the session --------------------------------------------------------------------
-# /usr/libexec/nexus is hard-wired in the session scripts.
-install(PROGRAMS session/nexus-horizon-session DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(PROGRAMS session/horizon-session-leader DESTINATION ${NEXUS_LIBEXEC_DIR})
-install(FILES session/nexus-horizon.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)
-install(FILES session/org.nexus.horizon.shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-install(FILES session/nexus-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
-install(FILES session/nexus-horizon-session.target DESTINATION lib/systemd/user)
+# /usr/libexec/shadow is hard-wired in the session scripts.
+install(PROGRAMS session/shadow-horizon-session DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS session/horizon-session-leader DESTINATION ${SHADOW_LIBEXEC_DIR})
+install(FILES session/shadow-horizon.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)
+install(FILES session/org.shadow.horizon.shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES session/shadow-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
+install(FILES session/shadow-horizon-session.target DESTINATION lib/systemd/user)
 # System-wide defaults; a user's own files in ~/.config take precedence.
-install(FILES session/nexus-applications.menu DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/menus)
+install(FILES session/shadow-applications.menu DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/menus)
 install(FILES session/kwinrc session/kscreenlockerrc DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg)
 
 # Per-module build additions (extra packages, link libraries, generated

@@ -6,7 +6,7 @@
 T=/tmp/files-test-devices; rm -rf "$T"; mkdir -p "$T/usb" "$T/data" "$T/disc" "$T/work"
 echo on-the-stick > "$T/usb/on-the-stick.txt"; echo data > "$T/data/data.txt"; echo disc > "$T/disc/disc.txt"
 export SOLID_FAKEHW=/src/applications/files/tests/ui/fakehw.xml
-echo "dump: $(nexus-files --dump devices | python3 -c 'import json,sys
+echo "dump: $(shadow-files --dump devices | python3 -c 'import json,sys
 for v in json.load(sys.stdin)["devices"]: print(v["label"], v["device"], v["fsType"], "mounted" if v["mounted"] else "unmounted", "removable" if v["removable"] else "fixed", "optical" if v["optical"] else "", end="; ")')"
 app_start "$T/work"
 snap 1-list

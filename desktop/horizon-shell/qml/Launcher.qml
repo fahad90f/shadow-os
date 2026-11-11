@@ -2,14 +2,14 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // The application launcher: type to search, arrow keys to move, Enter to
 // start. Categories on the left narrow the grid.
 OverlaySurface {
     id: root
 
-    scope: "nexus-launcher"
+    scope: "shadow-launcher"
     scrimOpacity: 0.55
 
     signal sessionMenuRequested()
@@ -232,8 +232,8 @@ OverlaySurface {
                 NxIconButton {
                     iconName: "settings"
                     tooltip: qsTr("Control Center")
-                    visible: session.programExists("nexus-control-center")
-                    onClicked: { if (session.run("nexus-control-center")) root.hide() }
+                    visible: session.programExists("shadow-control-center")
+                    onClicked: { if (session.run("shadow-control-center")) root.hide() }
                 }
                 NxIconButton {
                     iconName: "power"

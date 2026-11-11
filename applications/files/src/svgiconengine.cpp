@@ -60,7 +60,7 @@ public:
         const QSize pixels = (QSizeF(size) * scale).toSize();
         if (m_file.isEmpty() || pixels.isEmpty())
             return {};
-        const QString cacheKey = QStringLiteral("nexus-files-svg:%1:%2x%3:%4")
+        const QString cacheKey = QStringLiteral("shadow-files-svg:%1:%2x%3:%4")
             .arg(m_file).arg(pixels.width()).arg(pixels.height()).arg(int(mode));
         QPixmap pixmap;
         if (QPixmapCache::find(cacheKey, &pixmap))
@@ -104,7 +104,7 @@ private:
 
 } // namespace
 
-class NexusFilesSvgIconPlugin : public QIconEnginePlugin
+class ShadowFilesSvgIconPlugin : public QIconEnginePlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID QIconEngineFactoryInterface_iid FILE "svgiconengine.json")

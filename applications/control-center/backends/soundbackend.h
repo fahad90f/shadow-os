@@ -18,7 +18,7 @@ class QTemporaryFile;
 // profiles of the session's sound server.
 //
 // Source: the PulseAudio protocol through PulseAudioQt (PipeWire's
-// pipewire-pulse on NEXUS; a real PulseAudio daemon works the same way).
+// pipewire-pulse on SHADOW; a real PulseAudio daemon works the same way).
 // PulseAudioQt delivers every change as a signal, so the models are always
 // current while the page is open.
 //
@@ -28,7 +28,7 @@ class QTemporaryFile;
 //                     name, volume and mute
 //   cards             profiles and the active profile
 //
-// Without PulseAudioQt (NEXUS_HAVE_PULSEAUDIOQT undefined) the state is
+// Without PulseAudioQt (SHADOW_HAVE_PULSEAUDIOQT undefined) the state is
 // "unsupported-build".
 //
 // Helpers from the sound server's command-line tools:
@@ -40,7 +40,7 @@ class QTemporaryFile;
 //                     drives the meter. Nothing is stored.
 //
 // The "allow more than 100 %" switch is a preference of this page, kept in
-// ~/.config/nexus/controlcenter.conf ([Sound] AllowOveramplification).
+// ~/.config/shadow/controlcenter.conf ([Sound] AllowOveramplification).
 class SoundBackend : public QObject
 {
     Q_OBJECT

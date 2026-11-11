@@ -17,7 +17,7 @@ class KDirWatch;
 //   servers    network locations saved from the "Connect to server" dialog
 //
 // Bookmarks and servers are stored with QSettings in
-// ~/.config/nexus/files.conf ([Bookmarks], [Servers]).
+// ~/.config/shadow/files.conf ([Bookmarks], [Servers]).
 class Places : public QObject
 {
     Q_OBJECT

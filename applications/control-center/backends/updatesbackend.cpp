@@ -18,7 +18,7 @@
 
 #include <unistd.h>
 
-NEXUS_CC_DUMP("updates", [] {
+SHADOW_CC_DUMP("updates", [] {
     UpdatesBackend backend;
     if (!backend.systemReady()) {
         QEventLoop loop;
@@ -32,16 +32,16 @@ NEXUS_CC_DUMP("updates", [] {
 namespace {
 const QString kAutoUpgrades = QStringLiteral("/etc/apt/apt.conf.d/20auto-upgrades");
 
-// The same store NEXUS Updater uses (applications/updater/updater.cpp).
+// The same store SHADOW Updater uses (applications/updater/updater.cpp).
 QSettings updaterSettings()
 {
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("updater"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("updater"));
 }
 
 QString helperPath()
 {
-    const QString dir = qEnvironmentVariable("NEXUS_CC_HELPER_DIR");
-    return (dir.isEmpty() ? QStringLiteral("/usr/libexec/nexus") : dir) + QStringLiteral("/updates-helper");
+    const QString dir = qEnvironmentVariable("SHADOW_CC_HELPER_DIR");
+    return (dir.isEmpty() ? QStringLiteral("/usr/libexec/shadow") : dir) + QStringLiteral("/updates-helper");
 }
 } // namespace
 
@@ -49,7 +49,7 @@ UpdatesBackend::UpdatesBackend(QObject *parent)
     : QObject(parent)
 {
     loadSettings();
-    // NEXUS Updater and "nexus-updater --check" write the same file.
+    // SHADOW Updater and "shadow-updater --check" write the same file.
     const QString dir = QFileInfo(settingsFile()).absolutePath();
     QDir().mkpath(dir);
     m_watcher.addPath(dir);
@@ -103,12 +103,12 @@ void UpdatesBackend::setCheckIntervalHours(int hours)
 
 bool UpdatesBackend::updaterAvailable() const
 {
-    return !QStandardPaths::findExecutable(QStringLiteral("nexus-updater")).isEmpty();
+    return !QStandardPaths::findExecutable(QStringLiteral("shadow-updater")).isEmpty();
 }
 
 bool UpdatesBackend::openUpdater() const
 {
-    return QProcess::startDetached(QStringLiteral("nexus-updater"), {});
+    return QProcess::startDetached(QStringLiteral("shadow-updater"), {});
 }
 
 bool UpdatesBackend::rebootRequired() const
@@ -127,12 +127,12 @@ void UpdatesBackend::checkNow()
         return;
     m_checking = true;
     Q_EMIT checkingChanged();
-    Nexus::Command::run(this, QStringLiteral("nexus-updater"), {QStringLiteral("--check")}, [this](const Nexus::CommandResult &result) {
+    Shadow::Command::run(this, QStringLiteral("shadow-updater"), {QStringLiteral("--check")}, [this](const Shadow::CommandResult &result) {
         m_checking = false;
         Q_EMIT checkingChanged();
         loadSettings();
         Q_EMIT systemChanged();     // /run/reboot-required may have appeared
-        // Exit codes of "nexus-updater --check": 0 none, 10 updates, 11 security updates, 1 failed.
+        // Exit codes of "shadow-updater --check": 0 none, 10 updates, 11 security updates, 1 failed.
         const QJsonObject reply = QJsonDocument::fromJson(result.out).object();
         if (result.exitCode == 0 || result.exitCode == 10 || result.exitCode == 11) {
             const int updates = reply.value(QStringLiteral("updates")).toInt();
@@ -183,8 +183,8 @@ void UpdatesBackend::loadSystem()
             Q_EMIT systemChanged();
         }
     };
-    if (Nexus::Command::available(QStringLiteral("apt-config"))) {
-        Nexus::Command::run(this, QStringLiteral("apt-config"), {QStringLiteral("dump")}, [this, done](const Nexus::CommandResult &result) {
+    if (Shadow::Command::available(QStringLiteral("apt-config"))) {
+        Shadow::Command::run(this, QStringLiteral("apt-config"), {QStringLiteral("dump")}, [this, done](const Shadow::CommandResult &result) {
             if (result.ok()) {
                 applyPeriodic(result.outText(), QStringLiteral("apt-config"));
             } else {
@@ -205,8 +205,8 @@ void UpdatesBackend::loadSystem()
     m_timerState.clear();
     if (QFileInfo(QStringLiteral("/run/systemd/system")).isDir()) {
         ++m_pending;
-        Nexus::Command::run(this, QStringLiteral("systemctl"), {QStringLiteral("is-enabled"), QStringLiteral("apt-daily-upgrade.timer")},
-                            [this, done](const Nexus::CommandResult &result) {
+        Shadow::Command::run(this, QStringLiteral("systemctl"), {QStringLiteral("is-enabled"), QStringLiteral("apt-daily-upgrade.timer")},
+                            [this, done](const Shadow::CommandResult &result) {
             m_timerState = result.outText().trimmed().section(QLatin1Char('\n'), 0, 0);
             done();
         });
@@ -225,7 +225,7 @@ void UpdatesBackend::setAutomatic(bool updateLists, bool unattendedUpgrade)
     Q_EMIT busyChanged();
     const QStringList arguments{QStringLiteral("set-auto-upgrades"), updateLists ? QStringLiteral("1") : QStringLiteral("0"),
                                 unattendedUpgrade ? QStringLiteral("1") : QStringLiteral("0")};
-    const auto done = [this](const Nexus::CommandResult &result) {
+    const auto done = [this](const Shadow::CommandResult &result) {
         m_busy = false;
         Q_EMIT busyChanged();
         if (!result.ok()) {
@@ -242,9 +242,9 @@ void UpdatesBackend::setAutomatic(bool updateLists, bool unattendedUpgrade)
         loadSystem();
     };
     if (geteuid() == 0)
-        Nexus::Command::run(this, helperPath(), arguments, done, 300000);
+        Shadow::Command::run(this, helperPath(), arguments, done, 300000);
     else
-        Nexus::Command::run(this, QStringLiteral("pkexec"), QStringList{helperPath()} + arguments, done, 300000);
+        Shadow::Command::run(this, QStringLiteral("pkexec"), QStringList{helperPath()} + arguments, done, 300000);
 }
 
 QJsonObject UpdatesBackend::toJson() const

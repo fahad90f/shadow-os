@@ -838,8 +838,8 @@ bool UDisksClient::guard(const QString &operation, const QString &blockPath, boo
         return false;
     }
     // Test rigs set this so that a mistake in a test can never reach a real disk.
-    if (qEnvironmentVariableIntValue("NEXUS_DISKS_TEST_LOOP_ONLY") == 1 && !SystemDevices::isLoopBacked(QFileInfo(device).fileName())) {
-        finish(operation, false, u"NEXUS_DISKS_TEST_LOOP_ONLY is set: %1 is not a loop device, nothing was changed."_s.arg(device));
+    if (qEnvironmentVariableIntValue("SHADOW_DISKS_TEST_LOOP_ONLY") == 1 && !SystemDevices::isLoopBacked(QFileInfo(device).fileName())) {
+        finish(operation, false, u"SHADOW_DISKS_TEST_LOOP_ONLY is set: %1 is not a loop device, nothing was changed."_s.arg(device));
         return false;
     }
     if (destructive) {

@@ -1,8 +1,8 @@
-# NEXUS OS Installer (graphical front-end)
+# Shadow OS Installer (graphical front-end)
 
-`nexus-installer` (application id `org.nexus.installer`, package `nexus-installer-gui`) is the wizard a user
+`shadow-installer` (application id `org.shadow.installer`, package `shadow-installer-gui`) is the wizard a user
 sees in the live session. It makes no decision about disks itself: it collects choices, asks the installation
-engine (`../engine`, `/usr/sbin/nexus-installer-engine`, package `nexus-installer`) what those choices mean,
+engine (`../engine`, `/usr/sbin/shadow-installer-engine`, package `shadow-installer`) what those choices mean,
 shows the engine's plan word for word, and — after an explicit confirmation — lets the engine carry it out.
 
 ## Steps
@@ -14,8 +14,8 @@ shows the engine's plan word for word, and — after an explicit confirmation �
 | 3 | System check | firmware, Secure Boot, architecture, memory, disks, medium, power, network; blocking vs. warning | engine `probe` (`checks`, `can_install`, `disks`) |
 | 4 | Time zone | region list, search, clock preview | `/usr/share/zoneinfo/zone.tab` (or `zone1970.tab`), `iso3166.tab`, zone files via `QTimeZone` |
 | 5 | Disk | erase / alongside in free space / manual; LUKS2, separate /home, swap | engine `probe` (`disks[*]`, `free_regions`, `other_systems`) |
-| 6 | User | full name, user name, password, host name, auto-login | rules mirrored from `engine/nexus_installer/answers.py` (`validation.cpp`) |
-| 7 | Software | optional NEXUS Arsenal profiles; step is hidden when the directory has none | `/usr/share/nexus/arsenal/profiles/*.json` (`id`, `name`, `summary`, `description`, `includes`, `metapackage`, `tools[].package`) |
+| 6 | User | full name, user name, password, host name, auto-login | rules mirrored from `engine/shadow_installer/answers.py` (`validation.cpp`) |
+| 7 | Software | optional SHADOW Arsenal profiles; step is hidden when the directory has none | `/usr/share/shadow/arsenal/profiles/*.json` (`id`, `name`, `summary`, `description`, `includes`, `metapackage`, `tools[].package`) |
 | 8 | Summary | the engine's steps, what is destroyed, warnings; acknowledgement + typed device name | engine `plan --answers -` |
 | 9 | Installation | steps as the engine announces them, percentage only when the engine sends one, elapsed time, collapsible details | engine `install --answers - --confirm <sha256>` (JSON lines) |
 | 10 | Finish | success: restart (logind) or keep the live session; failure: engine message, hint, log location, copy log | engine events, exit status; `org.freedesktop.login1.Manager.Reboot` |
@@ -46,13 +46,13 @@ Behaviour worth knowing:
 ## Privilege separation
 
 * The GUI runs as the logged-in user. The engine is started with an **argument vector** through
-  `/usr/bin/pkexec /usr/sbin/nexus-installer-engine <verb> …` (directly, without pkexec, only when the GUI itself
+  `/usr/bin/pkexec /usr/sbin/shadow-installer-engine <verb> …` (directly, without pkexec, only when the GUI itself
   already runs as root, which is not a supported way to use it).
-* polkit action **`org.nexus.installer.run`** (`polkit/org.nexus.installer.policy`,
-  `org.freedesktop.policykit.exec.path = /usr/sbin/nexus-installer-engine`), default `auth_admin` (not kept).
-* **`polkit/49-nexus-installer-live.rules`** grants exactly that action without a password to a local, active
-  member of group `sudo` *while `/run/nexus/live-session` exists* (checked with
-  `polkit.spawn(["/usr/bin/test", "-e", …])`). The marker is created by `system/live/2000-nexus-session` on the
+* polkit action **`org.shadow.installer.run`** (`polkit/org.shadow.installer.policy`,
+  `org.freedesktop.policykit.exec.path = /usr/sbin/shadow-installer-engine`), default `auth_admin` (not kept).
+* **`polkit/49-shadow-installer-live.rules`** grants exactly that action without a password to a local, active
+  member of group `sudo` *while `/run/shadow/live-session` exists* (checked with
+  `polkit.spawn(["/usr/bin/test", "-e", …])`). The marker is created by `system/live/2000-shadow-session` on the
   live medium only. Both files are installed by this component; the package is purged from the installed system
   by the engine (`LIVE_PACKAGES`).
 * Outside a live session the destructive phase is **refused in C++** (`Installer::startInstall`) unless the
@@ -66,7 +66,7 @@ Behaviour worth knowing:
   answer document is assembled as bytes, written, and the buffer wiped. They are never put on a command line, in
   the environment, in a file, in a property readable from QML or in the log shown by the wizard.
 * A copy of the answers **without** `user.password` and `storage.passphrase` is kept as a record in
-  `$XDG_RUNTIME_DIR/nexus-installer-XXXXXX/answers.json` (directory 0700, file 0600, removed on exit). The engine
+  `$XDG_RUNTIME_DIR/shadow-installer-XXXXXX/answers.json` (directory 0700, file 0600, removed on exit). The engine
   does not read it — see "Engine changes" below.
 * After a successful installation the secrets are wiped and the password fields cleared. After a failure they
   are kept so that "Back to the summary" can retry, and wiped when the program exits.
@@ -85,11 +85,11 @@ abandoned, not waited for.
 ## Command line
 
 ```
-nexus-installer [--allow-installed-system] [--profiles-dir DIR]
-nexus-installer --dump environment|locales|keyboard|timezones|profiles|probe|rules
+shadow-installer [--allow-installed-system] [--profiles-dir DIR]
+shadow-installer --dump environment|locales|keyboard|timezones|profiles|probe|rules
 
 testing:
-  --engine PATH        engine to run instead of /usr/sbin/nexus-installer-engine ($NEXUS_INSTALLER_ENGINE)
+  --engine PATH        engine to run instead of /usr/sbin/shadow-installer-engine ($SHADOW_INSTALLER_ENGINE)
   --probe-file JSON    TEST MODE: synthetic hardware; labelled in the title, a banner and the sidebar;
                        Installer::startInstall() refuses to install
   --step NAME          (test mode) open at welcome|keyboard|check|timezone|disk|user|software|summary|progress|result
@@ -108,15 +108,15 @@ and whose `install` is a timer-driven simulation without a command runner.
 
 ## Run-time dependencies (Debian packages)
 
-`nexus-installer` (engine), `nexus-ui`, Qt 6.8 QML run time as for every NEXUS application
+`shadow-installer` (engine), `shadow-ui`, Qt 6.8 QML run time as for every SHADOW application
 (`qml6-module-qtquick`, `-controls`, `-layouts`, `-templates`, `-window`), `libqt6dbus6`, `libkf6configcore6`,
-`pkexec`, `polkitd`, a polkit authentication agent in the session (NEXUS HORIZON provides one), `tzdata`,
+`pkexec`, `polkitd`, a polkit authentication agent in the session (Shadow Horizon provides one), `tzdata`,
 `xkb-data`, `locales`, `systemd` (logind, for "Restart now"), `dbus-user-session`. Optional: `os-prober` (used by
-the engine for the operating-system scan), `nexus-arsenal` data in `/usr/share/nexus/arsenal/profiles`.
+the engine for the operating-system scan), `shadow-arsenal` data in `/usr/share/shadow/arsenal/profiles`.
 
 ## Limitations
 
-* The engine names its log `/var/log/nexus-installer/install-*.log` in the live session (root only, mode 0600) and
+* The engine names its log `/var/log/shadow-installer/install-*.log` in the live session (root only, mode 0600) and
   copies it to `/var/log/installer/` on the installed system. "Copy log" therefore copies what the engine sent to
   the wizard during this run (events and stderr), not that file.
 * Swap and partition sizes are the engine's automatic choice; the wizard does not offer `root_size_gib`,
@@ -131,7 +131,7 @@ the engine for the operating-system scan), `nexus-arsenal` data in `/usr/share/n
 
 All inside the build chroot (no systemd, polkit daemon, KWin live session or disks), final build:
 
-* `NEXUS_JOBS=2 scripts/dev.sh build --dir installer --only installer` — builds without compiler warnings.
+* `SHADOW_JOBS=2 scripts/dev.sh build --dir installer --only installer` — builds without compiler warnings.
 * `tests/desktop/smoke.sh --dir installer gui` — 3 passed, 0 failed (plain start; synthetic disk step; synthetic
   summary with a real engine plan). The component name is `gui` because `smoke-tests.list` lives in this directory.
 * Every step and state rendered headless at 1024×700 with zero QML warnings (`scripts/dev.sh run --smoke --shot`),
@@ -152,7 +152,7 @@ All inside the build chroot (no systemd, polkit daemon, KWin live session or dis
   daemon → exit 127 → the "could not be obtained" message; and the "engine not installed" message.
 * `--dump environment|locales|timezones|keyboard|profiles|probe`; `testing/check-rules.py` (89 inputs, 0
   disagreements; the front-end is stricter for names of existing system accounts and for a trailing line break).
-* `polkit/org.nexus.installer.policy` validated with `xmllint --dtdvalid policyconfig-1.dtd`; the logic of the
+* `polkit/org.shadow.installer.policy` validated with `xmllint --dtdvalid policyconfig-1.dtd`; the logic of the
   rules file evaluated with a stub `polkit` object under Node.js (granted only for this action, local + active +
   sudo + marker present).
 

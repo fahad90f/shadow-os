@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Overview tile: one protection mechanism, the state the status tool reported
 // for it, the evidence behind that state, and a link to its page.

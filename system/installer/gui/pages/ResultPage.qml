@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 StepPage {
     id: page
@@ -25,7 +25,7 @@ StepPage {
         return m + ":" + (s < 10 ? "0" : "") + s
     }
 
-    title: success ? (Installer.simulation ? qsTr("The simulation finished") : qsTr("NEXUS OS is installed"))
+    title: success ? (Installer.simulation ? qsTr("The simulation finished") : qsTr("Shadow OS is installed"))
                    : (Installer.simulation ? qsTr("The simulated installation failed") : qsTr("The installation failed"))
     subtitle: success
               ? (Installer.simulation ? qsTr("The test engine reported success. Nothing was installed.")
@@ -81,7 +81,7 @@ StepPage {
                 title: qsTr("Engine log")
                 subtitle: Installer.engineLogPath !== ""
                           ? qsTr("Written by the engine in this live session; readable by root. After a successful installation it is copied to /var/log/installer/ on the new system.")
-                          : qsTr("The engine did not name a log file. It normally writes one to /var/log/nexus-installer/ in this session (readable by root); its messages from this run are under “Details”. After a successful installation the log is kept in /var/log/installer/ on the new system.")
+                          : qsTr("The engine did not name a log file. It normally writes one to /var/log/shadow-installer/ in this session (readable by root); its messages from this run are under “Details”. After a successful installation the log is kept in /var/log/installer/ on the new system.")
                 value: Installer.engineLogPath
                 monoValue: true
             }

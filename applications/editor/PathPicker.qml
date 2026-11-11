@@ -3,9 +3,9 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
-// File chooser in the NEXUS style (QtQuick.Dialogs' built-in fallback is not
+// File chooser in the SHADOW style (QtQuick.Dialogs' built-in fallback is not
 // covered by it).
 //   mode "open":   pick an existing file — or several files/folders with `multiple`
 //   mode "save":   pick a folder and type a name; replacing a file is spelled out

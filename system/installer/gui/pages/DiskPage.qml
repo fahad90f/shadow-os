@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 StepPage {
     id: page
@@ -67,7 +67,7 @@ StepPage {
     }
 
     title: qsTr("Disk")
-    subtitle: qsTr("Choose where and how NEXUS OS is installed. This step only records your choice — the disk is "
+    subtitle: qsTr("Choose where and how Shadow OS is installed. This step only records your choice — the disk is "
                  + "written after you confirm the plan on the summary page.")
     ready: ok && (guided ? (wiz.diskPath !== "" && wiz.disk(wiz.diskPath) !== null && diskProblem(wiz.disk(wiz.diskPath)) === ""
                             && (!wiz.encrypt || Installer.passphraseSet))
@@ -122,7 +122,7 @@ StepPage {
             SectionTitle { text: qsTr("Installation type") }
             ChoiceCard {
                 icon: "trash"
-                title: qsTr("Erase a disk and install NEXUS OS")
+                title: qsTr("Erase a disk and install Shadow OS")
                 description: qsTr("The whole disk is used. Everything on it — every partition and operating system — is destroyed.")
                 selected: page.wiz.mode === "erase-disk"
                 danger: true
@@ -131,7 +131,7 @@ StepPage {
             ChoiceCard {
                 icon: "columns"
                 title: qsTr("Install alongside, in unallocated space")
-                description: qsTr("NEXUS OS gets new partitions in the largest unallocated region of a disk. Existing partitions "
+                description: qsTr("Shadow OS gets new partitions in the largest unallocated region of a disk. Existing partitions "
                                 + "are not changed, and other systems are added to the boot menu.")
                 problem: page.anyFreeSpace ? "" : qsTr("Not possible here: the engine needs a disk with a GPT partition table and "
                                                        + "unallocated space. Shrink a partition with the system that owns it, then check again.")

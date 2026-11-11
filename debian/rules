@@ -1,5 +1,5 @@
 #!/usr/bin/make -f
-# NEXUS OS packaging. One source package builds every NEXUS component:
+# Shadow OS packaging. One source package builds every SHADOW component:
 #   dpkg-buildpackage -A   → architecture-independent packages (no compiler run)
 #   dpkg-buildpackage -B   → compiled packages for the build architecture
 #   dpkg-buildpackage -b   → both
@@ -18,13 +18,13 @@ GEN := debian/generated
 # Every package built from CMake corresponds to one CMake install component
 # of the same name (see the top-level CMakeLists.txt).
 ARCH_PACKAGES := $(shell dh_listpackages -a)
-DATA_PACKAGES := nexus-artwork nexus-themes
+DATA_PACKAGES := shadow-artwork shadow-themes
 DATA_BUILD := obj-data
 
 define install_components
 	set -e; for package in $(1); do \
 	    if ! grep -q "^Package: $$package$$" debian/control; then continue; fi; \
-	    case $$package in nexus-arsenal-*) continue ;; esac; \
+	    case $$package in shadow-arsenal-*) continue ;; esac; \
 	    DESTDIR=$(CURDIR)/debian/$$package cmake --install $(2) --component $$package; \
 	    if [ -z "$$(find debian/$$package -type f -print -quit 2>/dev/null)" ]; then \
 	        echo "error: CMake install component '$$package' installed no files" >&2; exit 1; \
@@ -49,14 +49,14 @@ override_dh_auto_configure-indep override_dh_auto_test-indep:
 # Data packages (artwork, themes) come from the same CMake project configured
 # without a compiler; the others are assembled by their debian/*.install files.
 override_dh_auto_install-indep:
-	cmake -S . -B $(DATA_BUILD) -DNEXUS_DATA_ONLY=ON -DCMAKE_INSTALL_PREFIX=/usr
+	cmake -S . -B $(DATA_BUILD) -DSHADOW_DATA_ONLY=ON -DCMAKE_INSTALL_PREFIX=/usr
 	$(call install_components,$(DATA_PACKAGES),$(DATA_BUILD))
 
 override_dh_auto_build-indep:
 	mkdir -p $(GEN)
 	scripts/gen-identity.sh $(GEN)
 	scripts/gen-apt-source.sh $(GEN)
-	python3 -m py_compile system/installer/engine/nexus_installer/*.py
+	python3 -m py_compile system/installer/engine/shadow_installer/*.py
 	find system/installer/engine -name __pycache__ -prune -exec rm -rf {} +
 	python3 tests/installation/test_plan.py
 
@@ -64,6 +64,6 @@ override_dh_auto_clean:
 	dh_auto_clean
 	rm -rf $(GEN) $(DATA_BUILD)
 
-# The dpkg trigger of nexus-boot must not make package installation wait.
+# The dpkg trigger of shadow-boot must not make package installation wait.
 override_dh_installdeb:
 	dh_installdeb

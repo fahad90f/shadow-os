@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.networkcenter
+import org.shadow.ui
+import org.shadow.networkcenter
 
 NxPage {
     id: page

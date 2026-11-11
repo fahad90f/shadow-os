@@ -1,29 +1,29 @@
-# NEXUS HORIZON architecture
+# Shadow Horizon architecture
 
 How the desktop is built: the session, the shell process, the protocols and
 services it uses, rendering, theming of third-party applications, and the
 login and lock screens. For using the desktop see [horizon.md](horizon.md);
 for writing shell modules see [shell-modules.md](shell-modules.md); for the
-UI library see [nexusui.md](nexusui.md).
+UI library see [shadowui.md](shadowui.md).
 
 Sources: `desktop/horizon-shell/` (shell and session), `desktop/ui/`
-(NexusUI), `desktop/themes/` (themes, login and lock screen).
+(ShadowUI), `desktop/themes/` (themes, login and lock screen).
 
 ## Components
 
 | Component | Package | Role |
 |---|---|---|
 | KWin (`kwin_wayland`) + Xwayland | Debian `kwin-wayland`, `xwayland` | Wayland compositor and window manager; runs X11 applications |
-| `nexus-horizon-session` | `nexus-horizon` | session start script (`/usr/bin`) |
-| `horizon-session-leader` | `nexus-horizon` | session supervisor (`/usr/libexec/nexus`) |
-| `horizon-shell` | `nexus-horizon` | the shell: one process |
-| NexusUI (`libnexusui`, QML module `org.nexus.ui`, style `org.nexus.style`) | `nexus-ui` | shared UI library of the shell and all NEXUS applications |
-| Themes, SDDM theme, lock screen, `nexus-apply-appearance` | `nexus-themes` | look of everything that is not a NEXUS application |
+| `shadow-horizon-session` | `shadow-horizon` | session start script (`/usr/bin`) |
+| `horizon-session-leader` | `shadow-horizon` | session supervisor (`/usr/libexec/shadow`) |
+| `horizon-shell` | `shadow-horizon` | the shell: one process |
+| ShadowUI (`libshadowui`, QML module `org.shadow.ui`, style `org.shadow.style`) | `shadow-ui` | shared UI library of the shell and all SHADOW applications |
+| Themes, SDDM theme, lock screen, `shadow-apply-appearance` | `shadow-themes` | look of everything that is not a SHADOW application |
 | SDDM | Debian `sddm` | display manager (login screen) |
 | KScreenLocker (`kscreenlocker_greet`) | Debian `libkscreenlocker6` | lock screen process, started by KWin |
 | xdg-desktop-portal with the KDE and GTK back-ends | Debian | portals (file chooser, screenshots, screen sharing, settings) |
 
-NEXUS HORIZON does not run `plasmashell` or any other Plasma process.
+Shadow Horizon does not run `plasmashell` or any other Plasma process.
 
 ## Session files
 
@@ -31,43 +31,43 @@ Installed by `desktop/horizon-shell/CMakeLists.txt`:
 
 | File | Purpose |
 |---|---|
-| `/usr/share/wayland-sessions/nexus-horizon.desktop` | the "NEXUS HORIZON" entry of the login screen; `Exec=/usr/bin/nexus-horizon-session`, `DesktopNames=NEXUS;KDE` |
-| `/usr/bin/nexus-horizon-session` | sets the environment, chooses the rendering mode, starts KWin |
-| `/usr/libexec/nexus/horizon-session-leader` | started by KWin; publishes the environment, starts the session target, supervises the shell |
-| `/usr/lib/systemd/user/nexus-horizon-session.target` | binds `graphical-session.target`; wants `graphical-session-pre.target` and `xdg-desktop-autostart.target` |
-| `/usr/share/applications/org.nexus.horizon.shell.desktop` | hidden entry of the shell; its `X-KDE-Wayland-Interfaces` line is what makes KWin grant the shell the restricted protocols listed below |
-| `/usr/share/xdg-desktop-portal/nexus-portals.conf` | portal back-ends for `XDG_CURRENT_DESKTOP=NEXUS`: `kde`, then `gtk` |
-| `/etc/xdg/menus/nexus-applications.menu` | the application menu (flat: every installed application); selected with `XDG_MENU_PREFIX=nexus-` |
+| `/usr/share/wayland-sessions/shadow-horizon.desktop` | the "Shadow Horizon" entry of the login screen; `Exec=/usr/bin/shadow-horizon-session`, `DesktopNames=SHADOW;KDE` |
+| `/usr/bin/shadow-horizon-session` | sets the environment, chooses the rendering mode, starts KWin |
+| `/usr/libexec/shadow/horizon-session-leader` | started by KWin; publishes the environment, starts the session target, supervises the shell |
+| `/usr/lib/systemd/user/shadow-horizon-session.target` | binds `graphical-session.target`; wants `graphical-session-pre.target` and `xdg-desktop-autostart.target` |
+| `/usr/share/applications/org.shadow.horizon.shell.desktop` | hidden entry of the shell; its `X-KDE-Wayland-Interfaces` line is what makes KWin grant the shell the restricted protocols listed below |
+| `/usr/share/xdg-desktop-portal/shadow-portals.conf` | portal back-ends for `XDG_CURRENT_DESKTOP=SHADOW`: `kde`, then `gtk` |
+| `/etc/xdg/menus/shadow-applications.menu` | the application menu (flat: every installed application); selected with `XDG_MENU_PREFIX=shadow-` |
 | `/etc/xdg/kwinrc` | compositor defaults |
 | `/etc/xdg/kscreenlockerrc` | lock-screen defaults |
 
-### Environment set by `nexus-horizon-session`
+### Environment set by `shadow-horizon-session`
 
 | Variable | Value | Why |
 |---|---|---|
-| `XDG_CURRENT_DESKTOP` | `NEXUS:KDE` | NEXUS first; `KDE` makes portal back-ends, KDE Frameworks applications and xdg-utils choose their KDE behaviour |
-| `XDG_SESSION_DESKTOP`, `XDG_SESSION_TYPE` | `nexus`, `wayland` | |
-| `XDG_MENU_PREFIX` | `nexus-` | selects `nexus-applications.menu` |
+| `XDG_CURRENT_DESKTOP` | `SHADOW:KDE` | SHADOW first; `KDE` makes portal back-ends, KDE Frameworks applications and xdg-utils choose their KDE behaviour |
+| `XDG_SESSION_DESKTOP`, `XDG_SESSION_TYPE` | `shadow`, `wayland` | |
+| `XDG_MENU_PREFIX` | `shadow-` | selects `shadow-applications.menu` |
 | `KDE_FULL_SESSION`, `KDE_SESSION_VERSION` | `true`, `6` | KDE Frameworks integration |
 | `QT_QPA_PLATFORM` | `wayland;xcb` | native Wayland, X11 as fallback |
 | `QT_QPA_PLATFORMTHEME` | `kde` | third-party Qt applications read `kdeglobals` through `plasma-integration` |
 | `GDK_BACKEND`, `SDL_VIDEODRIVER`, `CLUTTER_BACKEND`, `MOZ_ENABLE_WAYLAND`, `ELECTRON_OZONE_PLATFORM_HINT` | Wayland first | toolkit selection |
 | `_JAVA_AWT_WM_NONREPARENTING` | `1` | Java Swing/AWT tools lay out correctly through Xwayland |
 | `XCURSOR_THEME`, `XCURSOR_SIZE` | `breeze_cursors`, `24` (unless already set) | cursor |
-| `PLASMA_DEFAULT_SHELL` | `org.nexus.horizon` | where KScreenLocker finds the lock-screen QML |
+| `PLASMA_DEFAULT_SHELL` | `org.shadow.horizon` | where KScreenLocker finds the lock-screen QML |
 | `KWIN_COMPOSE`, `QT_QUICK_BACKEND` | `Q`, `software` — only with software rendering | see below |
 
-It also creates `$XDG_RUNTIME_DIR/nexus` for per-session state and runs
-`nexus-apply-appearance` before starting the compositor:
+It also creates `$XDG_RUNTIME_DIR/shadow` for per-session state and runs
+`shadow-apply-appearance` before starting the compositor:
 
 ```
-exec kwin_wayland_wrapper --xwayland --exit-with-session=/usr/libexec/nexus/horizon-session-leader
+exec kwin_wayland_wrapper --xwayland --exit-with-session=/usr/libexec/shadow/horizon-session-leader
 ```
 
 ### The session leader
 
 1. Guards against a second copy: its PID is kept in
-   `$XDG_RUNTIME_DIR/nexus/session-leader.pid`. KWin starts the leader again
+   `$XDG_RUNTIME_DIR/shadow/session-leader.pid`. KWin starts the leader again
    when it restarts after a crash; that copy waits for the first one instead
    of starting a second shell.
 2. Publishes the display and desktop variables with
@@ -76,7 +76,7 @@ exec kwin_wayland_wrapper --xwayland --exit-with-session=/usr/libexec/nexus/hori
    entries see the display.
 3. Runs `kbuildsycoca6`, so the application database exists before the
    launcher opens.
-4. Starts `nexus-horizon-session.target` (XDG autostart applications).
+4. Starts `shadow-horizon-session.target` (XDG autostart applications).
 5. Runs `/usr/bin/horizon-shell` in a loop: exit status 0 means "log out";
    any other status is a crash and the shell is restarted — at most five
    crashes within a minute, then the session ends.
@@ -85,18 +85,18 @@ exec kwin_wayland_wrapper --xwayland --exit-with-session=/usr/libexec/nexus/hori
 
 ## The shell process
 
-`horizon-shell` (`src/main.cpp`) is a `Nexus::App` like every NEXUS
+`horizon-shell` (`src/main.cpp`) is a `Shadow::App` like every SHADOW
 application, without a main window. It creates these services and exposes
 them to QML as context properties:
 
 | Class (`src/`) | Property | Back-end |
 |---|---|---|
-| `ShellSettings` | `shellSettings` | `~/.config/nexus/horizon.conf` (QSettings, file watcher) |
+| `ShellSettings` | `shellSettings` | `~/.config/shadow/horizon.conf` (QSettings, file watcher) |
 | `Applications` | `applications` | freedesktop desktop-entry database through KService; launches with `KIO::ApplicationLauncherJob` and an xdg-activation token |
 | `WindowModel` (`tasks.*`, `plasmawindowmanagement.*`) | `windows` | Wayland protocol `org_kde_plasma_window_management` |
 | `Workspaces` | `workspaces` | D-Bus `org.kde.KWin.VirtualDesktopManager` |
-| `Session` | `session` | logind (power actions), `org.freedesktop.ScreenSaver` (lock), `/run/nexus/live-session` and `/run/nexus/autostart` (live medium), program launching |
-| `Shortcuts` | `shortcuts` | KGlobalAccel (`org.kde.kglobalaccel`), component `nexus-horizon` |
+| `Session` | `session` | logind (power actions), `org.freedesktop.ScreenSaver` (lock), `/run/shadow/live-session` and `/run/shadow/autostart` (live medium), program launching |
+| `Shortcuts` | `shortcuts` | KGlobalAccel (`org.kde.kglobalaccel`), component `shadow-horizon` |
 | `PolkitAgent` | `polkitAgent` | polkit authentication agent (PolkitQt6) |
 | `ShellEffects` | (used by `BlurBehind`) | `KWindowEffects` blur-behind |
 | `Horizon::ShellModules` (`module.*`) | `shellModules` | registry of compiled-in modules |
@@ -165,11 +165,11 @@ of the desktop image, **crashed the compositor**. The session therefore
 checks for a GPU render node:
 
 ```
-NEXUS_SOFTWARE_RENDERING unset or "auto":
+SHADOW_SOFTWARE_RENDERING unset or "auto":
     /dev/dri/renderD* exists  → GPU rendering
     otherwise                 → software rendering
-NEXUS_SOFTWARE_RENDERING=1    → software rendering
-NEXUS_SOFTWARE_RENDERING=0    → GPU rendering
+SHADOW_SOFTWARE_RENDERING=1    → software rendering
+SHADOW_SOFTWARE_RENDERING=0    → GPU rendering
 ```
 
 Software rendering sets `KWIN_COMPOSE=Q` (KWin composites with QPainter on
@@ -181,8 +181,8 @@ the shell and applications). Consequences:
 * animations and large redraws cost CPU time;
 * applications that require OpenGL may not work.
 
-`NEXUS_SOFTWARE_RENDERING` must be in the environment of
-`nexus-horizon-session`, that is, set before the session starts. How to do
+`SHADOW_SOFTWARE_RENDERING` must be in the environment of
+`shadow-horizon-session`, that is, set before the session starts. How to do
 that when the desktop does not come up is described in
 [../troubleshooting/README.md](../troubleshooting/README.md).
 
@@ -192,36 +192,36 @@ GPU rendering on any real graphics card.
 ## Theming chain
 
 Everything visual derives from one file,
-`desktop/themes/tokens/nexus-tokens.json` (colours, typography, spacing,
+`desktop/themes/tokens/shadow-tokens.json` (colours, typography, spacing,
 radii, motion), through `scripts/gen-tokens.py`.
 
 ```
-nexus-tokens.json
- ├─ gen-tokens.py qml    → Theme singleton of NexusUI (generated at build time)
- │                         → shell and every NEXUS application
+shadow-tokens.json
+ ├─ gen-tokens.py qml    → Theme singleton of ShadowUI (generated at build time)
+ │                         → shell and every SHADOW application
  ├─ gen-tokens.py render → colour schemes, kdeglobals, GTK settings, gschema override,
  │                         SDDM and lock-screen tokens.js   (generated files are committed;
  │                         desktop/themes/tools/generate.py)
  └─ gen-tokens.py render → Terminal style sheet and colour schemes (at build time)
 ```
 
-**NEXUS applications and the shell** use NexusUI: the `Theme` singleton and
-the Qt Quick Controls style `org.nexus.style`. The live state — dark/light,
-accent, reduce motion, transparency, font scale — is `Nexus::Appearance`,
-stored in `~/.config/nexus/appearance.conf` and watched by every process, so
+**SHADOW applications and the shell** use ShadowUI: the `Theme` singleton and
+the Qt Quick Controls style `org.shadow.style`. The live state — dark/light,
+accent, reduce motion, transparency, font scale — is `Shadow::Appearance`,
+stored in `~/.config/shadow/appearance.conf` and watched by every process, so
 a change applies everywhere at once.
 
-**Third-party applications** cannot use NexusUI. The chain for them
+**Third-party applications** cannot use ShadowUI. The chain for them
 (`desktop/themes/README.md`):
 
 | Toolkit | Mechanism |
 |---|---|
-| Qt and KDE applications, KWin window decorations | `QT_QPA_PLATFORMTHEME=kde` (`plasma-integration`) reads `/etc/xdg/kdeglobals`: NEXUS colour scheme, icon theme `nexus`, Inter and JetBrains Mono fonts, widget style Breeze |
+| Qt and KDE applications, KWin window decorations | `QT_QPA_PLATFORMTHEME=kde` (`plasma-integration`) reads `/etc/xdg/kdeglobals`: SHADOW colour scheme, icon theme `shadow`, Inter and JetBrains Mono fonts, widget style Breeze |
 | GTK 3 / GTK 4 | `/etc/xdg/gtk-{3,4}.0/settings.ini` and a GSettings schema override: dark preference, icon and cursor theme, fonts |
 | libadwaita | follows the settings portal's `color-scheme`; in this session the KDE portal back-end derives it from `kdeglobals` |
-| Icons | themes `nexus` (dark) and `nexus-light`, inheriting Breeze and hicolor; NEXUS application icons are installed into hicolor |
+| Icons | themes `shadow` (dark) and `shadow-light`, inheriting Breeze and hicolor; SHADOW application icons are installed into hicolor |
 
-`nexus-apply-appearance` switches all of these for the user: it rewrites the
+`shadow-apply-appearance` switches all of these for the user: it rewrites the
 colour groups in `~/.config/kdeglobals`, sets the icon theme, updates the
 GTK settings files and GSettings, and notifies running applications over the
 session bus. It is called by the session script at start and by the shell
@@ -233,23 +233,23 @@ whole chain in the booted image.
 
 ## Login screen (SDDM)
 
-* Theme `nexus` (`/usr/share/sddm/themes/nexus`), plain Qt Quick, Qt 6
+* Theme `shadow` (`/usr/share/sddm/themes/shadow`), plain Qt Quick, Qt 6
   greeter.
-* `/usr/lib/sddm/sddm.conf.d/10-nexus.conf` selects the theme and
+* `/usr/lib/sddm/sddm.conf.d/10-shadow.conf` selects the theme and
   `DisplayServer=wayland`. The greeter is composited by
   `kwin_wayland --drm --no-lockscreen --no-global-shortcuts --locale1`.
-  NEXUS OS ships no Xorg server, so SDDM's default X11 greeter could not
+  Shadow OS ships no Xorg server, so SDDM's default X11 greeter could not
   start.
 * `--locale1` makes the greeter use the system keyboard layout
   (`/etc/default/keyboard`), so passwords are typed in the layout chosen at
   installation.
-* The greeter needs `layer-shell-qt` (a dependency of `nexus-themes`).
+* The greeter needs `layer-shell-qt` (a dependency of `shadow-themes`).
 * Features: user list and "Other user…", password field with show/hide and
   Caps Lock warning, session selector, suspend/restart/shut down when SDDM
   allows them.
-* Live session: `system/live/2000-nexus-session` writes
-  `/etc/sddm.conf.d/10-nexus-live.conf` with auto-login for the live user
-  into the `nexus-horizon` session, unless `noautologin` is on the kernel
+* Live session: `system/live/2000-shadow-session` writes
+  `/etc/sddm.conf.d/10-shadow-live.conf` with auto-login for the live user
+  into the `shadow-horizon` session, unless `noautologin` is on the kernel
   command line.
 * Installed system with automatic login: the installer writes
   `/etc/sddm.conf.d/20-autologin.conf`.
@@ -268,10 +268,10 @@ guarantee that nothing is displayed and no input reaches clients.
    (`/etc/xdg/kscreenlockerrc`: 10 minutes, lock on resume, 5 s grace).
 2. KWin's KScreenLocker starts `kscreenlocker_greet`.
 3. The greeter loads its QML from a "Plasma/Shell" package. Which one is
-   named by `/etc/xdg/plasmashellrc` (`ShellPackage=org.nexus.horizon`) and
+   named by `/etc/xdg/plasmashellrc` (`ShellPackage=org.shadow.horizon`) and
    `PLASMA_DEFAULT_SHELL`; the package is
-   `/usr/share/plasma/shells/org.nexus.horizon/contents/lockscreen/LockScreen.qml`
-   — NEXUS's own QML, using only QtQuick.
+   `/usr/share/plasma/shells/org.shadow.horizon/contents/lockscreen/LockScreen.qml`
+   — SHADOW's own QML, using only QtQuick.
 4. Authentication is PAM, service `kde` (`/etc/pam.d/kde`, including
    Debian's `common-auth`). Two further non-interactive PAM services,
    `kde-fingerprint` and `kde-smartcard`, exist because the greeter always
@@ -299,12 +299,12 @@ available and `pkexec` falls back to its text-mode prompt or fails.
 
 ## Application runtime
 
-Every NEXUS QML application goes through `Nexus::App`
-(`desktop/ui/src/app/nexusapp.h`): NEXUS style, icon providers,
+Every SHADOW QML application goes through `Shadow::App`
+(`desktop/ui/src/app/shadowapp.h`): SHADOW style, icon providers,
 `--help`/`--version`/`--dump <topic>`, optional single-instance activation,
-and the test hooks `NEXUS_SMOKE_TEST`, `NEXUS_SCREENSHOT`,
-`NEXUS_SCREENSHOT_DELAY`, `NEXUS_WINDOW_SIZE`. External programs are run
-with `Nexus::Command` (asynchronous, argument vector). The contract is in
+and the test hooks `SHADOW_SMOKE_TEST`, `SHADOW_SCREENSHOT`,
+`SHADOW_SCREENSHOT_DELAY`, `SHADOW_WINDOW_SIZE`. External programs are run
+with `Shadow::Command` (asynchronous, argument vector). The contract is in
 [../applications/development.md](../applications/development.md).
 
 ## Logs

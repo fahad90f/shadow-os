@@ -2,10 +2,10 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 import "Fmt.js" as Fmt
 
-// The states nexus-security-status reported, side by side. Nothing here is
+// The states shadow-security-status reported, side by side. Nothing here is
 // scored or weighted: a tile repeats one section's state and the evidence.
 NxPage {
     id: page
@@ -40,8 +40,8 @@ NxPage {
 
     title: qsTr("Security overview")
     subtitle: center.generated !== ""
-        ? qsTr("State of this computer as reported by nexus-security-status at %1.").arg(center.localTime(center.generated))
-        : qsTr("State of this computer as reported by nexus-security-status.")
+        ? qsTr("State of this computer as reported by shadow-security-status at %1.").arg(center.localTime(center.generated))
+        : qsTr("State of this computer as reported by shadow-security-status.")
     maxContentWidth: 1040
 
     actions: [
@@ -120,7 +120,7 @@ NxPage {
                       qsTr("Opened ports: %1").arg(Fmt.list(s.allowed).length),
                       s.enabled_at_boot ? qsTr("starts at boot") : qsTr("does NOT start at boot")])
                 : page.join([
-                      qsTr("The table inet nexus_filter is not loaded: inbound connections are not filtered."),
+                      qsTr("The table inet shadow_filter is not loaded: inbound connections are not filtered."),
                       s.enabled_at_boot ? qsTr("Enabled at boot") : qsTr("Not enabled at boot")])
             onClicked: page.openPage("firewall")
         }
@@ -231,7 +231,7 @@ NxPage {
     NxSection {
         visible: page.center.hasReport
         title: qsTr("Recommendations")
-        description: qsTr("Findings of nexus-security-status, most severe first.")
+        description: qsTr("Findings of shadow-security-status, most severe first.")
 
         NxRow {
             visible: page.recommendations.length === 0

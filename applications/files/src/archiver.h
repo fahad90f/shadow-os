@@ -9,7 +9,7 @@
 #include <functional>
 
 // Archive handling with bsdtar (libarchive-tools), run asynchronously with an
-// argument vector through Nexus::Command.
+// argument vector through Shadow::Command.
 //
 // Extraction always goes into a fresh temporary folder inside the destination
 // and is moved into place when bsdtar succeeded: nothing that already exists is
@@ -23,7 +23,7 @@ class Archiver : public QObject
     QML_SINGLETON
     // bsdtar is installed
     Q_PROPERTY(bool available READ available CONSTANT)
-    // nexus-archive-manager is installed
+    // shadow-archive-manager is installed
     Q_PROPERTY(bool managerAvailable READ managerAvailable CONSTANT)
     // [{suffix, label}] formats offered by compress()
     Q_PROPERTY(QVariantList formats READ formats CONSTANT)

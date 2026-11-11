@@ -10,7 +10,7 @@
 #include "traymenu.h"
 #include "trayutil.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QEventLoop>
 #include <QIcon>

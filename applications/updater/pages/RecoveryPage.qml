@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.updater
+import org.shadow.ui
+import org.shadow.updater
 
 // Recovery after a failed or interrupted update: what state dpkg's database
 // is in, and PackageKit's "repair system" operation to fix it.
@@ -158,7 +158,7 @@ NxPage {
         NxRow {
             icon: "key"
             title: qsTr("Needs administrator authorisation")
-            subtitle: qsTr("PackageKit asks for it through polkit. NEXUS Updater itself never runs as root.")
+            subtitle: qsTr("PackageKit asks for it through polkit. SHADOW Updater itself never runs as root.")
         }
         NxRow {
             icon: "life-buoy"

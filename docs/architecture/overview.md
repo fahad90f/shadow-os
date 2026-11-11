@@ -1,6 +1,6 @@
 # Architecture overview
 
-This page describes how NEXUS OS is put together and why. It describes the
+This page describes how Shadow OS is put together and why. It describes the
 repository as it is; statements about what has been tested are in
 [../testing.md](../testing.md).
 
@@ -8,7 +8,7 @@ repository as it is; statements about what has been tested are in
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ Applications      NEXUS applications (applications/*, arsenal/manager,│
+│ Applications      SHADOW applications (applications/*, arsenal/manager,│
 │                   system/installer/gui) and any Debian application    │
 ├──────────────────────────────────────────────────────────────────────┤
 │ Shell             horizon-shell: wallpaper, panel, dock, launcher,    │
@@ -22,7 +22,7 @@ repository as it is; statements about what has been tested are in
 │                   PackageKit, PipeWire/WirePlumber, nftables, auditd, │
 │                   AppArmor — all from Debian                          │
 ├──────────────────────────────────────────────────────────────────────┤
-│ Kernel            Debian's signed linux-image (6.12). A NEXUS kernel  │
+│ Kernel            Debian's signed linux-image (6.12). A SHADOW kernel  │
 │                   configuration exists; it is not shipped             │
 ├──────────────────────────────────────────────────────────────────────┤
 │ Base              Debian 13 "trixie": main, contrib, non-free-firmware│
@@ -30,17 +30,17 @@ repository as it is; statements about what has been tested are in
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-| Layer | Source in this repository | What NEXUS adds |
+| Layer | Source in this repository | What SHADOW adds |
 |---|---|---|
-| Base | `distro/base/package-lists/*.list`, `distro/base/hooks/` | package selection, APT sources (one Debian suite, HTTPS), identity files (`nexus-base-files` diverts `os-release`, `issue`, `issue.net`) |
-| Boot | `system/boot/`, `assets/boot/` | `nexus-boot` (boot-loader maintenance), live-media GRUB menu, GRUB theme, Plymouth theme |
+| Base | `distro/base/package-lists/*.list`, `distro/base/hooks/` | package selection, APT sources (one Debian suite, HTTPS), identity files (`shadow-base-files` diverts `os-release`, `issue`, `issue.net`) |
+| Boot | `system/boot/`, `assets/boot/` | `shadow-boot` (boot-loader maintenance), live-media GRUB menu, GRUB theme, Plymouth theme |
 | Kernel | `kernel/` | configuration fragments on top of Debian's source and configuration; not in the image ([../kernel/README.md](../kernel/README.md)) |
-| System services | `security/`, `system/live/` | `nexus-hardening` (sysctl, modprobe, kernel command line, nftables ruleset, audit rules, journald, sudo, NetworkManager defaults), live-session configuration. No service of its own is added: NEXUS ships no daemon |
+| System services | `security/`, `system/live/` | `shadow-hardening` (sysctl, modprobe, kernel command line, nftables ruleset, audit rules, journald, sudo, NetworkManager defaults), live-session configuration. No service of its own is added: SHADOW ships no daemon |
 | Compositor | `desktop/horizon-shell/session/`, `desktop/themes/` | KWin defaults (`/etc/xdg/kwinrc`), screen-locker defaults, SDDM theme and configuration, lock-screen QML |
-| Shell | `desktop/horizon-shell/`, `desktop/ui/` | the whole shell and the NexusUI library |
-| Applications | `applications/`, `arsenal/manager/`, `system/installer/` | NEXUS applications |
+| Shell | `desktop/horizon-shell/`, `desktop/ui/` | the whole shell and the ShadowUI library |
+| Applications | `applications/`, `arsenal/manager/`, `system/installer/` | SHADOW applications |
 
-NEXUS OS adds no system daemon. Everything that needs privileges goes
+Shadow OS adds no system daemon. Everything that needs privileges goes
 through an existing Debian service with its own polkit policy, or through a
 small helper started with `pkexec` (see below).
 
@@ -48,15 +48,15 @@ small helper started with `pkexec` (see below).
 
 ```
 systemd
- └─ sddm                               display manager (theme "nexus"; greeter on Wayland,
+ └─ sddm                               display manager (theme "shadow"; greeter on Wayland,
      │                                 composited by kwin_wayland)
-     └─ /usr/bin/nexus-horizon-session        session script: environment, rendering mode
+     └─ /usr/bin/shadow-horizon-session        session script: environment, rendering mode
          └─ kwin_wayland_wrapper --xwayland   compositor and window manager
-             │   --exit-with-session=/usr/libexec/nexus/horizon-session-leader
+             │   --exit-with-session=/usr/libexec/shadow/horizon-session-leader
              ├─ Xwayland                      for X11 applications
              ├─ kscreenlocker_greet           when the screen is locked
              └─ horizon-session-leader        supervisor
-                 ├─ systemctl --user start nexus-horizon-session.target
+                 ├─ systemctl --user start shadow-horizon-session.target
                  │    (binds graphical-session.target, pulls in XDG autostart)
                  └─ /usr/bin/horizon-shell    one process: panel, dock, launcher, wallpaper,
                       │                       session menu, polkit agent, modules
@@ -64,17 +64,17 @@ systemd
 ```
 
 1. SDDM shows the login screen and starts the session named
-   `nexus-horizon` (`/usr/share/wayland-sessions/nexus-horizon.desktop`). In
-   the live session `system/live/2000-nexus-session` configures auto-login.
-2. `nexus-horizon-session` exports the session environment
-   (`XDG_CURRENT_DESKTOP=NEXUS:KDE`, Wayland-first toolkit settings), decides
+   `shadow-horizon` (`/usr/share/wayland-sessions/shadow-horizon.desktop`). In
+   the live session `system/live/2000-shadow-session` configures auto-login.
+2. `shadow-horizon-session` exports the session environment
+   (`XDG_CURRENT_DESKTOP=SHADOW:KDE`, Wayland-first toolkit settings), decides
    between GPU and CPU rendering, applies the saved appearance to third-party
    toolkits and replaces itself with KWin.
 3. KWin starts `horizon-session-leader` once it accepts clients. When the
    leader exits, KWin exits and the session ends.
 4. The leader publishes the environment to the systemd user manager and
    D-Bus activation, rebuilds the application database (`kbuildsycoca6`),
-   starts `nexus-horizon-session.target` and runs `horizon-shell`.
+   starts `shadow-horizon-session.target` and runs `horizon-shell`.
    * Exit status 0 of the shell means "log out": the leader stops the target
      and exits.
    * Any other status is a crash: the shell is restarted, at most five times
@@ -85,7 +85,7 @@ systemd
 
 Details: [../desktop/architecture.md](../desktop/architecture.md).
 
-## How NEXUS components talk to the system
+## How SHADOW components talk to the system
 
 The rule is in [../applications/development.md](../applications/development.md),
 section 4. In order of preference:
@@ -108,11 +108,11 @@ section 4. In order of preference:
 | Status module | NetworkManager, BlueZ, UPower, power-profiles-daemon, logind, PipeWire (PulseAudio protocol), MPRIS players, `/dev/rfkill` | D-Bus and library clients, all asynchronous |
 | Store, Updater, Arsenal manager | PackageKit | D-Bus (PackageKit-Qt); PackageKit's polkit actions |
 | Monitor | `/proc`, `/sys`; systemd `org.freedesktop.systemd1` | files; D-Bus; `pkexec /usr/bin/kill` and `pkexec /usr/bin/renice` for other users' processes |
-| Network Center | NetworkManager; `ip`, `ss`, `ping`, … | D-Bus; argument-vector commands; helper `/usr/libexec/nexus/network-helper` via `pkexec` (actions `org.nexus.networkcenter.sockets`, `.capture`) |
+| Network Center | NetworkManager; `ip`, `ss`, `ping`, … | D-Bus; argument-vector commands; helper `/usr/libexec/shadow/network-helper` via `pkexec` (actions `org.shadow.networkcenter.sockets`, `.capture`) |
 | Control Center | NetworkManager, BlueZ, UPower, logind, KWin, PipeWire | `nmcli`, D-Bus, `kscreen-doctor`, KConfig |
-| Graphical installer | installer engine | `pkexec /usr/sbin/nexus-installer-engine` (action `org.nexus.installer.run`) |
-| Security status report | kernel, nftables, AppArmor, audit, APT | `pkexec /usr/sbin/nexus-security-status` (action `org.nexus.security.read-status`, read-only) |
-| Firewall management | nftables | `pkexec /usr/sbin/nexus-firewall` (action `org.nexus.firewall.manage`) |
+| Graphical installer | installer engine | `pkexec /usr/sbin/shadow-installer-engine` (action `org.shadow.installer.run`) |
+| Security status report | kernel, nftables, AppArmor, audit, APT | `pkexec /usr/sbin/shadow-security-status` (action `org.shadow.security.read-status`, read-only) |
+| Firewall management | nftables | `pkexec /usr/sbin/shadow-firewall` (action `org.shadow.firewall.manage`) |
 
 Applications also expose the data behind their UI as JSON with
 `<binary> --dump <topic>`, without opening a window; this is the interface
@@ -120,25 +120,25 @@ tests use.
 
 ## Packaging model
 
-* **One source package.** `debian/` describes the source package `nexus-os`
-  (format `3.0 (native)`). It builds every NEXUS binary package.
+* **One source package.** `debian/` describes the source package `shadow-os`
+  (format `3.0 (native)`). It builds every SHADOW binary package.
 * **CMake install component = Debian package.** The top-level
   `CMakeLists.txt` discovers components (`desktop/*`, `applications/*`,
   `system/installer`, `system/recovery`, `arsenal/manager`); each installs
-  into a CMake install component named after its package (`nexus-<directory>`
-  unless mapped otherwise, e.g. `horizon-shell` → `nexus-horizon`).
+  into a CMake install component named after its package (`shadow-<directory>`
+  unless mapped otherwise, e.g. `horizon-shell` → `shadow-horizon`).
   `debian/rules` runs `cmake --install --component <package>` once per
   package and fails if a component installs nothing.
-* **Data packages** (`nexus-artwork`, `nexus-themes`) come from the same
-  CMake project configured with `-DNEXUS_DATA_ONLY=ON`, which needs no
-  compiler. The remaining `Architecture: all` packages (`nexus-base-files`,
-  `nexus-boot`, `nexus-installer`, `nexus-live`, `nexus-archive-keyring`,
-  `nexus-hardening`, `nexus-arsenal-data`) are assembled by `debian/*.install`
-  files; the `nexus-arsenal-*` profile packages are metapackages defined in
+* **Data packages** (`shadow-artwork`, `shadow-themes`) come from the same
+  CMake project configured with `-DSHADOW_DATA_ONLY=ON`, which needs no
+  compiler. The remaining `Architecture: all` packages (`shadow-base-files`,
+  `shadow-boot`, `shadow-installer`, `shadow-live`, `shadow-archive-keyring`,
+  `shadow-hardening`, `shadow-arsenal-data`) are assembled by `debian/*.install`
+  files; the `shadow-arsenal-*` profile packages are metapackages defined in
   `debian/control` only.
-* **Identity from one file.** `distro/base/nexus.conf` is the single source
+* **Identity from one file.** `distro/base/shadow.conf` is the single source
   for name, version, codename, channel and Debian suite. The build fails if
-  `debian/changelog` and `nexus.conf` disagree on the version.
+  `debian/changelog` and `shadow.conf` disagree on the version.
 * Packages are built in a pristine Debian chroot of the target architecture,
   published into a signed APT repository with reprepro, and installed into
   the image from that repository with APT — the same way a user's system
@@ -160,7 +160,7 @@ Using Debian's Microsoft-signed shim, Debian-signed GRUB and Debian's signed
 kernel lets the system boot under Secure Boot with no key enrolment and no
 signing infrastructure of the project's own. The cost is that the boot-loader
 directory on the ESP must be called `debian`
-([boot.md](boot.md)) and that a NEXUS-built kernel would not boot under
+([boot.md](boot.md)) and that a SHADOW-built kernel would not boot under
 Secure Boot unless the project signs it with a key users enrol.
 
 ### KWin as the compositor
@@ -169,7 +169,7 @@ A Wayland compositor is the part of a desktop that owns the display and
 input devices, isolates clients from each other, and has to handle every GPU
 driver, multi-monitor layout, HiDPI scaling, input device, Xwayland and
 screen locking correctly. KWin does this today and is maintained and
-security-supported in Debian. NEXUS HORIZON therefore uses KWin and builds
+security-supported in Debian. Shadow Horizon therefore uses KWin and builds
 only the layers above it: shell, session, settings and applications. The
 shell uses public interfaces — the layer-shell protocol, KWin's window
 management protocol, D-Bus, KGlobalAccel — and a small number of KDE
@@ -246,8 +246,8 @@ unattended in QEMU is the code path the GUI uses
 | Disk encryption | optional LUKS2 (AES-XTS 512-bit, Argon2id) with LVM inside; `/boot` and the ESP stay unencrypted | [../security/hardening.md](../security/hardening.md) |
 | Kernel hardening | sysctl settings, kernel command-line parameters, module auto-load blacklist | [../security/hardening.md](../security/hardening.md) |
 | Network | nftables: inbound default-deny, forward default-deny except local VMs/containers, outbound allowed; NetworkManager MAC and IPv6 privacy defaults | [../security/hardening.md](../security/hardening.md) |
-| Mandatory access control | AppArmor as shipped by Debian (`nexus-hardening` depends on `apparmor`; no NEXUS profiles are shipped) | [../security/hardening.md](../security/hardening.md) |
+| Mandatory access control | AppArmor as shipped by Debian (`shadow-hardening` depends on `apparmor`; no SHADOW profiles are shipped) | [../security/hardening.md](../security/hardening.md) |
 | Auditing | auditd with a small rule set (identity, privilege, modules, time, boot chain, APT sources); persistent, size-bounded journal | [../security/hardening.md](../security/hardening.md) |
 | Privilege | root account locked; `sudo` for the first user; polkit for graphical actions; no GUI runs as root; helpers take argument vectors | [../applications/development.md](../applications/development.md) |
-| Packages | Debian archive and Debian security over HTTPS, authenticated by Debian's keyring; NEXUS packages authenticated by the NEXUS archive key | [../packaging/repositories.md](../packaging/repositories.md) |
+| Packages | Debian archive and Debian security over HTTPS, authenticated by Debian's keyring; SHADOW packages authenticated by the SHADOW archive key | [../packaging/repositories.md](../packaging/repositories.md) |
 | Security tools | not installed by default; profiles are metapackages over Debian `main` packages | [../security/toolkit.md](../security/toolkit.md) |

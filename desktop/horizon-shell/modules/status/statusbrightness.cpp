@@ -51,7 +51,7 @@ BrightnessBackend::BrightnessBackend(QObject *parent)
 {
     // The override exists for tests with a fabricated device directory; the
     // name of the device is still what logind is asked to change.
-    m_root = qEnvironmentVariable("NEXUS_STATUS_BACKLIGHT_DIR", QStringLiteral("/sys/class/backlight"));
+    m_root = qEnvironmentVariable("SHADOW_STATUS_BACKLIGHT_DIR", QStringLiteral("/sys/class/backlight"));
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, &BrightnessBackend::readValue);
     findDevice();
     if (m_device.isEmpty())

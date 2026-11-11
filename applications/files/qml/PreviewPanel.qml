@@ -4,8 +4,8 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
 // Preview and information about the selection of the active pane (or about
 // the folder itself when nothing is selected): image preview, the first lines

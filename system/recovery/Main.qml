@@ -2,12 +2,12 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.recovery
+import org.shadow.ui
+import org.shadow.recovery
 
 NxWindow {
     id: window
-    title: qsTr("NEXUS Recovery")
+    title: qsTr("SHADOW Recovery")
     width: 980
     height: 860
 
@@ -26,8 +26,8 @@ NxWindow {
     readonly property bool targetMounted: hasTarget && !!target.mounted_by_recovery
     // Nothing is running — and something could be run (not the read-only test mode).
     readonly property bool idle: !recovery.busy && !recovery.scanning && !recovery.testMode
-    // For a console, when NEXUS Terminal is not there.
-    readonly property string shellCommand: hasTarget ? "sudo nexus-recovery-engine shell --target " + recovery.currentId + " --exec" : ""
+    // For a console, when SHADOW Terminal is not there.
+    readonly property string shellCommand: hasTarget ? "sudo shadow-recovery-engine shell --target " + recovery.currentId + " --exec" : ""
 
     function describe(installation) {
         const parts = [installation.root.device, Theme.formatBytes(installation.root.size), installation.root.fstype]
@@ -47,10 +47,10 @@ NxWindow {
     NxPage {
         anchors.fill: parent
         maxContentWidth: 860
-        title: qsTr("NEXUS Recovery")
+        title: qsTr("SHADOW Recovery")
         subtitle: recovery.liveSession
-                  ? qsTr("Repair a NEXUS OS installation on this computer's disks. Nothing is changed until you start a repair.")
-                  : qsTr("Repair this NEXUS OS installation, or another one on this computer's disks. Nothing is changed until you start a repair.")
+                  ? qsTr("Repair a Shadow OS installation on this computer's disks. Nothing is changed until you start a repair.")
+                  : qsTr("Repair this Shadow OS installation, or another one on this computer's disks. Nothing is changed until you start a repair.")
         actions: [
             NxButton {
                 text: qsTr("Scan again")
@@ -75,7 +75,7 @@ NxWindow {
             visible: recovery.engineProblem !== ""
             icon: "alert-triangle"
             tone: "danger"
-            title: qsTr("NEXUS Recovery cannot work here")
+            title: qsTr("SHADOW Recovery cannot work here")
             message: recovery.engineProblem
         }
 
@@ -127,10 +127,10 @@ NxWindow {
                     NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: installationRow.modelData.running; text: qsTr("This system"); kind: "accent" }
                     NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: installationRow.modelData.encrypted; text: qsTr("Encrypted"); kind: "neutral" }
                     NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: !!installationRow.modelData.mounted_by_recovery; text: qsTr("Mounted"); kind: "success" }
-                    NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: !installationRow.modelData.is_nexus; text: qsTr("Not NEXUS OS"); kind: "warning" }
+                    NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: !installationRow.modelData.is_shadow; text: qsTr("Not Shadow OS"); kind: "warning" }
                     NxBadge { anchors.verticalCenter: parent.verticalCenter; visible: installationRow.selected; text: qsTr("Selected"); kind: "accent"; dot: false }
                     NxButton {
-                        visible: installationRow.modelData.is_nexus && !installationRow.selected
+                        visible: installationRow.modelData.is_shadow && !installationRow.selected
                         text: qsTr("Select")
                         enabled: window.idle
                         onClicked: recovery.select(installationRow.modelData.id)
@@ -218,7 +218,7 @@ NxWindow {
                 title: qsTr("Check the file systems")
                 explanation: qsTr("Looks for damage in the installation's file systems (root, /boot, EFI partition) with e2fsck and fsck.vfat. They are unmounted for the check.")
                 changes: qsTr("Nothing. If damage is found, a separate repair is offered.")
-                unavailableReason: window.targetRunning ? qsTr("Not possible for the running system: start from the NEXUS OS medium and choose Recovery.") : ""
+                unavailableReason: window.targetRunning ? qsTr("Not possible for the running system: start from the Shadow OS medium and choose Recovery.") : ""
                 result: recovery.results.fsck
                 running: recovery.busyAction === "fsck"
                 NxButton {
@@ -238,8 +238,8 @@ NxWindow {
             ActionRow {
                 icon: "power"
                 title: qsTr("Repair the boot loader")
-                explanation: qsTr("For a system that no longer starts: rebuilds the initial RAM disk of every installed kernel (update-initramfs -u -k all), re-installs GRUB the way the system was installed (nexus-grub-install) and regenerates the boot menu (update-grub).")
-                changes: qsTr("The files in /boot, the boot loader on the EFI partition or in the disk's boot sector, and the firmware's “NEXUS OS” boot entry.")
+                explanation: qsTr("For a system that no longer starts: rebuilds the initial RAM disk of every installed kernel (update-initramfs -u -k all), re-installs GRUB the way the system was installed (shadow-grub-install) and regenerates the boot menu (update-grub).")
+                changes: qsTr("The files in /boot, the boot loader on the EFI partition or in the disk's boot sector, and the firmware's “Shadow OS” boot entry.")
                 result: recovery.results.boot
                 running: recovery.busyAction === "boot"
                 NxButton {
@@ -300,7 +300,7 @@ NxWindow {
                 title: qsTr("Open a terminal in the installed system")
                 explanation: recovery.terminalAvailable
                     ? qsTr("For repairs by hand: a root shell whose / is the installation (chroot).")
-                    : qsTr("NEXUS Terminal is not installed here. From a console, the same root shell is started with: %1").arg(window.shellCommand)
+                    : qsTr("SHADOW Terminal is not installed here. From a console, the same root shell is started with: %1").arg(window.shellCommand)
                 changes: qsTr("Whatever you type there.")
                 result: recovery.results.terminal
                 running: recovery.busyAction === "terminal"
@@ -377,7 +377,7 @@ NxWindow {
             ActionRow {
                 icon: "refresh"
                 title: qsTr("Restart the computer")
-                explanation: qsTr("Unmounts the installation, closes encrypted volumes that were unlocked here and restarts. Remove the NEXUS OS medium when the screen goes dark to start the repaired system.")
+                explanation: qsTr("Unmounts the installation, closes encrypted volumes that were unlocked here and restarts. Remove the Shadow OS medium when the screen goes dark to start the repaired system.")
                 changes: ""
                 unavailableReason: recovery.canRestart ? "" : recovery.restartProblem
                 result: recovery.results.restart

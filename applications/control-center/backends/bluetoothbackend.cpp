@@ -11,7 +11,7 @@
 
 #include <functional>
 
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
 #include <BluezQt/Adapter>
 #include <BluezQt/Agent>
 #include <BluezQt/Device>
@@ -23,7 +23,7 @@
 
 using namespace NetHw;
 
-NEXUS_CC_DUMP("bluetooth", [] {
+SHADOW_CC_DUMP("bluetooth", [] {
     BluetoothBackend backend;
     waitUntilReady(&backend);
     return QJsonValue(backend.toJson());
@@ -37,7 +37,7 @@ const QStringList kDeviceRoles = {
 };
 const int kScanSeconds = 30;
 
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
 const QString kBluez = QStringLiteral("org.bluez");
 const QString kBattery = QStringLiteral("org.bluez.Battery1");
 const QString kProperties = QStringLiteral("org.freedesktop.DBus.Properties");
@@ -69,7 +69,7 @@ QString kindLabel(BluezQt::Device::Type type)
     }
 }
 
-// Glyphs of the NEXUS symbolic set; types without a fitting glyph use the
+// Glyphs of the SHADOW symbolic set; types without a fitting glyph use the
 // Bluetooth mark.
 QString kindIcon(BluezQt::Device::Type type)
 {
@@ -121,7 +121,7 @@ bool hasRealName(const QString &name)
 
 // ---- private part ---------------------------------------------------------------
 
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
 class PairingAgent;
 #endif
 
@@ -166,7 +166,7 @@ public:
         q->scheduleRebuild();
     }
 
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     BluezQt::Manager *manager = nullptr;
     PairingAgent *agent = nullptr;
     bool initialized = false;
@@ -195,7 +195,7 @@ public:
 #endif
 };
 
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
 // Answers BlueZ's questions during a pairing started from this page by
 // putting them in front of the user (BluetoothBackend::prompt).
 class PairingAgent : public BluezQt::Agent
@@ -349,10 +349,10 @@ BluetoothBackend::BluetoothBackend(QObject *parent)
     d->scanTimer.setInterval(kScanSeconds * 1000);
     connect(&d->scanTimer, &QTimer::timeout, this, &BluetoothBackend::stopScan);
 
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     static int agentCounter = 0;
     d->manager = new BluezQt::Manager(this);
-    d->agent = new PairingAgent(d.get(), QStringLiteral("/org/nexus/controlcenter/BluetoothAgent%1").arg(++agentCounter), this);
+    d->agent = new PairingAgent(d.get(), QStringLiteral("/org/shadow/controlcenter/BluetoothAgent%1").arg(++agentCounter), this);
 
     using BluezQt::Manager;
     connect(d->manager, &Manager::operationalChanged, this, [this](bool operational) {
@@ -423,7 +423,7 @@ BluetoothBackend::BluetoothBackend(QObject *parent)
 
 BluetoothBackend::~BluetoothBackend()
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     // Leave nothing running on behalf of a page that is gone.
     if (d->startedScan) {
         if (BluezQt::AdapterPtr adapter = d->adapter())
@@ -457,7 +457,7 @@ void BluetoothBackend::rebuild()
 
     d->rfkill = rfkillState(QStringLiteral("bluetooth"));
 
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     if (!d->initialized)
         return;
     if (!QDBusConnection::systemBus().isConnected()) {
@@ -590,7 +590,7 @@ void BluetoothBackend::onBatteryPropertiesChanged(const QString &interface, cons
 
 void BluetoothBackend::setPowered(bool powered)
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     if (!d->manager->isOperational()) {
         Q_EMIT failed(m_statusMessage);
         return;
@@ -622,7 +622,7 @@ void BluetoothBackend::setPowered(bool powered)
 
 void BluetoothBackend::setDiscoverable(bool discoverable)
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     const BluezQt::AdapterPtr adapter = d->adapter();
     if (!adapter || !adapter->isPowered()) {
         Q_EMIT failed(tr("Switch Bluetooth on first."));
@@ -641,7 +641,7 @@ void BluetoothBackend::setDiscoverable(bool discoverable)
 
 void BluetoothBackend::startScan()
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     const BluezQt::AdapterPtr adapter = d->adapter();
     if (!adapter || !adapter->isPowered()) {
         Q_EMIT failed(tr("Switch Bluetooth on first."));
@@ -664,7 +664,7 @@ void BluetoothBackend::startScan()
 
 void BluetoothBackend::stopScan()
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     d->scanTimer.stop();
     if (!d->startedScan)
         return;
@@ -676,7 +676,7 @@ void BluetoothBackend::stopScan()
 
 void BluetoothBackend::pair(const QString &ubi)
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     const BluezQt::DevicePtr device = d->device(ubi);
     if (!device) {
         Q_EMIT failed(tr("The device is no longer in range."));
@@ -718,7 +718,7 @@ void BluetoothBackend::pair(const QString &ubi)
 
 void BluetoothBackend::connectDevice(const QString &ubi)
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     const BluezQt::DevicePtr device = d->device(ubi);
     if (!device) {
         Q_EMIT failed(tr("The device is no longer known."));
@@ -741,7 +741,7 @@ void BluetoothBackend::connectDevice(const QString &ubi)
 
 void BluetoothBackend::disconnectDevice(const QString &ubi)
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     const BluezQt::DevicePtr device = d->device(ubi);
     if (!device)
         return;
@@ -759,7 +759,7 @@ void BluetoothBackend::disconnectDevice(const QString &ubi)
 
 void BluetoothBackend::setTrusted(const QString &ubi, bool trusted)
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     const BluezQt::DevicePtr device = d->device(ubi);
     if (!device)
         return;
@@ -776,7 +776,7 @@ void BluetoothBackend::setTrusted(const QString &ubi, bool trusted)
 
 void BluetoothBackend::removeDevice(const QString &ubi)
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     const BluezQt::DevicePtr device = d->device(ubi);
     if (!device || !device->adapter())
         return;
@@ -802,7 +802,7 @@ void BluetoothBackend::answerPrompt(bool accept, const QString &text)
 
 void BluetoothBackend::startService()
 {
-#ifdef NEXUS_HAVE_BLUEZQT
+#ifdef SHADOW_HAVE_BLUEZQT
     whenFinished(BluezQt::Manager::startService(), this, [this](int error, const QString &text) {
         if (error != BluezQt::PendingCall::NoError)
             Q_EMIT failed(tr("The Bluetooth service could not be started: %1").arg(callError(error, text)));

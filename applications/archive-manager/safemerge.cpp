@@ -239,7 +239,7 @@ void mergeDirectory(Context &c, const QByteArray &source, const QByteArray &targ
             QByteArray movable = from;
             if (st.st_nlink > 1) {
                 // Never trust a hard link made by a tool: detach it.
-                const QByteArray copy = source + "/.nexus-copy-" + QByteArray::number(c.report.files);
+                const QByteArray copy = source + "/.shadow-copy-" + QByteArray::number(c.report.files);
                 QString error;
                 if (!copyRegular(from, copy, mode, &error)) {
                     c.report.refused << tr("%1: cannot be copied (%2)").arg(rel, error);

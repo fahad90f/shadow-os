@@ -59,13 +59,13 @@ void waitFor(StorageBackend *backend, Ready ready, int timeoutMs)
 }
 } // namespace
 
-NEXUS_CC_DUMP("storage", [] {
+SHADOW_CC_DUMP("storage", [] {
     StorageBackend backend;
     waitFor(&backend, [&] { return backend.settled(); }, 30000);
     return QJsonValue(backend.toJson());
 })
 // The walk of the home folder, run to its end (up to two minutes).
-NEXUS_CC_DUMP("storage-home", [] {
+SHADOW_CC_DUMP("storage-home", [] {
     StorageBackend backend;
     backend.startHomeScan();
     waitFor(&backend, [&] { return backend.homeState() != QLatin1String("scanning"); }, 120000);
@@ -382,14 +382,14 @@ void StorageBackend::scheduleRefresh()
 
 bool StorageBackend::diskManagerAvailable() const
 {
-    return !QStandardPaths::findExecutable(QStringLiteral("nexus-disks")).isEmpty();
+    return !QStandardPaths::findExecutable(QStringLiteral("shadow-disks")).isEmpty();
 }
 
 bool StorageBackend::openDiskManager()
 {
-    const bool ok = QProcess::startDetached(QStringLiteral("nexus-disks"), {});
+    const bool ok = QProcess::startDetached(QStringLiteral("shadow-disks"), {});
     if (!ok)
-        Q_EMIT failed(tr("NEXUS Disk Manager could not be started."));
+        Q_EMIT failed(tr("SHADOW Disk Manager could not be started."));
     return ok;
 }
 
@@ -707,7 +707,7 @@ void StorageBackend::loadLsblk(const QString &reason)
 {
     const QStringList arguments = {QStringLiteral("-J"), QStringLiteral("-b"), QStringLiteral("-o"),
                                    QStringLiteral("NAME,PATH,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINTS,MODEL,VENDOR,RM,HOTPLUG,TRAN,ROTA,RO")};
-    Nexus::Command::run(this, QStringLiteral("lsblk"), arguments, [this, reason](const Nexus::CommandResult &result) {
+    Shadow::Command::run(this, QStringLiteral("lsblk"), arguments, [this, reason](const Shadow::CommandResult &result) {
         if (!result.ok()) {
             finishDisks({}, QStringLiteral("none"),
                         tr("%1 The fallback, lsblk, failed as well%2").arg(reason, result.exitCode == -1 ? tr(" (it is not installed).")
@@ -838,7 +838,7 @@ void StorageBackend::finishDisks(const QVariantList &disks, const QString &sourc
 // stays "not reported" with that reason.
 void StorageBackend::querySmartctl()
 {
-    if (!Nexus::Command::available(QStringLiteral("smartctl")))
+    if (!Shadow::Command::available(QStringLiteral("smartctl")))
         return;
     for (const QVariant &value : std::as_const(m_disks)) {
         const QVariantMap disk = value.toMap();
@@ -850,9 +850,9 @@ void StorageBackend::querySmartctl()
             continue;
         m_smartctl.insert(device, smartUnknown(tr("Not reported")));      // asked once per device
         ++m_smartctlRunning;
-        Nexus::Command::run(this, QStringLiteral("smartctl"),
+        Shadow::Command::run(this, QStringLiteral("smartctl"),
                             {QStringLiteral("--json"), QStringLiteral("-H"), QStringLiteral("-A"), QStringLiteral("--nocheck=standby"), device},
-                            [this, device](const Nexus::CommandResult &result) {
+                            [this, device](const Shadow::CommandResult &result) {
             const QJsonObject json = QJsonDocument::fromJson(result.out).object();
             QVariantMap smart;
             if (json.contains(QStringLiteral("smart_status"))) {

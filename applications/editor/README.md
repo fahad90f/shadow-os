@@ -1,16 +1,16 @@
-# NEXUS Text Editor
+# SHADOW Text Editor
 
-`nexus-editor` (application id `org.nexus.editor`) is a programmer's text
+`shadow-editor` (application id `org.shadow.editor`) is a programmer's text
 editor: tabs, syntax highlighting, find/replace with regular expressions,
 safe handling of text encodings and line endings, and no surprises when a file
 is too big or is not text.
 
 ```
-nexus-editor [file[:line] ...]      open files; a second launch adds tabs to the running window
-nexus-editor --probe <file ...>     JSON: detected encoding, BOM, line endings, syntax (no window)
-nexus-editor --resave <in> <out>    decode <in> and write it back as the editor would (no window)
-nexus-editor --dump <topic>         syntaxes | encodings | themes | limits | settings
-NEXUS_EDITOR_BENCH=1 nexus-editor <file>   time loading/rendering/editing of <file>, print, quit
+shadow-editor [file[:line] ...]      open files; a second launch adds tabs to the running window
+shadow-editor --probe <file ...>     JSON: detected encoding, BOM, line endings, syntax (no window)
+shadow-editor --resave <in> <out>    decode <in> and write it back as the editor would (no window)
+shadow-editor --dump <topic>         syntaxes | encodings | themes | limits | settings
+SHADOW_EDITOR_BENCH=1 shadow-editor <file>   time loading/rendering/editing of <file>, print, quit
 ```
 
 ## What it does
@@ -23,7 +23,7 @@ NEXUS_EDITOR_BENCH=1 nexus-editor <file>   time loading/rendering/editing of <fi
 | Binary files | Files containing NUL bytes that are not UTF-16/32 are refused, with the reason. |
 | Line endings | LF / CRLF / CR are detected, kept on save and can be converted from the status bar. Mixed files are flagged and the user is told what saving will write. |
 | External changes | `QFileSystemWatcher` plus a size/mtime check whenever the window is activated. A bar offers "Reload"; saving over a newer file asks first. Deleted files are reported. |
-| Syntax highlighting | KSyntaxHighlighting definitions (about 400 languages), chosen from the file name, then the MIME type; changeable from the status bar. Colours: two themes shipped with the application, `themes/nexus-dark.theme` and `themes/nexus-light.theme`, built from the NEXUS design tokens; they follow the light/dark appearance. |
+| Syntax highlighting | KSyntaxHighlighting definitions (about 400 languages), chosen from the file name, then the MIME type; changeable from the status bar. Colours: two themes shipped with the application, `themes/shadow-dark.theme` and `themes/shadow-light.theme`, built from the SHADOW design tokens; they follow the light/dark appearance. |
 | Editing | Line numbers, current-line highlight, word wrap (Alt+Z), undo/redo, auto-indent (keeps the indentation; one level more after `{ [ (` and, in Python/YAML, after `:`), Tab/Shift+Tab indent the selected lines, Backspace steps back one level in leading spaces, tabs or spaces with a width of 1–16. Ligatures are switched off. |
 | Find / replace | Ctrl+F / Ctrl+H, F3 / Shift+F3. Plain or regular expression (PCRE, `^`/`$` per line), match case, whole words, "n of m" counter, all visible matches highlighted, replace one / all (`\1` or `$1` insert groups; "replace all" is one undo step). Invalid expressions show the error. |
 | Go to line | Ctrl+G, `line` or `line:column`; also `file:line` on the command line. |
@@ -33,7 +33,7 @@ NEXUS_EDITOR_BENCH=1 nexus-editor <file>   time loading/rendering/editing of <fi
 | Recent files | Clock button in the toolbar (15 entries). |
 | Session | The list of open files, the active tab and the cursor positions are restored at the next start (can be switched off). **Unsaved text is not restored** — there are no recovery files. |
 | Drag and drop | Dropping files on the window opens them (implemented with a QML `DropArea`; see "Not tested"). |
-| Launcher | `MimeType=` in `org.nexus.editor.desktop` covers `text/plain` and the common source types; `Exec=nexus-editor %F`. |
+| Launcher | `MimeType=` in `org.shadow.editor.desktop` covers `text/plain` and the common source types; `Exec=shadow-editor %F`. |
 
 ## Architecture and data sources
 
@@ -41,15 +41,15 @@ NEXUS_EDITOR_BENCH=1 nexus-editor <file>   time loading/rendering/editing of <fi
 * `document.{h,cpp}` — `EditorDocument`: asynchronous load and save (`QtConcurrent`), file watching, KSyntaxHighlighting, search, indentation edits. Text is read back with `QTextDocument::toRawText()`, not `toPlainText()`, because the latter turns no-break spaces into spaces.
 * `codeeditor.{h,cpp}` — the text area. See the next section.
 * `backend.{h,cpp}` — recent files, session, lists for the menus, directory listing for the file chooser.
-* `Main.qml`, `EditorView.qml`, `FindBar.qml`, `FileNotice.qml`, `PathPicker.qml` — the UI, NexusUI components only.
-* Settings: `~/.config/nexus/editor.conf` (`[Editor]`, `[Recent]`, `[Session]`).
+* `Main.qml`, `EditorView.qml`, `FindBar.qml`, `FileNotice.qml`, `PathPicker.qml` — the UI, ShadowUI components only.
+* Settings: `~/.config/shadow/editor.conf` (`[Editor]`, `[Recent]`, `[Session]`).
 * No system services, no privileged operations, no network.
 
 ## Large files — what was measured
 
 The brief allowed a QML `TextArea` "if performance is adequate". It is not.
 Measured in the build chroot (software rendering, 1280×860 window, a shared and
-loaded 4-core machine, `NEXUS_EDITOR_BENCH=1`), first with a QML `TextEdit`,
+loaded 4-core machine, `SHADOW_EDITOR_BENCH=1`), first with a QML `TextEdit`,
 then with the current implementation:
 
 | File | QML `TextEdit` | Current (`QPlainTextEdit` engine) |
@@ -69,7 +69,7 @@ Consequences, all visible to the user:
   screen). The widget is never mapped; `CodeEditor`, a `QQuickPaintedItem`,
   renders it into the QML scene on the GUI thread and forwards keyboard, mouse,
   wheel, focus and input-method events. Toolbar, tabs, dialogs and scroll bars
-  stay QML/NexusUI.
+  stay QML/ShadowUI.
 * Files larger than **64 MiB** are not opened (`EditorLimits::maxFileBytes`);
   the dialog says why. Memory use is several times the file size (UTF-16 text
   plus per-line layout data).
@@ -87,8 +87,8 @@ Consequences, all visible to the user:
 `libkf6syntaxhighlighting6`, `libkf6syntaxhighlighting-data`,
 `libqt6widgets6`, `libqt6concurrent6`, `libqt6quick6`, `qml6-module-qtquick-controls`,
 `qml6-module-qtquick-layouts`, `qml6-module-qtcore`, `fonts-jetbrains-mono`
-(default font; any fixed-pitch font works), the NEXUS UI library
-(`org.nexus.ui`, `org.nexus.style`). `qml6-module-org-kde-syntaxhighlighting`
+(default font; any fixed-pitch font works), the SHADOW UI library
+(`org.shadow.ui`, `org.shadow.style`). `qml6-module-org-kde-syntaxhighlighting`
 is **not** needed: the highlighter is driven from C++.
 
 ## Limitations
@@ -114,7 +114,7 @@ is **not** needed: the highlighter is driven from C++.
 
 Commands are relative to the repository root; `arced` is the build directory.
 
-* Build: `NEXUS_JOBS=2 scripts/dev.sh build --dir arced --only "archive-manager;editor"` — no warnings.
+* Build: `SHADOW_JOBS=2 scripts/dev.sh build --dir arced --only "archive-manager;editor"` — no warnings.
 * Smoke: `tests/desktop/smoke.sh --dir arced editor` — PASS, zero QML warnings.
 * Encoding layer: 20 crafted files through `--probe` and `--resave`
   (UTF-8 ± BOM, UTF-16 LE/BE ± BOM, UTF-32, Latin-1, windows-1252, every byte
@@ -137,7 +137,7 @@ Commands are relative to the repository root; `arced` is the build directory.
   dialog and 70 MiB file → refusal dialog; Tab / Shift+Tab on a selection
   (file content verified); line-ending menu LF → CRLF (file verified);
   encoding dialog; word wrap.
-* Large files: the table above (`NEXUS_EDITOR_BENCH=1`).
+* Large files: the table above (`SHADOW_EDITOR_BENCH=1`).
 * Light and dark theme screenshots.
 
 ## Not tested
@@ -148,8 +148,8 @@ Commands are relative to the repository root; `arced` is the build directory.
 * Switching between light and dark while the editor is running (both were
   only tested from start-up).
 * Launching from a file manager. The association itself was exercised once:
-  with `text/plain=org.nexus.editor.desktop` in `mimeapps.list`, `gio open
-  file.txt` (issued by the Archive Manager's preview) started `nexus-editor`
+  with `text/plain=org.shadow.editor.desktop` in `mimeapps.list`, `gio open
+  file.txt` (issued by the Archive Manager's preview) started `shadow-editor`
   with the file through the `.desktop` entry.
 * Behaviour on a hardware-accelerated display; all timings are from software
   rendering.

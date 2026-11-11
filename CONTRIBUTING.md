@@ -1,6 +1,6 @@
-# Contributing to NEXUS OS
+# Contributing to Shadow OS
 
-Thank you for helping. This page describes how work on NEXUS OS is done:
+Thank you for helping. This page describes how work on Shadow OS is done:
 the workflow, the rules for code, how to test, and what a change must
 contain to be accepted.
 
@@ -8,8 +8,8 @@ Read first, depending on what you touch:
 
 | You work on | Read |
 |---|---|
-| an application | [docs/applications/development.md](docs/applications/development.md) — the contract every NEXUS application follows |
-| user interface | [docs/desktop/nexusui.md](docs/desktop/nexusui.md) — NexusUI components, theme tokens, icons |
+| an application | [docs/applications/development.md](docs/applications/development.md) — the contract every SHADOW application follows |
+| user interface | [docs/desktop/shadowui.md](docs/desktop/shadowui.md) — ShadowUI components, theme tokens, icons |
 | the shell | [docs/desktop/shell-modules.md](docs/desktop/shell-modules.md) — shell modules; [docs/desktop/architecture.md](docs/desktop/architecture.md) |
 | packaging, images | [docs/packaging/building.md](docs/packaging/building.md), [docs/packaging/iso.md](docs/packaging/iso.md) |
 | the installer | [docs/installation/unattended.md](docs/installation/unattended.md) |
@@ -28,7 +28,7 @@ Open an issue on the project's GitHub repository
 
 * what you did, what you expected and what happened;
 * the image you used (file name, SHA-256, or the commit you built from);
-* the machine: `nexus-sysinfo --dump report`, or model and firmware mode;
+* the machine: `shadow-sysinfo --dump report`, or model and firmware mode;
 * logs ([docs/troubleshooting/README.md](docs/troubleshooting/README.md)
   lists where they are). Review them first: they contain host names, user
   names and hardware serial numbers.
@@ -86,7 +86,7 @@ section 2. In short, and for the whole repository:
   (`ip -j`, `lsblk -J`, `nmcli -t`, D-Bus) rather than human-oriented text.
 * **Never block the UI thread** on I/O.
 * **Design tokens only** in UI code: colours, sizes, fonts and durations
-  come from `Theme`. Use NexusUI components; a missing icon is added to the
+  come from `Theme`. Use ShadowUI components; a missing icon is added to the
   generator (`assets/src/icons/gen-symbolic.py`), not replaced by an
   unrelated one.
 * **Accessible and keyboard-usable**: tooltips on icon-only buttons,
@@ -95,7 +95,7 @@ section 2. In short, and for the whole repository:
 * **Original work.** Do not copy code or artwork from KDE, GNOME, Kali or
   other projects. Using their libraries and public protocols is fine.
 * C++20 with the warnings and Qt strictness flags of
-  `cmake/NexusDefaults.cmake`; no new compiler warnings.
+  `cmake/ShadowDefaults.cmake`; no new compiler warnings.
 * Shell scripts: `set -euo pipefail` (or `set -eu` for POSIX `sh`), quote
   expansions, pass `shellcheck`.
 * Python: standard library only for build tools, helpers and tests, unless a
@@ -118,12 +118,12 @@ section 2. In short, and for the whole repository:
 * **Never commit private keys or other secrets.** Signing material lives
   outside the repository
   ([docs/packaging/repositories.md](docs/packaging/repositories.md)).
-* `distro/base/nexus.conf` is the only place for the distribution's name,
+* `distro/base/shadow.conf` is the only place for the distribution's name,
   version and codename; `debian/changelog` must carry the same version.
 
 ## Licence headers
 
-NEXUS OS is licensed under GPL-3.0-or-later. Every new source file starts
+Shadow OS is licensed under GPL-3.0-or-later. Every new source file starts
 with an SPDX line in the comment syntax of its language:
 
 ```cpp
@@ -148,7 +148,7 @@ material must be under a compatible licence and be recorded in
 ### One component
 
 ```sh
-sudo env NEXUS_JOBS=2 scripts/dev.sh build --dir <name> --only <component>
+sudo env SHADOW_JOBS=2 scripts/dev.sh build --dir <name> --only <component>
 sudo scripts/dev.sh run --dir <name> --smoke --shot <name>.png <binary>
 sudo scripts/dev.sh run --dir <name> <binary> --dump <topic>
 ```
@@ -193,8 +193,8 @@ build an image and run the QEMU tests that cover your change
 ```sh
 sudo build/packages/build.sh && sudo build/packages/repo.sh
 sudo build/iso/build.sh --variant minimal
-sudo tests/boot/run-matrix.sh build/out/iso/nexus-os-0.1.0-amd64-minimal.iso
-sudo tests/installation/run-all.sh build/out/iso/nexus-os-0.1.0-amd64-minimal.iso
+sudo tests/boot/run-matrix.sh build/out/iso/shadow-os-0.1.0-amd64-minimal.iso
+sudo tests/installation/run-all.sh build/out/iso/shadow-os-0.1.0-amd64-minimal.iso
 ```
 
 These take a long time without KVM. Run at least the scenarios your change

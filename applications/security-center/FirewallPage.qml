@@ -2,11 +2,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 import "Fmt.js" as Fmt
 
-// State of the host firewall (section "firewall" = nexus-firewall status
-// --json) and the changes nexus-firewall offers.
+// State of the host firewall (section "firewall" = shadow-firewall status
+// --json) and the changes shadow-firewall offers.
 SectionPage {
     id: page
 
@@ -34,7 +34,7 @@ SectionPage {
     sectionKey: "firewall"
     title: qsTr("Firewall")
     sectionTitle: qsTr("The firewall state")
-    subtitle: qsTr("The nftables host firewall of NEXUS OS: inbound connections are dropped unless a port is opened here.")
+    subtitle: qsTr("The nftables host firewall of Shadow OS: inbound connections are dropped unless a port is opened here.")
 
     Connections {
         target: page.center
@@ -54,8 +54,8 @@ SectionPage {
     NxBanner {
         visible: page.ready && page.fw.installed === false
         kind: "danger"
-        title: qsTr("The NEXUS ruleset is missing")
-        message: qsTr("/etc/nftables.conf does not exist, so the firewall cannot be loaded. Reinstall the nexus-hardening package.")
+        title: qsTr("The SHADOW ruleset is missing")
+        message: qsTr("/etc/nftables.conf does not exist, so the firewall cannot be loaded. Reinstall the shadow-hardening package.")
     }
     NxBanner {
         visible: page.ready && page.fw.active === false && page.fw.installed !== false
@@ -76,8 +76,8 @@ SectionPage {
             icon: page.fw.active ? "shield-check" : "shield-off"
             iconColor: page.fw.active ? Theme.success : Theme.danger
             title: page.fw.active ? qsTr("The firewall is active") : qsTr("The firewall is not active")
-            subtitle: page.fw.active ? qsTr("The table “inet nexus_filter” is loaded in the kernel.")
-                                     : qsTr("The table “inet nexus_filter” is not loaded in the kernel.")
+            subtitle: page.fw.active ? qsTr("The table “inet shadow_filter” is loaded in the kernel.")
+                                     : qsTr("The table “inet shadow_filter” is not loaded in the kernel.")
             NxButton {
                 visible: !page.fw.active
                 text: qsTr("Enable…")
@@ -116,7 +116,7 @@ SectionPage {
         }
         NxRow {
             title: qsTr("Rules loaded")
-            subtitle: qsTr("Rules in the NEXUS table, including the ones for opened ports.")
+            subtitle: qsTr("Rules in the SHADOW table, including the ones for opened ports.")
             value: String(page.fw.rule_count || 0)
             NxButton {
                 visible: page.fw.active === true
@@ -251,7 +251,7 @@ SectionPage {
     NxSection {
         visible: page.ready
         title: qsTr("Active ruleset")
-        description: qsTr("What the kernel is enforcing for the NEXUS table. Read-only.")
+        description: qsTr("What the kernel is enforcing for the SHADOW table. Read-only.")
         headerActions: [
             NxButton {
                 visible: page.rulesetText !== ""
@@ -268,14 +268,14 @@ SectionPage {
             visible: page.rulesetText === "" && page.fw.active !== true
             icon: "shield-off"
             title: qsTr("No ruleset is loaded")
-            subtitle: qsTr("The firewall is not active, so the kernel holds no NEXUS rules.")
+            subtitle: qsTr("The firewall is not active, so the kernel holds no SHADOW rules.")
         }
         NxRow {
             visible: page.rulesetText === "" && page.fw.active === true
             icon: "info"
             title: qsTr("The rule text is not part of this system's status report")
-            subtitle: qsTr("nexus-security-status reports %1 loaded rule(s) and the policies above, but not the rules themselves. "
-                           + "In a terminal: sudo nft list table inet nexus_filter").arg(page.fw.rule_count || 0)
+            subtitle: qsTr("shadow-security-status reports %1 loaded rule(s) and the policies above, but not the rules themselves. "
+                           + "In a terminal: sudo nft list table inet shadow_filter").arg(page.fw.rule_count || 0)
         }
         ScrollView {
             id: rulesetView
@@ -306,7 +306,7 @@ SectionPage {
         id: enableDialog
         anchors.centerIn: Overlay.overlay
         title: qsTr("Enable the firewall?")
-        message: qsTr("The NEXUS ruleset is loaded now and at every start. Inbound connections are dropped, except replies "
+        message: qsTr("The SHADOW ruleset is loaded now and at every start. Inbound connections are dropped, except replies "
                       + "to connections this computer started, loopback traffic and essential ICMP. %1 "
                       + "Services that other computers use on this machine stop being reachable until their port is opened here. "
                       + "If you administer this computer remotely, open that port first.")

@@ -2,9 +2,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
-// One available update (a row of NexusPk::UpdateChecker.model): selection,
+// One available update (a row of ShadowPk::UpdateChecker.model): selection,
 // version transition, classification, download size, and — when expanded —
 // the update details PackageKit fetches for it (change log, CVE and bug
 // references, restart requirement).
@@ -25,7 +25,7 @@ Rectangle {
     required property var tags
     required property bool selected
 
-    // NexusPk::UpdateChecker
+    // ShadowPk::UpdateChecker
     property QtObject checker: null
     // False while a transaction runs: the selection is then fixed.
     property bool selectable: true
@@ -98,7 +98,7 @@ Rectangle {
                         model: row.tags
                         NxBadge {
                             required property string modelData
-                            text: modelData === "kernel" ? qsTr("Kernel") : modelData === "nexus" ? qsTr("NEXUS") : modelData
+                            text: modelData === "kernel" ? qsTr("Kernel") : modelData === "shadow" ? qsTr("SHADOW") : modelData
                             kind: "accent"
                             dot: false
                         }

@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Runs nexus-monitor for a while and reports what it costs itself: CPU time
+# Runs shadow-monitor for a while and reports what it costs itself: CPU time
 # (user + system, from /proc/<pid>/stat), resident memory, thread and file
 # descriptor counts, every 30 seconds.
 #
@@ -11,7 +11,7 @@
 # ("dev.sh run" ends every program after 60 seconds, so this script is started
 # with "dev.sh exec" and sets up the same environment itself: a virtual X
 # server, a session bus, software GL and the build tree /build/monitor, or
-# the one named in NEXUS_BUILD_DIR.)
+# the one named in SHADOW_BUILD_DIR.)
 #
 # Fails if resident memory or the number of file descriptors keeps growing
 # over the second half of the run (a leak), or if QML warnings were logged.
@@ -25,12 +25,12 @@ SECONDS_TOTAL="${1:-300}"
 PAGE="${2:-overview}"
 SHOT="${3:-}"
 if [ -z "${DISPLAY:-}" ]; then
-    B="${NEXUS_BUILD_DIR:-/build/monitor}"
-    HOME="$(mktemp -d /tmp/nexus-soak-home.XXXXXX)"
+    B="${SHADOW_BUILD_DIR:-/build/monitor}"
+    HOME="$(mktemp -d /tmp/shadow-soak-home.XXXXXX)"
     export HOME XDG_RUNTIME_DIR="$HOME/run"
-    mkdir -m 700 -p "$XDG_RUNTIME_DIR"; mkdir -p "$HOME/.config/nexus"
+    mkdir -m 700 -p "$XDG_RUNTIME_DIR"; mkdir -p "$HOME/.config/shadow"
     export QML_IMPORT_PATH="$B/qml" LD_LIBRARY_PATH="$B/lib"
-    export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.nexus.style
+    export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.shadow.style
     export QT_LOGGING_RULES="qt.qpa.*=false"
     xvfb-run -a -s "-screen 0 1920x1200x24 -nolisten tcp" dbus-run-session -- bash "$0" "$@"
     status=$?
@@ -38,9 +38,9 @@ if [ -z "${DISPLAY:-}" ]; then
     exit "$status"
 fi
 B="${LD_LIBRARY_PATH%%/lib*}"
-APP="$B/bin/nexus-monitor"
+APP="$B/bin/shadow-monitor"
 [ -x "$APP" ] || { echo "soak: $APP not found (run through scripts/dev.sh run)"; exit 2; }
-export NEXUS_WINDOW_SIZE="${NEXUS_WINDOW_SIZE:-1280x860}"
+export SHADOW_WINDOW_SIZE="${SHADOW_WINDOW_SIZE:-1280x860}"
 LOG=/tmp/soak-$$.log
 
 "$APP" --page "$PAGE" > "$LOG" 2>&1 &
@@ -55,7 +55,7 @@ rss_kb() { awk '/^VmRSS/ {print $2}' "/proc/$PID/status"; }
 fds() { find "/proc/$PID/fd" -mindepth 1 | wc -l; }
 threads() { awk '/^Threads/ {print $2}' "/proc/$PID/status"; }
 
-echo "page: $PAGE   window: $NEXUS_WINDOW_SIZE   interval: 30 s   cpus: $(nproc)"
+echo "page: $PAGE   window: $SHADOW_WINDOW_SIZE   interval: 30 s   cpus: $(nproc)"
 printf '%8s %10s %10s %6s %8s\n' "time[s]" "cpu[%]" "rss[MiB]" "fds" "threads"
 start=$(date +%s); prev=$(cpu_ticks); RSS=(); FDS=()
 while :; do
@@ -73,7 +73,7 @@ echo "CPU time by thread over the whole run [s]:"
 for task in /proc/"$PID"/task/*; do
     printf '  %-24s %s\n' "$(cat "$task/comm")" "$(awk -v t="$TICK" '{printf "%.1f", ($14 + $15) / t}' "$task/stat")"
 done | sort -k2 -n -r | head -6
-[ -n "$SHOT" ] && import -window root -crop "${NEXUS_WINDOW_SIZE}+0+0" +repage "$SHOT" 2>/dev/null
+[ -n "$SHOT" ] && import -window root -crop "${SHADOW_WINDOW_SIZE}+0+0" +repage "$SHOT" 2>/dev/null
 
 FAILED=0
 n=${#RSS[@]}; half=$(( n / 2 ))

@@ -24,7 +24,7 @@
 //             members of the "wireshark" group. Invoked as
 //             `dumpcap -q -i IF [-f FILTER] -w -`, it writes pcapng to stdout.
 //   tcpdump   through the privileged helper (`network-helper capture …`,
-//             polkit action org.nexus.networkcenter.capture), which runs
+//             polkit action org.shadow.networkcenter.capture), which runs
 //             `tcpdump -i IF -U -w - [-- FILTER]` and writes pcap to stdout.
 //
 // In both cases the capture arrives on a pipe and this (unprivileged) process

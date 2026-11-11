@@ -1,0 +1,7 @@
+# Shadow OS sudo defaults.
+# Run commands in a pseudo-terminal so a compromised command cannot inject
+# keystrokes into the user's terminal after it exits.
+Defaults use_pty
+# Show a sensible notice instead of failing silently when sudo is misused.
+Defaults passwd_tries=3
+Defaults badpass_message="Sorry, that password is not correct."

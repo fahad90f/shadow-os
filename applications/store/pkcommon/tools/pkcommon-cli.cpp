@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// nexus-pkcommon-cli — developer and test driver for the PackageKit plumbing
-// shared by NEXUS Store and NEXUS Updater. It runs the very same NexusPk::Job
+// shadow-pkcommon-cli — developer and test driver for the PackageKit plumbing
+// shared by SHADOW Store and SHADOW Updater. It runs the very same ShadowPk::Job
 // objects the applications use, from a terminal, so the transaction paths
 // (simulate, confirm, untrusted, run, cancel, restart, errors) can be
 // exercised over SSH or a serial console in the integration-test VM.
 //
-// Not installed; built only with -DNEXUS_PKCOMMON_TOOLS=ON.
+// Not installed; built only with -DSHADOW_PKCOMMON_TOOLS=ON.
 //
-//   nexus-pkcommon-cli resolve <name>...
-//   nexus-pkcommon-cli install <name>...     [--yes] [--allow-untrusted] [--cancel-after <s>]
-//   nexus-pkcommon-cli remove  <name>...     [--yes]
-//   nexus-pkcommon-cli update  [--security]  [--yes] [--allow-untrusted]
-//   nexus-pkcommon-cli refresh | repair [--yes] | repos | repo-enable <id> on|off
+//   shadow-pkcommon-cli resolve <name>...
+//   shadow-pkcommon-cli install <name>...     [--yes] [--allow-untrusted] [--cancel-after <s>]
+//   shadow-pkcommon-cli remove  <name>...     [--yes]
+//   shadow-pkcommon-cli update  [--security]  [--yes] [--allow-untrusted]
+//   shadow-pkcommon-cli refresh | repair [--yes] | repos | repo-enable <id> on|off
 //
 // Questions are answered "no" unless the matching option is given; a job
 // that asks therefore ends "cancelled" by default, and nothing is changed.
@@ -35,7 +35,7 @@
 #include <cstdio>
 #include <memory>
 
-using namespace NexusPk;
+using namespace ShadowPk;
 using T = PackageKit::Transaction;
 
 namespace {
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
         args.remove(cancelIndex, 2);
     }
     if (args.isEmpty()) {
-        std::fputs("usage: nexus-pkcommon-cli resolve|install|remove|update|refresh|repair|repos|repo-enable ...\n", stderr);
+        std::fputs("usage: shadow-pkcommon-cli resolve|install|remove|update|refresh|repair|repos|repo-enable ...\n", stderr);
         return 3;
     }
     const QString command = args.takeFirst();

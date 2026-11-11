@@ -13,8 +13,8 @@
 // How this run was started. Filled in once by main().
 struct RecoveryOptions
 {
-    // The engine. Production: /usr/sbin/nexus-recovery-engine, run as root
-    // through pkexec (polkit action org.nexus.recovery.run).
+    // The engine. Production: /usr/sbin/shadow-recovery-engine, run as root
+    // through pkexec (polkit action org.shadow.recovery.run).
     QString enginePath;
     // TEST MODE: the list of installations comes from this recorded scan
     // result. No engine is ever started in this mode (refused in C++).
@@ -23,11 +23,11 @@ struct RecoveryOptions
 
     bool testMode() const { return !scanFile.isEmpty(); }
     static RecoveryOptions &instance();
-    static QString defaultEnginePath() { return QStringLiteral("/usr/sbin/nexus-recovery-engine"); }
+    static QString defaultEnginePath() { return QStringLiteral("/usr/sbin/shadow-recovery-engine"); }
     static QString pkexecPath() { return QStringLiteral("/usr/bin/pkexec"); }
 };
 
-// Front-end of nexus-recovery-engine.
+// Front-end of shadow-recovery-engine.
 //
 // Everything that examines or changes a disk is done by the engine, one
 // sub-command per step, started through pkexec with an argument vector;
@@ -52,7 +52,7 @@ class Recovery : public QObject
     Q_PROPERTY(bool scanned READ scanned NOTIFY scanChanged)
     Q_PROPERTY(QString scanError READ scanError NOTIFY scanChanged)
     Q_PROPERTY(QString scanHint READ scanHint NOTIFY scanChanged)
-    // The engine's scan result: see nexus_recovery/scan.py.
+    // The engine's scan result: see shadow_recovery/scan.py.
     Q_PROPERTY(QVariantList installations READ installations NOTIFY scanChanged)
     Q_PROPERTY(QVariantList lockedVolumes READ lockedVolumes NOTIFY scanChanged)
     Q_PROPERTY(QVariantList inactiveLvm READ inactiveLvm NOTIFY scanChanged)

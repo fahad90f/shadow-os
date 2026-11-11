@@ -24,12 +24,12 @@
 using namespace Qt::StringLiterals;
 
 namespace {
-// The compositor's bus name. NEXUS_SCREENSHOT_KWIN_SERVICE redirects the
+// The compositor's bus name. SHADOW_SCREENSHOT_KWIN_SERVICE redirects the
 // calls to another provider of the same interface — used by the tests, which
 // run where KWin cannot offer ScreenShot2 (no OpenGL compositing).
 QString kwinService()
 {
-    const QString override = qEnvironmentVariable("NEXUS_SCREENSHOT_KWIN_SERVICE");
+    const QString override = qEnvironmentVariable("SHADOW_SCREENSHOT_KWIN_SERVICE");
     return override.isEmpty() ? u"org.kde.KWin"_s : override;
 }
 const QString kKWinPath = u"/org/kde/KWin/ScreenShot2"_s;
@@ -273,7 +273,7 @@ void ScreenGrabber::tryPortal(const QString &kwinError)
         return;
     }
     QDBusConnection bus = QDBusConnection::sessionBus();
-    const QString token = u"nexus_%1"_s.arg(QRandomGenerator::global()->generate());
+    const QString token = u"shadow_%1"_s.arg(QRandomGenerator::global()->generate());
     QString sender = bus.baseService().mid(1);
     sender.replace(u'.', u'_');
     m_portalPath = u"/org/freedesktop/portal/desktop/request/%1/%2"_s.arg(sender, token);

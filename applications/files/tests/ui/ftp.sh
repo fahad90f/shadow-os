@@ -4,7 +4,7 @@
 T=/tmp/files-test-ftp; rm -rf "$T"; mkdir -p "$T/server/pub" "$T/local"
 echo "served by ftp" > "$T/server/readme.txt"; head -c 300000 /dev/urandom > "$T/server/pub/blob.bin"
 echo "from the local disk" > "$T/local/upload.txt"
-python3 /src/applications/files/tests/ui/ftpd.py "$T/server" 2121 > "$NEXUS_LOGS/ftpd.log" 2>&1 &
+python3 /src/applications/files/tests/ui/ftpd.py "$T/server" 2121 > "$SHADOW_LOGS/ftpd.log" 2>&1 &
 sleep 1
 app_start "$T/local"
 click 110 283; sleep 1; snap 1-dialog        # sidebar: Connect to server…
@@ -28,4 +28,4 @@ click 781 447; sleep 2.5
 echo "5 delete  : server=[$(tree $T/server)]"
 key F5; sleep 2; snap 6-end
 app_stop
-grep -c . "$NEXUS_LOGS/ftpd.log" | sed 's/^/ftpd.log lines: /'
+grep -c . "$SHADOW_LOGS/ftpd.log" | sed 's/^/ftpd.log lines: /'

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // The calendar popup under the panel clock: today's date, a month grid in
 // the user's locale (first day of the week, names) with ISO 8601 week
@@ -45,7 +45,7 @@ PopupSurface {
     screen: shell.primaryScreen
     alignment: "center"
     popupWidth: 348
-    scope: "nexus-calendar"
+    scope: "shadow-calendar"
 
     Component.onCompleted: shell.registerOverlay("calendar", popup)
     onOpenChanged: if (open) {

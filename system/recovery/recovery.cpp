@@ -53,9 +53,9 @@ Recovery::Recovery(QObject *parent)
     const RecoveryOptions &o = RecoveryOptions::instance();
     if (!o.testMode()) {
         if (!QFileInfo(o.enginePath).isFile())
-            m_engineProblem = tr("The recovery engine %1 is not installed (package “nexus-recovery”).").arg(o.enginePath);
+            m_engineProblem = tr("The recovery engine %1 is not installed (package “shadow-recovery”).").arg(o.enginePath);
         else if (!o.runningAsRoot && !QFileInfo(RecoveryOptions::pkexecPath()).isExecutable())
-            m_engineProblem = tr("%1 is missing (package “pkexec”), so NEXUS Recovery cannot ask for administrator "
+            m_engineProblem = tr("%1 is missing (package “pkexec”), so SHADOW Recovery cannot ask for administrator "
                                  "rights to run its engine.").arg(RecoveryOptions::pkexecPath());
     }
     queryRestart();
@@ -80,7 +80,7 @@ QVariantMap Recovery::current() const
 
 bool Recovery::terminalAvailable() const
 {
-    return !QStandardPaths::findExecutable(QStringLiteral("nexus-terminal")).isEmpty();
+    return !QStandardPaths::findExecutable(QStringLiteral("shadow-terminal")).isEmpty();
 }
 
 // ---- the engine ---------------------------------------------------------------------
@@ -251,7 +251,7 @@ void Recovery::finishJob(int exitCode, QProcess::ExitStatus status, const QStrin
                 problem = tr("The step did not succeed; see the output below.");
         } else if (m_viaPkexec && exitCode == kPkexecDismissed) {
             problem = tr("Administrator rights were not granted: the authentication dialog was dismissed or this "
-                         "account is not allowed to run NEXUS Recovery. Nothing was changed.");
+                         "account is not allowed to run SHADOW Recovery. Nothing was changed.");
         } else if (m_viaPkexec && exitCode == kPkexecFailed) {
             problem = tr("Administrator rights could not be obtained (pkexec exit status 127): the password was "
                          "wrong, no authentication agent is running in this session, or the engine could not be "
@@ -286,15 +286,15 @@ void Recovery::applyScan(const QJsonObject &result)
     m_scanHint.clear();
     const QJsonArray all = result.value(QLatin1String("installations")).toArray();
     bool stillThere = false;
-    QStringList nexus;
+    QStringList shadow;
     for (const QJsonValue &value : all) {
         const QJsonObject installation = value.toObject();
         stillThere = stillThere || installation.value(QLatin1String("id")).toString() == m_currentId;
-        if (installation.value(QLatin1String("is_nexus")).toBool())
-            nexus << installation.value(QLatin1String("id")).toString();
+        if (installation.value(QLatin1String("is_shadow")).toBool())
+            shadow << installation.value(QLatin1String("id")).toString();
     }
     if (!stillThere)
-        m_currentId = nexus.size() == 1 ? nexus.constFirst() : QString();    // the obvious choice, or none
+        m_currentId = shadow.size() == 1 ? shadow.constFirst() : QString();    // the obvious choice, or none
     Q_EMIT scanChanged();
     Q_EMIT currentChanged();
 }
@@ -360,7 +360,7 @@ void Recovery::select(const QString &id)
     const QJsonArray all = m_scan.value(QLatin1String("installations")).toArray();
     for (const QJsonValue &value : all) {
         const QJsonObject installation = value.toObject();
-        if (installation.value(QLatin1String("id")).toString() == id && installation.value(QLatin1String("is_nexus")).toBool()) {
+        if (installation.value(QLatin1String("id")).toString() == id && installation.value(QLatin1String("is_shadow")).toBool()) {
             m_currentId = id;
             m_results.clear();
             Q_EMIT resultsChanged();
@@ -509,7 +509,7 @@ void Recovery::checkFilesystems(bool repair)
     if (current().value(QStringLiteral("running")).toBool()) {
         setResult(action, QStringLiteral("failed"),
                   tr("The file systems of the running system are in use and cannot be checked from here. "
-                     "Start the computer from the NEXUS OS medium and choose Recovery."));
+                     "Start the computer from the Shadow OS medium and choose Recovery."));
         return;
     }
     whenUnmounted(action, [this, action, repair] {
@@ -656,7 +656,7 @@ void Recovery::resetPassword(const QString &user, const QString &password)
 
 QString Recovery::suggestedLogFile() const
 {
-    return QDir::homePath() + QStringLiteral("/nexus-recovery-logs-")
+    return QDir::homePath() + QStringLiteral("/shadow-recovery-logs-")
            + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")) + QStringLiteral(".tar.gz");
 }
 
@@ -712,7 +712,7 @@ void Recovery::openTerminal()
         return;
     }
     if (!terminalAvailable()) {
-        setResult(action, QStringLiteral("failed"), tr("NEXUS Terminal (nexus-terminal) is not installed."));
+        setResult(action, QStringLiteral("failed"), tr("SHADOW Terminal (shadow-terminal) is not installed."));
         return;
     }
     whenMounted(action, [this, action] {
@@ -723,11 +723,11 @@ void Recovery::openTerminal()
         if (!o.runningAsRoot)
             arguments << RecoveryOptions::pkexecPath();
         arguments << o.enginePath << QStringLiteral("shell") << QStringLiteral("--target") << m_currentId << QStringLiteral("--exec");
-        const bool started = QProcess::startDetached(QStringLiteral("nexus-terminal"), arguments);
-        appendLog(QStringLiteral("\n== %1\n   $ nexus-terminal %2").arg(tr("Open a terminal in the installed system"), arguments.join(QLatin1Char(' '))));
+        const bool started = QProcess::startDetached(QStringLiteral("shadow-terminal"), arguments);
+        appendLog(QStringLiteral("\n== %1\n   $ shadow-terminal %2").arg(tr("Open a terminal in the installed system"), arguments.join(QLatin1Char(' '))));
         setResult(action, started ? QStringLiteral("ok") : QStringLiteral("failed"),
                   started ? tr("A terminal with a root shell in the installed system was opened. Close it before unmounting.")
-                          : tr("NEXUS Terminal could not be started."));
+                          : tr("SHADOW Terminal could not be started."));
     });
 }
 
@@ -833,7 +833,7 @@ QJsonObject Recovery::statusJson() const
         {QStringLiteral("runningAsRoot"), o.runningAsRoot},
         {QStringLiteral("testMode"), o.testMode()},
         {QStringLiteral("terminalAvailable"), terminalAvailable()},
-        {QStringLiteral("liveSession"), QFileInfo::exists(QStringLiteral("/run/nexus/live-session"))},
+        {QStringLiteral("liveSession"), QFileInfo::exists(QStringLiteral("/run/shadow/live-session"))},
     };
 }
 

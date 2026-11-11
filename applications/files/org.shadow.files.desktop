@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+GenericName=File Manager
+Comment=Browse and manage files, drives and network locations
+Exec=shadow-files %U
+Icon=org.shadow.files
+Terminal=false
+Categories=System;FileTools;FileManager;Utility;Core;
+Keywords=folder;manager;explore;disk;filesystem;network;archive;trash;
+MimeType=inode/directory;
+StartupNotify=true
+StartupWMClass=org.shadow.files
+X-SHADOW-Component=files

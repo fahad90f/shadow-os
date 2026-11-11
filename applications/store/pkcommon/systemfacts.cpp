@@ -16,13 +16,13 @@
 
 #include <sys/utsname.h>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 namespace {
 
 QString tr(const char *text)
 {
-    return QCoreApplication::translate("NexusPk", text);
+    return QCoreApplication::translate("ShadowPk", text);
 }
 
 QByteArray readFile(const QString &path, qint64 limit = 64 * 1024 * 1024)
@@ -302,10 +302,10 @@ QJsonObject readAptHistory(int limit, const QString &directory)
         const QString suffix = QFileInfo(name).suffix();
         if (decompressors.contains(suffix)) {
             const QString tool = decompressors.value(suffix);
-            if (!Nexus::Command::available(tool)) {
+            if (!Shadow::Command::available(tool)) {
                 error = tr("%1 is needed to read this file but is not installed").arg(tool);
             } else {
-                const Nexus::CommandResult r = Nexus::Command::runSync(tool, {QStringLiteral("-dc"), QStringLiteral("--"), path}, 30000);
+                const Shadow::CommandResult r = Shadow::Command::runSync(tool, {QStringLiteral("-dc"), QStringLiteral("--"), path}, 30000);
                 if (r.ok())
                     text = r.out;
                 else
@@ -406,8 +406,8 @@ QJsonObject readRebootState()
 QJsonObject checkDpkgHealth()
 {
     QJsonObject o{{QStringLiteral("checkedAt"), QDateTime::currentDateTime().toString(Qt::ISODate)}};
-    const bool haveDpkg = Nexus::Command::available(QStringLiteral("dpkg"))
-                          && Nexus::Command::available(QStringLiteral("dpkg-query"));
+    const bool haveDpkg = Shadow::Command::available(QStringLiteral("dpkg"))
+                          && Shadow::Command::available(QStringLiteral("dpkg-query"));
     o.insert(QStringLiteral("dpkgAvailable"), haveDpkg);
     if (!haveDpkg) {
         o.insert(QStringLiteral("healthy"), false);
@@ -416,7 +416,7 @@ QJsonObject checkDpkgHealth()
     }
 
     // 1. dpkg's own consistency report.
-    const Nexus::CommandResult audit = Nexus::Command::runSync(QStringLiteral("dpkg"), {QStringLiteral("--audit")}, 120000);
+    const Shadow::CommandResult audit = Shadow::Command::runSync(QStringLiteral("dpkg"), {QStringLiteral("--audit")}, 120000);
     const QString auditOutput = audit.outText().trimmed();
     QJsonObject auditJson{
         {QStringLiteral("exitCode"), audit.exitCode},
@@ -434,7 +434,7 @@ QJsonObject checkDpkgHealth()
 
     // 3. Packages left in an intermediate state.
     QJsonArray broken;
-    const Nexus::CommandResult query = Nexus::Command::runSync(
+    const Shadow::CommandResult query = Shadow::Command::runSync(
         QStringLiteral("dpkg-query"),
         {QStringLiteral("-W"), QStringLiteral("-f=${db:Status-Abbrev}\\t${Package}\\t${Architecture}\\t${Version}\\n")}, 120000);
     if (!query.ok()) {
@@ -481,20 +481,20 @@ QString repoCategory(const QString &repoIdOrUri, const QString &origin)
     const QString o = origin.trimmed().toLower();
     if (o == QLatin1String("debian") || o.startsWith(QLatin1String("debian ")))
         return QStringLiteral("debian");
-    if (o == QLatin1String("nexus") || o.startsWith(QLatin1String("nexus ")))
-        return QStringLiteral("nexus");
+    if (o == QLatin1String("shadow") || o.startsWith(QLatin1String("shadow ")))
+        return QStringLiteral("shadow");
 
-    // 2. The sources file NEXUS OS ships for its own repository (nexus.sources / nexus*.list).
+    // 2. The sources file Shadow OS ships for its own repository (shadow.sources / shadow*.list).
     //    PackageKit repository IDs start with that file's path.
     const QString text = repoIdOrUri.toLower();
     if (text.startsWith(QLatin1Char('/'))) {
         const QString file = text.section(QLatin1Char(':'), 0, 0).section(QLatin1Char(' '), 0, 0);
-        if (QFileInfo(file).fileName().startsWith(QLatin1String("nexus")))
-            return QStringLiteral("nexus");
+        if (QFileInfo(file).fileName().startsWith(QLatin1String("shadow")))
+            return QStringLiteral("shadow");
     }
 
-    // 3. Debian's own archive hosts. (Host names merely containing "nexus"
-    //    are not trusted as NEXUS: that is also the name of a common
+    // 3. Debian's own archive hosts. (Host names merely containing "shadow"
+    //    are not trusted as SHADOW: that is also the name of a common
     //    repository-manager product.)
     static const QRegularExpression debianHost(QStringLiteral(R"((^|[/@.\s])([a-z0-9-]+\.)*debian\.(org|net)([/:\s]|$))"));
     if (debianHost.match(text).hasMatch())
@@ -506,8 +506,8 @@ QString repoCategoryText(const QString &category)
 {
     if (category == QLatin1String("debian"))
         return tr("Debian base");
-    if (category == QLatin1String("nexus"))
-        return tr("NEXUS");
+    if (category == QLatin1String("shadow"))
+        return tr("SHADOW");
     return tr("Third party");
 }
 
@@ -828,4 +828,4 @@ QJsonObject readAptSources(const QString &root)
     };
 }
 
-} // namespace NexusPk
+} // namespace ShadowPk

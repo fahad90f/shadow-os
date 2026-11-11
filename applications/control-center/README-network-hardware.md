@@ -1,14 +1,14 @@
 # Control Center — Network and Hardware pages
 
-This file covers nine pages of `nexus-control-center`: Wi-Fi, Wired & Proxy,
+This file covers nine pages of `shadow-control-center`: Wi-Fi, Wired & Proxy,
 Bluetooth, VPN, Displays, Sound, Power & Battery, Keyboard, Mouse & Touchpad
 (`pages/{Wifi,Network,Bluetooth,Vpn,Display,Sound,Power,Keyboard,Mouse}Page.qml`,
 `backends/{wifi,network,networkcommon,networkmanagerutil,bluetooth,vpn,display,sound,power,keyboard,mouse}*`).
 The other pages of the Control Center are documented by their own authors;
 the directory is shared, which is why this is not `README.md`.
 
-Open a page directly with `nexus-control-center <key>`; the data behind it is
-printed by `nexus-control-center --dump <key>` (keys: `wifi network bluetooth
+Open a page directly with `shadow-control-center <key>`; the data behind it is
+printed by `shadow-control-center --dump <key>` (keys: `wifi network bluetooth
 vpn display sound power keyboard mouse`).
 
 ## What each page does and where its data comes from
@@ -16,16 +16,16 @@ vpn display sound power keyboard mouse`).
 | Page | Functions | Sources and sinks |
 |---|---|---|
 | Wi-Fi (`wifi`) | radio on/off, scan, list (signal, security, band), connect with password dialog, hidden network, disconnect, forget, auto-connect, MAC address policy, connection details | `nmcli -t` for reading and for changes without a secret; `org.freedesktop.NetworkManager` on the system bus for `AddAndActivateConnection` (the password travels in the D-Bus message, never on a command line), `Device.StateChanged`, `Settings.Connection.Delete`, change signals; `/sys/class/rfkill` |
-| Wired & Proxy (`network`) | wired interfaces: state, speed, addresses, connect/disconnect, IPv4/IPv6 method, addresses, gateway, DNS; proxy: none / manual (HTTP, HTTPS, SOCKS, exceptions) / automatic (PAC URL) | `nmcli -t device show`, `connection show/modify/up`; proxy written to `~/.config/environment.d/90-nexus-proxy.conf` (read by `systemd --user` at login) and, for none/automatic, to `proxy.method` / `proxy.pac-url` of the active NetworkManager profiles |
+| Wired & Proxy (`network`) | wired interfaces: state, speed, addresses, connect/disconnect, IPv4/IPv6 method, addresses, gateway, DNS; proxy: none / manual (HTTP, HTTPS, SOCKS, exceptions) / automatic (PAC URL) | `nmcli -t device show`, `connection show/modify/up`; proxy written to `~/.config/environment.d/90-shadow-proxy.conf` (read by `systemd --user` at login) and, for none/automatic, to `proxy.method` / `proxy.pac-url` of the active NetworkManager profiles |
 | Bluetooth (`bluetooth`) | power, discoverability, scan, pair (PIN / passkey / confirmation prompts through an own agent), connect, disconnect, trust, remove, battery level | KF6 BluezQt (`org.bluez` on the system bus), `/sys/class/rfkill` |
 | VPN (`vpn`) | list, connect, disconnect, delete, connect automatically, import WireGuard `.conf` and OpenVPN `.ovpn` | `nmcli connection show/up/down/delete/modify/import`; plug-ins found in `/usr/lib/NetworkManager/VPN/*.name` and `/etc/NetworkManager/VPN/*.name` |
 | Displays (`display`) | per output: on/off, resolution, refresh rate, scale, orientation, primary, VRR and HDR when the output has them; arrangement by dragging; apply with "Keep these settings?" and automatic revert after 15 s; Night Light | `kscreen-doctor -j` to read, one `kscreen-doctor output.<name>.…` call to apply; `~/.config/kwinrc [NightColor]` and `org.kde.KWin /org/kde/KWin/NightLight` |
 | Sound (`sound`) | output and input devices, volume, mute, default device, ports, card profiles, per-application streams, input level meter, test tone (left, then right), volumes above 100 % | KF6 PulseAudioQt (PipeWire's PulseAudio service or PulseAudio); test tone played with `paplay` (fallback `pw-play`), level meter with `parec` |
-| Power & Battery (`power`) | batteries and peripherals, power source, power profile, panel brightness, idle timeouts, sleep support and lid behaviour (display only) | `org.freedesktop.UPower`; `org.freedesktop.UPower.PowerProfiles` (or `net.hadess.PowerProfiles`); `org.freedesktop.login1` (`CanSuspend`, `CanHibernate`, lid settings, `Session.SetBrightness`); `/sys/class/backlight`; `logind.conf` when logind is unreachable; `~/.config/nexus/power.conf` |
+| Power & Battery (`power`) | batteries and peripherals, power source, power profile, panel brightness, idle timeouts, sleep support and lid behaviour (display only) | `org.freedesktop.UPower`; `org.freedesktop.UPower.PowerProfiles` (or `net.hadess.PowerProfiles`); `org.freedesktop.login1` (`CanSuspend`, `CanHibernate`, lid settings, `Session.SetBrightness`); `/sys/class/backlight`; `logind.conf` when logind is unreachable; `~/.config/shadow/power.conf` |
 | Keyboard (`keyboard`) | layouts and variants (add, remove, order), layout-switch / Compose / Caps Lock options, repeat delay and rate, test field, list of desktop shortcuts | `/usr/share/X11/xkb/rules/evdev.lst`; `~/.config/kxkbrc [Layout]` and `~/.config/kcminputrc [Keyboard]` through KConfig; signal `org.kde.keyboard.reloadConfig` and `org.kde.KWin /KWin reconfigure`; `org.kde.KeyboardLayouts`; `org.freedesktop.locale1` or `/etc/default/keyboard` for the system default; `org.kde.kglobalaccel` (`allComponents`, `allShortcutInfos`) |
 | Mouse & Touchpad (`mouse`) | per device: enable, pointer speed, acceleration profile, left-handed, middle-click emulation, natural scrolling, scroll speed, scroll method, tap-to-click, tap-and-drag, drag lock, click method, disable while typing | `org.kde.KWin /org/kde/KWin/InputDevice[/<sysName>]` (`org.kde.KWin.InputDevice` properties, written with `Properties.Set`; KWin stores them itself) |
 
-### `~/.config/nexus/power.conf`
+### `~/.config/shadow/power.conf`
 
 Written only by the Power page, read by the shell. INI, group `[Power]`, whole
 minutes 0–1440, 0 = never; a missing key has the default in brackets:
@@ -78,7 +78,7 @@ Build: `scripts/dev.sh build --dir ccnet --only control-center --cc-pages
 "wifi;network;bluetooth;vpn;display;sound;power;keyboard;mouse"`.
 
 Smoke: `tests/desktop/smoke.sh --dir ccnet control-center` and
-`scripts/dev.sh run --dir ccnet --smoke nexus-control-center <key>` for each
+`scripts/dev.sh run --dir ccnet --smoke shadow-control-center <key>` for each
 of the nine keys: no QML warnings; without services every page shows a named
 unavailable state. `--dump <key>` returns valid JSON for each key.
 
@@ -127,4 +127,4 @@ Against test doubles only (the real service cannot run in the chroot):
   handling, forget or hidden network was ever performed.
 
 Not tested at all: Night Light, VRR/HDR, real hardware of any kind, a polkit
-agent prompting a non-root user, the pages inside a full NEXUS session.
+agent prompting a non-root user, the pages inside a full SHADOW session.

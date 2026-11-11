@@ -139,7 +139,7 @@ struct ToolResult
 };
 
 // Run a tool with an argument vector (never a shell) in toolEnvironment().
-// Like Nexus::Command::run(), but for tools that must reach the compositor.
+// Like Shadow::Command::run(), but for tools that must reach the compositor.
 void runTool(QObject *context, const QString &program, const QStringList &arguments,
              std::function<void(const ToolResult &)> done, int timeoutMs = 15000);
 

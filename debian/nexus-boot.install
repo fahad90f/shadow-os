@@ -1,3 +1,0 @@
-system/boot/nexus-boot/nexus-grub-install usr/sbin
-system/boot/nexus-boot/grub etc/default
-system/boot/nexus-boot/10-nexus.cfg etc/default/grub.d

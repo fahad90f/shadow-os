@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.updater
+import org.shadow.ui
+import org.shadow.updater
 
 // The detailed log of the most recent transaction this application ran: the
 // one in progress, the last one of this session, or the one saved from an
@@ -20,7 +20,7 @@ NxPage {
     signal copyRequested(string text, string what)
 
     title: qsTr("Last transaction")
-    subtitle: logText === "" ? qsTr("No transaction has been run from NEXUS Updater yet.")
+    subtitle: logText === "" ? qsTr("No transaction has been run from SHADOW Updater yet.")
         : live && job.active ? qsTr("In progress: %1").arg(logTitle)
         : live ? qsTr("%1 — result: %2").arg(logTitle).arg(job.result)
         : qsTr("Saved from an earlier session: %1").arg(logTitle)

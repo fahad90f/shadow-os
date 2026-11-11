@@ -7,7 +7,7 @@
 #include "notificationimage.h"
 #include "notificationserver.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -33,7 +33,7 @@ HORIZON_SHELL_MODULE(notifications, init)
 //
 // Runs in a process of its own, next to the shell (if one is running): it
 // reports the configuration, what this implementation offers, who owns the
-// service in the session and — when that is a NEXUS HORIZON shell — the
+// service in the session and — when that is a Shadow Horizon shell — the
 // state the shell reports about itself.
 static QJsonObject dumpNotifications()
 {
@@ -65,10 +65,10 @@ static QJsonObject dumpNotifications()
                 for (const QVariant &value : info.arguments())
                     values << value.toString();
                 service[QStringLiteral("serverInformation")] = values;
-                if (info.arguments().constFirst().toString() == QLatin1String("NEXUS HORIZON")) {
+                if (info.arguments().constFirst().toString() == QLatin1String("Shadow Horizon")) {
                     service[QStringLiteral("isHorizon")] = true;
                     const QDBusMessage reply = bus.call(
-                        QDBusMessage::createMethodCall(unique, path, QStringLiteral("org.nexus.horizon.Notifications"),
+                        QDBusMessage::createMethodCall(unique, path, QStringLiteral("org.shadow.horizon.Notifications"),
                                                        QStringLiteral("GetState")),
                         QDBus::Block, 2000);
                     if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty())
@@ -106,7 +106,7 @@ static QJsonObject dumpNotifications()
             {QStringLiteral("maxTimeoutMs"), MaxTimeoutMs},
         }},
         {QStringLiteral("service"), service},
-        // null: no NEXUS HORIZON shell is the notification service of this session
+        // null: no Shadow Horizon shell is the notification service of this session
         {QStringLiteral("state"), state},
     };
 }

@@ -165,7 +165,7 @@ QString toolName(Engine engine)
 
 bool toolAvailable(Engine engine)
 {
-    return engine != Engine::None && Nexus::Command::available(toolName(engine));
+    return engine != Engine::None && Shadow::Command::available(toolName(engine));
 }
 
 QJsonArray describe()

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Privileged helper of the Control Center's Region & Language page.
 
-Run through pkexec (polkit action org.nexus.controlcenter.language.configure):
+Run through pkexec (polkit action org.shadow.controlcenter.language.configure):
 
     language-helper generate <locale> [<locale>...]
     language-helper set LANG=<locale> [LC_TIME=<locale>...]

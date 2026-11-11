@@ -1,9 +1,9 @@
-# Component gallery: renders every NexusUI component in one window. Used for
+# Component gallery: renders every ShadowUI component in one window. Used for
 # visual review of the design system and by the GUI smoke tests; not installed.
-# The Case*.qml pages are focused test pages (nexus-ui-gallery --case <name>).
-qt_add_executable(nexus-ui-gallery main.cpp)
-qt_add_qml_module(nexus-ui-gallery
-    URI org.nexus.gallery
+# The Case*.qml pages are focused test pages (shadow-ui-gallery --case <name>).
+qt_add_executable(shadow-ui-gallery main.cpp)
+qt_add_qml_module(shadow-ui-gallery
+    URI org.shadow.gallery
     VERSION 1.0
     NO_PLUGIN
     QML_FILES
@@ -20,4 +20,4 @@ qt_add_qml_module(nexus-ui-gallery
         CaseFiledialog.qml
         CaseFolderdialog.qml
 )
-target_link_libraries(nexus-ui-gallery PRIVATE Nexus::App)
+target_link_libraries(shadow-ui-gallery PRIVATE Shadow::App)

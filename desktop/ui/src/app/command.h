@@ -8,7 +8,7 @@
 #include <QStringList>
 #include <functional>
 
-namespace Nexus {
+namespace Shadow {
 
 struct CommandResult
 {
@@ -46,4 +46,4 @@ public:
     static QProcessEnvironment parseEnvironment();
 };
 
-} // namespace Nexus
+} // namespace Shadow

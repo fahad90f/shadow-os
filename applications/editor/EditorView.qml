@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.editor
+import org.shadow.ui
+import org.shadow.editor
 
 // One tab: the text area with its line-number gutter and the messages that
 // belong to this file (changed on disk, encoding notices).

@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Test page: a modal Dialog with standard buttons over content that reacts
 // to taps.
@@ -14,7 +14,7 @@ import org.nexus.ui
 // CASE-EVENT lines this page prints.
 NxWindow {
     id: window
-    title: "NexusUI Gallery — dialogs"
+    title: "ShadowUI Gallery — dialogs"
     width: 900
     height: 640
 

@@ -1,0 +1,26 @@
+[Desktop Entry]
+Type=Application
+Name=Screenshot
+GenericName=Screen Capture
+Comment=Capture the screen, a window or a region, then annotate, save or copy it
+Exec=shadow-screenshot
+Icon=org.shadow.screenshot
+Terminal=false
+Categories=Utility;Graphics;
+Keywords=screenshot;capture;print screen;snip;region;annotate;
+StartupNotify=false
+StartupWMClass=org.shadow.screenshot
+X-SHADOW-Component=screenshot
+# KWin only lets applications that declare this take screenshots.
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
+# Clipboard access without a focused window (shadow-screenshot --clipboard).
+X-KDE-Wayland-Interfaces=zwlr_data_control_manager_v1,ext_data_control_manager_v1
+Actions=Region;Window;
+
+[Desktop Action Region]
+Name=Capture a Region
+Exec=shadow-screenshot --region
+
+[Desktop Action Window]
+Name=Capture the Active Window
+Exec=shadow-screenshot --window --delay 3

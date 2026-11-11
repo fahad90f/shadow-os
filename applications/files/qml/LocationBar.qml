@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
 // Path bar of the active pane: clickable breadcrumbs that turn into an
 // editable location field (Ctrl+L, the pencil button, or a click on the empty

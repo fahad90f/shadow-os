@@ -32,7 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from qemu import VM, TestFailure, PANIC, AUTOTEST_SERIAL, main_guard, make_disk, report  # noqa: E402
 
-USER, PASSWORD, PASSPHRASE = "tester", "Nexus-Test-1", "correct horse battery staple"
+USER, PASSWORD, PASSPHRASE = "tester", "Shadow-Test-1", "correct horse battery staple"
 SERIAL_CONSOLE = "console=tty0 console=ttyS0,115200n8"
 GIB = 1024**3
 
@@ -56,7 +56,7 @@ def base_answers(disk: str) -> dict:
         "locale": "de_DE.UTF-8",
         "keyboard": {"layout": "de", "variant": "nodeadkeys"},
         "timezone": "Europe/Berlin",
-        "hostname": "nexus-test",
+        "hostname": "shadow-test",
         "user": {"fullname": "Test User", "username": USER, "password": PASSWORD},
         "storage": {"mode": "erase-disk", "disk": disk},
         "kernel": {"extra_cmdline": SERIAL_CONSOLE},
@@ -70,16 +70,16 @@ def live_session(args, name: str, disks: list[tuple[Path, str]]) -> VM:
         vm.add_disk(path, bus=bus)
     vm.start()
     vm.expect(r"Linux version \S+", args.timeout, fail=PANIC)
-    vm.login("nexus", "live", timeout=args.timeout)
+    vm.login("shadow", "live", timeout=args.timeout)
     return vm
 
 
 def plan_and_install(vm: VM, answers: dict, timeout: float) -> dict:
     put_file(vm, "/tmp/answers.json", json.dumps(answers))
-    _, out = vm.sudo("nexus-installer-engine plan --answers /tmp/answers.json")
+    _, out = vm.sudo("shadow-installer-engine plan --answers /tmp/answers.json")
     plan = json.loads(out[out.index("{"):])
     report("plan produced", True, f"hash {plan['hash'][:12]}…, steps: {[s['id'] for s in plan['steps']]}")
-    rc, out = vm.sudo(f"nexus-installer-engine install --answers /tmp/answers.json --confirm {plan['hash']}",
+    rc, out = vm.sudo(f"shadow-installer-engine install --answers /tmp/answers.json --confirm {plan['hash']}",
                       timeout=timeout, check=False)
     # The events travel over the serial console, where a kernel message can
     # land in the middle of a line. Such a line is skipped; the verdict rests
@@ -97,7 +97,7 @@ def plan_and_install(vm: VM, answers: dict, timeout: float) -> dict:
     errors = [e for e in events if e.get("event") == "error"]
     done = any(e.get("event") == "done" for e in events)
     if rc != 0 or errors or not done:
-        _, log = vm.sudo("tail -n 60 /var/log/nexus-installer/*.log", check=False)
+        _, log = vm.sudo("tail -n 60 /var/log/shadow-installer/*.log", check=False)
         raise TestFailure(f"installation failed (rc={rc}): {errors}\n--- installer log tail ---\n{log[-5000:]}")
     steps = [e["id"] for e in events if e.get("event") == "step"]
     report("installation finished", True, f"steps run: {steps}")
@@ -143,9 +143,9 @@ def verify_installed(vm: VM, args, *, encrypted=False, separate_home=False, swap
     _, out = vm.run("cat /proc/cmdline")
     check("booted from disk, not the live medium", "boot=live" not in out, out.strip())
     _, out = vm.run(". /etc/os-release; echo \"$ID|$VERSION_ID|$DEBIAN_CODENAME|$PRETTY_NAME\"")
-    check("os-release identifies NEXUS OS", out.strip().startswith("nexus|"), out.strip())
+    check("os-release identifies Shadow OS", out.strip().startswith("shadow|"), out.strip())
     _, out = vm.run("hostname")
-    check("host name", out.strip() == "nexus-test", out.strip())
+    check("host name", out.strip() == "shadow-test", out.strip())
     _, out = vm.run("cat /etc/default/locale; cat /etc/timezone; readlink /etc/localtime; grep XKBLAYOUT /etc/default/keyboard")
     check("locale, time zone and keyboard", "LANG=de_DE.UTF-8" in out and "Europe/Berlin" in out and '"de"' in out,
           out.strip().replace("\n", " | "))
@@ -157,7 +157,7 @@ def verify_installed(vm: VM, args, *, encrypted=False, separate_home=False, swap
     check("sudo with the user's password", rc == 0 and out.strip().endswith("0"), out.strip()[-60:])
     _, out = vm.sudo("passwd -S root")
     check("root account is locked", " L " in out, out.strip())
-    _, out = vm.run("dpkg-query -W -f='${Package} ${db:Status-Status}\\n' live-boot live-config nexus-live nexus-installer 2>&1 || true")
+    _, out = vm.run("dpkg-query -W -f='${Package} ${db:Status-Status}\\n' live-boot live-config shadow-live shadow-installer 2>&1 || true")
     leftover = [l for l in out.splitlines() if l.endswith(" installed")]
     check("live-session packages removed", not leftover, str(leftover or "none left"))
     _, out = vm.run("findmnt -n -o SOURCE,FSTYPE /; cat /etc/fstab | grep -v '^#'")
@@ -179,8 +179,8 @@ def verify_installed(vm: VM, args, *, encrypted=False, separate_home=False, swap
         check("no swap", out.strip() == "", out.strip())
 
     if args.firmware != "bios":
-        _, out = vm.sudo("efibootmgr | grep -E 'BootCurrent|NEXUS OS' | tr '\\n' ';'; ls /boot/efi/EFI/")
-        check("firmware boot entry 'NEXUS OS' exists", "NEXUS OS" in out, out.strip())
+        _, out = vm.sudo("efibootmgr | grep -E 'BootCurrent|Shadow OS' | tr '\\n' ';'; ls /boot/efi/EFI/")
+        check("firmware boot entry 'Shadow OS' exists", "Shadow OS" in out, out.strip())
         _, out = vm.run("mokutil --sb-state 2>&1 | head -n1")
         want = args.firmware == "uefi-secureboot"
         check("Secure Boot " + ("enforced" if want else "off as configured"),
@@ -189,9 +189,9 @@ def verify_installed(vm: VM, args, *, encrypted=False, separate_home=False, swap
         _, out = vm.run("test -d /sys/firmware/efi && echo EFI || echo BIOS")
         check("booted through legacy BIOS", out.strip() == "BIOS")
 
-    _, out = vm.run("cat /etc/nexus/boot.conf | tr '\\n' ' '")
+    _, out = vm.run("cat /etc/shadow/boot.conf | tr '\\n' ' '")
     check("boot loader record present", "FIRMWARE=" in out, out.strip())
-    rc, out = vm.sudo("nexus-grub-install --verbose 2>&1 | tail -n 3", check=False)
+    rc, out = vm.sudo("shadow-grub-install --verbose 2>&1 | tail -n 3", check=False)
     check("boot loader can be re-installed (update path)", rc == 0, out.strip().replace("\n", " | ")[-200:])
     _, out = vm.sudo("ls /var/log/installer/")
     check("installation log kept on the installed system", "install.log" in out, out.strip())
@@ -219,7 +219,7 @@ def scenario_erase(args, *, encrypt=False, separate_home=False, swap="file"):
     other = make_disk(work / "bystander.qcow2", "1G")
     vm = live_session(args, "install", [(target, "virtio"), (other, "virtio")])
     try:
-        _, out = vm.sudo("nexus-installer-engine probe")
+        _, out = vm.sudo("shadow-installer-engine probe")
         probe = json.loads(out[out.index("{"):])
         report("probe", probe["can_install"], f"firmware={probe['firmware']}, disks={[d['path'] for d in probe['disks']]}, "
                f"medium={probe['live_medium']['disk']}")
@@ -285,7 +285,7 @@ def scenario_alongside(args):
     target = make_disk(work / "target.qcow2", "40G")
     vm = live_session(args, "install", [(target, "virtio")])
     try:
-        _, out = vm.sudo("nexus-installer-engine probe")
+        _, out = vm.sudo("shadow-installer-engine probe")
         probe = json.loads(out[out.index("{"):])
         disk = next(d["path"] for d in probe["disks"] if d["usable"])
         before = prepare_other_system(vm, disk, efi=True)
@@ -331,7 +331,7 @@ def scenario_manual(args):
     target = make_disk(work / "target.qcow2", "40G")
     vm = live_session(args, "install", [(target, "virtio")])
     try:
-        _, out = vm.sudo("nexus-installer-engine probe")
+        _, out = vm.sudo("shadow-installer-engine probe")
         probe = json.loads(out[out.index("{"):])
         disk = next(d["path"] for d in probe["disks"] if d["usable"])
         p = disk + ("p" if disk[-1].isdigit() else "")
@@ -376,7 +376,7 @@ def scenario_refuse(args):
     target = make_disk(work / "target.qcow2", "32G")
     vm = live_session(args, "refuse", [(target, "virtio")])
     try:
-        _, out = vm.sudo("nexus-installer-engine probe")
+        _, out = vm.sudo("shadow-installer-engine probe")
         probe = json.loads(out[out.index("{"):])
         disk = next(d["path"] for d in probe["disks"] if d["usable"])
         medium = probe["live_medium"]["disk"]
@@ -385,9 +385,9 @@ def scenario_refuse(args):
         def expect_refusal(name, answers, confirm=None):
             put_file(vm, "/tmp/answers.json", json.dumps(answers))
             if confirm is None:
-                rc, out = vm.sudo("nexus-installer-engine plan --answers /tmp/answers.json", check=False)
+                rc, out = vm.sudo("shadow-installer-engine plan --answers /tmp/answers.json", check=False)
             else:
-                rc, out = vm.sudo(f"nexus-installer-engine install --answers /tmp/answers.json --confirm {confirm}", check=False)
+                rc, out = vm.sudo(f"shadow-installer-engine install --answers /tmp/answers.json --confirm {confirm}", check=False)
             refused = rc != 0 and '"event": "error"' in out
             report(f"refused: {name}", refused, out.strip().splitlines()[-1][:160] if out.strip() else "")
             if not refused:

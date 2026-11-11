@@ -12,7 +12,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 
-// Back-end of NEXUS Updater.
+// Back-end of SHADOW Updater.
 //
 // Data sources
 //   updates          PackageKit: RefreshCache, GetUpdates, Resolve, GetDetails, GetUpdateDetail
@@ -23,7 +23,7 @@
 //   package health   dpkg --audit, /var/lib/dpkg/updates, dpkg-query
 //   sources          /etc/apt/sources.list*, /var/lib/apt/lists (signed Release files)
 //   restart          logind (org.freedesktop.login1.Manager.CanReboot / Reboot)
-//   settings         ~/.config/nexus/updater.conf
+//   settings         ~/.config/shadow/updater.conf
 //
 // Nothing here runs as root; PackageKit and logind authorise through polkit.
 class Updater : public QObject
@@ -71,7 +71,7 @@ public:
 
     QObject *service() const;
     QObject *updates() { return &m_updates; }
-    NexusPk::UpdateChecker *checker() { return &m_updates; }
+    ShadowPk::UpdateChecker *checker() { return &m_updates; }
     QObject *job() const { return m_job; }
     bool busy() const { return m_job && m_job->active(); }
 
@@ -130,8 +130,8 @@ public:
     // Everything a bug report about a failed update needs, as plain text.
     Q_INVOKABLE QString report() const;
 
-    // Record the outcome of a check (also used by `nexus-updater --check`).
-    static void storeCheckResult(const NexusPk::UpdateChecker &checker);
+    // Record the outcome of a check (also used by `shadow-updater --check`).
+    static void storeCheckResult(const ShadowPk::UpdateChecker &checker);
     static QJsonObject settingsJson();
 
 Q_SIGNALS:
@@ -146,17 +146,17 @@ Q_SIGNALS:
     void restartFailed(const QString &message);
 
 private:
-    void startJob(NexusPk::Job *job);
+    void startJob(ShadowPk::Job *job);
     void startUpdate(const QStringList &ids, const QString &title);
     void onJobFinished(bool success);
-    void saveLastLog(const NexusPk::Job *job);
+    void saveLastLog(const ShadowPk::Job *job);
     void loadLastLog();
     void loadSettings();
     void probeLogind();
     void rebuildHistory();
 
-    NexusPk::UpdateChecker m_updates;
-    QPointer<NexusPk::Job> m_job;
+    ShadowPk::UpdateChecker m_updates;
+    QPointer<ShadowPk::Job> m_job;
     bool m_initialized = false;
 
     QVariantList m_history;         // merged, as shown

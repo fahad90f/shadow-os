@@ -25,8 +25,8 @@ struct SshTarget
     bool operator==(const SshTarget &other) const = default;
 };
 
-// Everything NEXUS Terminal persists, in ~/.config/nexus/terminal.conf
-// (QSettings native format; /etc/xdg/nexus/terminal.conf supplies system
+// Everything SHADOW Terminal persists, in ~/.config/shadow/terminal.conf
+// (QSettings native format; /etc/xdg/shadow/terminal.conf supplies system
 // defaults). Profiles and key bindings have their own front-ends
 // (ProfileManager, Shortcuts) but live in the same file.
 class Settings : public QObject

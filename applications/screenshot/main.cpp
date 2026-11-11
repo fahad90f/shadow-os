@@ -2,7 +2,7 @@
 #include "controller.h"
 #include "screengrabber.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QCommandLineParser>
 #include <QGuiApplication>
@@ -68,10 +68,10 @@ int main(int argc, char **argv)
 {
     const int statusFd = forkForClipboard(argc, argv);
 
-    Nexus::App app(argc, argv, {
-        QStringLiteral("org.nexus.screenshot"),
+    Shadow::App app(argc, argv, {
+        QStringLiteral("org.shadow.screenshot"),
         QStringLiteral("Screenshot"),
-        QStringLiteral("org.nexus.screenshot"),
+        QStringLiteral("org.shadow.screenshot"),
         QStringLiteral("Capture the screen, a monitor, a window or a region.\n\n"
                        "Without --output or --clipboard the picture opens in a window where it can be\n"
                        "annotated, saved and copied. With either option nothing is shown (except the\n"
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
     if (!app.processArguments())
         return 0;
 
-    // The controller must outlive the QML engine (which Nexus::App destroys
+    // The controller must outlive the QML engine (which Shadow::App destroys
     // before the application object), so it belongs to the application.
     auto *controllerObject = new Controller(qApp);
     Controller &controller = *controllerObject;
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
         QJsonObject o = ScreenGrabber::probe();
         o["writableFormats"_L1] = QJsonArray::fromStringList(controller.formats());
         o["saveDirectory"_L1] = controller.saveDirectory();
-#ifdef NEXUS_HAVE_KGUIADDONS
+#ifdef SHADOW_HAVE_KGUIADDONS
         o["clipboard"_L1] = u"KSystemClipboard (data-control protocol on Wayland)"_s;
 #else
         o["clipboard"_L1] = u"QClipboard (needs a focused window on Wayland)"_s;
@@ -127,7 +127,7 @@ int main(int argc, char **argv)
     }
 
     auto usage = [](const QString &text) {
-        std::fprintf(stderr, "nexus-screenshot: %s\n", qPrintable(text));
+        std::fprintf(stderr, "shadow-screenshot: %s\n", qPrintable(text));
         return int(ExitCode::Usage);
     };
     const int modes = int(parser.isSet(fullOption)) + int(parser.isSet(monitorOption)) + int(parser.isSet(windowOption)) + int(parser.isSet(regionOption));
@@ -185,5 +185,5 @@ int main(int argc, char **argv)
     // File/clipboard output of anything but a region needs no user interface at all.
     if (cli.nonInteractive && controller.mode() != "region"_L1)
         return QCoreApplication::exec();
-    return app.run(QStringLiteral("org.nexus.screenshot"));
+    return app.run(QStringLiteral("org.shadow.screenshot"));
 }

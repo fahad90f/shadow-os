@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Disk Manager
+GenericName=Disks and Partitions
+Comment=Manage drives, partitions, file systems and disk images
+Exec=shadow-disks
+Icon=org.shadow.diskmanager
+Terminal=false
+Categories=System;Utility;
+Keywords=disk;drive;partition;format;mount;usb;luks;smart;image;
+StartupNotify=true
+StartupWMClass=org.shadow.diskmanager
+X-SHADOW-Component=disk-manager

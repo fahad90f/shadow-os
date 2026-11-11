@@ -321,12 +321,12 @@ private:
     NotificationServer *m_server;
 };
 
-// org.nexus.horizon.Notifications on the same object: read-only diagnostics
+// org.shadow.horizon.Notifications on the same object: read-only diagnostics
 // for "horizon-shell --dump notifications" and the tests.
 class NotificationDebugAdaptor : public QDBusAbstractAdaptor
 {
     Q_OBJECT
-    Q_CLASSINFO("D-Bus Interface", "org.nexus.horizon.Notifications")
+    Q_CLASSINFO("D-Bus Interface", "org.shadow.horizon.Notifications")
 
 public:
     explicit NotificationDebugAdaptor(NotificationServer *server);

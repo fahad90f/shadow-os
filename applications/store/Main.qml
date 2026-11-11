@@ -2,12 +2,12 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
 NxWindow {
     id: window
-    title: qsTr("NEXUS Store")
+    title: qsTr("SHADOW Store")
     width: 1200
     height: 820
 
@@ -83,12 +83,12 @@ NxWindow {
 
     Component.onCompleted: {
         backend.initialize()
-        const args = nexusApp.arguments
+        const args = shadowApp.arguments
         if (args.length > 0) openTarget(args[0])
     }
 
     Connections {
-        target: nexusApp
+        target: shadowApp
         function onActivationRequested(args) {
             if (args.length > 0) window.openTarget(args[0])
             window.raise()
@@ -208,7 +208,7 @@ NxWindow {
                     onCopyRequested: (text) => window.copy(text)
                     onRepairRequested: {
                         if (!backend.openUpdater("recovery"))
-                            window.toaster.show(qsTr("NEXUS Updater is not installed; it provides the package-system repair."), "warning")
+                            window.toaster.show(qsTr("SHADOW Updater is not installed; it provides the package-system repair."), "warning")
                     }
                 }
             }

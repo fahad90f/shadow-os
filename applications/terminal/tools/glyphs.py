@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Rasterise the indicator glyphs of the NEXUS Terminal style sheet.
+"""Rasterise the indicator glyphs of the SHADOW Terminal style sheet.
 
     glyphs.py <theme.json> <output-dir>
     glyphs.py --list                      names of the files one run writes
@@ -12,7 +12,7 @@ drawn here, at build time, as PNG files in the colours of one theme variant.
 
 <theme.json> is the colour table scripts/gen-tokens.py rendered from the
 design tokens for that variant (style/theme.json.in), so every colour still
-comes from the tokens. The shapes are the stroke paths of the matching NEXUS
+comes from the tokens. The shapes are the stroke paths of the matching SHADOW
 symbolic icons (desktop/ui/icons/check.svg, chevron-*.svg), on their 24-unit
 grid. Each glyph is written at 16 px and as an "@2x" file for high-DPI screens.
 

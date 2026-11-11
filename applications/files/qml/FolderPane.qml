@@ -4,8 +4,8 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
 // One view of a folder: grid or details list, selection, keyboard handling,
 // inline rename, drag and drop, the filter / search bar and the status bar.

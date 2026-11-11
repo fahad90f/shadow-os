@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "arsenal.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QCommandLineOption>
 
 namespace {
-const char kDefaultProfilesDir[] = "/usr/share/nexus/arsenal/profiles";
+const char kDefaultProfilesDir[] = "/usr/share/shadow/arsenal/profiles";
 }
 
 int main(int argc, char **argv)
 {
-    Nexus::App app(argc, argv, {
-        QStringLiteral("org.nexus.arsenal"),
-        QStringLiteral("NEXUS Arsenal"),
-        QStringLiteral("org.nexus.arsenal"),
+    Shadow::App app(argc, argv, {
+        QStringLiteral("org.shadow.arsenal"),
+        QStringLiteral("SHADOW Arsenal"),
+        QStringLiteral("org.shadow.arsenal"),
         QStringLiteral("Install and manage security tool profiles for authorised testing"),
         true,
     });
@@ -60,5 +60,5 @@ int main(int argc, char **argv)
     controller.setInitialPage(app.parser().value(pageOption));
     controller.packageKit()->probe();
     controller.refresh();
-    return app.run(QStringLiteral("org.nexus.arsenal"));
+    return app.run(QStringLiteral("org.shadow.arsenal"));
 }

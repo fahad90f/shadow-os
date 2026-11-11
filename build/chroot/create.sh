@@ -1,5 +1,5 @@
 #!/bin/bash
-# Create (or refresh) the Debian build chroot used to compile NEXUS packages.
+# Create (or refresh) the Debian build chroot used to compile SHADOW packages.
 #
 #   build/chroot/create.sh [--arch amd64|arm64] [--recreate] [--dev-tools]
 #
@@ -31,10 +31,10 @@ need_cmd mmdebstrap
 ensure_foreign_arch "$ARCH"
 arch_info "$ARCH" gnu >/dev/null
 
-CHROOT="$NEXUS_WORK/chroot-build-$ARCH"
-DEPS_FILE="$NEXUS_ROOT/build/chroot/build-deps.list"
+CHROOT="$SHADOW_WORK/chroot-build-$ARCH"
+DEPS_FILE="$SHADOW_ROOT/build/chroot/build-deps.list"
 
-STAMP="$CHROOT/.nexus-bootstrap-complete"
+STAMP="$CHROOT/.shadow-bootstrap-complete"
 if [ -d "$CHROOT" ] && [ "$RECREATE" -eq 1 ]; then
     log "removing existing chroot $CHROOT"
     safe_rmtree "$CHROOT"
@@ -47,8 +47,8 @@ fi
 mapfile -t DEPS < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$DEPS_FILE")
 
 if [ ! -d "$CHROOT" ]; then
-    log "bootstrapping $NEXUS_DEBIAN_SUITE/$ARCH build chroot at $CHROOT"
-    mkdir -p "$NEXUS_WORK"
+    log "bootstrapping $SHADOW_DEBIAN_SUITE/$ARCH build chroot at $CHROOT"
+    mkdir -p "$SHADOW_WORK"
     mmdebstrap \
         --variant=buildd \
         --architectures="$ARCH" \
@@ -57,8 +57,8 @@ if [ ! -d "$CHROOT" ]; then
         --aptopt='Acquire::Retries "5"' \
         --aptopt='APT::Install-Recommends "false"' \
         --dpkgopt='force-unsafe-io' \
-        --customize-hook='echo nexus-build > "$1/etc/hostname"' \
-        "$NEXUS_DEBIAN_SUITE" "$CHROOT" - < <(build_sources)
+        --customize-hook='echo shadow-build > "$1/etc/hostname"' \
+        "$SHADOW_DEBIAN_SUITE" "$CHROOT" - < <(build_sources)
     date -u +%Y-%m-%dT%H:%M:%SZ > "$STAMP"
 else
     log "reusing existing chroot $CHROOT"
@@ -69,7 +69,7 @@ in_chroot "$CHROOT" -- apt-get -q update
 in_chroot "$CHROOT" -- eatmydata apt-get -q -y --no-install-recommends \
     -o Acquire::Retries=5 install "${DEPS[@]}"
 if [ "$DEV_TOOLS" -eq 1 ]; then
-    mapfile -t TOOLS < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$NEXUS_ROOT/build/chroot/dev-tools.list")
+    mapfile -t TOOLS < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$SHADOW_ROOT/build/chroot/dev-tools.list")
     log "installing ${#TOOLS[@]} development/test tools"
     # Nothing may be started inside the chroot.
     printf '#!/bin/sh\nexit 101\n' > "$CHROOT/usr/sbin/policy-rc.d"; chmod 755 "$CHROOT/usr/sbin/policy-rc.d"

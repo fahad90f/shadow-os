@@ -1,12 +1,12 @@
 # Security baseline
 
-Every security setting NEXUS OS ships, what it protects against, and what
-it can break. All of it is in one removable package, `nexus-hardening`
+Every security setting Shadow OS ships, what it protects against, and what
+it can break. All of it is in one removable package, `shadow-hardening`
 (source: `security/`), plus the installer's disk-encryption parameters and
 the boot chain.
 
-> **Scope and verification.** `nexus-hardening` is part of the desktop
-> image, not of the minimal image. Verified: `nexus-firewall` in a
+> **Scope and verification.** `shadow-hardening` is part of the desktop
+> image, not of the minimal image. Verified: `shadow-firewall` in a
 > functional test inside an isolated network namespace; during the first
 > boot of the desktop image a bug in the audit rules was found and fixed.
 > Everything else is implemented and has not been verified as a whole on an
@@ -20,16 +20,16 @@ table says how to change the one setting concerned.
 
 | Area | File on the system | Source |
 |---|---|---|
-| Kernel settings (sysctl) | `/usr/lib/sysctl.d/60-nexus-hardening.conf` | `security/hardening/sysctl.d/` |
-| Kernel command line | `/etc/default/grub.d/20-nexus-hardening.cfg` | `security/hardening/grub.d/` |
-| Module auto-loading | `/usr/lib/modprobe.d/nexus-hardening.conf` | `security/hardening/modprobe.d/` |
-| Firewall | `/etc/nftables.conf`, `/usr/sbin/nexus-firewall`, `/etc/nexus/firewall.json`, `/etc/nftables.d/` | `security/firewall/` |
-| Audit rules | `/etc/audit/rules.d/50-nexus.rules` | `security/audit/` |
-| Journal | `/usr/lib/systemd/journald.conf.d/nexus.conf` | `security/hardening/journald.conf.d/` |
-| sudo | `/etc/sudoers.d/nexus-hardening` | `security/hardening/sudoers.d/` |
-| NetworkManager privacy | `/usr/lib/NetworkManager/conf.d/80-nexus-privacy.conf` | `security/hardening/NetworkManager/` |
-| Status report | `/usr/sbin/nexus-security-status` | `security/audit/` |
-| polkit actions | `/usr/share/polkit-1/actions/org.nexus.security.policy` | `security/permissions/` |
+| Kernel settings (sysctl) | `/usr/lib/sysctl.d/60-shadow-hardening.conf` | `security/hardening/sysctl.d/` |
+| Kernel command line | `/etc/default/grub.d/20-shadow-hardening.cfg` | `security/hardening/grub.d/` |
+| Module auto-loading | `/usr/lib/modprobe.d/shadow-hardening.conf` | `security/hardening/modprobe.d/` |
+| Firewall | `/etc/nftables.conf`, `/usr/sbin/shadow-firewall`, `/etc/shadow/firewall.json`, `/etc/nftables.d/` | `security/firewall/` |
+| Audit rules | `/etc/audit/rules.d/50-shadow.rules` | `security/audit/` |
+| Journal | `/usr/lib/systemd/journald.conf.d/shadow.conf` | `security/hardening/journald.conf.d/` |
+| sudo | `/etc/sudoers.d/shadow-hardening` | `security/hardening/sudoers.d/` |
+| NetworkManager privacy | `/usr/lib/NetworkManager/conf.d/80-shadow-privacy.conf` | `security/hardening/NetworkManager/` |
+| Status report | `/usr/sbin/shadow-security-status` | `security/audit/` |
+| polkit actions | `/usr/share/polkit-1/actions/org.shadow.security.policy` | `security/permissions/` |
 
 The package depends on `nftables`, `apparmor`, `auditd` and `sudo`, and
 recommends `apparmor-profiles`, `apparmor-profiles-extra` and
@@ -109,7 +109,7 @@ when they need it.
 
 ## Kernel command line
 
-`/etc/default/grub.d/20-nexus-hardening.cfg` appends to
+`/etc/default/grub.d/20-shadow-hardening.cfg` appends to
 `GRUB_CMDLINE_LINUX`. It takes effect after `update-grub` and a reboot; the
 installer runs `update-grub`. To drop a parameter, override
 `GRUB_CMDLINE_LINUX` in a later file such as
@@ -125,7 +125,7 @@ installer runs `update-grub`. To drop a parameter, override
 | `audit=1`, `audit_backlog_limit=8192` | missing audit records for processes started before auditd | a little memory for the backlog |
 
 These parameters apply to Debian's kernel as shipped. The additional
-build-time options of the NEXUS kernel configuration are **not** in effect,
+build-time options of the SHADOW kernel configuration are **not** in effect,
 because that kernel is not shipped ([../kernel/README.md](../kernel/README.md)).
 
 The live medium's boot menu does not use this file; the live session runs
@@ -133,7 +133,7 @@ without these parameters.
 
 ## Module auto-loading
 
-`/usr/lib/modprobe.d/nexus-hardening.conf` uses `blacklist`, which stops a
+`/usr/lib/modprobe.d/shadow-hardening.conf` uses `blacklist`, which stops a
 module from being loaded **implicitly** — for example when an unprivileged
 program opens a socket of an exotic protocol family, which is how several
 kernel privilege escalations were reached. It does not make the module
@@ -153,16 +153,16 @@ override the file with one of the same name in `/etc/modprobe.d/`.
 
 ## AppArmor
 
-* `nexus-hardening` depends on `apparmor`, so the AppArmor service and the
+* `shadow-hardening` depends on `apparmor`, so the AppArmor service and the
   profiles that Debian packages ship are installed. Debian's kernel enables
   AppArmor by default.
-* **NEXUS OS ships no AppArmor profiles of its own.** NEXUS applications,
+* **Shadow OS ships no AppArmor profiles of its own.** SHADOW applications,
   the shell and the helpers run unconfined.
 * `apparmor-profiles`, `apparmor-profiles-extra` and `apparmor-utils` are
   recommended by the package but not installed in the image. Install them
   if you want more profiles and the `aa-status`, `aa-enforce`,
   `aa-complain` tools.
-* `nexus-security-status --section apparmor` reports whether the module is
+* `shadow-security-status --section apparmor` reports whether the module is
   enabled, the number of profiles per mode and the number of confined
   processes. `/etc/apparmor.d/` is watched by the audit rules.
 
@@ -175,7 +175,7 @@ AppArmor as a whole.
 
 ### Default policy
 
-`/etc/nftables.conf` defines one table, `inet nexus_filter`:
+`/etc/nftables.conf` defines one table, `inet shadow_filter`:
 
 | Direction | Policy | Exceptions |
 |---|---|---|
@@ -183,7 +183,7 @@ AppArmor as a whole.
 | Forwarded | **drop** | traffic of local virtual machines and containers leaving through this host, and connections published to them (DNAT) |
 | Outbound | **accept** | — |
 
-Only the NEXUS table is replaced when the file is loaded. Tables owned by
+Only the SHADOW table is replaced when the file is loaded. Tables owned by
 Docker, libvirt or a VPN client are left alone.
 
 Can break: anything that expects unsolicited inbound connections — an SSH
@@ -191,19 +191,19 @@ or web server on this machine, file sharing, KDE Connect, device discovery
 (mDNS, SSDP), listeners for reverse connections during a test. Open the port
 you need.
 
-### `nexus-firewall`
+### `shadow-firewall`
 
 Must run as root.
 
 ```
-nexus-firewall status [--json]
-nexus-firewall list [--json]
-nexus-firewall enable
-nexus-firewall disable
-nexus-firewall allow <port>[-<port>]/<tcp|udp> [--name TEXT]
-nexus-firewall remove <port>[-<port>]/<tcp|udp>
-nexus-firewall reload
-nexus-firewall reset
+shadow-firewall status [--json]
+shadow-firewall list [--json]
+shadow-firewall enable
+shadow-firewall disable
+shadow-firewall allow <port>[-<port>]/<tcp|udp> [--name TEXT]
+shadow-firewall remove <port>[-<port>]/<tcp|udp>
+shadow-firewall reload
+shadow-firewall reset
 ```
 
 | Command | Effect |
@@ -211,7 +211,7 @@ nexus-firewall reset
 | `status` | active or not, starts at boot or not, policies, rule count, open ports, other nftables tables present. Exit status 0 when active, 3 when not |
 | `list` | the opened ports |
 | `enable` | validates and loads the ruleset and enables `nftables.service` |
-| `disable` | disables the service and deletes the NEXUS table: inbound connections are no longer filtered |
+| `disable` | disables the service and deletes the SHADOW table: inbound connections are no longer filtered |
 | `allow` | opens a port or a port range for inbound connections, with an optional name |
 | `remove` | closes it again |
 | `reload` | regenerates and loads the ruleset |
@@ -220,16 +220,16 @@ nexus-firewall reset
 Examples:
 
 ```sh
-sudo nexus-firewall status
-sudo nexus-firewall allow 22/tcp --name "SSH"
-sudo nexus-firewall allow 8000-8010/tcp --name "lab web servers"
-sudo nexus-firewall remove 22/tcp
+sudo shadow-firewall status
+sudo shadow-firewall allow 22/tcp --name "SSH"
+sudo shadow-firewall allow 8000-8010/tcp --name "lab web servers"
+sudo shadow-firewall remove 22/tcp
 ```
 
 How it works:
 
-* The opened ports are recorded in `/etc/nexus/firewall.json`. From it the
-  tool generates `/etc/nftables.d/50-nexus-allowed.nft`, which fills the
+* The opened ports are recorded in `/etc/shadow/firewall.json`. From it the
+  tool generates `/etc/nftables.d/50-shadow-allowed.nft`, which fills the
   sets `allowed_tcp` and `allowed_udp`.
 * Every change is validated against the complete ruleset
   (`nft --check --file /etc/nftables.conf`) before it replaces anything. If
@@ -242,11 +242,11 @@ survive updates of the shipped file. Use the chains `input_local` and
 
 ```
 # /etc/nftables.d/60-local.nft
-add rule inet nexus_filter input_local iifname "tun0" tcp dport 4444 accept
+add rule inet shadow_filter input_local iifname "tun0" tcp dport 4444 accept
 ```
 
-Graphical tools call `nexus-firewall` through `pkexec` (polkit action
-`org.nexus.firewall.manage`, administrator authentication). A Control Center
+Graphical tools call `shadow-firewall` through `pkexec` (polkit action
+`org.shadow.firewall.manage`, administrator authentication). A Control Center
 firewall page exists in the source tree but is not part of the image yet.
 
 Limits of this firewall: it filters by port only (no per-application
@@ -256,7 +256,7 @@ every source address and interface. Per-source rules go into your own
 
 ## Audit rules
 
-`/etc/audit/rules.d/50-nexus.rules`, loaded by `augenrules`. A deliberately
+`/etc/audit/rules.d/50-shadow.rules`, loaded by `augenrules`. A deliberately
 small, low-noise set: changes to identity, privilege and kernel code, which
 is what an investigation needs first.
 
@@ -270,7 +270,7 @@ is what an investigation needs first.
 | `audit-config` | `/etc/audit/` |
 | `modules` | the system calls `init_module`, `finit_module`, `delete_module` by logged-in users; `/etc/modprobe.d/` |
 | `time-change` | `adjtimex`, `settimeofday`, `clock_settime` by logged-in users |
-| `boot` | `/boot/grub/grub.cfg`, `/etc/default/grub`, `/etc/default/grub.d/`, `/etc/nexus/boot.conf` |
+| `boot` | `/boot/grub/grub.cfg`, `/etc/default/grub`, `/etc/default/grub.d/`, `/etc/shadow/boot.conf` |
 | `apt-sources` | `/etc/apt/sources.list.d/`, `/etc/apt/trusted.gpg.d/` |
 
 * The rules start with `-i`: a watched path that does not exist (no SSH
@@ -288,7 +288,7 @@ volume low.
 
 ## Journal
 
-`/usr/lib/systemd/journald.conf.d/nexus.conf`:
+`/usr/lib/systemd/journald.conf.d/shadow.conf`:
 
 | Setting | Effect |
 |---|---|
@@ -303,7 +303,7 @@ unencrypted installation they can be read by anyone with physical access.
 
 ## sudo
 
-`/etc/sudoers.d/nexus-hardening`:
+`/etc/sudoers.d/shadow-hardening`:
 
 | Setting | Effect | Can break |
 |---|---|---|
@@ -317,7 +317,7 @@ In the live session the live user has passwordless `sudo`.
 
 ## NetworkManager privacy
 
-`/usr/lib/NetworkManager/conf.d/80-nexus-privacy.conf`. Override per
+`/usr/lib/NetworkManager/conf.d/80-shadow-privacy.conf`. Override per
 connection (`nmcli`, Control Center) or with a file in
 `/etc/NetworkManager/conf.d/`.
 
@@ -331,7 +331,7 @@ connection (`nmcli`, Control Center) or with a file in
 ## Disk encryption (LUKS2)
 
 Set up by the installer engine when you choose encryption
-(`system/installer/engine/nexus_installer/executor.py`).
+(`system/installer/engine/shadow_installer/executor.py`).
 
 | Parameter | Value |
 |---|---|
@@ -340,8 +340,8 @@ Set up by the installer engine when you choose encryption
 | Key size | 512 bits (AES-256 in XTS mode) |
 | Hash | SHA-512 |
 | Key derivation | Argon2id, with cryptsetup's default cost (benchmarked on the installing machine) |
-| Label | `nexus-crypt` |
-| Inside | LVM volume group (`nexus`) with `root`, optionally `home` and `swap` |
+| Label | `shadow-crypt` |
+| Inside | LVM volume group (`shadow`) with `root`, optionally `home` and `swap` |
 | Unlocking | passphrase at boot (`/etc/crypttab`: `none luks,discard`) |
 | Passphrase rules | at least 8 characters; passed to cryptsetup on standard input only |
 
@@ -384,12 +384,12 @@ Argon2id.
   edit kernel parameters or choose recovery mode. Recovery mode's root shell
   asks for the root password, and the root account is locked
   ([../troubleshooting/recovery.md](../troubleshooting/recovery.md)).
-* The NEXUS project has no Secure Boot key of its own.
+* The SHADOW project has no Secure Boot key of its own.
 
 ## Security status report
 
 ```
-sudo nexus-security-status [--section NAME[,NAME…]] [--pretty]
+sudo shadow-security-status [--section NAME[,NAME…]] [--pretty]
 ```
 
 A read-only JSON report; every field is the result of a check made when the
@@ -406,22 +406,22 @@ actually in effect. `secureboot` includes the marker of a failed boot-loader
 refresh.
 
 Graphical tools run it through `pkexec` (polkit action
-`org.nexus.security.read-status`). An active local session may do so
+`org.shadow.security.read-status`). An active local session may do so
 without a password, because the program changes nothing and takes no input
 beyond the section names; remote and inactive sessions need administrator
 authentication, since the report reveals listening services and login
 activity. The Security Center application that would display the report is
 not part of the image yet.
 
-## polkit actions shipped by NEXUS
+## polkit actions shipped by SHADOW
 
 | Action | Program | Default for an active local session |
 |---|---|---|
-| `org.nexus.security.read-status` | `/usr/sbin/nexus-security-status` | allowed without authentication |
-| `org.nexus.firewall.manage` | `/usr/sbin/nexus-firewall` | administrator authentication, kept for a short time |
-| `org.nexus.networkcenter.sockets` | `network-helper sockets` | administrator authentication, kept |
-| `org.nexus.networkcenter.capture` | `network-helper capture` | administrator authentication every time; never for remote or inactive sessions |
-| `org.nexus.installer.run` | `/usr/sbin/nexus-installer-engine` | administrator authentication every time; in the live session a rule allows it without a password. The package is removed from installed systems |
+| `org.shadow.security.read-status` | `/usr/sbin/shadow-security-status` | allowed without authentication |
+| `org.shadow.firewall.manage` | `/usr/sbin/shadow-firewall` | administrator authentication, kept for a short time |
+| `org.shadow.networkcenter.sockets` | `network-helper sockets` | administrator authentication, kept |
+| `org.shadow.networkcenter.capture` | `network-helper capture` | administrator authentication every time; never for remote or inactive sessions |
+| `org.shadow.installer.run` | `/usr/sbin/shadow-installer-engine` | administrator authentication every time; in the live session a rule allows it without a password. The package is removed from installed systems |
 
 ## Documented exceptions
 
@@ -429,7 +429,7 @@ Places where the baseline is deliberately weaker than it could be, and why:
 
 | Exception | Reason |
 |---|---|
-| Module signatures are not enforced without Secure Boot (`MODULE_SIG_FORCE` off, also in the NEXUS kernel configuration) | enforcing would block DKMS drivers such as the proprietary NVIDIA module. Under Secure Boot, lockdown enforces signatures |
+| Module signatures are not enforced without Secure Boot (`MODULE_SIG_FORCE` off, also in the SHADOW kernel configuration) | enforcing would block DKMS drivers such as the proprietary NVIDIA module. Under Secure Boot, lockdown enforces signatures |
 | `blacklist` instead of `install … /bin/false` for kernel modules | root must be able to load these protocols and filesystems on a security workstation |
 | Reverse-path filtering in loose mode, not strict | strict mode breaks multi-homed and VPN set-ups |
 | `kernel.yama.ptrace_scope = 1`, not 2 or 3 | debuggers started normally must keep working on a development system |
@@ -449,7 +449,7 @@ Places where the baseline is deliberately weaker than it could be, and why:
 So that nothing is assumed: no outbound firewall, no per-application
 network rules, no automatic security updates, no USB device authorisation
 (USBGuard is in the Blue Team profile, not installed), no intrusion
-detection, no file-integrity monitoring, no NEXUS AppArmor profiles, no
+detection, no file-integrity monitoring, no SHADOW AppArmor profiles, no
 `hidepid` on `/proc`, no kernel module signature enforcement without Secure
 Boot, no GRUB password, no TPM use, no SSH server (only the client is
 installed).

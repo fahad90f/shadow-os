@@ -4,8 +4,8 @@
   "name": "Network Security",
   "summary": "Scanning, enumeration, traffic capture and analysis for network assessments",
   "description": "A toolkit for assessing networks you are authorized to test: port and service scanning, host discovery, SMB/SNMP/DNS enumeration, packet capture and analysis, traffic generation and bandwidth monitoring. Pairs well with the Sniffing and Spoofing tools and underpins both the Red Team and Blue Team profiles.",
-  "icon": "nexus-network-security",
-  "metapackage": "nexus-arsenal-network",
+  "icon": "shadow-network-security",
+  "metapackage": "shadow-arsenal-network",
   "tools": [
     {
       "package": "nmap",

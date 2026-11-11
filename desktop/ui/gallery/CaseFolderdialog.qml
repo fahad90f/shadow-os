@@ -4,14 +4,14 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
-// Test page: Qt Quick Dialogs' FolderDialog as NEXUS applications get it — the
+// Test page: Qt Quick Dialogs' FolderDialog as SHADOW applications get it — the
 // Qt Quick implementation inside the window (there is no native folder dialog
-// in a NEXUS session), drawn by the files org.nexus.style provides for it.
+// in a SHADOW session), drawn by the files org.shadow.style provides for it.
 NxWindow {
     id: window
-    title: "NexusUI Gallery — folder dialog"
+    title: "ShadowUI Gallery — folder dialog"
     width: 1000
     height: 700
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Check "nexus-monitor --dump" against the synthetic machine of fixture.py.
+"""Check "shadow-monitor --dump" against the synthetic machine of fixture.py.
 
     sudo scripts/dev.sh run --dir monitor python3 /src/applications/monitor/tests/fixture.py \
          python3 /src/applications/monitor/tests/fixture-check.py
@@ -20,10 +20,10 @@ CHECKS = 0
 
 def binary():
     for path in os.environ.get("LD_LIBRARY_PATH", "").split(":"):
-        candidate = os.path.join(os.path.dirname(path.rstrip("/")), "bin", "nexus-monitor")
+        candidate = os.path.join(os.path.dirname(path.rstrip("/")), "bin", "shadow-monitor")
         if os.access(candidate, os.X_OK):
             return candidate
-    return shutil.which("nexus-monitor") or sys.exit("fixture-check: nexus-monitor not found")
+    return shutil.which("shadow-monitor") or sys.exit("fixture-check: shadow-monitor not found")
 
 
 EXE = binary()
@@ -190,7 +190,7 @@ def services():
 
 
 def main():
-    if not os.path.isdir("/tmp/nexus-monitor-fixture"):
+    if not os.path.isdir("/tmp/shadow-monitor-fixture"):
         sys.exit("fixture-check: run through fixture.py")
     print(f"binary: {EXE}")
     for fn in (sensors, memory_and_frequency, battery, gpu, services):

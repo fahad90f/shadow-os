@@ -1,0 +1,11 @@
+security/hardening/sysctl.d/60-shadow-hardening.conf usr/lib/sysctl.d
+security/hardening/modprobe.d/shadow-hardening.conf usr/lib/modprobe.d
+security/hardening/grub.d/20-shadow-hardening.cfg etc/default/grub.d
+security/hardening/journald.conf.d/shadow.conf usr/lib/systemd/journald.conf.d
+security/hardening/sudoers.d/shadow-hardening etc/sudoers.d
+security/hardening/NetworkManager/80-shadow-privacy.conf usr/lib/NetworkManager/conf.d
+security/firewall/nftables.conf etc
+security/firewall/shadow-firewall usr/sbin
+security/audit/shadow-security-status usr/sbin
+security/audit/50-shadow.rules etc/audit/rules.d
+security/permissions/org.shadow.security.policy usr/share/polkit-1/actions

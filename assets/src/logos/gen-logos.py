@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the NEXUS OS logo family.
+"""Generate the Shadow OS logo family.
 
     assets/src/logos/gen-logos.py
 
@@ -7,8 +7,8 @@ Original artwork, authored as geometry in this script so every variant
 (symbol, wordmark, lockups, monochrome) stays consistent:
 
   * Symbol: a hexagon — the shape of a shield and of a network cell — holding
-    the letter N drawn as a path between two nodes: a connection, a nexus.
-  * Wordmark: NEXUS in a constructed, single-weight geometric alphabet with
+    the letter N drawn as a path between two nodes: a connection, a shadow.
+  * Wordmark: SHADOW in a constructed, single-weight geometric alphabet with
     wide tracking; the E is three open bars, the X a plain crossing.
 
 Colours come from the design tokens (brand gradient cyan → blue → violet).
@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / "assets/logos"
-TOK = json.loads((ROOT / "desktop/themes/tokens/nexus-tokens.json").read_text())
+TOK = json.loads((ROOT / "desktop/themes/tokens/shadow-tokens.json").read_text())
 B = TOK["brand"]
 C1, C2, C3, OBS = B["gradientStart"], B["gradientMid"], B["gradientEnd"], B["obsidian"]
 TEXT_DARK = TOK["color"]["dark"]["textPrimary"]
@@ -45,7 +45,7 @@ def symbol(size=256, *, mono=None, plate=False, glow=True):
     paint = mono or "url(#nx-g)"
     n_paint = mono or "url(#nx-n)"
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 256 256">',
-             "<title>NEXUS OS</title>", "<defs>",
+             "<title>Shadow OS</title>", "<defs>",
              gradient("nx-g", 40, 40, 216, 216),
              gradient("nx-n", 84, 84, 172, 172, [(0, "#FFFFFF"), (1, "#CFE9FF")]) if not mono else "",
              '<filter id="nx-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>',
@@ -96,41 +96,41 @@ def word(text, x, y, height, tracking, colour, weight):
 
 
 def wordmark(colour, *, with_os=True, height=56, weight=9):
-    body, w = word("NEXUS", 6, 6, height, 34, colour, weight)
+    body, w = word("SHADOW", 6, 6, height, 34, colour, weight)
     os_svg, os_w = ("", 0)
     if with_os:
         os_svg, os_w = word("OS", 6 + w + 0.62 * height, 6, height, 30, C1 if colour != "#000000" else colour, weight * 0.62)
         w += 0.62 * height + os_w
     width, total_h = w + 12, height + 12
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{total_h:.0f}" '
-            f'viewBox="0 0 {width:.2f} {total_h:.2f}"><title>NEXUS OS</title>{body}{os_svg}</svg>\n'), width, total_h
+            f'viewBox="0 0 {width:.2f} {total_h:.2f}"><title>Shadow OS</title>{body}{os_svg}</svg>\n'), width, total_h
 
 
 def lockup(colour, plate=None):
     """Symbol + wordmark, horizontal."""
     mark = symbol(256, glow=False).split("\n", 1)[1].rsplit("</svg>", 1)[0]
     wm, ww, wh = wordmark(colour, height=64, weight=10)
-    inner = wm.split(">", 1)[1].rsplit("</svg>", 1)[0].replace("<title>NEXUS OS</title>", "")
+    inner = wm.split(">", 1)[1].rsplit("</svg>", 1)[0].replace("<title>Shadow OS</title>", "")
     h = 160
     width = 160 + 36 + ww
     bg = f'<rect width="{width:.0f}" height="{h}" fill="{plate}"/>' if plate else ""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{h}" viewBox="0 0 {width:.2f} {h}">'
-            f'<title>NEXUS OS</title>{bg}<g transform="scale(0.625)">{mark}</g>'
+            f'<title>Shadow OS</title>{bg}<g transform="scale(0.625)">{mark}</g>'
             f'<g transform="translate(196 {(h - wh) / 2:.2f})">{inner}</g></svg>\n')
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     files = {
-        "nexus-symbol.svg": symbol(256),
-        "nexus-symbol-flat.svg": symbol(256, glow=False),
-        "nexus-symbol-plate.svg": symbol(256, plate=True),
-        "nexus-symbol-mono-light.svg": symbol(256, mono=TEXT_DARK, glow=False),
-        "nexus-symbol-mono-dark.svg": symbol(256, mono=TEXT_LIGHT, glow=False),
-        "nexus-wordmark-light.svg": wordmark(TEXT_DARK)[0],
-        "nexus-wordmark-dark.svg": wordmark(TEXT_LIGHT)[0],
-        "nexus-logo-light.svg": lockup(TEXT_DARK),
-        "nexus-logo-dark.svg": lockup(TEXT_LIGHT),
+        "shadow-symbol.svg": symbol(256),
+        "shadow-symbol-flat.svg": symbol(256, glow=False),
+        "shadow-symbol-plate.svg": symbol(256, plate=True),
+        "shadow-symbol-mono-light.svg": symbol(256, mono=TEXT_DARK, glow=False),
+        "shadow-symbol-mono-dark.svg": symbol(256, mono=TEXT_LIGHT, glow=False),
+        "shadow-wordmark-light.svg": wordmark(TEXT_DARK)[0],
+        "shadow-wordmark-dark.svg": wordmark(TEXT_LIGHT)[0],
+        "shadow-logo-light.svg": lockup(TEXT_DARK),
+        "shadow-logo-dark.svg": lockup(TEXT_LIGHT),
     }
     for name, content in files.items():
         (OUT / name).write_text(content)

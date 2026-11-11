@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -395,7 +395,7 @@ NxPage {
             icon: "clock"
             title: qsTr("Schedule")
             subtitle: screens.nightLightMode === "automatic"
-                ? qsTr("Set to follow an automatically detected location, which needs a location service that NEXUS does not run. Choose a schedule.")
+                ? qsTr("Set to follow an automatically detected location, which needs a location service that SHADOW does not run. Choose a schedule.")
                 : ""
             enabled: screens.nightLightSupported
             ComboBox {

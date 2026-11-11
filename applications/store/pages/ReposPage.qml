@@ -2,11 +2,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
 // The software sources (APT repositories): which ones exist, which belong to
-// the Debian base and which to NEXUS, whether each is signed, and switches to
+// the Debian base and which to SHADOW, whether each is signed, and switches to
 // enable or disable them through PackageKit.
 NxPage {
     id: page
@@ -17,7 +17,7 @@ NxPage {
 
     function inCategory(list, category) { return list.filter(r => r.category === category) }
     readonly property var debianRepos: inCategory(store.repos, "debian")
-    readonly property var nexusRepos: inCategory(store.repos, "nexus")
+    readonly property var shadowRepos: inCategory(store.repos, "shadow")
     readonly property var otherRepos: inCategory(store.repos, "third-party")
 
     function toggle(repo, on) {
@@ -30,7 +30,7 @@ NxPage {
     }
 
     title: qsTr("Repositories")
-    subtitle: qsTr("Where software and updates come from. NEXUS OS uses the Debian archive as its base and the NEXUS repository for the NEXUS desktop and applications.")
+    subtitle: qsTr("Where software and updates come from. Shadow OS uses the Debian archive as its base and the SHADOW repository for the SHADOW desktop and applications.")
     actions: [
         NxButton {
             text: qsTr("Refresh software lists")
@@ -52,8 +52,8 @@ NxPage {
     }
     NxBanner {
         kind: "info"
-        title: qsTr("Debian base and NEXUS")
-        message: qsTr("Debian base repositories provide the operating system, most applications and Debian's security updates. The NEXUS repository provides the NEXUS HORIZON desktop and the NEXUS applications. Every repository must be signed with a key this system trusts; packages from an unsigned source are only installed after an explicit warning.")
+        title: qsTr("Debian base and SHADOW")
+        message: qsTr("Debian base repositories provide the operating system, most applications and Debian's security updates. The SHADOW repository provides the Shadow Horizon desktop and the SHADOW applications. Every repository must be signed with a key this system trusts; packages from an unsigned source are only installed after an explicit warning.")
     }
 
     // One repository as PackageKit lists it.
@@ -130,20 +130,20 @@ NxPage {
     }
     NxSection {
         visible: page.listed
-        title: qsTr("NEXUS")
-        description: qsTr("The NEXUS desktop and applications.")
-        RepoRows { model: page.nexusRepos; canChange: page.canChange; onToggled: (repo, on) => page.toggle(repo, on) }
+        title: qsTr("SHADOW")
+        description: qsTr("The SHADOW desktop and applications.")
+        RepoRows { model: page.shadowRepos; canChange: page.canChange; onToggled: (repo, on) => page.toggle(repo, on) }
         NxRow {
-            visible: page.nexusRepos.length === 0
+            visible: page.shadowRepos.length === 0
             icon: "info"
-            title: qsTr("No NEXUS repository is configured on this system")
-            subtitle: qsTr("NEXUS packages installed here are not updated from a repository.")
+            title: qsTr("No SHADOW repository is configured on this system")
+            subtitle: qsTr("SHADOW packages installed here are not updated from a repository.")
         }
     }
     NxSection {
         visible: page.listed && page.otherRepos.length > 0
         title: qsTr("Third-party repositories")
-        description: qsTr("Sources that belong neither to Debian nor to NEXUS. Software from them is not reviewed by either project.")
+        description: qsTr("Sources that belong neither to Debian nor to SHADOW. Software from them is not reviewed by either project.")
         RepoRows { model: page.otherRepos; canChange: page.canChange; onToggled: (repo, on) => page.toggle(repo, on) }
     }
 

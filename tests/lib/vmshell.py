@@ -4,7 +4,7 @@
 Booting under emulation takes minutes, so debugging needs a VM that stays up
 between commands:
 
-    tests/lib/vmshell.py start --iso build/out/iso/nexus-os-<ver>-amd64.iso [--disk FILE] [--firmware uefi]
+    tests/lib/vmshell.py start --iso build/out/iso/shadow-os-<ver>-amd64.iso [--disk FILE] [--firmware uefi]
                                [--memory 4096] [--cpu MODEL] [--no-login]
     tests/lib/vmshell.py run 'systemctl --failed'          # as the live user, over the serial console
     tests/lib/vmshell.py sudo 'journalctl -b -p err'
@@ -146,7 +146,7 @@ def main():
     st = sub.add_parser("start")
     st.add_argument("--iso"); st.add_argument("--disk"); st.add_argument("--arch", default="amd64")
     st.add_argument("--firmware", default="uefi"); st.add_argument("--memory", type=int, default=4096)
-    st.add_argument("--cpu"); st.add_argument("--user", default="nexus"); st.add_argument("--password", default="live")
+    st.add_argument("--cpu"); st.add_argument("--user", default="shadow"); st.add_argument("--password", default="live")
     st.add_argument("--timeout", type=float, default=1200); st.add_argument("--no-login", action="store_true")
     st.add_argument("--foreground", action="store_true")
     for name in ("run", "sudo"):

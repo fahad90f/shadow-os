@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
-import org.nexus.ui
-import org.nexus.screenshot
+import org.shadow.ui
+import org.shadow.screenshot
 
 // Full-screen surface on one monitor showing the frozen capture. Dragging
 // selects the region; releasing the button confirms it, Escape or the right

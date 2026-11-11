@@ -1,19 +1,19 @@
-# NEXUS OS
+# Shadow OS
 
-NEXUS OS is a Linux distribution for security work and software development,
-based on Debian 13 "trixie". It has its own desktop, **NEXUS HORIZON**: a
+Shadow OS is a Linux distribution for security work and software development,
+based on Debian 13 "trixie". It has its own desktop, **Shadow Horizon**: a
 shell written in Qt 6/QML that runs as a Wayland session on the KWin
 compositor (it is not KDE Plasma), a set of system applications built on one
 UI library, an installer, a security baseline and on-demand security tool
-profiles ("NEXUS Arsenal").
+profiles ("SHADOW Arsenal").
 
 | | |
 |---|---|
-| Version | 0.1.0 "obsidian", channel `dev` (`distro/base/nexus.conf`) |
+| Version | 0.1.0 "obsidian", channel `dev` (`distro/base/shadow.conf`) |
 | Base | Debian 13 "trixie"; exactly one Debian suite is enabled |
 | Kernel in the image | Debian's signed `linux-image-amd64` (6.12 series) |
 | Architecture | amd64. arm64 is prepared in the build system but has never been built or booted — it is not supported |
-| Desktop | NEXUS HORIZON (Wayland; KWin compositor) |
+| Desktop | Shadow Horizon (Wayland; KWin compositor) |
 | Licence | GPL-3.0-or-later (`LICENSE`); third-party components keep their own licences |
 
 > **This is a development version.** Everything that has been verified was
@@ -37,11 +37,11 @@ verified end to end.
 | Installer planner | verified | 28 unit tests | — |
 | Graphical installer | implemented | UI and planner on synthetic hardware in the build chroot (`system/installer/gui/README.md`) | a real installation driven by the GUI |
 | Desktop live ISO | partly verified | QEMU, UEFI: SDDM auto-login, KWin + shell running, panel/dock/wallpaper/launcher drawn, System Information started from the launcher | Secure Boot and BIOS boot of the desktop ISO, lock screen, login screen without auto-login |
-| NEXUS HORIZON shell | partly verified | nested KWin session: launcher, search, dock, context menu, session menu, global shortcuts | real GPU, multiple screens, HiDPI |
+| Shadow Horizon shell | partly verified | nested KWin session: launcher, search, dock, context menu, session menu, global shortcuts | real GPU, multiple screens, HiDPI |
 | Shell modules (notifications, tray, status) | implemented | each module's README lists its tests (nested session, fixtures) | the booted image; real hardware services |
 | Applications (Monitor, Files, Store, Updater, Network Center, Control Center, Arsenal manager) | implemented | each README lists its tests (build chroot; real daemons on a private bus where possible, otherwise fixtures) | polkit prompts, real hardware, most of them inside the booted image |
-| Security baseline (`nexus-hardening`) | implemented | `nexus-firewall` functional test in an isolated network namespace | every other setting as a working whole on an installed system; real hardware |
-| NEXUS kernel | configuration only | `kernel/build.sh --configure-only` | a complete build; the image does not contain it |
+| Security baseline (`shadow-hardening`) | implemented | `shadow-firewall` functional test in an isolated network namespace | every other setting as a working whole on an installed system; real hardware |
+| SHADOW kernel | configuration only | `kernel/build.sh --configure-only` | a complete build; the image does not contain it |
 | Hosted package repository | does not exist | — | — |
 | CI workflow (`.github/workflows/build.yml`) | implemented | — | no run of it is on record |
 | arm64 | not built, not booted | package names resolve; `Architecture: all` packages are published for arm64 | everything else |
@@ -80,7 +80,7 @@ Run from the top of the clone. Each script prints its usage with `--help`.
 #    docs/packaging/building.md.
 sudo build/chroot/create.sh --dev-tools
 
-# 2. Build every NEXUS package inside the chroot.
+# 2. Build every SHADOW package inside the chroot.
 sudo build/packages/build.sh
 
 # 3. Publish the packages into a signed local APT repository.
@@ -95,11 +95,11 @@ Artefacts:
 
 | Path | Content |
 |---|---|
-| `build/out/packages/*.deb` | NEXUS packages |
+| `build/out/packages/*.deb` | SHADOW packages |
 | `build/out/repo/` | signed APT repository (components `core`, `security`, `community`) |
-| `build/out/keys/nexus-archive-keyring.gpg` | public half of the repository signing key |
-| `build/out/iso/nexus-os-0.1.0-amd64.iso` (+ `.sha256`, `.manifest`) | desktop image |
-| `build/out/iso/nexus-os-0.1.0-amd64-minimal.iso` (+ `.sha256`, `.manifest`) | minimal image |
+| `build/out/keys/shadow-archive-keyring.gpg` | public half of the repository signing key |
+| `build/out/iso/shadow-os-0.1.0-amd64.iso` (+ `.sha256`, `.manifest`) | desktop image |
+| `build/out/iso/shadow-os-0.1.0-amd64-minimal.iso` (+ `.sha256`, `.manifest`) | minimal image |
 | `build/work/` | chroots, caches, the signing key's GnuPG home (`build/work/signing`), test output |
 
 `build/work/` and `build/out/` are ignored by git. The signing key generated
@@ -117,7 +117,7 @@ The image is a hybrid ISO: written raw to a USB stick it boots through UEFI
 1. Check the image:
 
    ```sh
-   cd build/out/iso && sha256sum -c nexus-os-0.1.0-amd64.iso.sha256
+   cd build/out/iso && sha256sum -c shadow-os-0.1.0-amd64.iso.sha256
    ```
 
 2. Find the device name of the stick. Plug it in, then:
@@ -138,12 +138,12 @@ The image is a hybrid ISO: written raw to a USB stick it boots through UEFI
    > of the stick first.
 
    ```sh
-   sudo dd if=nexus-os-0.1.0-amd64.iso of=/dev/sdX bs=4M conv=fsync status=progress
+   sudo dd if=shadow-os-0.1.0-amd64.iso of=/dev/sdX bs=4M conv=fsync status=progress
    ```
 
 4. Boot the computer from the stick (firmware boot menu, usually F12, F10,
    F9 or Esc). The boot menu offers "Live session", "Live session (safe
-   graphics)", "Install NEXUS OS" and an "Advanced options" submenu
+   graphics)", "Install Shadow OS" and an "Advanced options" submenu
    ([docs/architecture/boot.md](docs/architecture/boot.md)).
 
 Booting from USB was verified in QEMU only (the image attached as a USB
@@ -182,18 +182,18 @@ Installation guide: [docs/installation/installing.md](docs/installation/installi
 
 | Directory | Content |
 |---|---|
-| `distro/` | distribution identity (`base/nexus.conf`), package lists, image variants, image hooks, repository component map |
+| `distro/` | distribution identity (`base/shadow.conf`), package lists, image variants, image hooks, repository component map |
 | `build/` | build system: `lib/common.sh`, `chroot/`, `packages/`, `iso/` (`build/work`, `build/out` are generated) |
-| `kernel/` | NEXUS kernel pipeline: `build.sh`, configuration fragments, `required.list`, patch series |
-| `security/` | hardening files, firewall, audit rules, security status report, polkit policy (package `nexus-hardening`) |
-| `system/` | installer engine and graphical installer, boot-loader management (`nexus-boot`), live-session configuration, live-media boot menu |
-| `desktop/` | `horizon-shell` (shell, session, modules), `ui` (NexusUI library and style), `themes` (colour schemes, icon themes, login and lock screen) |
-| `applications/` | NEXUS applications, one directory each |
+| `kernel/` | SHADOW kernel pipeline: `build.sh`, configuration fragments, `required.list`, patch series |
+| `security/` | hardening files, firewall, audit rules, security status report, polkit policy (package `shadow-hardening`) |
+| `system/` | installer engine and graphical installer, boot-loader management (`shadow-boot`), live-session configuration, live-media boot menu |
+| `desktop/` | `horizon-shell` (shell, session, modules), `ui` (ShadowUI library and style), `themes` (colour schemes, icon themes, login and lock screen) |
+| `applications/` | SHADOW applications, one directory each |
 | `arsenal/` | security tool profiles (manifests), their tools and docs, the Arsenal manager |
 | `assets/` | wallpapers, logos, boot themes and the generators that produce them (`assets/src`) |
 | `tests/` | QEMU boot, installation and desktop tests; GUI smoke test; test harness (`tests/lib`) |
 | `scripts/` | host set-up (`host-setup.sh`), developer loop (`dev.sh`) and generators (`gen-identity.sh`, `gen-apt-source.sh`, `gen-tokens.py`) |
-| `debian/` | the single source package `nexus-os` that builds every NEXUS binary package |
+| `debian/` | the single source package `shadow-os` that builds every SHADOW binary package |
 | `cmake/`, `CMakeLists.txt` | CMake project of all compiled and data components |
 | `.github/workflows/` | CI workflow: build packages and the desktop ISO, boot-test it, upload it |
 | `docs/` | this documentation |
@@ -206,7 +206,7 @@ Installation guide: [docs/installation/installing.md](docs/installation/installi
 | Kernel | [docs/kernel/README.md](docs/kernel/README.md) |
 | Building | [packages and chroots](docs/packaging/building.md), [repositories](docs/packaging/repositories.md), [ISO images](docs/packaging/iso.md) |
 | Installing | [installation guide](docs/installation/installing.md), [unattended installation](docs/installation/unattended.md), [hardware](docs/installation/hardware.md) |
-| Desktop | [using NEXUS HORIZON](docs/desktop/horizon.md), [desktop architecture](docs/desktop/architecture.md), [NexusUI](docs/desktop/nexusui.md), [shell modules](docs/desktop/shell-modules.md) |
+| Desktop | [using Shadow Horizon](docs/desktop/horizon.md), [desktop architecture](docs/desktop/architecture.md), [ShadowUI](docs/desktop/shadowui.md), [shell modules](docs/desktop/shell-modules.md) |
 | Applications | [application reference](docs/applications/README.md), [developing applications](docs/applications/development.md) |
 | Security | [hardening](docs/security/hardening.md), [security toolkit](docs/security/toolkit.md), [updates](docs/security/updates.md) |
 | Troubleshooting | [common problems](docs/troubleshooting/README.md), [recovery](docs/troubleshooting/recovery.md) |
@@ -215,12 +215,12 @@ Installation guide: [docs/installation/installing.md](docs/installation/installi
 
 ## Licence
 
-NEXUS OS is free software, licensed under the GNU General Public License,
+Shadow OS is free software, licensed under the GNU General Public License,
 version 3 or (at your option) any later version — `SPDX-License-Identifier:
 GPL-3.0-or-later`. See [LICENSE](LICENSE). Debian packages and other
 third-party software in the image keep their own licences; their copyright
 files are kept in the image under `/usr/share/doc/*/copyright`.
 
-The security tools that NEXUS Arsenal can install are for authorised testing,
+The security tools that SHADOW Arsenal can install are for authorised testing,
 research, defence and education only: see
 [arsenal/docs/legal-use.md](arsenal/docs/legal-use.md).

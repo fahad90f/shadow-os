@@ -1,4 +1,4 @@
-# NEXUS Control Center — unified system settings.
+# SHADOW Control Center — unified system settings.
 #
 # Pages are self-contained: a QML file in pages/ plus (optionally) a back-end
 # class in backends/ that is a QML_ELEMENT of this module. Both directories
@@ -7,13 +7,13 @@
 file(GLOB CC_BACKENDS CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} backends/*.cpp backends/*.h)
 file(GLOB CC_PAGES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} pages/*.qml)
 
-# NEXUS_CC_PAGES restricts the build to the named pages (plus About), so a
+# SHADOW_CC_PAGES restricts the build to the named pages (plus About), so a
 # page can be developed while others are unfinished: a file belongs to page
 # "users" when its lower-cased name starts with "users" (UsersPage.qml,
 # usersbackend.cpp, usershelper.h). Default: every page.
-set(NEXUS_CC_PAGES "" CACHE STRING "Semicolon-separated Control Center page keys to build (default: all)")
-if(NEXUS_CC_PAGES)
-    set(_cc_keys about ${NEXUS_CC_PAGES})
+set(SHADOW_CC_PAGES "" CACHE STRING "Semicolon-separated Control Center page keys to build (default: all)")
+if(SHADOW_CC_PAGES)
+    set(_cc_keys about ${SHADOW_CC_PAGES})
     foreach(_list CC_BACKENDS CC_PAGES)
         set(_kept "")
         foreach(_file IN LISTS ${_list})
@@ -38,32 +38,32 @@ find_package(KF6BluezQt QUIET)
 find_package(KF6PulseAudioQt QUIET)
 find_package(KF6Config QUIET)
 
-nexus_add_app(nexus-control-center
-    URI org.nexus.controlcenter
+shadow_add_app(shadow-control-center
+    URI org.shadow.controlcenter
     SOURCES main.cpp dumpregistry.cpp dumpregistry.h ${CC_BACKENDS}
     QML Main.qml ${CC_PAGES}
-    DESKTOP org.nexus.controlcenter.desktop
+    DESKTOP org.shadow.controlcenter.desktop
 )
-target_include_directories(nexus-control-center PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/backends)
+target_include_directories(shadow-control-center PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/backends)
 if(TARGET KF6::BluezQt)
-    target_link_libraries(nexus-control-center PRIVATE KF6::BluezQt)
-    target_compile_definitions(nexus-control-center PRIVATE NEXUS_HAVE_BLUEZQT)
+    target_link_libraries(shadow-control-center PRIVATE KF6::BluezQt)
+    target_compile_definitions(shadow-control-center PRIVATE SHADOW_HAVE_BLUEZQT)
 endif()
 if(TARGET KF6::PulseAudioQt)
-    target_link_libraries(nexus-control-center PRIVATE KF6::PulseAudioQt)
-    target_compile_definitions(nexus-control-center PRIVATE NEXUS_HAVE_PULSEAUDIOQT)
+    target_link_libraries(shadow-control-center PRIVATE KF6::PulseAudioQt)
+    target_compile_definitions(shadow-control-center PRIVATE SHADOW_HAVE_PULSEAUDIOQT)
 endif()
 if(TARGET KF6::ConfigCore)
-    target_link_libraries(nexus-control-center PRIVATE KF6::ConfigCore)
-    target_compile_definitions(nexus-control-center PRIVATE NEXUS_HAVE_KCONFIG)
+    target_link_libraries(shadow-control-center PRIVATE KF6::ConfigCore)
+    target_compile_definitions(shadow-control-center PRIVATE SHADOW_HAVE_KCONFIG)
 endif()
 
 if(CC_HELPERS)
-    install(PROGRAMS ${CC_HELPERS} DESTINATION ${NEXUS_LIBEXEC_DIR})
+    install(PROGRAMS ${CC_HELPERS} DESTINATION ${SHADOW_LIBEXEC_DIR})
 endif()
 if(CC_POLICIES)
     install(FILES ${CC_POLICIES} DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/actions)
 endif()
 
-# "NEXUS Settings" is the same application under the name people search for.
-install(FILES org.nexus.settings.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+# "SHADOW Settings" is the same application under the name people search for.
+install(FILES org.shadow.settings.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)

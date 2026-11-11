@@ -1,13 +1,13 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Stand-in for nexus-installer-engine, for testing the graphical installer.
+"""Stand-in for shadow-installer-engine, for testing the graphical installer.
 
 NOT part of the product and never installed. It speaks the same command-line
 and JSON protocol as the real engine but cannot touch a disk:
 
   probe    prints a synthetic probe report read from a file
   plan     runs the engine's real answer validation and real planner
-           (nexus_installer.answers / nexus_installer.plan — both pure
+           (shadow_installer.answers / shadow_installer.plan — both pure
            functions) on that synthetic report
   install  SIMULATES an installation: the engine's real Executor.execute()
            driver produces the event stream, but every step is replaced by a
@@ -15,18 +15,18 @@ and JSON protocol as the real engine but cannot touch a disk:
            program is ever started
 
 The synthetic report comes from --probe-file (an extension the real engine
-does not have) or $NEXUS_TEST_ENGINE_PROBE_FILE.
+does not have) or $SHADOW_TEST_ENGINE_PROBE_FILE.
 
 Behaviour switches (environment):
-  NEXUS_TEST_ENGINE_SCENARIO   what "install" does:  success (default) |
+  SHADOW_TEST_ENGINE_SCENARIO   what "install" does:  success (default) |
         fail-early | fail-partition | fail-copy | internal | plan-changed |
         garbage | no-done | crash | silent-exit | warn-profiles | hold-copy
      and for the other verbs:  probe-garbage | probe-fail | probe-slow |
         plan-garbage | plan-fail | plan-slow
-  NEXUS_TEST_ENGINE_STEP_SECONDS   duration of a simulated step (default 0.5)
-  NEXUS_INSTALLER_ENGINE_LIB       directory containing the nexus_installer
+  SHADOW_TEST_ENGINE_STEP_SECONDS   duration of a simulated step (default 0.5)
+  SHADOW_INSTALLER_ENGINE_LIB       directory containing the shadow_installer
         package (default: ../../engine next to this file, then
-        /usr/lib/nexus-installer)
+        /usr/lib/shadow-installer)
 """
 import argparse
 import json
@@ -38,31 +38,31 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 _here = Path(__file__).resolve().parent
-for _candidate in (os.environ.get("NEXUS_INSTALLER_ENGINE_LIB"), str(_here.parents[1] / "engine"),
-                   "/usr/lib/nexus-installer"):
-    if _candidate and (Path(_candidate) / "nexus_installer" / "plan.py").is_file():
+for _candidate in (os.environ.get("SHADOW_INSTALLER_ENGINE_LIB"), str(_here.parents[1] / "engine"),
+                   "/usr/lib/shadow-installer"):
+    if _candidate and (Path(_candidate) / "shadow_installer" / "plan.py").is_file():
         sys.path.insert(0, _candidate)
         break
 else:
-    sys.stderr.write("test-engine: the nexus_installer package was not found "
-                     "(set NEXUS_INSTALLER_ENGINE_LIB)\n")
+    sys.stderr.write("test-engine: the shadow_installer package was not found "
+                     "(set SHADOW_INSTALLER_ENGINE_LIB)\n")
     sys.exit(2)
 
-from nexus_installer import answers as answers_mod, plan as plan_mod  # noqa: E402
-from nexus_installer.executor import Executor  # noqa: E402
-from nexus_installer.util import InstallError, Reporter  # noqa: E402
+from shadow_installer import answers as answers_mod, plan as plan_mod  # noqa: E402
+from shadow_installer.executor import Executor  # noqa: E402
+from shadow_installer.util import InstallError, Reporter  # noqa: E402
 
 EXIT_OK, EXIT_FAILED, EXIT_USAGE, EXIT_PLAN_CHANGED = 0, 1, 2, 3
-SCENARIO = os.environ.get("NEXUS_TEST_ENGINE_SCENARIO", "success")
-STEP_SECONDS = float(os.environ.get("NEXUS_TEST_ENGINE_STEP_SECONDS", "0.5"))
-FAKE_LOG = "/var/log/nexus-installer/install-TEST-ENGINE.log"
+SCENARIO = os.environ.get("SHADOW_TEST_ENGINE_SCENARIO", "success")
+STEP_SECONDS = float(os.environ.get("SHADOW_TEST_ENGINE_STEP_SECONDS", "0.5"))
+FAKE_LOG = "/var/log/shadow-installer/install-TEST-ENGINE.log"
 
 
 def load_probe(args) -> dict:
-    path = args.probe_file or os.environ.get("NEXUS_TEST_ENGINE_PROBE_FILE")
+    path = args.probe_file or os.environ.get("SHADOW_TEST_ENGINE_PROBE_FILE")
     if not path:
         raise InstallError("test-engine: no synthetic probe report given.",
-                           "Pass --probe-file <json> or set NEXUS_TEST_ENGINE_PROBE_FILE.")
+                           "Pass --probe-file <json> or set SHADOW_TEST_ENGINE_PROBE_FILE.")
     try:
         report = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -85,7 +85,7 @@ def load_answers(path: str) -> dict:
 
 def cmd_probe(args) -> int:
     if SCENARIO == "probe-slow":
-        time.sleep(float(os.environ.get("NEXUS_TEST_ENGINE_SLOW_SECONDS", "6")))
+        time.sleep(float(os.environ.get("SHADOW_TEST_ENGINE_SLOW_SECONDS", "6")))
     if SCENARIO == "probe-garbage":
         sys.stdout.write("lsblk: unexpected output\n{\"architecture\": \"amd64\", \"disks\": [\n")
         return EXIT_OK
@@ -105,7 +105,7 @@ def cmd_probe(args) -> int:
 
 def cmd_plan(args) -> int:
     if SCENARIO == "plan-slow":
-        time.sleep(float(os.environ.get("NEXUS_TEST_ENGINE_SLOW_SECONDS", "6")))
+        time.sleep(float(os.environ.get("SHADOW_TEST_ENGINE_SLOW_SECONDS", "6")))
     if SCENARIO == "plan-garbage":
         sys.stdout.write("{\"plan_version\": 1, \"steps\": [")
         return EXIT_OK
@@ -178,7 +178,7 @@ class SimulatedExecutor(Executor):
         self._simulate("user", ticks=1)
 
     def step_cleanup(self):
-        self.rep.info("Removing live-session packages: live-boot, live-config, nexus-live, nexus-installer")
+        self.rep.info("Removing live-session packages: live-boot, live-config, shadow-live, shadow-installer")
         self._simulate("cleanup", ticks=2)
 
     def step_initramfs(self):
@@ -191,7 +191,7 @@ class SimulatedExecutor(Executor):
         if SCENARIO == "warn-profiles":
             time.sleep(STEP_SECONDS)
             self.rep.warning("The selected tool profiles could not be installed now: apt-get failed (exit status "
-                             "100). They can be installed after the first start from NEXUS Arsenal.")
+                             "100). They can be installed after the first start from SHADOW Arsenal.")
             return
         self._simulate("profiles", ticks=6)
 

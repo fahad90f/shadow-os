@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // Text that comes from outside the application (package names, summaries,
 // error messages, repository data). It is always rendered as plain text: Qt's

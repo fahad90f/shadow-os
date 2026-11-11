@@ -2,9 +2,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs.quickimpl as Impl
-import org.nexus.ui
+import org.shadow.ui
 
-// One entry of the file list in the NEXUS file and folder dialogs. Selection,
+// One entry of the file list in the SHADOW file and folder dialogs. Selection,
 // double-click and keyboard handling are Qt's FileDialogDelegate.
 Impl.FileDialogDelegate {
     id: control

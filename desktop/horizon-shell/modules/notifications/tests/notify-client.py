@@ -69,7 +69,7 @@ class Client:
         self.loop.run()
 
     def state(self):
-        reply = self.bus.call_sync(NAME, PATH, "org.nexus.horizon.Notifications", "GetState", None,
+        reply = self.bus.call_sync(NAME, PATH, "org.shadow.horizon.Notifications", "GetState", None,
                                    GLib.VariantType("(s)"), Gio.DBusCallFlags.NONE, 20000, None)
         return json.loads(reply.unpack()[0])
 

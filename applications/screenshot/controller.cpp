@@ -21,7 +21,7 @@
 #include <QUrl>
 #include <QWindow>
 
-#ifdef NEXUS_HAVE_KGUIADDONS
+#ifdef SHADOW_HAVE_KGUIADDONS
 #include <KSystemClipboard>
 #endif
 
@@ -70,7 +70,7 @@ Controller::Controller(QObject *parent)
 
     // Notice when another application takes the clipboard over: from then on
     // this process no longer has to stay around to serve the picture.
-#ifdef NEXUS_HAVE_KGUIADDONS
+#ifdef SHADOW_HAVE_KGUIADDONS
     connect(KSystemClipboard::instance(), &KSystemClipboard::changed, this, [this](QClipboard::Mode mode) {
         if (mode == QClipboard::Clipboard && m_holdsClipboard
             && KSystemClipboard::instance()->mimeData(QClipboard::Clipboard) != m_clipboardData)
@@ -288,7 +288,7 @@ void Controller::fail(const QString &error, int exitCode)
 {
     m_busy = false;
     if (m_cli.nonInteractive) {
-        std::fprintf(stderr, "nexus-screenshot: %s\n", qPrintable(error));
+        std::fprintf(stderr, "shadow-screenshot: %s\n", qPrintable(error));
         exitCli(exitCode);
         return;
     }
@@ -316,7 +316,7 @@ void Controller::deliver(const QImage &image)
         if (!m_cli.output.isEmpty()) {
             const QString why = writeImage(image, m_cli.output);
             if (!why.isEmpty()) {
-                std::fprintf(stderr, "nexus-screenshot: %s\n", qPrintable(why));
+                std::fprintf(stderr, "shadow-screenshot: %s\n", qPrintable(why));
                 exitCli(ExitCode::WriteFailed);
                 return;
             }
@@ -324,7 +324,7 @@ void Controller::deliver(const QImage &image)
             std::fflush(stdout);
         }
         if (m_cli.clipboard && !setClipboard(image)) {
-            std::fprintf(stderr, "nexus-screenshot: the picture could not be placed on the clipboard\n");
+            std::fprintf(stderr, "shadow-screenshot: the picture could not be placed on the clipboard\n");
             code = ExitCode::ClipboardFailed;
         }
         exitCli(code);
@@ -424,7 +424,7 @@ bool Controller::setClipboard(const QImage &image)
         return false;
     auto *mime = new QMimeData;
     mime->setData(u"image/png"_s, png);
-#ifdef NEXUS_HAVE_KGUIADDONS
+#ifdef SHADOW_HAVE_KGUIADDONS
     // Uses the compositor's data-control protocol, so it also works while no
     // window of ours has keyboard focus (non-interactive mode).
     KSystemClipboard::instance()->setMimeData(mime, QClipboard::Clipboard);
@@ -456,8 +456,8 @@ void Controller::openFolder()
         Q_EMIT message(tr("%1 does not exist yet — nothing has been saved there.").arg(dir), u"info"_s);
         return;
     }
-    if (Nexus::Command::available(u"nexus-files"_s)) {
-        if (QProcess::startDetached(u"nexus-files"_s, {dir}))
+    if (Shadow::Command::available(u"shadow-files"_s)) {
+        if (QProcess::startDetached(u"shadow-files"_s, {dir}))
             return;
     }
     if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir)))

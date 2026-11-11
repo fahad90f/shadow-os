@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=SHADOW Store
+GenericName=Software Store
+Comment=Browse, install, update and remove applications and packages
+Exec=shadow-store %u
+Icon=org.shadow.store
+Terminal=false
+Categories=System;PackageManager;
+Keywords=software;applications;apps;install;remove;uninstall;packages;store;appstream;repository;
+MimeType=x-scheme-handler/appstream;
+StartupNotify=true
+StartupWMClass=org.shadow.store
+X-SHADOW-Component=store

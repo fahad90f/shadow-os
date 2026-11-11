@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // The running PackageKit operation: what will change (confirmation), real
 // progress with cancellation, and the result or the error PackageKit reported.
@@ -211,7 +211,7 @@ Dialog {
                 spacing: Theme.spaceSm
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("The profile's metapackage comes from the NEXUS security repository. Its tools are in Debian and can be installed directly instead.")
+                    text: qsTr("The profile's metapackage comes from the SHADOW security repository. Its tools are in Debian and can be installed directly instead.")
                     color: Theme.textSecondary
                     font.family: Theme.fontUi
                     font.pixelSize: Theme.fontSizeBody

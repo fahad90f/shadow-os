@@ -3,8 +3,8 @@
   "locale": "de_DE.UTF-8",
   "keyboard": {"layout": "de", "variant": "nodeadkeys"},
   "timezone": "Europe/Berlin",
-  "hostname": "nexus-laptop",
-  "user": {"fullname": "Ada Lovelace", "username": "ada", "password": "Nexus-Test-1", "autologin": false},
+  "hostname": "shadow-laptop",
+  "user": {"fullname": "Ada Lovelace", "username": "ada", "password": "Shadow-Test-1", "autologin": false},
   "storage": {"mode": "erase-disk", "disk": "/dev/nvme0n1", "encrypt": true,
               "passphrase": "correct horse battery staple", "separate_home": true, "swap": "partition"},
   "packages": {"profiles": ["web", "wireless"], "install_now": true}

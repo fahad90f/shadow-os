@@ -7,10 +7,10 @@
 // any back-end object exists; read-only afterwards.
 struct Options
 {
-    // The installation engine. Production: /usr/sbin/nexus-installer-engine,
-    // run as root through pkexec (polkit action org.nexus.installer.run).
+    // The installation engine. Production: /usr/sbin/shadow-installer-engine,
+    // run as root through pkexec (polkit action org.shadow.installer.run).
     QString enginePath;
-    bool customEngine = false;          // --engine / $NEXUS_INSTALLER_ENGINE was given
+    bool customEngine = false;          // --engine / $SHADOW_INSTALLER_ENGINE was given
 
     // TEST MODE: the hardware description comes from this file instead of the
     // engine's probe. Nothing can be installed in this mode (Installer refuses
@@ -22,15 +22,15 @@ struct Options
 
     QString profilesDir;                // tool profile directory
     bool allowInstalledSystem = false;  // --allow-installed-system
-    bool liveSession = false;           // /run/nexus/live-session exists
+    bool liveSession = false;           // /run/shadow/live-session exists
     bool runningAsRoot = false;         // effective uid 0: the engine is started directly, without pkexec
 
     bool testMode() const { return !probeFile.isEmpty(); }
 
     static Options &instance();
 
-    static QString defaultEnginePath() { return QStringLiteral("/usr/sbin/nexus-installer-engine"); }
-    static QString defaultProfilesDir() { return QStringLiteral("/usr/share/nexus/arsenal/profiles"); }
-    static QString liveSessionMarker() { return QStringLiteral("/run/nexus/live-session"); }
+    static QString defaultEnginePath() { return QStringLiteral("/usr/sbin/shadow-installer-engine"); }
+    static QString defaultProfilesDir() { return QStringLiteral("/usr/share/shadow/arsenal/profiles"); }
+    static QString liveSessionMarker() { return QStringLiteral("/run/shadow/live-session"); }
     static QString pkexecPath() { return QStringLiteral("/usr/bin/pkexec"); }
 };

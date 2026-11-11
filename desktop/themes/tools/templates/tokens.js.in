@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // @@GENERATED@@
 //
-// NEXUS design tokens for the login and lock screens, which run outside the
-// session and cannot import org.nexus.ui. Dark values in every case: both
+// SHADOW design tokens for the login and lock screens, which run outside the
+// session and cannot import org.shadow.ui. Dark values in every case: both
 // screens are drawn over the wallpaper.  import "tokens.js" as T
 .pragma library
 

@@ -23,11 +23,11 @@
 
 #include <algorithm>
 
-using NexusPk::Job;
-using NexusPk::PackageEntry;
-using NexusPk::Query;
-using NexusPk::QueryResult;
-using NexusPk::Service;
+using ShadowPk::Job;
+using ShadowPk::PackageEntry;
+using ShadowPk::Query;
+using ShadowPk::QueryResult;
+using ShadowPk::Service;
 using T = PackageKit::Transaction;
 
 namespace {
@@ -42,10 +42,10 @@ Store::Store(QObject *parent)
     for (AppListModel *model : {&m_installedApps, &m_categoryApps, &m_recentApps, &m_searchApps})
         model->setInstalledPackages(&m_installedNames);
 
-    m_updaterPath = QStandardPaths::findExecutable(QStringLiteral("nexus-updater"));
+    m_updaterPath = QStandardPaths::findExecutable(QStringLiteral("shadow-updater"));
     if (m_updaterPath.isEmpty()) {
         // Uninstalled build tree: the updater sits next to this binary.
-        const QString sibling = QCoreApplication::applicationDirPath() + QStringLiteral("/nexus-updater");
+        const QString sibling = QCoreApplication::applicationDirPath() + QStringLiteral("/shadow-updater");
         if (QFileInfo(sibling).isExecutable())
             m_updaterPath = sibling;
     }
@@ -85,7 +85,7 @@ QObject *Store::service() const
 
 QString Store::systemArchitecture() const
 {
-    return NexusPk::systemArchitecture();
+    return ShadowPk::systemArchitecture();
 }
 
 void Store::initialize()
@@ -156,13 +156,13 @@ void Store::loadInstalledFromDpkg()
     // Read-only fallback: the dpkg database lists what is installed even when
     // PackageKit cannot be asked. Nothing can be removed in this mode.
     const quint64 serial = m_installedSerial;
-    NexusPk::runAsync(this, [] {
-        return Nexus::Command::runSync(
+    ShadowPk::runAsync(this, [] {
+        return Shadow::Command::runSync(
             QStringLiteral("dpkg-query"),
             {QStringLiteral("-W"),
              QStringLiteral("-f=${db:Status-Abbrev}\\t${Package}\\t${Version}\\t${Architecture}\\t${binary:Summary}\\n")},
             60000);
-    }, [this, serial](const Nexus::CommandResult &r) {
+    }, [this, serial](const Shadow::CommandResult &r) {
         if (serial != m_installedSerial)
             return;
         QList<PackageEntry> entries;
@@ -376,7 +376,7 @@ void Store::refreshRepos()
 
     // The sources files and downloaded indexes say which repositories are
     // signed — with or without PackageKit.
-    NexusPk::runAsync(this, [] { return NexusPk::readAptSources(); }, [this, serial](const QJsonObject &apt) {
+    ShadowPk::runAsync(this, [] { return ShadowPk::readAptSources(); }, [this, serial](const QJsonObject &apt) {
         if (serial != m_reposSerial)
             return;
         m_sources = apt.value(QStringLiteral("sources")).toArray().toVariantList();
@@ -399,7 +399,7 @@ void Store::refreshRepos()
                 return;
             }
             QVariantList repos;
-            for (const NexusPk::RepoEntry &r : result.repos) {
+            for (const ShadowPk::RepoEntry &r : result.repos) {
                 QVariantMap repo{
                     {QStringLiteral("repoId"), r.id},
                     {QStringLiteral("description"), r.description},
@@ -420,10 +420,10 @@ void Store::refreshRepos()
                         break;
                     }
                 }
-                const QString category = source.isEmpty() ? NexusPk::repoCategory(r.id)
+                const QString category = source.isEmpty() ? ShadowPk::repoCategory(r.id)
                                                           : source.value(QStringLiteral("category")).toString();
                 repo.insert(QStringLiteral("category"), category);
-                repo.insert(QStringLiteral("categoryText"), NexusPk::repoCategoryText(category));
+                repo.insert(QStringLiteral("categoryText"), ShadowPk::repoCategoryText(category));
                 repo.insert(QStringLiteral("matched"), !source.isEmpty());
                 for (const char *key : {"uri", "suite", "file", "verification", "verificationText", "signedBy", "origin", "components"})
                     repo.insert(QLatin1String(key), source.value(QLatin1String(key)));
@@ -500,16 +500,16 @@ void Store::installPackage(const QString &packageId, const QString &displayName)
 {
     if (packageId.isEmpty())
         return;
-    startJob(NexusPk::Jobs::install({packageId}, tr("Installing %1").arg(displayName), this),
-             NexusPk::PackageId::parse(packageId).name);
+    startJob(ShadowPk::Jobs::install({packageId}, tr("Installing %1").arg(displayName), this),
+             ShadowPk::PackageId::parse(packageId).name);
 }
 
 void Store::removePackage(const QString &packageId, const QString &displayName)
 {
     if (packageId.isEmpty())
         return;
-    startJob(NexusPk::Jobs::remove({packageId}, tr("Removing %1").arg(displayName), this),
-             NexusPk::PackageId::parse(packageId).name);
+    startJob(ShadowPk::Jobs::remove({packageId}, tr("Removing %1").arg(displayName), this),
+             ShadowPk::PackageId::parse(packageId).name);
 }
 
 void Store::removeInstalled(const QString &packageName, const QString &displayName)
@@ -527,8 +527,8 @@ void Store::updatePackage(const QString &packageId, const QString &displayName)
 {
     if (packageId.isEmpty())
         return;
-    startJob(NexusPk::Jobs::update({packageId}, tr("Updating %1").arg(displayName), this),
-             NexusPk::PackageId::parse(packageId).name);
+    startJob(ShadowPk::Jobs::update({packageId}, tr("Updating %1").arg(displayName), this),
+             ShadowPk::PackageId::parse(packageId).name);
 }
 
 void Store::installUpdates(bool selectedOnly)
@@ -536,20 +536,20 @@ void Store::installUpdates(bool selectedOnly)
     const QStringList ids = selectedOnly ? m_updates.model()->selectedIds() : m_updates.installableIds();
     if (ids.isEmpty())
         return;
-    startJob(NexusPk::Jobs::update(ids, ids.size() == 1 ? tr("Installing 1 update") : tr("Installing %1 updates").arg(ids.size()), this),
+    startJob(ShadowPk::Jobs::update(ids, ids.size() == 1 ? tr("Installing 1 update") : tr("Installing %1 updates").arg(ids.size()), this),
              QString());
 }
 
 void Store::refreshMetadata()
 {
-    startJob(NexusPk::Jobs::refresh(true, this), QString());
+    startJob(ShadowPk::Jobs::refresh(true, this), QString());
 }
 
 void Store::setRepoEnabled(const QString &repoId, bool enabled, const QString &description)
 {
     if (repoId.isEmpty())
         return;
-    startJob(NexusPk::Jobs::repoEnable(repoId, enabled,
+    startJob(ShadowPk::Jobs::repoEnable(repoId, enabled,
                                        enabled ? tr("Enabling repository “%1”").arg(description)
                                                : tr("Disabling repository “%1”").arg(description), this),
              QString());
@@ -566,7 +566,7 @@ QVariantMap Store::resolveTarget(const QString &argument) const
         return {{QStringLiteral("view"), QStringLiteral("search")}, {QStringLiteral("text"), arg.mid(7)}};
 
     if (arg.startsWith(QLatin1String("page:"))) {
-        // One of the store's own views (nexus-store --page updates).
+        // One of the store's own views (shadow-store --page updates).
         QString key = arg.mid(5).trimmed().toLower();
         if (key == QLatin1String("repositories"))
             key = QStringLiteral("repos");
@@ -653,8 +653,8 @@ QJsonObject Store::statusJson() const
         {QStringLiteral("packagekit"), Service::instance()->toJson()},
         {QStringLiteral("appstream"), m_catalog.statusJson()},
         {QStringLiteral("architecture"), QJsonObject{
-            {QStringLiteral("system"), NexusPk::systemArchitecture()},
-            {QStringLiteral("foreign"), QJsonArray::fromStringList(NexusPk::foreignArchitectures())},
+            {QStringLiteral("system"), ShadowPk::systemArchitecture()},
+            {QStringLiteral("foreign"), QJsonArray::fromStringList(ShadowPk::foreignArchitectures())},
         }},
         {QStringLiteral("updater"), QJsonObject{
             {QStringLiteral("available"), updaterAvailable()},

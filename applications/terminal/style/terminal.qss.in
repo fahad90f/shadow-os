@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  *
- * NEXUS Terminal — style sheet of the window chrome (@{mode} mode).
+ * SHADOW Terminal — style sheet of the window chrome (@{mode} mode).
  *
  * Template rendered at build time by scripts/gen-tokens.py, once per
  * appearance mode and accent. Every colour, size and radius is a design token
- * (desktop/themes/tokens/nexus-tokens.json); nothing is hard-coded.
+ * (desktop/themes/tokens/shadow-tokens.json); nothing is hard-coded.
  *
  * Rules of this file:
  *   - No universal (*) or bare QWidget selector with a colour or font. A rule

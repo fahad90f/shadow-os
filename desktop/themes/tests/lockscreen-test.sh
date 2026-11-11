@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Runs the NEXUS lock screen in the real KScreenLocker greeter
+# Runs the SHADOW lock screen in the real KScreenLocker greeter
 # (kscreenlocker_greet --testing) under Xvfb, with the PAM files of this
 # directory, and takes screenshots. To be started inside the build chroot:
 #
@@ -36,15 +36,15 @@ while [ $# -gt 0 ]; do
     esac
 done
 actions="${*:-shot start}"
-PASSWORD='Nexus-test-42'
+PASSWORD='Shadow-test-42'
 
-work="$(mktemp -d /tmp/nexus-lock-test.XXXXXX)"
+work="$(mktemp -d /tmp/shadow-lock-test.XXXXXX)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/share/plasma/shells" "$work/home/.config" "$work/xdg"
-cp -r /src/desktop/themes/lockscreen/org.nexus.horizon "$work/share/plasma/shells/"
+cp -r /src/desktop/themes/lockscreen/org.shadow.horizon "$work/share/plasma/shells/"
 cp /src/desktop/themes/lockscreen/plasmashellrc "$work/xdg/"
 if [ "$wallpaper" = 1 ]; then
-    printf '[Greeter][LnF][General]\nwallpaper=/src/assets/wallpapers/nexus-horizon.jpg\n' > "$work/home/.config/kscreenlockerrc"
+    printf '[Greeter][LnF][General]\nwallpaper=/src/assets/wallpapers/shadow-horizon.jpg\n' > "$work/home/.config/kscreenlockerrc"
 fi
 
 cp -a /etc "$work/etc"
@@ -55,7 +55,7 @@ sed -i "s|^root:[^:]*:|root:$hash:|" "$work/etc/shadow"
 # The real name the lock screen shows.
 sed -i 's|^root:x:0:0:[^:]*:|root:x:0:0:Ada Lovelace:|' "$work/etc/passwd"
 
-shell_arg="--shell org.nexus.horizon"
+shell_arg="--shell org.shadow.horizon"
 [ "$via_config" = 1 ] && shell_arg=""
 cat > "$work/inner.sh" <<INNER
 xdo() { xdotool "\$@"; }
@@ -63,7 +63,7 @@ shot() { import -window root "/shots/$prefix-\$1.png"; }
 PASSWORD='$PASSWORD'
 /usr/lib/x86_64-linux-gnu/libexec/kscreenlocker_greet --testing $shell_arg > "/shots/$prefix.out" 2> "/shots/$prefix.log" &
 greeter=\$!
-sleep \${NEXUS_LOCK_WAIT:-6}
+sleep \${SHADOW_LOCK_WAIT:-6}
 $actions
 sleep 1
 if kill -0 \$greeter 2>/dev/null; then
@@ -82,4 +82,4 @@ export XDG_DATA_DIRS="$work/share:/usr/local/share:/usr/share" XDG_CONFIG_DIRS="
 export QT_LOGGING_RULES="kscreenlocker_greet.debug=true;qt.qpa.*=false"
 unshare -m --propagation unchanged sh -c "mount --bind '$work/etc' /etc && exec dbus-run-session -- xvfb-run -a -s '-screen 0 ${size}x24' sh '$work/inner.sh'"
 echo "---- stdout (/shots/$prefix.out)"; cat "/shots/$prefix.out"
-echo "---- stderr (/shots/$prefix.log)"; grep -v '^$' "/shots/$prefix.log" | head -n "${NEXUS_LOCK_LOGLINES:-60}" || true
+echo "---- stderr (/shots/$prefix.log)"; grep -v '^$' "/shots/$prefix.log" | head -n "${SHADOW_LOCK_LOGLINES:-60}" || true

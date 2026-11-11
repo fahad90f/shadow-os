@@ -14,13 +14,13 @@ class QAbstractButton;
 class QAction;
 class QMenu;
 
-// The look of the application for the current Nexus::Appearance.
+// The look of the application for the current Shadow::Appearance.
 //
 // The window chrome is made of Qt widgets styled by a style sheet; the sheet,
 // the colour table and the indicator glyphs are rendered from the design
 // tokens at build time, one variant per appearance mode and accent
 // (see CMakeLists.txt). Theme picks the variant that matches
-// Nexus::Appearance, installs palette, font and style sheet, and switches
+// Shadow::Appearance, installs palette, font and style sheet, and switches
 // live when the user changes the appearance in the Control Center.
 class Theme : public QObject
 {
@@ -30,7 +30,7 @@ public:
 
     // Install palette, application font and style sheet for the current
     // appearance. Called once at start-up; afterwards Theme follows
-    // Nexus::Appearance by itself and emits changed().
+    // Shadow::Appearance by itself and emits changed().
     void apply();
 
     bool dark() const { return m_dark; }
@@ -49,7 +49,7 @@ public:
     QFont font(int tokenPixelSize, int weight = 0) const;
     int scaled(int tokenPixelSize) const;
 
-    // Glyph from the NEXUS symbolic icon set, tinted for the current theme:
+    // Glyph from the SHADOW symbolic icon set, tinted for the current theme:
     // 'token' normally, 'activeToken' when hovered or highlighted, accent
     // when checked, textDisabled when disabled.
     QIcon icon(const QString &name, const QString &token = QStringLiteral("textSecondary"),

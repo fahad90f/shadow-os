@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Card with a titled history chart: the current figure of each series in the
 // header, the chart, and a caption line saying what time span and scale it shows.

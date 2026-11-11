@@ -1,4 +1,4 @@
-# NEXUS Disk Manager (`nexus-disks`, org.nexus.diskmanager)
+# SHADOW Disk Manager (`shadow-disks`, org.shadow.diskmanager)
 
 Drives, partitions, file systems and disk images, through UDisks2. The
 application needs no privilege of its own and runs no tool as root: every
@@ -47,7 +47,7 @@ Format, delete partition, new partition table and restore image
 
 ## Diagnostics
 
-`nexus-disks --dump status|devices|jobs|capabilities|protected` prints the data behind the UI as JSON.
+`shadow-disks --dump status|devices|jobs|capabilities|protected` prints the data behind the UI as JSON.
 
 ## Run-time dependencies (Debian packages)
 
@@ -73,7 +73,7 @@ invocation per run, with `tests/udisks-rig.sh`: private system bus, `polkitd`,
 `systemd-udevd` (one blkid rule for loop devices only), `udisksd` 2.10.1, and
 loop devices backed by sparse files in `/tmp`. Safety: in the rig's private
 mount namespace every non-loop block device node (`/dev/vda` …) is covered by
-an empty regular file; `NEXUS_DISKS_TEST_LOOP_ONLY=1` makes the back-end
+an empty regular file; `SHADOW_DISKS_TEST_LOOP_ONLY=1` makes the back-end
 refuse modifying actions on non-loop devices; `rig_guard` aborts the script
 for any device the rig did not create; loop devices are detached on exit
 (verified with `losetup -a` after each run).
@@ -85,7 +85,7 @@ tests/desktop/smoke.sh --dir disks disk-manager
 ```
 
 `run-tests.sh` (last run: **80 passed, 0 failed**) drives the same
-`UDisksClient` calls as the UI through `nexus-disks-testctl` and checks the
+`UDisksClient` calls as the UI through `shadow-disks-testctl` and checks the
 results with independent tools (`blkid`, `lsblk`, `blockdev`, `dumpe2fs`,
 `cmp`, `/proc/mounts`): listing and `--dump`; capabilities (here: ext2/3/4,
 vfat, btrfs, swap can be created; xfs/ntfs/exfat/f2fs/nilfs2/udf are
@@ -117,4 +117,4 @@ Smoke test: pass, no QML warnings (shows "Disk management is unavailable": no sy
 * SMART (ATA and NVMe), eject, power off, removable media, optical drives:
   no hardware; code paths written against the UDisks API documentation only.
 * polkit prompts: the tests run as root, which polkit authorises without asking.
-* The back-end's `NEXUS_DISKS_TEST_LOOP_ONLY` refusal branch itself (no non-loop device is visible to UDisks in the rig), MBR logical partitions, multi-device stacks (RAID/LVM), read-only media.
+* The back-end's `SHADOW_DISKS_TEST_LOOP_ONLY` refusal branch itself (no non-loop device is visible to UDisks in the rig), MBR logical partitions, multi-device stacks (RAID/LVM), read-only media.

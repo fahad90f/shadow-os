@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 import "Fmt.js" as Fmt
 
 // Section "encryption": LUKS devices and whether /, /home and swap are on them.
@@ -26,7 +26,7 @@ SectionPage {
         visible: page.ready && page.enc.live_session === true
         kind: "info"
         title: qsTr("This is a live session")
-        message: qsTr("The system runs from installation media. Encryption is chosen when NEXUS OS is installed.")
+        message: qsTr("The system runs from installation media. Encryption is chosen when Shadow OS is installed.")
     }
 
     NxSection {

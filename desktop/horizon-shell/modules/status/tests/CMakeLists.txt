@@ -10,7 +10,7 @@
 # The binary lands in /build/modstatus-tests/bin, which the nested test
 # session (scripts/dev.sh nested) puts on PATH.
 cmake_minimum_required(VERSION 3.22)
-project(nexus-status-tests LANGUAGES CXX)
+project(shadow-status-tests LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

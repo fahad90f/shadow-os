@@ -4,6 +4,6 @@
   "keyboard": {"layout": "us"},
   "timezone": "America/New_York",
   "hostname": "workstation",
-  "user": {"fullname": "", "username": "kim", "password": "Nexus-Test-1"},
+  "user": {"fullname": "", "username": "kim", "password": "Shadow-Test-1"},
   "storage": {"mode": "erase-disk", "disk": "/dev/sda", "swap": "none"}
 }

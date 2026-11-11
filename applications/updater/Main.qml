@@ -2,12 +2,12 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.updater
+import org.shadow.ui
+import org.shadow.updater
 
 NxWindow {
     id: window
-    title: qsTr("NEXUS Updater")
+    title: qsTr("SHADOW Updater")
     width: 1080
     height: 760
 
@@ -41,13 +41,13 @@ NxWindow {
     }
 
     Component.onCompleted: {
-        const args = nexusApp.arguments
+        const args = shadowApp.arguments
         if (args.length > 0) openPage(args[0])
         backend.initialize()
     }
 
     Connections {
-        target: nexusApp
+        target: shadowApp
         function onActivationRequested(args) {
             if (args.length > 0) window.openPage(args[0])
             window.raise()

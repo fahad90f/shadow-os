@@ -66,7 +66,7 @@ int compareNumber(T a, T b)
 ProcessModel::ProcessModel(QObject *parent)
     : QAbstractListModel(parent)
     , m_reader(std::make_shared<ProcessReader>())
-    , m_worker(u"nexus-monitor-processes"_s)
+    , m_worker(u"shadow-monitor-processes"_s)
 {
     m_ownUid = ::geteuid();
 
@@ -609,7 +609,7 @@ void ProcessModel::runAsAdministrator(int pid, const QString &name, const QStrin
     const auto finish = [this, pid, name, action](const QString &outcome, const QString &message) {
         Q_EMIT actionFinished(pid, name, action, outcome, message);
     };
-    if (!Nexus::Command::available(u"pkexec"_s)) {
+    if (!Shadow::Command::available(u"pkexec"_s)) {
         finish(u"failed"_s, tr("pkexec is not installed, so nothing can be done to %1 as administrator.").arg(name));
         return;
     }
@@ -619,8 +619,8 @@ void ProcessModel::runAsAdministrator(int pid, const QString &name, const QStrin
     }
 
     // No time limit of our own: the authentication dialog has its own.
-    Nexus::Command::run(this, u"pkexec"_s, QStringList{program} + arguments,
-                        [this, pid, name, finish, doneMessage](const Nexus::CommandResult &r) {
+    Shadow::Command::run(this, u"pkexec"_s, QStringList{program} + arguments,
+                        [this, pid, name, finish, doneMessage](const Shadow::CommandResult &r) {
         const QString detail = r.errText().trimmed().section(u'\n', 0, 0).trimmed();
         if (r.ok()) {
             finish(u"done"_s, doneMessage);

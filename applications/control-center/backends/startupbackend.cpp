@@ -12,12 +12,12 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 
-NEXUS_CC_DUMP("startup", [] { return QJsonValue(StartupBackend().toJson()); })
+SHADOW_CC_DUMP("startup", [] { return QJsonValue(StartupBackend().toJson()); })
 
 namespace {
 
 const QString kGroup = QStringLiteral("[Desktop Entry]");
-const QString kOverrideKey = QStringLiteral("X-NEXUS-Autostart-Override");
+const QString kOverrideKey = QStringLiteral("X-SHADOW-Autostart-Override");
 
 // The [Desktop Entry] group of a desktop file, kept as lines so that a change
 // touches only the keys it sets (comments, translations and other groups stay).
@@ -542,12 +542,12 @@ bool StartupBackend::addCommand(const QString &name, const QString &command)
     if (slug.isEmpty())
         slug = QStringLiteral("command");
     const QString dir = userDirectory();
-    QString id = QStringLiteral("nexus-startup-%1.desktop").arg(slug);
+    QString id = QStringLiteral("shadow-startup-%1.desktop").arg(slug);
     for (int n = 2; QFileInfo::exists(dir + QLatin1Char('/') + id); ++n)
-        id = QStringLiteral("nexus-startup-%1-%2.desktop").arg(slug).arg(n);
+        id = QStringLiteral("shadow-startup-%1-%2.desktop").arg(slug).arg(n);
     for (const QVariant &entry : std::as_const(m_entries)) {
         if (entry.toMap().value(QStringLiteral("id")).toString() == id)
-            id = QStringLiteral("nexus-startup-%1-user.desktop").arg(slug);
+            id = QStringLiteral("shadow-startup-%1-user.desktop").arg(slug);
     }
 
     DesktopFile file;

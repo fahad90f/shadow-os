@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // One tool in a list: name, interface, one-line summary and its real state on
 // this system. Activating the row opens the tool's details.

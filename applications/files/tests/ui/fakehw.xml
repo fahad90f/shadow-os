@@ -6,7 +6,7 @@
 <machine>
   <device udi="/org/kde/solid/fakehw/computer">
     <property key="name">Computer</property>
-    <property key="vendor">NEXUS test</property>
+    <property key="vendor">SHADOW test</property>
   </device>
 
   <device udi="/org/kde/solid/fakehw/storage_usb">

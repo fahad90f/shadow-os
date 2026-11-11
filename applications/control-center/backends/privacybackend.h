@@ -19,7 +19,7 @@
 // * History: ~/.local/share/recently-used.xbel (the freedesktop list of
 //   recently used files, counted by its <bookmark> elements),
 //   ~/.local/share/RecentDocuments (KDE applications' list) and the launcher's
-//   usage counters ~/.config/nexus/horizon-usage.conf ([Launches]).
+//   usage counters ~/.config/shadow/horizon-usage.conf ([Launches]).
 // * Clean-up: sizes are measured on disk (lstat, symlinks not followed) in a
 //   worker thread: the trash (~/.local/share/Trash), the thumbnail cache
 //   (~/.cache/thumbnails) and the user's own regular files in /tmp and
@@ -31,7 +31,7 @@
 //   comes from. Read-only. Sections limited to particular devices
 //   ([device-…] / [connection-…] with match-device) are not evaluated.
 //
-// There is no location service in NEXUS OS, so the page has no such section.
+// There is no location service in Shadow OS, so the page has no such section.
 class PrivacyBackend : public QObject
 {
     Q_OBJECT
@@ -56,7 +56,7 @@ class PrivacyBackend : public QObject
     // ---- network identity
     Q_PROPERTY(bool networkManagerInstalled READ networkManagerInstalled CONSTANT)
     Q_PROPERTY(QVariantList macSettings READ macSettings NOTIFY networkChanged)   // [{key, value, source}]
-    Q_PROPERTY(QString nexusPrivacyFile READ nexusPrivacyFile NOTIFY networkChanged)
+    Q_PROPERTY(QString shadowPrivacyFile READ shadowPrivacyFile NOTIFY networkChanged)
 
 public:
     explicit PrivacyBackend(QObject *parent = nullptr);
@@ -81,7 +81,7 @@ public:
 
     bool networkManagerInstalled() const;
     QVariantList macSettings() const { return m_macSettings; }
-    QString nexusPrivacyFile() const { return m_nexusPrivacyFile; }
+    QString shadowPrivacyFile() const { return m_shadowPrivacyFile; }
 
     Q_INVOKABLE void setAutolock(bool on);
     Q_INVOKABLE void setLockTimeoutMinutes(int minutes);
@@ -124,6 +124,6 @@ private:
     bool m_scanning = false;
     QString m_cleaning;
     QVariantList m_macSettings;
-    QString m_nexusPrivacyFile;
+    QString m_shadowPrivacyFile;
     std::shared_ptr<bool> m_alive;
 };

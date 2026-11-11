@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 NxWindow {
     id: window
@@ -13,7 +13,7 @@ NxWindow {
     // The page table. One entry per settings page:
     //   key      stable identifier — also the command-line argument and --dump topic
     //   title    sidebar label
-    //   icon     NexusUI symbolic icon
+    //   icon     ShadowUI symbolic icon
     //   section  sidebar group
     //   source   QML file under pages/
     //   keywords extra search terms
@@ -67,12 +67,12 @@ NxWindow {
     }
 
     Component.onCompleted: {
-        const args = nexusApp.arguments
+        const args = shadowApp.arguments
         if (!(args.length > 0 && openPage(args[0]))) openPage(pages[0].key)
     }
 
     Connections {
-        target: nexusApp
+        target: shadowApp
         function onActivationRequested(args) {
             if (args.length > 0) window.openPage(args[0])
             window.raise()
@@ -117,7 +117,7 @@ NxWindow {
                 tone: "danger"
                 icon: "x-circle"
                 title: qsTr("This settings page could not be loaded")
-                message: loader.page ? qsTr("%1 failed to load. Run nexus-control-center from a terminal to see the error.").arg(loader.page.source) : ""
+                message: loader.page ? qsTr("%1 failed to load. Run shadow-control-center from a terminal to see the error.").arg(loader.page.source) : ""
             }
         }
     }

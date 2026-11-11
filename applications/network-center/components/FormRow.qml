@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // A labelled row of form controls inside an NxSection. Unlike NxRow the
 // controls get all remaining width, so text fields can use Layout.fillWidth.

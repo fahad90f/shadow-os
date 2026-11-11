@@ -29,8 +29,8 @@ public:
     QString osName() const { return m_values.value(QStringLiteral("NAME")); }
     QString osVersion() const { return m_values.value(QStringLiteral("VERSION_ID")); }
     QString osCodename() const { return m_values.value(QStringLiteral("VERSION_CODENAME")); }
-    QString osChannel() const { return m_values.value(QStringLiteral("NEXUS_CHANNEL")); }
-    QString baseSystem() const { return m_values.value(QStringLiteral("NEXUS_BASE")); }
+    QString osChannel() const { return m_values.value(QStringLiteral("SHADOW_CHANNEL")); }
+    QString baseSystem() const { return m_values.value(QStringLiteral("SHADOW_BASE")); }
     QString homeUrl() const { return m_values.value(QStringLiteral("HOME_URL")); }
     QString bugUrl() const { return m_values.value(QStringLiteral("BUG_REPORT_URL")); }
     QString kernel() const { return m_kernel; }

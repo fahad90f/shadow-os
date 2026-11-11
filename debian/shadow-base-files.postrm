@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+undivert() {
+    file="$1"
+    if dpkg-divert --list "$file" | grep -q "by shadow-base-files"; then
+        dpkg-divert --package shadow-base-files --remove --rename --divert "$file.debian" "$file"
+    fi
+}
+
+case "$1" in
+    remove|purge|abort-install)
+        undivert /usr/lib/os-release
+        undivert /etc/issue
+        undivert /etc/issue.net
+        ;;
+esac
+
+#DEBHELPER#
+exit 0

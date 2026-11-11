@@ -1,4 +1,4 @@
-# NEXUS Arsenal manager (`nexus-arsenal`, org.nexus.arsenal)
+# SHADOW Arsenal manager (`shadow-arsenal`, org.shadow.arsenal)
 
 Browse the Arsenal profiles, see what is installed, install or remove a profile
 or a single tool through PackageKit, and find out how to start each tool.
@@ -7,16 +7,16 @@ or a single tool through PackageKit, and find out how to start each tool.
 
 | Data | Source |
 |---|---|
-| Profiles, tools, categories, external tools | Manifests in `/usr/share/nexus/arsenal/profiles` (package `nexus-arsenal-data`); `--profiles-dir <dir>` overrides |
+| Profiles, tools, categories, external tools | Manifests in `/usr/share/shadow/arsenal/profiles` (package `shadow-arsenal-data`); `--profiles-dir <dir>` overrides |
 | Installed state, installed version, size on disk, priority | `dpkg-query -W -f …` for all manifest packages (one call) |
 | Version in the repositories, download size, long description | `apt-cache show --no-all-versions` (one call) |
 | "Still to install" size of a profile | `apt-get install --simulate -qq <missing tools>`, then `apt-cache show name=version` of every package APT would install; one profile after the other |
 | Architecture | `dpkg --print-architecture` |
 | PackageKit availability | `org.freedesktop.DBus.Properties.GetAll` on `org.freedesktop.PackageKit` (system bus) |
 | Whether a tool can be started | The desktop entry exists (`XDG_DATA_DIRS/applications/<id>.desktop`); the command resolves in `PATH`, `/usr/sbin`, `/sbin` |
-| Acknowledgement | `~/.config/nexus/arsenal.conf`, `[ResponsibleUse]` |
+| Acknowledgement | `~/.config/shadow/arsenal.conf`, `[ResponsibleUse]` |
 
-All commands run asynchronously with an argument vector (`Nexus::Command`).
+All commands run asynchronously with an argument vector (`Shadow::Command`).
 Nothing is cached between runs.
 
 ## What it changes, and how
@@ -31,31 +31,31 @@ confirmation run the real transaction with `only-trusted`, showing PackageKit's
 status, percentage and current package; "Cancel" calls `Transaction.Cancel`
 while PackageKit allows it. Errors show PackageKit's error code and text.
 
-* **Install profile** installs the metapackage `nexus-arsenal-<id>`. If no
+* **Install profile** installs the metapackage `shadow-arsenal-<id>`. If no
   enabled repository offers it, the dialog says so and offers to install the
   profile's missing tools directly.
 * **Remove profile** is offered only when the metapackage is installed; it
   removes the metapackage with autoremove, so tools that came with it and that
   nothing else needs go too, and tools installed by hand stay.
 * **Remove tool** is not offered for essential packages or packages of
-  priority required/important/standard. A removal that would take a `nexus-*`
-  package other than `nexus-arsenal-*` with it is refused after the
+  priority required/important/standard. A removal that would take a `shadow-*`
+  package other than `shadow-arsenal-*` with it is refused after the
   simulation. Packages removed along with the requested one are listed in a
   warning.
 * Unsigned packages are never installed. Licence agreements, new signing keys
   and media changes are reported as errors, not handled.
 
 Without PackageKit the buttons stay usable: they open a dialog with the D-Bus
-error and the exact command (`sudo apt install nexus-arsenal-web`,
+error and the exact command (`sudo apt install shadow-arsenal-web`,
 `sudo apt install <tools…>`, `sudo apt remove <tool>`,
-`sudo apt remove --autoremove nexus-arsenal-web`) and a copy button.
+`sudo apt remove --autoremove shadow-arsenal-web`) and a copy button.
 
 ## Starting tools
 
 * GUI: the `Exec` line of the tool's desktop entry is split into an argument
   vector (field codes dropped) and started detached; entries with
-  `Terminal=true` are run in NEXUS Terminal.
-* CLI: `nexus-terminal --hold -T <name> -e <command> <help arguments…>` — the
+  `Terminal=true` are run in SHADOW Terminal.
+* CLI: `shadow-terminal --hold -T <name> -e <command> <help arguments…>` — the
   real `-e` option of `applications/terminal` (everything after `-e` is the
   command's argv; `--hold` keeps the tab open). The help arguments come from
   the manifest (`help`, default `--help`). The command line is also shown for
@@ -64,8 +64,8 @@ error and the exact command (`sudo apt install nexus-arsenal-web`,
 ## Command line
 
 ```
-nexus-arsenal [--profiles-dir DIR] [--page overview|tools|external|responsible-use|<profile id>]
-nexus-arsenal --dump profiles|tools|state [--profiles-dir DIR]
+shadow-arsenal [--profiles-dir DIR] [--page overview|tools|external|responsible-use|<profile id>]
+shadow-arsenal --dump profiles|tools|state [--profiles-dir DIR]
 ```
 
 * `--dump profiles`: per profile the counts, metapackage state, size estimate,
@@ -78,16 +78,16 @@ Single instance: a second launch activates the window and honours `--page`.
 
 ## Run-time dependencies (Debian packages)
 
-`nexus-ui`, `nexus-arsenal-data`, `dpkg`, `apt`, `libpackagekitqt6-2`,
+`shadow-ui`, `shadow-arsenal-data`, `dpkg`, `apt`, `libpackagekitqt6-2`,
 `libqt6dbus6`; recommended: `packagekit`, `polkitd` + a polkit authentication
-agent, `nexus-terminal`, a web browser for the external links (otherwise the
-address is copied to the clipboard). Icons: `nexus-themes` (category icons
-`nexus-*.svg` in hicolor); when a profile icon is not in the theme the glyph of
+agent, `shadow-terminal`, a web browser for the external links (otherwise the
+address is copied to the clipboard). Icons: `shadow-themes` (category icons
+`shadow-*.svg` in hicolor); when a profile icon is not in the theme the glyph of
 the profile's main category is shown.
 
 ## Tested (build chroot, amd64)
 
-* `NEXUS_JOBS=2 scripts/dev.sh build --dir arsenal --only manager` — builds
+* `SHADOW_JOBS=2 scripts/dev.sh build --dir arsenal --only manager` — builds
   without compiler warnings.
 * `tests/desktop/smoke.sh --dir arsenal manager` — 6 passed, 0 failed (overview,
   a profile, all tools, external, responsible use, and the default directory
@@ -99,7 +99,7 @@ the profile's main category is shown.
   continued without ticking the box; after ticking, `arsenal.conf` is written
   and a second start does not ask again; `--page`; "Install" without PackageKit
   opens the apt dialog with `sudo apt install nmap`; tool details of an
-  installed tool; "Show usage in terminal" opened NEXUS Terminal with
+  installed tool; "Show usage in terminal" opened SHADOW Terminal with
   `whois --help`; "Open" started a desktop entry with `Terminal=true`
   (temporary test manifest pointing at `python3.13.desktop`).
 * Dark and light theme screenshots.

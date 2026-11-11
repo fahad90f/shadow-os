@@ -1,7 +1,7 @@
 # Unattended installation
 
-The installer engine (`/usr/sbin/nexus-installer-engine`, package
-`nexus-installer`, source `system/installer/engine/`) is a non-interactive
+The installer engine (`/usr/sbin/shadow-installer-engine`, package
+`shadow-installer`, source `system/installer/engine/`) is a non-interactive
 program. The graphical installer is one front-end to it; you can drive it
 yourself from a shell or a script. This is also how the engine is tested in
 QEMU (`tests/installation/test_install.py`).
@@ -17,10 +17,10 @@ cases. See [../testing.md](../testing.md).
 The engine must run as root, on the live medium.
 
 ```
-nexus-installer-engine --version
-nexus-installer-engine probe   [--other-systems]
-nexus-installer-engine plan    --answers FILE [--text]
-nexus-installer-engine install --answers FILE --confirm PLAN-HASH
+shadow-installer-engine --version
+shadow-installer-engine probe   [--other-systems]
+shadow-installer-engine plan    --answers FILE [--text]
+shadow-installer-engine install --answers FILE --confirm PLAN-HASH
 ```
 
 | Verb | What it does | Touches disks |
@@ -35,14 +35,14 @@ nexus-installer-engine install --answers FILE --confirm PLAN-HASH
 
 ```sh
 # 1. What does the machine look like? Find the target disk.
-sudo nexus-installer-engine probe | less
+sudo shadow-installer-engine probe | less
 lsblk -o NAME,SIZE,MODEL,TRAN,MOUNTPOINTS
 
 # 2. Write answers.json (see below), then look at the plan.
-sudo nexus-installer-engine plan --answers answers.json --text
+sudo shadow-installer-engine plan --answers answers.json --text
 
 # 3. Run exactly that plan. The command with the hash is printed by step 2.
-sudo nexus-installer-engine install --answers answers.json --confirm <hash>
+sudo shadow-installer-engine install --answers answers.json --confirm <hash>
 ```
 
 Why the hash: the plan is plain data and contains no secrets, so it can be
@@ -56,9 +56,9 @@ and you must review the new plan.
 In a script:
 
 ```sh
-hash=$(sudo nexus-installer-engine plan --answers answers.json \
+hash=$(sudo shadow-installer-engine plan --answers answers.json \
        | python3 -c 'import json,sys; print(json.load(sys.stdin)["hash"])')
-sudo nexus-installer-engine install --answers answers.json --confirm "$hash"
+sudo shadow-installer-engine install --answers answers.json --confirm "$hash"
 ```
 
 A script that computes the hash and passes it straight on has, of course,
@@ -87,7 +87,7 @@ failure the engine unmounts what it mounted, closes what it opened and, in
 `free-space` mode, deletes the partitions it created.
 
 The full log — every command with its output — is written to
-`/var/log/nexus-installer/install-<date>-<time>.log` (mode 0600) and copied
+`/var/log/shadow-installer/install-<date>-<time>.log` (mode 0600) and copied
 to `/var/log/installer/` on the installed system. Secrets are passed to
 commands on standard input and are not logged.
 
@@ -104,7 +104,7 @@ commands on standard input and are not logged.
 
 JSON, one object. Validation is strict: **an unknown key or an out-of-range
 value is an error**, never ignored. Source of truth:
-`system/installer/engine/nexus_installer/answers.py`.
+`system/installer/engine/shadow_installer/answers.py`.
 
 ### Top level
 
@@ -114,7 +114,7 @@ value is an error**, never ignored. Source of truth:
 | `locale` | string | `en_US.UTF-8` | a UTF-8 locale listed in `/usr/share/i18n/SUPPORTED`; `.UTF-8` is appended if missing |
 | `keyboard` | object | — | see below |
 | `timezone` | string | `Etc/UTC` | a zone under `/usr/share/zoneinfo` |
-| `hostname` | string | `nexus` | lower-case letters, digits, hyphens; 1–63 characters; no leading or trailing hyphen |
+| `hostname` | string | `shadow` | lower-case letters, digits, hyphens; 1–63 characters; no leading or trailing hyphen |
 | `user` | object | — (required) | see below |
 | `storage` | object | — (required) | see below |
 | `bootloader` | object | — | see below |
@@ -195,7 +195,7 @@ partition is always re-initialised.
 | Key | Default | Rules |
 |---|---|---|
 | `profiles` | `[]` | Arsenal profile names (`core`, `web`, `network`, `redteam`, `blueteam`, `forensics`, `reversing`, `developer`, `complete`); the engine checks only the form of the name |
-| `install_now` | `false` | install the `nexus-arsenal-<name>` packages during installation (needs a network connection; a failure is reported as a warning and does not fail the installation). See the note in [installing.md](installing.md): as implemented, the tools themselves are not installed by this step |
+| `install_now` | `false` | install the `shadow-arsenal-<name>` packages during installation (needs a network connection; a failure is reported as a warning and does not fail the installation). See the note in [installing.md](installing.md): as implemented, the tools themselves are not installed by this step |
 
 ## Examples
 
@@ -211,7 +211,7 @@ Every top-level section and every key that applies to this mode is present.
   "locale": "en_GB.UTF-8",
   "keyboard": { "layout": "gb", "variant": "", "model": "pc105" },
   "timezone": "Europe/London",
-  "hostname": "nexus-lab",
+  "hostname": "shadow-lab",
   "user": {
     "fullname": "Ada Lovelace",
     "username": "ada",
@@ -249,7 +249,7 @@ standard input (`--answers -`), and delete it afterwards.
 }
 ```
 
-Defaults apply: `en_US.UTF-8`, `us` keyboard, UTC, host name `nexus`, a swap
+Defaults apply: `en_US.UTF-8`, `us` keyboard, UTC, host name `shadow`, a swap
 file, no encryption.
 
 ### Manual assignment keeping `/home`

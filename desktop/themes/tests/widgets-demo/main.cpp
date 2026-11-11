@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Test application for the NEXUS look of third-party Qt applications: a plain
-// Qt Widgets window that knows nothing about NEXUS. Everything it shows comes
+// Test application for the SHADOW look of third-party Qt applications: a plain
+// Qt Widgets window that knows nothing about SHADOW. Everything it shows comes
 // from the platform theme (kdeglobals: palette, fonts, icon theme, widget
 // style), so a screenshot of it is a screenshot of the system defaults.
 //
-//   nexus-themes-widgets-demo [--report FILE] [--title TEXT] [--page N]
+//   shadow-themes-widgets-demo [--report FILE] [--title TEXT] [--page N]
 //
 // --report writes what the application was given (style, fonts, icon theme,
 // palette) as text, for comparison with the design tokens.
@@ -104,8 +104,8 @@ QString report()
     }
     s << "palette.disabled.WindowText=" << hex(p.color(QPalette::Disabled, QPalette::WindowText)) << '\n';
     s << "palette.inactive.Highlight=" << hex(p.color(QPalette::Inactive, QPalette::Highlight)) << '\n';
-    for (const char *icon : {"folder", "folder-documents", "user-home", "document-open", "org.nexus.files",
-                             "nexus-os", "nexus-forensics", "edit-copy", "text-x-generic"}) {
+    for (const char *icon : {"folder", "folder-documents", "user-home", "document-open", "org.shadow.files",
+                             "shadow-os", "shadow-forensics", "edit-copy", "text-x-generic"}) {
         s << "icon." << icon << '=' << (QIcon::hasThemeIcon(QLatin1String(icon)) ? "found" : "MISSING") << '\n';
     }
     s << "singleClick=" << QApplication::style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick) << '\n';
@@ -203,8 +203,8 @@ QWidget *viewsPage()
     const QPair<const char *, const char *> places[] = {
         {"user-home", "Home"}, {"folder-documents", "Documents"}, {"folder-download", "Downloads"},
         {"folder-pictures", "Pictures"}, {"folder-music", "Music"}, {"folder-videos", "Videos"},
-        {"folder", "Projects"}, {"user-trash", "Trash"}, {"org.nexus.files", "NEXUS Files (application icon)"},
-        {"nexus-forensics", "Forensics (category icon)"},
+        {"folder", "Projects"}, {"user-trash", "Trash"}, {"org.shadow.files", "SHADOW Files (application icon)"},
+        {"shadow-forensics", "Forensics (category icon)"},
     };
     for (const auto &[icon, label] : places) {
         list->addItem(new QListWidgetItem(QIcon::fromTheme(QLatin1String(icon)), QLatin1String(label)));
@@ -248,8 +248,8 @@ QWidget *textPage()
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    QApplication::setApplicationName(u"nexus-themes-widgets-demo"_s);
-    QGuiApplication::setDesktopFileName(u"nexus-themes-widgets-demo"_s);
+    QApplication::setApplicationName(u"shadow-themes-widgets-demo"_s);
+    QGuiApplication::setDesktopFileName(u"shadow-themes-widgets-demo"_s);
 
     QCommandLineParser parser;
     parser.addHelpOption();

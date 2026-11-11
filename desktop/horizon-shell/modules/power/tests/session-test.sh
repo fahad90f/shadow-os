@@ -2,7 +2,7 @@
 #
 # Session test of the "power" shell module. Sourced in the nested session:
 #
-#   NEXUS_RUN_TIMEOUT=600 scripts/dev.sh nested --dir modpower --wait 1 -- \
+#   SHADOW_RUN_TIMEOUT=600 scripts/dev.sh nested --dir modpower --wait 1 -- \
 #       '. /src/desktop/horizon-shell/modules/power/tests/session-test.sh'
 #
 # The nested session's KWin runs on a virtual X server without a screen
@@ -13,7 +13,7 @@
 # NetworkManager; plus a notification daemon on the session bus, because the
 # shell is built with this module only). Input for the inner compositor is
 # sent with xdotool to the virtual X server and reaches it through the outer
-# KWin. NEXUS_POWER_TIME_SCALE shortens the minutes of power.conf.
+# KWin. SHADOW_POWER_TIME_SCALE shortens the minutes of power.conf.
 #
 # Results: build/work/shots/nested-logs/modpower/session-test.log (one line
 # per check), the logs and state files of every scenario next to it, and the
@@ -22,7 +22,7 @@ TESTS=/src/desktop/horizon-shell/modules/power/tests
 
 if [ "${1:-}" != "--inner" ]; then
     # ---- outer part: one inner session per scenario ---------------------------
-    export POWER_TEST_LOG="$NEXUS_LOGS/session-test.log"
+    export POWER_TEST_LOG="$SHADOW_LOGS/session-test.log"
     : > "$POWER_TEST_LOG"
     for scenario in ${POWER_TEST_SCENARIOS:-idle updates noresumelock}; do
         dbus-run-session -- bash "$TESTS/session-test.sh" --inner "$scenario"
@@ -35,7 +35,7 @@ fi
 scenario="$2"
 LOG="$POWER_TEST_LOG"
 W="$HOME/power-test-$scenario"; mkdir -p "$W"
-STATE="$XDG_RUNTIME_DIR/nexus-horizon-power.json"
+STATE="$XDG_RUNTIME_DIR/shadow-horizon-power.json"
 note() { echo "$*" | tee -a "$LOG"; }
 check() {
     if [ "$2" = "$3" ]; then note "ok    [$scenario] $1 ($2)"
@@ -55,16 +55,16 @@ except (KeyError, IndexError):
 print(value if isinstance(value, str) else json.dumps(value))' "$1"; }
 st() { field "$1" < "$STATE"; }                         # the running shell's state
 dump() { horizon-shell --dump power 2>/dev/null | field "$1"; }   # a second process
-xdo() { DISPLAY="$NEXUS_NESTED_X" xdotool "$@"; }
-shot() { DISPLAY="$NEXUS_NESTED_X" import -window root "$NEXUS_SHOTS/$1"; }
+xdo() { DISPLAY="$SHADOW_NESTED_X" xdotool "$@"; }
+shot() { DISPLAY="$SHADOW_NESTED_X" import -window root "$SHADOW_SHOTS/$1"; }
 poke() { xdo mousemove 780 440 mousemove 800 450 mousemove 790 445; sleep 0.3; }     # user activity
 ctl() { echo "$*" > "$W/ctl"; sleep 0.4; }
 dpms() { kscreen-doctor --dpms show 2>&1 | sed -n 's/.*: //p' | head -n1; }
 locked() { gdbus call --session -d org.freedesktop.ScreenSaver -o /ScreenSaver -m org.freedesktop.ScreenSaver.GetActive 2>&1; }
 power_conf() {      # screenOff lock suspend  screenOffBattery lockBattery suspendBattery
     printf '[Power]\nIdleScreenOffMinutes=%s\nIdleLockMinutes=%s\nIdleSuspendMinutes=%s\nIdleScreenOffMinutesOnBattery=%s\nIdleLockMinutesOnBattery=%s\nIdleSuspendMinutesOnBattery=%s\n' \
-        "$@" > "$HOME/.config/nexus/power.conf.new"
-    mv "$HOME/.config/nexus/power.conf.new" "$HOME/.config/nexus/power.conf"     # atomically, like the Control Center
+        "$@" > "$HOME/.config/shadow/power.conf.new"
+    mv "$HOME/.config/shadow/power.conf.new" "$HOME/.config/shadow/power.conf"     # atomically, like the Control Center
 }
 start_session() {   # time-scale lock-on-resume
     dbus-daemon --session --address="unix:path=$W/system-bus" --nofork --nopidfile > "$W/system-bus.log" 2>&1 &
@@ -83,7 +83,7 @@ start_session() {   # time-scale lock-on-resume
     export WAYLAND_DISPLAY="wayland-power-$scenario"
     sleep 2
     poke
-    WAYLAND_DEBUG="${POWER_TEST_WAYLAND_DEBUG:-}" NEXUS_POWER_TIME_SCALE="$1" horizon-shell > "$W/shell.log" 2>&1 &
+    WAYLAND_DEBUG="${POWER_TEST_WAYLAND_DEBUG:-}" SHADOW_POWER_TIME_SCALE="$1" horizon-shell > "$W/shell.log" 2>&1 &
     shell=$!
     sleep 6
 }
@@ -92,8 +92,8 @@ finish() {
     horizon-shell --dump power > "$W/final-dump.json" 2>/dev/null
     kill $(jobs -p) 2>/dev/null
     wait 2>/dev/null
-    mkdir -p "$NEXUS_LOGS/$scenario"
-    cp "$W"/*.log "$W"/*.json "$W"/runs "$NEXUS_LOGS/$scenario/" 2>/dev/null
+    mkdir -p "$SHADOW_LOGS/$scenario"
+    cp "$W"/*.log "$W"/*.json "$W"/runs "$SHADOW_LOGS/$scenario/" 2>/dev/null
 }
 
 case "$scenario" in
@@ -205,7 +205,7 @@ idle)
     check "nothing happens with everything set to never" "$(st idle.events | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')" "$events"
     check "screen on" "$(dpms)" on
     # edited in place, with values a reader must not accept
-    printf '[Power]\nIdleScreenOffMinutes=banana\nIdleLockMinutes=5000\nIdleSuspendMinutes=7\n' > "$HOME/.config/nexus/power.conf"
+    printf '[Power]\nIdleScreenOffMinutes=banana\nIdleLockMinutes=5000\nIdleSuspendMinutes=7\n' > "$HOME/.config/shadow/power.conf"
     sleep 1.2
     check "invalid value → default" "$(st effective.screenOffMinutes)" 10
     check "out-of-range value → default" "$(st effective.lockMinutes)" 15
@@ -243,12 +243,12 @@ idle)
 updates)
     # 1 minute = 0.1 s: first check 0.3 s after start, network retry 0.5 s, interval 1 h = 6 s.
     power_conf 0 0 0  0 0 0
-    printf '[Updates]\nAutoCheck=true\nCheckIntervalHours=1\n' > "$HOME/.config/nexus/updater.conf"
+    printf '[Updates]\nAutoCheck=true\nCheckIntervalHours=1\n' > "$HOME/.config/shadow/updater.conf"
     mkdir -p "$W/bin" "$W/upd"
-    cp "$TESTS/fake-updater.sh" "$W/bin/nexus-updater"
+    cp "$TESTS/fake-updater.sh" "$W/bin/shadow-updater"
     export FAKE_UPDATER_DIR="$W/upd"
     echo security > "$W/upd/result"; : > "$W/upd/runs"; ln -s "$W/upd/runs" "$W/runs"
-    REAL_UPDATER="$(command -v nexus-updater || true)"
+    REAL_UPDATER="$(command -v shadow-updater || true)"
     # Only the test double and this build on PATH (the harness adds every build tree).
     PATH="$W/bin:$(dirname "$(command -v horizon-shell)"):/usr/sbin:/usr/bin:/sbin:/bin"
     notifies() { grep -c "^notify id" "$W/fakes.log"; }
@@ -275,7 +275,7 @@ updates)
     id="$(echo "$line" | sed -n 's/^notify id=\([0-9]*\).*/\1/p')"
     ctl notify invoke "$id" open
     sleep 1
-    check "action started nexus-updater (no arguments)" "$(grep -c '^run $' "$W/upd/runs")" 1
+    check "action started shadow-updater (no arguments)" "$(grep -c '^run $' "$W/upd/runs")" 1
     check "notification closed after the action" "$(grep -c "notify close id=$id" "$W/fakes.log")" 1
 
     note "-- next interval: nothing pending → no notification"
@@ -302,25 +302,25 @@ updates)
     check "still two notifications" "$(notifies)" 2
 
     if [ -n "$REAL_UPDATER" ]; then
-        note "-- the real nexus-updater --check ($REAL_UPDATER; no PackageKit on the test bus)"
-        ln -sf "$REAL_UPDATER" "$W/bin/nexus-updater"
+        note "-- the real shadow-updater --check ($REAL_UPDATER; no PackageKit on the test bus)"
+        ln -sf "$REAL_UPDATER" "$W/bin/shadow-updater"
         sleep 7
         note "      real updater: result=$(st updates.lastCheck.result) exit=$(st updates.lastCheck.exitCode) error=$(st updates.lastCheck.error)"
         check "still two notifications" "$(notifies)" 2
     else
-        note "-- (no built nexus-updater found; the real binary was not run)"
+        note "-- (no built shadow-updater found; the real binary was not run)"
     fi
 
     note "-- updater not installed"
-    rm -f "$W/bin/nexus-updater"
+    rm -f "$W/bin/shadow-updater"
     sleep 6.5
     check "updater missing" "$(st updates.updaterInstalled)" false
     check "nothing run" "$(st updates.lastCheck.result)" not-run
     check "still two notifications" "$(notifies)" 2
-    cp "$TESTS/fake-updater.sh" "$W/bin/nexus-updater"
+    cp "$TESTS/fake-updater.sh" "$W/bin/shadow-updater"
 
     note "-- AutoCheck=false"
-    printf '[Updates]\nAutoCheck=false\nCheckIntervalHours=1\n' > "$HOME/.config/nexus/updater.conf"
+    printf '[Updates]\nAutoCheck=false\nCheckIntervalHours=1\n' > "$HOME/.config/shadow/updater.conf"
     sleep 1; before=$(runs)
     check "auto check off" "$(st updates.autoCheck)" false
     check "no next check" "$(st updates.nextCheck)" "<missing>"
@@ -368,9 +368,9 @@ popup)
     # notices in the shell's own notification daemon (same process, same bus
     # connection). POWER_TEST_CLICK="X Y" clicks there (the action button).
     power_conf 0 0 0  0 0 0
-    printf '[Updates]\nAutoCheck=true\nCheckIntervalHours=24\n' > "$HOME/.config/nexus/updater.conf"
+    printf '[Updates]\nAutoCheck=true\nCheckIntervalHours=24\n' > "$HOME/.config/shadow/updater.conf"
     mkdir -p "$W/bin" "$W/upd"
-    cp "$TESTS/fake-updater.sh" "$W/bin/nexus-updater"
+    cp "$TESTS/fake-updater.sh" "$W/bin/shadow-updater"
     export FAKE_UPDATER_DIR="$W/upd"
     echo security > "$W/upd/result"; : > "$W/upd/runs"; ln -s "$W/upd/runs" "$W/runs"
     PATH="$W/bin:$(dirname "$(command -v horizon-shell)"):/usr/sbin:/usr/bin:/sbin:/bin"
@@ -382,7 +382,7 @@ popup)
     if [ -n "${POWER_TEST_CLICK:-}" ]; then
         xdo mousemove $POWER_TEST_CLICK click 1
         sleep 1.5
-        check "clicking the action started nexus-updater" "$(grep -c '^run $' "$W/upd/runs")" 1
+        check "clicking the action started shadow-updater" "$(grep -c '^run $' "$W/upd/runs")" 1
         shot modpower-popup-after-click.png
     fi
     ctl upower on-battery true

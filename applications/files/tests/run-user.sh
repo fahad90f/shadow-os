@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Runs one UI scenario of NEXUS Files as an unprivileged user (nobody) under a
+# Runs one UI scenario of SHADOW Files as an unprivileged user (nobody) under a
 # plain virtual X server in the build chroot — for everything that needs real
 # permission errors, which root never gets:
 #

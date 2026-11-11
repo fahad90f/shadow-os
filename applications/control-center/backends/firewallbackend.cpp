@@ -14,7 +14,7 @@
 
 #include <unistd.h>
 
-NEXUS_CC_DUMP("firewall", [] {
+SHADOW_CC_DUMP("firewall", [] {
     FirewallBackend backend;
     if (!backend.ready()) {
         QEventLoop loop;
@@ -26,25 +26,25 @@ NEXUS_CC_DUMP("firewall", [] {
 })
 
 namespace {
-const QString kRecord = QStringLiteral("/etc/nexus/firewall.json");
+const QString kRecord = QStringLiteral("/etc/shadow/firewall.json");
 
 QString statusTool()
 {
-    const QString override = qEnvironmentVariable("NEXUS_SECURITY_STATUS_TOOL");
-    return override.isEmpty() ? QStringLiteral("/usr/sbin/nexus-security-status") : override;
+    const QString override = qEnvironmentVariable("SHADOW_SECURITY_STATUS_TOOL");
+    return override.isEmpty() ? QStringLiteral("/usr/sbin/shadow-security-status") : override;
 }
 
 // Root runs the tool itself; everybody else goes through polkit.
-void runPrivileged(QObject *context, const QString &tool, const QStringList &arguments, Nexus::Command::Callback done,
+void runPrivileged(QObject *context, const QString &tool, const QStringList &arguments, Shadow::Command::Callback done,
                    int timeoutMs = 300000)
 {
     if (geteuid() == 0)
-        Nexus::Command::run(context, tool, arguments, std::move(done), timeoutMs);
+        Shadow::Command::run(context, tool, arguments, std::move(done), timeoutMs);
     else
-        Nexus::Command::run(context, QStringLiteral("pkexec"), QStringList{tool} + arguments, std::move(done), timeoutMs);
+        Shadow::Command::run(context, QStringLiteral("pkexec"), QStringList{tool} + arguments, std::move(done), timeoutMs);
 }
 
-QString failureText(const Nexus::CommandResult &result)
+QString failureText(const Shadow::CommandResult &result)
 {
     if (geteuid() != 0) {
         if (result.exitCode == -1)
@@ -57,7 +57,7 @@ QString failureText(const Nexus::CommandResult &result)
     if (result.exitCode == -2)
         return FirewallBackend::tr("The firewall tool did not answer in time.");
     QString text = (result.errText().trimmed().isEmpty() ? result.outText() : result.errText()).trimmed();
-    if (text.startsWith(QLatin1String("nexus-firewall: ")))
+    if (text.startsWith(QLatin1String("shadow-firewall: ")))
         text = text.mid(16);
     return text.isEmpty() ? FirewallBackend::tr("The firewall tool failed (exit code %1).").arg(result.exitCode) : text;
 }
@@ -87,8 +87,8 @@ FirewallBackend::FirewallBackend(QObject *parent)
 
 QString FirewallBackend::toolPath() const
 {
-    const QString override = qEnvironmentVariable("NEXUS_FIREWALL_TOOL");
-    return override.isEmpty() ? QStringLiteral("/usr/sbin/nexus-firewall") : override;
+    const QString override = qEnvironmentVariable("SHADOW_FIREWALL_TOOL");
+    return override.isEmpty() ? QStringLiteral("/usr/sbin/shadow-firewall") : override;
 }
 
 void FirewallBackend::refresh()
@@ -98,13 +98,13 @@ void FirewallBackend::refresh()
     if (!m_installed) {
         m_statusKnown = false;
         m_rules.clear();
-        m_statusMessage = tr("The NEXUS firewall tool (%1) is not installed.").arg(toolPath());
+        m_statusMessage = tr("The SHADOW firewall tool (%1) is not installed.").arg(toolPath());
         finishRefresh();
         return;
     }
     if (geteuid() == 0) {
-        Nexus::Command::run(this, toolPath(), {QStringLiteral("status"), QStringLiteral("--json")},
-                            [this, generation](const Nexus::CommandResult &result) {
+        Shadow::Command::run(this, toolPath(), {QStringLiteral("status"), QStringLiteral("--json")},
+                            [this, generation](const Shadow::CommandResult &result) {
             if (generation != m_generation)
                 return;
             const QJsonDocument doc = QJsonDocument::fromJson(result.out);
@@ -122,7 +122,7 @@ void FirewallBackend::refresh()
         return;
     }
     runPrivileged(this, statusTool(), {QStringLiteral("--section"), QStringLiteral("firewall")},
-                  [this, generation](const Nexus::CommandResult &result) {
+                  [this, generation](const Shadow::CommandResult &result) {
         if (generation != m_generation)
             return;
         const QJsonObject section = QJsonDocument::fromJson(result.out).object().value(QStringLiteral("firewall")).toObject();
@@ -181,7 +181,7 @@ void FirewallBackend::runAction(const QStringList &arguments, const QString &suc
         return;
     m_busy = true;
     Q_EMIT busyChanged();
-    runPrivileged(this, toolPath(), arguments, [this, successMessage](const Nexus::CommandResult &result) {
+    runPrivileged(this, toolPath(), arguments, [this, successMessage](const Shadow::CommandResult &result) {
         m_busy = false;
         Q_EMIT busyChanged();
         if (result.ok())
@@ -234,7 +234,7 @@ void FirewallBackend::reset()
 
 QString FirewallBackend::portsProblem(const QString &ports) const
 {
-    // Same grammar as nexus-firewall: <port> or <first>-<last>, 1–65535.
+    // Same grammar as shadow-firewall: <port> or <first>-<last>, 1–65535.
     static const QRegularExpression pattern(QStringLiteral("^(\\d{1,5})(?:-(\\d{1,5}))?$"));
     const QString text = ports.trimmed();
     if (text.isEmpty())

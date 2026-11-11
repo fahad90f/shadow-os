@@ -2,11 +2,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs.quickimpl as Impl
-import org.nexus.ui
+import org.shadow.ui
 
-// Path bar of the NEXUS file and folder dialogs: "up" button, one button per
+// Path bar of the SHADOW file and folder dialogs: "up" button, one button per
 // path component, and (Ctrl+L) a text field to type a path. The behaviour is
-// Qt's FolderBreadcrumbBar; this file only gives it the NEXUS look.
+// Qt's FolderBreadcrumbBar; this file only gives it the SHADOW look.
 Impl.FolderBreadcrumbBar {
     id: control
 

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Archive Manager
+GenericName=Archive Manager
+Comment=Open, extract and create ZIP, 7-Zip, tar and other archives
+Exec=shadow-archive-manager %f
+Icon=org.shadow.archivemanager
+Terminal=false
+Categories=Utility;Archiving;Compression;
+Keywords=zip;tar;7z;rar;iso;cpio;extract;compress;unpack;archive;
+MimeType=application/zip;application/x-zip-compressed;application/x-7z-compressed;application/x-tar;application/x-compressed-tar;application/x-bzip-compressed-tar;application/x-bzip2-compressed-tar;application/x-xz-compressed-tar;application/x-zstd-compressed-tar;application/x-cpio;application/x-cd-image;application/x-iso9660-image;application/vnd.rar;application/x-rar;application/x-rar-compressed;
+StartupNotify=true
+StartupWMClass=org.shadow.archivemanager
+X-SHADOW-Component=archive-manager

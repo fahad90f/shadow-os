@@ -23,27 +23,27 @@
 
 EFI="$(arch_info "$ARCH" efi)"
 BOOTSTAGE="$STAGING/.bootfiles"
-ISO_DIR="$NEXUS_OUT/iso"
+ISO_DIR="$SHADOW_OUT/iso"
 ISO="$ISO_DIR/$ISO_NAME.iso"
 BUILD_STAMP="$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y%m%d)"
 # ISO9660 volume id: max 32 chars, [A-Z0-9_]
-VOLID="$(printf 'NEXUS_%s_%s' "$NEXUS_VERSION" "$ARCH" | tr 'a-z.-' 'A-Z__' | cut -c1-32)"
+VOLID="$(printf 'SHADOW_%s_%s' "$SHADOW_VERSION" "$ARCH" | tr 'a-z.-' 'A-Z__' | cut -c1-32)"
 
 # ---- media identification ----------------------------------------------------
-printf '%s %s "%s" - %s %s (%s)\n' "$NEXUS_NAME" "$NEXUS_VERSION" "$NEXUS_CODENAME" \
+printf '%s %s "%s" - %s %s (%s)\n' "$SHADOW_NAME" "$SHADOW_VERSION" "$SHADOW_CODENAME" \
     "$VARIANT" "$ARCH" "$BUILD_STAMP" > "$STAGING/.disk/info"
 
 # ---- boot menu ----------------------------------------------------------------
-GRUB_SRC="$NEXUS_ROOT/system/boot/grub"
-sed -e "s|@NEXUS_NAME@|$NEXUS_NAME|g" \
-    -e "s|@NEXUS_VERSION@|$NEXUS_VERSION|g" \
-    -e "s|@NEXUS_CODENAME@|$NEXUS_CODENAME|g" \
+GRUB_SRC="$SHADOW_ROOT/system/boot/grub"
+sed -e "s|@SHADOW_NAME@|$SHADOW_NAME|g" \
+    -e "s|@SHADOW_VERSION@|$SHADOW_VERSION|g" \
+    -e "s|@SHADOW_CODENAME@|$SHADOW_CODENAME|g" \
     -e "s|@ARCH@|$ARCH|g" \
     -e "s|@KERNEL_VERSION@|$(cat "$STAGING/live/kernel-version")|g" \
     "$GRUB_SRC/live-grub.cfg.in" > "$STAGING/boot/grub/grub.cfg"
-if [ -f "$NEXUS_ROOT/assets/boot/grub/nexus/theme.txt" ]; then
-    mkdir -p "$STAGING/boot/grub/themes/nexus"
-    cp -r "$NEXUS_ROOT/assets/boot/grub/nexus/." "$STAGING/boot/grub/themes/nexus/"
+if [ -f "$SHADOW_ROOT/assets/boot/grub/shadow/theme.txt" ]; then
+    mkdir -p "$STAGING/boot/grub/themes/shadow"
+    cp -r "$SHADOW_ROOT/assets/boot/grub/shadow/." "$STAGING/boot/grub/themes/shadow/"
 fi
 
 # ---- EFI System Partition image ----------------------------------------------
@@ -56,7 +56,7 @@ esp_kb=$(( $(du -sk "$BOOTSTAGE/efi" | cut -f1) + 1024 ))
 esp_kb=$(( (esp_kb + 1023) / 1024 * 1024 ))            # round up to whole MiB
 [ "$esp_kb" -ge 4096 ] || esp_kb=4096
 truncate -s "${esp_kb}K" "$ESP"
-mformat -i "$ESP" -v NEXUS_ESP -N "$(printf '%08x' "$SOURCE_DATE_EPOCH" | cut -c1-8)" ::
+mformat -i "$ESP" -v SHADOW_ESP -N "$(printf '%08x' "$SOURCE_DATE_EPOCH" | cut -c1-8)" ::
 mmd -i "$ESP" ::/EFI ::/EFI/boot
 for f in "$BOOTSTAGE/efi/"*.efi; do
     mcopy -i "$ESP" "$f" "::/EFI/boot/$(basename "$f")"
@@ -85,9 +85,9 @@ rm -f "$ISO"
 xorriso -as mkisofs \
     -iso-level 3 -rational-rock -joliet -joliet-long -full-iso9660-filenames \
     -volid "$VOLID" \
-    -appid "$NEXUS_NAME $NEXUS_VERSION" \
-    -publisher "$NEXUS_VENDOR" \
-    -preparer "NEXUS OS build system" \
+    -appid "$SHADOW_NAME $SHADOW_VERSION" \
+    -publisher "$SHADOW_VENDOR" \
+    -preparer "Shadow OS build system" \
     --modification-date="$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y%m%d%H%M%S00)" \
     -partition_offset 16 \
     -partition_cyl_align off \

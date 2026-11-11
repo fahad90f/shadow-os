@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=SHADOW Updater
+GenericName=Software Updates
+Comment=Install system updates, review update history and repair the package system
+Exec=shadow-updater
+Icon=org.shadow.updater
+Terminal=false
+Categories=System;Settings;PackageManager;
+Keywords=update;upgrade;security;patch;packages;apt;restart;history;repair;
+StartupNotify=true
+StartupWMClass=org.shadow.updater
+X-SHADOW-Component=updater

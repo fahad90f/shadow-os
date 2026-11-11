@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // Icon of a profile: the themed icon named by the manifest, or — when the icon
 // theme does not have it — the glyph of the profile's main category.

@@ -4,7 +4,7 @@
   "keyboard": {"layout": "fr", "variant": "oss"},
   "timezone": "Europe/Paris",
   "hostname": "atelier",
-  "user": {"fullname": "Sophie Germain", "username": "sophie", "password": "Nexus-Test-1"},
+  "user": {"fullname": "Sophie Germain", "username": "sophie", "password": "Shadow-Test-1"},
   "storage": {"mode": "manual", "swap": "none", "mounts": [
       {"device": "/dev/vda2", "mountpoint": "/", "format": true},
       {"device": "/dev/vda1", "mountpoint": "/boot/efi"},

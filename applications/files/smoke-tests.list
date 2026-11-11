@@ -1,3 +1,3 @@
 # <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
-nexus-files
-nexus-files /usr/share
+shadow-files
+shadow-files /usr/share

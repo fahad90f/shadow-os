@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Controls
-import org.nexus.ui
+import org.shadow.ui
 
 // The menu of a tray item (com.canonical.dbusmenu), drawn by the shell in
-// the NEXUS style: a card under the item's icon, submenus as further cards
+// the SHADOW style: a card under the item's icon, submenus as further cards
 // beside it. An overlay: Escape or a click elsewhere closes it.
 //
 // Keyboard: Up/Down (Home/End) move, Right or Return opens a submenu, Left
@@ -28,7 +28,7 @@ OverlaySurface {
     readonly property int rowHeight: 30
 
     screen: shell.primaryScreen
-    scope: "nexus-tray-menu"
+    scope: "shadow-tray-menu"
 
     function showFor(newItem, x) {
         if (open && menu) menu.close()

@@ -17,11 +17,11 @@ namespace Arsenal {
 // "arsenal") and for --dump.
 //
 // Data sources:
-//   manifests      <profiles-dir>/*.json (package nexus-arsenal-data)
+//   manifests      <profiles-dir>/*.json (package shadow-arsenal-data)
 //   installed?     dpkg-query, candidate versions and sizes: apt-cache (PackageDb)
 //   size of a profile   apt-get install --simulate (PackageDb::estimate)
 //   changes        PackageKit only (PkJob); never apt or dpkg directly
-//   acknowledgement     ~/.config/nexus/arsenal.conf
+//   acknowledgement     ~/.config/shadow/arsenal.conf
 class Controller : public QObject
 {
     Q_OBJECT
@@ -108,7 +108,7 @@ public:
     // Start the tool's graphical interface from its desktop entry. Returns an
     // error message, or an empty string when the program was started.
     Q_INVOKABLE QString launch(const QString &package);
-    // Open NEXUS Terminal showing the tool's usage. Same return convention.
+    // Open SHADOW Terminal showing the tool's usage. Same return convention.
     Q_INVOKABLE QString openInTerminal(const QString &package);
     Q_INVOKABLE void copyText(const QString &text);
     Q_INVOKABLE bool openUrl(const QString &url);

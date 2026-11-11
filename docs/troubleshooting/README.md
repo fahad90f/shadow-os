@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Problems you may meet and what to do about them. Because NEXUS OS has only
+Problems you may meet and what to do about them. Because Shadow OS has only
 run in virtual machines so far, most of this page is derived from how the
 system is built, not from observed failures on real hardware; where a
 procedure has not been tried, it says so. When you find something that is
@@ -15,7 +15,7 @@ Most fixes below need a shell while the desktop is not usable.
 
 * **Ctrl+Alt+F3** switches to a text console (**Ctrl+Alt+F1** or **F2**
   returns to the graphical session, depending on where it runs). Log in
-  with your user name and password; in the live session: `nexus` / `live`.
+  with your user name and password; in the live session: `shadow` / `live`.
 * On the live medium, the boot entry *Advanced options ▸ Live session -
   verbose boot (no splash)* shows boot messages instead of the splash.
 
@@ -29,14 +29,14 @@ Most fixes below need a shell while the desktop is not usable.
 | Kernel messages | `sudo dmesg` (restricted to root by the hardening settings) |
 | Login screen | `sudo journalctl -b -u sddm` |
 | Failed services | `systemctl --failed`, `systemctl --user --failed` |
-| Installer (live session) | `sudo less /var/log/nexus-installer/install-*.log` |
+| Installer (live session) | `sudo less /var/log/shadow-installer/install-*.log` |
 | Installer (installed system) | `sudo less /var/log/installer/install.log`, `/var/log/installer/plan.json` |
 | Package operations | `/var/log/apt/history.log`, `/var/log/apt/term.log`, `/var/log/dpkg.log` |
 | Audit events | `sudo ausearch -k <key>` ([../security/hardening.md](../security/hardening.md)) |
 | Previous boot | add `-b -1` to `journalctl` (the journal is persistent on installed systems) |
 
 When you report a problem, attach the relevant log and the output of
-`nexus-sysinfo --dump report`.
+`shadow-sysinfo --dump report`.
 
 ## Boot problems
 
@@ -44,20 +44,20 @@ When you report a problem, attach the relevant log and the output of
 
 1. Reboot and choose **Live session (safe graphics)**. It adds `nomodeset`,
    so the kernel does not load its graphics drivers and uses the firmware's
-   display mode. Without a GPU render node the NEXUS session then renders
+   display mode. Without a GPU render node the SHADOW session then renders
    on the CPU automatically: slower, no blur or transparency effects, but
    usable.
 2. If that works, the problem is the graphics driver. Note the graphics
    card (`lspci -nnk | grep -A3 -E 'VGA|3D'`) and report it.
 3. If the screen is black but the system is running — a cursor, or
    Ctrl+Alt+F3 gives a console — the compositor failed on the GPU. Force
-   CPU rendering with `NEXUS_SOFTWARE_RENDERING=1`, see below.
+   CPU rendering with `SHADOW_SOFTWARE_RENDERING=1`, see below.
 4. Choose *verbose boot (no splash)* to see where the boot stops. If you
    see nothing at all after selecting an entry, try *serial console* on
    hardware that has one, or another USB port or stick.
 
 On an installed system, add `nomodeset` once: in the GRUB menu press **e**
-on the NEXUS OS entry, append `nomodeset` to the line that starts with
+on the Shadow OS entry, append `nomodeset` to the line that starts with
 `linux`, and press **Ctrl+X**. To make it permanent, create
 `/etc/default/grub.d/90-local.cfg` with
 
@@ -67,7 +67,7 @@ GRUB_CMDLINE_LINUX="$GRUB_CMDLINE_LINUX nomodeset"
 
 and run `sudo update-grub`.
 
-### Forcing CPU rendering: `NEXUS_SOFTWARE_RENDERING`
+### Forcing CPU rendering: `SHADOW_SOFTWARE_RENDERING`
 
 The session script chooses CPU rendering only when no `/dev/dri/renderD*`
 node exists. If a GPU is present but the desktop crashes, shows garbage or
@@ -75,16 +75,16 @@ stays black, override the choice. The variable must be in the environment
 before the session starts. From a text console:
 
 ```sh
-echo 'NEXUS_SOFTWARE_RENDERING=1' | sudo tee -a /etc/environment
+echo 'SHADOW_SOFTWARE_RENDERING=1' | sudo tee -a /etc/environment
 sudo systemctl restart sddm
 ```
 
 `/etc/environment` is read by PAM at login. This route follows from
-Debian's PAM configuration for SDDM and has not been tried on NEXUS OS. If
+Debian's PAM configuration for SDDM and has not been tried on Shadow OS. If
 it has no effect, check that the variable arrived:
-`tr '\0' '\n' < /proc/$(pgrep -u "$USER" -x kwin_wayland | head -n1)/environ | grep NEXUS`.
+`tr '\0' '\n' < /proc/$(pgrep -u "$USER" -x kwin_wayland | head -n1)/environ | grep SHADOW`.
 
-`NEXUS_SOFTWARE_RENDERING=0` forces GPU rendering; remove the line to
+`SHADOW_SOFTWARE_RENDERING=0` forces GPU rendering; remove the line to
 return to automatic detection. With CPU rendering, translucent surfaces are
 opaque by design.
 
@@ -102,7 +102,7 @@ Check the state from a running system: `mokutil --sb-state`, and
 `cat /sys/kernel/security/lockdown`.
 
 The Secure Boot chain was verified only with OVMF in QEMU. None of the
-firmware behaviours in this table has been observed with NEXUS OS.
+firmware behaviours in this table has been observed with Shadow OS.
 
 ### The firmware does not offer the USB stick, or boots the old system
 
@@ -112,8 +112,8 @@ firmware behaviours in this table has been observed with NEXUS OS.
   (see the [README](../../README.md)), try another port.
 * In the firmware setup, disable "fast boot" if USB devices are not
   initialised.
-* After installation the firmware entry is called "NEXUS OS". If the
-  machine still starts another system, select "NEXUS OS" in the firmware's
+* After installation the firmware entry is called "Shadow OS". If the
+  machine still starts another system, select "Shadow OS" in the firmware's
   boot menu and move it to the top of the boot order. Some firmware ignores
   boot entries; the installer writes the fallback path `EFI/BOOT` for whole
   disk installations for that case.
@@ -153,9 +153,9 @@ as the keys of the original layout. There is no recovery key.
    the laptop's hardware switch or Fn key.
 4. Some chipsets have no driver in the mainline kernel (certain Broadcom
    devices). Their DKMS drivers are in Debian's `non-free` component, which
-   NEXUS OS does not enable.
+   Shadow OS does not enable.
 5. A network that filters by hardware address does not accept the
-   per-network random address NEXUS OS uses by default:
+   per-network random address Shadow OS uses by default:
    `nmcli connection modify "<name>" wifi.cloned-mac-address permanent`.
 
 ### No sound
@@ -168,7 +168,7 @@ not muted in the quick settings.
 ### Something cannot connect *to* this computer
 
 Expected: the firewall drops inbound connections. Open the port:
-`sudo nexus-firewall allow <port>/tcp` ([../security/hardening.md](../security/hardening.md)).
+`sudo shadow-firewall allow <port>/tcp` ([../security/hardening.md](../security/hardening.md)).
 
 ## Installer problems
 
@@ -179,7 +179,7 @@ The complete log, with every command and its output, is in the live
 session:
 
 ```sh
-sudo less /var/log/nexus-installer/install-*.log
+sudo less /var/log/shadow-installer/install-*.log
 ```
 
 Search for the last `RUN` line and its `EXIT` status. After a failure the
@@ -196,7 +196,7 @@ removes the partitions it created, so you can try again.
 | "The disk is too small" | see the sizes in [../installation/installing.md](../installation/installing.md) |
 | "The system image is no longer available" | the medium was removed or is faulty; verify its checksum and write it again |
 | "Unexpected installer error" (`internal`) | a bug: please report it with the log |
-| The authentication for the engine fails | outside the live session the installer needs an administrator password; in the live session it should not ask. Check that `/run/nexus/live-session` exists |
+| The authentication for the engine fails | outside the live session the installer needs an administrator password; in the live session it should not ask. Check that `/run/shadow/live-session` exists |
 
 The tool profiles step cannot fail the installation: a problem there is a
 warning, and the profiles can be installed later.
@@ -209,10 +209,10 @@ See [recovery.md](recovery.md).
 
 ### The desktop does not start, or returns to the login screen
 
-What normally happens: SDDM starts `nexus-horizon-session`, which starts
+What normally happens: SDDM starts `shadow-horizon-session`, which starts
 KWin, which starts the session leader, which runs `horizon-shell`. If the
 shell crashes five times within a minute, the leader ends the session and
-you are back at the login screen. NEXUS OS installs no second desktop to
+you are back at the login screen. Shadow OS installs no second desktop to
 fall back to; use a text console.
 
 1. Read the session log:
@@ -224,12 +224,12 @@ fall back to; use a text console.
 
    Lines from `horizon-session-leader` say how often the shell exited and
    with which status. Lines from `kwin_wayland` about DRM, EGL or OpenGL
-   point at graphics: try `NEXUS_SOFTWARE_RENDERING=1` (above).
+   point at graphics: try `SHADOW_SOFTWARE_RENDERING=1` (above).
 2. Is it your configuration? Move the shell's and the compositor's settings
    aside and log in again:
 
    ```sh
-   mv ~/.config/nexus ~/.config/nexus.bak
+   mv ~/.config/shadow ~/.config/shadow.bak
    mv ~/.config/kwinrc ~/.config/kwinrc.bak
    ```
 
@@ -237,7 +237,7 @@ fall back to; use a text console.
 3. Is the installation complete?
 
    ```sh
-   dpkg -s nexus-horizon nexus-ui nexus-themes kwin-wayland | grep -E '^(Package|Status)'
+   dpkg -s shadow-horizon shadow-ui shadow-themes kwin-wayland | grep -E '^(Package|Status)'
    sudo dpkg --configure -a
    ```
 
@@ -294,7 +294,7 @@ If the password is rejected only on the lock screen:
   session's layout; the login screen uses the system layout);
 * check that the PAM files are in place:
   `ls /etc/pam.d/kde /etc/pam.d/kde-fingerprint /etc/pam.d/kde-smartcard`
-  (package `nexus-themes`);
+  (package `shadow-themes`);
 * look for the greeter's messages:
   `journalctl --user -b | grep -i -E 'kscreenlocker|pam'`.
 
@@ -316,7 +316,7 @@ LockGrace=0
 
 ### Applications look wrong or ignore the dark/light setting
 
-Run `nexus-apply-appearance` and restart the application. GTK and
+Run `shadow-apply-appearance` and restart the application. GTK and
 libadwaita theming has not been tested. Applications started with `sudo`
 or as another user do not use your settings.
 
@@ -327,7 +327,7 @@ a StatusNotifierItem appear in the tray.
 
 ### A keyboard shortcut reports "… is not installed"
 
-`nexus-terminal` and `nexus-screenshot` are not part of the image yet ([../limitations.md](../limitations.md)). Install a terminal
+`shadow-terminal` and `shadow-screenshot` are not part of the image yet ([../limitations.md](../limitations.md)). Install a terminal
 emulator from Debian in the meantime; it appears in the launcher.
 
 ## Package problems
@@ -347,31 +347,31 @@ or Updater → Recovery → Repair. Then `sudo apt update && sudo apt full-upgra
 |---|---|
 | Could not resolve / connect to `deb.debian.org` | no network or DNS: `nmcli general status`, `ping -c1 deb.debian.org` |
 | Release file "is not valid yet" | the clock is wrong: `timedatectl`; enable time synchronisation with `sudo timedatectl set-ntp true` |
-| A problem with `file:/usr/share/nexus/repository` | the on-disk NEXUS repository is damaged or missing. It only provides the NEXUS packages of the release; disable it by adding `Enabled: no` to `/etc/apt/sources.list.d/nexus-local.sources` |
+| A problem with `file:/usr/share/shadow/repository` | the on-disk SHADOW repository is damaged or missing. It only provides the SHADOW packages of the release; disable it by adding `Enabled: no` to `/etc/apt/sources.list.d/shadow-local.sources` |
 | Signature errors (`NO_PUBKEY`, `BADSIG`) for Debian | `sudo apt install --reinstall debian-archive-keyring`; check the clock; do not disable signature checks |
 
-`/etc/apt/sources.list.d/nexus.sources` is disabled on purpose and does not
+`/etc/apt/sources.list.d/shadow.sources` is disabled on purpose and does not
 cause errors ([../packaging/repositories.md](../packaging/repositories.md)).
 
 ### A package cannot be installed: "held broken packages" / unmet dependencies
 
-`apt -s install <package>` shows what conflicts. NEXUS OS enables only
+`apt -s install <package>` shows what conflicts. Shadow OS enables only
 Debian 13 `main`, `contrib` and `non-free-firmware`; packages from other
 suites, `non-free`, or other distributions are not available and mixing
-them in is the usual cause of such conflicts. `nexus-boot` conflicts with
+them in is the usual cause of such conflicts. `shadow-boot` conflicts with
 Debian's `grub-pc` and `grub-efi-*` front-end packages on purpose; do not
 install those.
 
 ### A package operation removed the desktop
 
-If `apt` proposes to remove `nexus-horizon`, `nexus-ui` or `kwin-wayland`,
+If `apt` proposes to remove `shadow-horizon`, `shadow-ui` or `kwin-wayland`,
 answer no. If it already happened: from a text console,
-`sudo apt install nexus-horizon nexus-themes nexus-control-center` (the
-on-disk repository provides the NEXUS packages).
+`sudo apt install shadow-horizon shadow-themes shadow-control-center` (the
+on-disk repository provides the SHADOW packages).
 
 ### The boot loader was not refreshed after an update
 
-`sudo nexus-grub-install --verbose` — see
+`sudo shadow-grub-install --verbose` — see
 [../security/updates.md](../security/updates.md).
 
 ## Still stuck
@@ -379,10 +379,10 @@ on-disk repository provides the NEXUS packages).
 Collect and attach to your report:
 
 ```sh
-nexus-sysinfo --dump report > report.json
+shadow-sysinfo --dump report > report.json
 sudo journalctl -b > journal.txt
 cp ~/.local/share/sddm/wayland-session.log .
-sudo nexus-security-status --pretty > security.json      # desktop image / installed system
+sudo shadow-security-status --pretty > security.json      # desktop image / installed system
 ```
 
 Review the files before you share them: they contain host names, user

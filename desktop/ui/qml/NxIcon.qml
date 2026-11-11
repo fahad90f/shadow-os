@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Window
 
-// A glyph from the NEXUS symbolic icon set, tinted with any colour.
+// A glyph from the SHADOW symbolic icon set, tinted with any colour.
 //   NxIcon { name: "wifi"; size: 20; color: Theme.accent }
 Item {
     id: root

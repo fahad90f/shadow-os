@@ -19,15 +19,15 @@
 #           --smoke exits non-zero if the QML engine reported warnings/errors
 #   shell   interactive shell in the chroot with the same environment
 #   exec    run one command in the chroot: scripts/dev.sh exec -- apt-cache show nmap
-#   nested  a real NEXUS HORIZON session for testing: KWin (Wayland) runs inside
+#   nested  a real Shadow Horizon session for testing: KWin (Wayland) runs inside
 #           a virtual X server and <commands> are executed in it as session
-#           clients, e.g.  'horizon-shell & sleep 4; nexus-files /usr &'
+#           clients, e.g.  'horizon-shell & sleep 4; shadow-files /usr &'
 #           --shot captures the whole (virtual) screen after --wait seconds.
 #           Inside <commands>, "xdo" sends input to the session
 #           (xdo mousemove 20 16 click 1; xdo key super), and "shot NAME"
 #           takes an additional screenshot. Built binaries of every build
 #           directory are on PATH and have launcher entries. Log files
-#           written to $HOME/*.log and anything put into $NEXUS_LOGS end up
+#           written to $HOME/*.log and anything put into $SHADOW_LOGS end up
 #           in build/work/shots/nested-logs/<dir>/.
 #
 # The repository is mounted read-only at /src; build trees live in the chroot
@@ -35,10 +35,10 @@
 . "$(dirname "${BASH_SOURCE[0]}")/../build/lib/common.sh"
 need_root
 
-ARCH="${NEXUS_DEV_ARCH:-$(host_arch)}"
-CHROOT="$NEXUS_WORK/chroot-build-$ARCH"
-[ -e "$CHROOT/.nexus-bootstrap-complete" ] || die "build chroot missing — run build/chroot/create.sh --arch $ARCH"
-SHOTS="$NEXUS_WORK/shots"
+ARCH="${SHADOW_DEV_ARCH:-$(host_arch)}"
+CHROOT="$SHADOW_WORK/chroot-build-$ARCH"
+[ -e "$CHROOT/.shadow-bootstrap-complete" ] || die "build chroot missing — run build/chroot/create.sh --arch $ARCH"
+SHOTS="$SHADOW_WORK/shots"
 mkdir -p "$SHOTS" "$CHROOT/build"
 
 cmd="${1:-}"; shift || true
@@ -62,16 +62,16 @@ while [ $# -gt 0 ]; do
 done
 
 B="/build/$DIR"
-chr() { in_chroot "$CHROOT" --bind "$NEXUS_ROOT:/src:ro" --bind "$SHOTS:/shots" -- "$@"; }
+chr() { in_chroot "$CHROOT" --bind "$SHADOW_ROOT:/src:ro" --bind "$SHOTS:/shots" -- "$@"; }
 
 case "$cmd" in
 build)
     if [ ! -f "$CHROOT$B/build.ninja" ] || [ -n "$ONLY$MODULES$CCPAGES" ]; then
         chr cmake -S /src -B "$B" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_INSTALL_PREFIX=/usr ${ONLY:+-DNEXUS_ONLY="$ONLY"} \
-            ${MODULES:+-DHORIZON_MODULES="$MODULES"} ${CCPAGES:+-DNEXUS_CC_PAGES="$CCPAGES"}
+            -DCMAKE_INSTALL_PREFIX=/usr ${ONLY:+-DSHADOW_ONLY="$ONLY"} \
+            ${MODULES:+-DHORIZON_MODULES="$MODULES"} ${CCPAGES:+-DSHADOW_CC_PAGES="$CCPAGES"}
     fi
-    chr ninja -C "$B" -j "${NEXUS_JOBS}" "$@"
+    chr ninja -C "$B" -j "${SHADOW_JOBS}" "$@"
     ;;
 run)
     [ $# -ge 1 ] || die "usage: dev.sh run [options] <binary> [args...]"
@@ -83,20 +83,20 @@ run)
 Accent=$ACCENT"
     chr /bin/bash -c '
         B="$1"; bin="$2"; shot="$3"; size="$4"; smoke="$5"; delay="$6"; appearance="$7"; shift 7
-        export HOME="$(mktemp -d /tmp/nexus-dev-home.XXXXXX)"
+        export HOME="$(mktemp -d /tmp/shadow-dev-home.XXXXXX)"
         export XDG_RUNTIME_DIR="$HOME/run"; mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-        mkdir -p "$HOME/.config/nexus"
-        if [ -n "$appearance" ]; then printf "[Appearance]\n%s\n" "$appearance" > "$HOME/.config/nexus/appearance.conf"; fi
+        mkdir -p "$HOME/.config/shadow"
+        if [ -n "$appearance" ]; then printf "[Appearance]\n%s\n" "$appearance" > "$HOME/.config/shadow/appearance.conf"; fi
         export QML_IMPORT_PATH="$B/qml" LD_LIBRARY_PATH="$B/lib"
-        export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.nexus.style
+        export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.shadow.style
         export QT_LOGGING_RULES="qt.qpa.*=false"
-        [ -n "$shot" ] && export NEXUS_SCREENSHOT="/shots/$shot"
-        [ -n "$size" ] && export NEXUS_WINDOW_SIZE="$size"
-        [ -n "$delay" ] && export NEXUS_SCREENSHOT_DELAY="$delay"
-        [ "$smoke" = 1 ] && export NEXUS_SMOKE_TEST=1
+        [ -n "$shot" ] && export SHADOW_SCREENSHOT="/shots/$shot"
+        [ -n "$size" ] && export SHADOW_WINDOW_SIZE="$size"
+        [ -n "$delay" ] && export SHADOW_SCREENSHOT_DELAY="$delay"
+        [ "$smoke" = 1 ] && export SHADOW_SMOKE_TEST=1
         exe="$B/bin/$bin"; [ -x "$exe" ] || exe="$bin"
         exec xvfb-run -a -s "-screen 0 1920x1200x24 -nolisten tcp" \
-            dbus-run-session -- timeout --signal=KILL "${NEXUS_RUN_TIMEOUT:-60}" "$exe" "$@"
+            dbus-run-session -- timeout --signal=KILL "${SHADOW_RUN_TIMEOUT:-60}" "$exe" "$@"
     ' run "$B" "$bin" "$SHOT" "$SIZE" "$SMOKE" "$DELAY" "$appearance" "$@"
     if [ -n "$SHOT" ] && [ -f "$SHOTS/$SHOT" ]; then log "screenshot: $SHOTS/$SHOT"; fi
     ;;
@@ -109,13 +109,13 @@ Accent=$ACCENT"
     chr /bin/bash -c '
         B="$1"; shot="$2"; size="${3:-1600x900}"; wait="$4"; appearance="$5"; commands="$6"
         W="${size%x*}"; H="${size#*x}"
-        export HOME="$(mktemp -d /tmp/nexus-nested-home.XXXXXX)"
+        export HOME="$(mktemp -d /tmp/shadow-nested-home.XXXXXX)"
         export XDG_RUNTIME_DIR="$HOME/run"; mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-        mkdir -p "$HOME/.config/nexus" "$HOME/.config/menus" "$HOME/.local/share/applications"
-        cp /src/desktop/horizon-shell/session/nexus-applications.menu "$HOME/.config/menus/"
+        mkdir -p "$HOME/.config/shadow" "$HOME/.config/menus" "$HOME/.local/share/applications"
+        cp /src/desktop/horizon-shell/session/shadow-applications.menu "$HOME/.config/menus/"
         cp /src/desktop/horizon-shell/session/kwinrc "$HOME/.config/kwinrc"
-        export XDG_MENU_PREFIX=nexus-
-        if [ -n "$appearance" ]; then printf "[Appearance]\n%s\n" "$appearance" > "$HOME/.config/nexus/appearance.conf"; fi
+        export XDG_MENU_PREFIX=shadow-
+        if [ -n "$appearance" ]; then printf "[Appearance]\n%s\n" "$appearance" > "$HOME/.config/shadow/appearance.conf"; fi
 
         # Launcher entries and PATH for everything that has been built.
         pins=""
@@ -125,37 +125,37 @@ Accent=$ACCENT"
         done
         # This build directory wins over the others.
         PATH="$B/bin:$PATH"
-        for desktop in /src/applications/*/org.nexus.*.desktop /src/system/*/org.nexus.*.desktop; do
+        for desktop in /src/applications/*/org.shadow.*.desktop /src/system/*/org.shadow.*.desktop; do
             [ -f "$desktop" ] || continue
             id="$(basename "$desktop" .desktop)"
             exe="$(sed -n "s/^Exec=\([^ ]*\).*/\1/p" "$desktop" | head -n1)"
             command -v "$exe" >/dev/null 2>&1 || continue
             sed -e "s|^Icon=.*|Icon=/src/assets/icons/apps/$id.svg|" "$desktop" > "$HOME/.local/share/applications/$id.desktop"
         done
-        for id in org.nexus.files org.nexus.terminal org.nexus.controlcenter org.nexus.monitor org.nexus.sysinfo; do
+        for id in org.shadow.files org.shadow.terminal org.shadow.controlcenter org.shadow.monitor org.shadow.sysinfo; do
             [ -f "$HOME/.local/share/applications/$id.desktop" ] && pins="$pins$id.desktop,"
         done
-        printf "[Desktop]\nWallpaper=/src/assets/wallpapers/nexus-horizon.jpg\nWallpaperLight=/src/assets/wallpapers/nexus-daylight.jpg\n[Dock]\nPinned=%s\n" "${pins%,}" \
-            > "$HOME/.config/nexus/horizon.conf"
+        printf "[Desktop]\nWallpaper=/src/assets/wallpapers/shadow-horizon.jpg\nWallpaperLight=/src/assets/wallpapers/shadow-daylight.jpg\n[Dock]\nPinned=%s\n" "${pins%,}" \
+            > "$HOME/.config/shadow/horizon.conf"
 
         export LIBGL_ALWAYS_SOFTWARE=1 QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false;kf.*=false"
-        export XDG_CURRENT_DESKTOP="NEXUS:KDE" XDG_SESSION_TYPE=wayland
+        export XDG_CURRENT_DESKTOP="SHADOW:KDE" XDG_SESSION_TYPE=wayland
         export KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
         export QML_IMPORT_PATH="$B/qml" LD_LIBRARY_PATH="$B/lib"
         display=":$(( 200 + RANDOM % 700 ))"
         Xvfb "$display" -screen 0 "${W}x${H}x24" -nolisten tcp >"$HOME/xvfb.log" 2>&1 &
         xvfb=$!
         sleep 1.5
-        export NEXUS_NESTED_X="$display" NEXUS_SHOTS=/shots
+        export SHADOW_NESTED_X="$display" SHADOW_SHOTS=/shots
         # Where <commands> can leave files that should survive the session.
-        export NEXUS_LOGS="/shots/nested-logs/$(basename "$B")"; mkdir -p "$NEXUS_LOGS"
+        export SHADOW_LOGS="/shots/nested-logs/$(basename "$B")"; mkdir -p "$SHADOW_LOGS"
         cat > "$HOME/session.sh" <<SESSION
 xdo() { DISPLAY="$display" xdotool "\$@"; }
 shot() { DISPLAY="$display" import -window root "/shots/\$1"; }
-kwin_wayland --x11-display "$display" --width "$W" --height "$H" --no-lockscreen --socket wayland-nexus >"$HOME/kwin.log" 2>&1 &
+kwin_wayland --x11-display "$display" --width "$W" --height "$H" --no-lockscreen --socket wayland-shadow >"$HOME/kwin.log" 2>&1 &
 kwin=\$!
-for i in \$(seq 60); do [ -S "\$XDG_RUNTIME_DIR/wayland-nexus" ] && break; sleep 0.25; done
-export WAYLAND_DISPLAY=wayland-nexus QT_QPA_PLATFORM=wayland
+for i in \$(seq 60); do [ -S "\$XDG_RUNTIME_DIR/wayland-shadow" ] && break; sleep 0.25; done
+export WAYLAND_DISPLAY=wayland-shadow QT_QPA_PLATFORM=wayland
 kbuildsycoca6 >/dev/null 2>&1
 $commands
 sleep $wait
@@ -163,7 +163,7 @@ sleep $wait
 kill \$(jobs -p) 2>/dev/null
 wait 2>/dev/null
 SESSION
-        timeout --signal=KILL "${NEXUS_RUN_TIMEOUT:-180}" dbus-run-session -- bash "$HOME/session.sh" 2>&1 | grep -v "fd limit"
+        timeout --signal=KILL "${SHADOW_RUN_TIMEOUT:-180}" dbus-run-session -- bash "$HOME/session.sh" 2>&1 | grep -v "fd limit"
         kill "$xvfb" 2>/dev/null
         # Logs of the last nested session stay available for debugging.
         logs="/shots/nested-logs/$(basename "$B")"

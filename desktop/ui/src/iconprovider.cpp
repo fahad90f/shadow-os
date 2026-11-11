@@ -10,12 +10,12 @@
 #include <QUrl>
 #include <QUrlQuery>
 
-namespace Nexus {
+namespace Shadow {
 
 namespace {
 QString iconPath(const QString &name)
 {
-    return QStringLiteral(":/nexus/icons/") + name + QStringLiteral(".svg");
+    return QStringLiteral(":/shadow/icons/") + name + QStringLiteral(".svg");
 }
 } // namespace
 
@@ -159,11 +159,11 @@ QPixmap ThemeIconProvider::requestPixmap(const QString &id, QSize *size, const Q
         // Last resort, always available: the generic glyph compiled into the
         // library. An entry without a usable icon must still be recognisable
         // as an entry, never an empty square.
-        pixmap = renderSvg(QStringLiteral(":/nexus/icons/app-generic.svg"), target, QColor(0x9A, 0xA7, 0xBD));
+        pixmap = renderSvg(QStringLiteral(":/shadow/icons/app-generic.svg"), target, QColor(0x9A, 0xA7, 0xBD));
     }
     if (size)
         *size = pixmap.size();
     return pixmap;
 }
 
-} // namespace Nexus
+} // namespace Shadow

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // Notification popups: a short stack in the top right corner, under the
 // panel. The surface is exactly as large as the stack and never takes the
@@ -15,7 +15,7 @@ ShellSurface {
 
     screen: shell.primaryScreen
     layer: "overlay"
-    scope: "nexus-notifications"
+    scope: "shadow-notifications"
     anchorTop: true
     anchorRight: true
     keyboard: "none"

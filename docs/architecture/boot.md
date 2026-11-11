@@ -1,11 +1,11 @@
 # Boot architecture
 
-How NEXUS OS starts: from the installation medium and from an installed
+How Shadow OS starts: from the installation medium and from an installed
 disk, under UEFI (with and without Secure Boot) and under legacy BIOS.
 
-Sources: `system/boot/nexus-boot/`, `system/boot/grub/live-grub.cfg.in`,
+Sources: `system/boot/shadow-boot/`, `system/boot/grub/live-grub.cfg.in`,
 `build/iso/stage-rootfs.sh`, `build/iso/assemble.sh`,
-`distro/base/package-lists/20-boot.list`, `debian/nexus-boot.*`.
+`distro/base/package-lists/20-boot.list`, `debian/shadow-boot.*`.
 
 What has been verified (QEMU only, see [../testing.md](../testing.md)): the
 minimal ISO boots under UEFI, UEFI with Secure Boot enforcing and legacy
@@ -30,16 +30,16 @@ Linux kernel    vmlinuz       — Debian's kernel, signed by Debian     (package
 initramfs → root filesystem → systemd
 ```
 
-NEXUS OS signs nothing in this chain. Every binary is taken unmodified from
+Shadow OS signs nothing in this chain. Every binary is taken unmodified from
 the Debian packages installed in the image, which is why Secure Boot works
-without enrolling a key and why NEXUS does not need to keep a Secure Boot
+without enrolling a key and why SHADOW does not need to keep a Secure Boot
 signing key. `mmx64.efi` (MOK manager) is shipped alongside so that you can
 enrol your own keys, for example for DKMS modules.
 
 Without Secure Boot the same binaries are used; shim simply does not enforce
 anything.
 
-A NEXUS-built kernel (not shipped, see [../kernel/README.md](../kernel/README.md))
+A SHADOW-built kernel (not shipped, see [../kernel/README.md](../kernel/README.md))
 would break this chain unless it is signed with a key that the user enrols.
 
 ## Why the boot-loader id is `debian`
@@ -47,67 +47,67 @@ would break this chain unless it is signed with a key that the user enrols.
 Debian's signed GRUB image is a fixed binary. The directory it reads its
 configuration from is compiled in: `EFI/debian` on the EFI System Partition,
 wherever the binary itself is stored. Renaming the directory would require a
-GRUB image built and signed by NEXUS.
+GRUB image built and signed by SHADOW.
 
-`nexus-grub-install` therefore installs the loader with
+`shadow-grub-install` therefore installs the loader with
 `--bootloader-id=debian`. Only the label of the firmware boot entry says
-"NEXUS OS". On an installed system you will find:
+"Shadow OS". On an installed system you will find:
 
 ```
 /boot/efi/EFI/debian/shimx64.efi, grubx64.efi, mmx64.efi, grub.cfg
 /boot/efi/EFI/BOOT/…          only if the removable-media path is maintained
 ```
 
-Consequence: a NEXUS OS installation and a Debian installation that share
+Consequence: a Shadow OS installation and a Debian installation that share
 one ESP use the same directory and will overwrite each other's loader. This
 is a known limitation ([../limitations.md](../limitations.md)).
 
-## `nexus-boot` and `nexus-grub-install`
+## `shadow-boot` and `shadow-grub-install`
 
 Debian's `grub-pc` / `grub-efi-*` front-end packages install GRUB to a disk
-from their maintainer scripts and ask debconf questions. NEXUS OS does not
-install them (`nexus-boot` conflicts with them). The image contains only the
+from their maintainer scripts and ask debconf questions. Shadow OS does not
+install them (`shadow-boot` conflicts with them). The image contains only the
 `*-bin` and `*-signed` packages, which ship files under `/usr/lib` and never
-write to a disk, plus the package `nexus-boot`:
+write to a disk, plus the package `shadow-boot`:
 
 | File | Purpose |
 |---|---|
-| `/usr/sbin/nexus-grub-install` | (re-)installs the boot loader the way this system was installed |
-| `/etc/default/grub` | GRUB defaults: `GRUB_TIMEOUT=5`, `GRUB_DISTRIBUTOR="NEXUS OS"`, `quiet splash` |
-| `/etc/default/grub.d/10-nexus.cfg` | distribution defaults: no saved default, recovery entries kept, `GRUB_GFXMODE=auto`, theme path |
+| `/usr/sbin/shadow-grub-install` | (re-)installs the boot loader the way this system was installed |
+| `/etc/default/grub` | GRUB defaults: `GRUB_TIMEOUT=5`, `GRUB_DISTRIBUTOR="Shadow OS"`, `quiet splash` |
+| `/etc/default/grub.d/10-shadow.cfg` | distribution defaults: no saved default, recovery entries kept, `GRUB_GFXMODE=auto`, theme path |
 
-Further files in `/etc/default/grub.d/`: `20-nexus-hardening.cfg` (package
-`nexus-hardening`, kernel command line) and `60-nexus-installer.cfg` (written
+Further files in `/etc/default/grub.d/`: `20-shadow-hardening.cfg` (package
+`shadow-hardening`, kernel command line) and `60-shadow-installer.cfg` (written
 by the installer: extra kernel parameters, `GRUB_DISABLE_OS_PROBER`). Put
 your own settings in a new file there, for example `90-local.cfg`, then run
 `sudo update-grub`.
 
-### `/etc/nexus/boot.conf`
+### `/etc/shadow/boot.conf`
 
-The installer records how the system boots; `nexus-grub-install` reads it.
+The installer records how the system boots; `shadow-grub-install` reads it.
 
 | Key | Meaning |
 |---|---|
 | `FIRMWARE=uefi\|bios` | how the installed system is started |
 | `ESP_MOUNT=/boot/efi` | mount point of the EFI System Partition |
 | `ESP_REMOVABLE=yes\|no` | also maintain the fallback path `EFI/BOOT` |
-| `ESP_NVRAM=yes\|no` | keep a firmware boot entry labelled "NEXUS OS" |
+| `ESP_NVRAM=yes\|no` | keep a firmware boot entry labelled "Shadow OS" |
 | `BIOS_DISK=/dev/disk/by-id/…` | legacy boot sector to maintain (required for `bios`) |
 | `BIOS_DISK_OPTIONAL=…` | additional legacy boot sector on a UEFI system (best effort) |
 
 If the file does not exist — the live session, a build chroot — the script
 does nothing and exits successfully.
 
-### What `nexus-grub-install` does
+### What `shadow-grub-install` does
 
 ```
-sudo nexus-grub-install [--verbose]
+sudo shadow-grub-install [--verbose]
 ```
 
 `--verbose` is the only option.
 
-1. Copies the boot-menu theme from `/usr/share/grub/themes/nexus` to
-   `/boot/grub/themes/nexus`. `/boot` is never encrypted on a NEXUS OS
+1. Copies the boot-menu theme from `/usr/share/grub/themes/shadow` to
+   `/boot/grub/themes/shadow`. `/boot` is never encrypted on a Shadow OS
    installation, so GRUB can read the theme before any volume is unlocked.
 2. `FIRMWARE=uefi`: requires the ESP to be mounted, then runs
    `grub-install --target=x86_64-efi --efi-directory=<ESP> --bootloader-id=debian --no-nvram --recheck`
@@ -116,7 +116,7 @@ sudo nexus-grub-install [--verbose]
    `--force-extra-removable` when `ESP_REMOVABLE=yes`. It fails if
    `EFI/debian/grub.cfg` was not written.
 3. With `ESP_NVRAM=yes` and when booted through UEFI: deletes existing
-   firmware entries labelled exactly "NEXUS OS" and creates a new one that
+   firmware entries labelled exactly "Shadow OS" and creates a new one that
    points at `\EFI\debian\shimx64.efi` (or `grubx64.efi` if there is no
    shim). Entries of other operating systems are not touched.
 4. With `BIOS_DISK_OPTIONAL` set: also runs
@@ -130,24 +130,24 @@ kernel packages run it through their own hooks.
 
 ### dpkg triggers
 
-`debian/nexus-boot.triggers` registers interest (`interest-noawait`) in
+`debian/shadow-boot.triggers` registers interest (`interest-noawait`) in
 `/usr/lib/grub` and `/usr/lib/shim`. When an update of the GRUB or shim
-packages changes files there, dpkg runs the `nexus-boot` postinst with
-`triggered`, which calls `nexus-grub-install`. The same happens when
-`nexus-boot` itself is upgraded.
+packages changes files there, dpkg runs the `shadow-boot` postinst with
+`triggered`, which calls `shadow-grub-install`. The same happens when
+`shadow-boot` itself is upgraded.
 
 If the refresh fails, the package run is **not** failed (that would leave
 APT half-configured). Instead the postinst writes the time to
-`/var/lib/nexus/boot-loader-refresh-failed` and prints a warning.
-`nexus-security-status` reports the marker in its `secureboot` section. Fix
-it with `sudo nexus-grub-install --verbose`; a successful run of the trigger
+`/var/lib/shadow/boot-loader-refresh-failed` and prints a warning.
+`shadow-security-status` reports the marker in its `secureboot` section. Fix
+it with `sudo shadow-grub-install --verbose`; a successful run of the trigger
 removes the marker.
 
 Without this refresh the machine would keep booting the old copies on the
 ESP after a GRUB or shim security update — including copies that a later
 Secure Boot revocation (SBAT/dbx) would refuse.
 
-The installation test runs `nexus-grub-install --verbose` on every installed
+The installation test runs `shadow-grub-install --verbose` on every installed
 system as the "update path" check. The trigger itself (a real GRUB or shim
 package update) has not been exercised.
 
@@ -177,7 +177,7 @@ Supported on amd64 through `grub-pc-bin`.
 /EFI/boot/mmx64.efi          MOK manager
 /boot/grub/grub.cfg          boot menu, shared by UEFI and BIOS
 /boot/grub/fonts/unicode.pf2
-/boot/grub/themes/nexus/     boot menu theme
+/boot/grub/themes/shadow/     boot menu theme
 /boot/grub/i386-pc/          BIOS core image (eltorito.img) and modules
 /live/vmlinuz, initrd.img    kernel and initramfs taken from the image
 /live/filesystem.squashfs    the root filesystem
@@ -202,22 +202,22 @@ session; timeout 8 seconds.
 
 | Entry | Kernel parameters | Purpose |
 |---|---|---|
-| NEXUS OS - Live session | `boot=live components quiet splash` | the live desktop (console on the minimal image) |
-| NEXUS OS - Live session (safe graphics) | … `nomodeset` | no kernel mode setting: for black screens caused by a graphics driver |
-| Install NEXUS OS | … `nexus.autostart=installer` | live session that opens the installer |
+| Shadow OS - Live session | `boot=live components quiet splash` | the live desktop (console on the minimal image) |
+| Shadow OS - Live session (safe graphics) | … `nomodeset` | no kernel mode setting: for black screens caused by a graphics driver |
+| Install Shadow OS | … `shadow.autostart=installer` | live session that opens the installer |
 | Advanced options ▸ Live session - verbose boot (no splash) | `boot=live components` | kernel and service messages instead of the splash |
 | Advanced options ▸ Live session - copy system to RAM | … `toram` | the medium can be removed after boot |
 | Advanced options ▸ Live session - serial console (ttyS0, 115200 8N1) | `boot=live components noeject console=tty0 console=ttyS0,115200n8` | headless machines and automated tests |
-| Advanced options ▸ Recovery environment | `boot=live components nexus.autostart=recovery` | live session that asks the shell to start `nexus-recovery` (that program is not part of the image yet, see [../troubleshooting/recovery.md](../troubleshooting/recovery.md)) |
+| Advanced options ▸ Recovery environment | `boot=live components shadow.autostart=recovery` | live session that asks the shell to start `shadow-recovery` (that program is not part of the image yet, see [../troubleshooting/recovery.md](../troubleshooting/recovery.md)) |
 | Advanced options ▸ UEFI firmware settings | `fwsetup` | UEFI only |
 | Advanced options ▸ Boot from the first local disk | exits GRUB (UEFI) or chain-loads `(hd0)` (BIOS) | skip the medium |
 
-`nexus.autostart=…` is read by `system/live/2000-nexus-session`, which writes
-the request to `/run/nexus/autostart`; the shell reads it once at start.
+`shadow.autostart=…` is read by `system/live/2000-shadow-session`, which writes
+the request to `/run/shadow/autostart`; the shell reads it once at start.
 
 **Automated-test hook.** The menu reads the SMBIOS system serial number. If
-it is `NEXUS-AUTOTEST` the serial-console entry is booted after one second;
-if it is `NEXUS-AUTOTEST-INSTALLED` the local-disk entry is. The QEMU harness
+it is `SHADOW-AUTOTEST` the serial-console entry is booted after one second;
+if it is `SHADOW-AUTOTEST-INSTALLED` the local-disk entry is. The QEMU harness
 (`tests/lib/qemu.py`) sets these serials. A real machine does not carry
 them, so the menu behaves normally there.
 
@@ -233,8 +233,8 @@ os-prober unless the installer disabled it (it does so for "erase disk").
 
 | Item | Source | Installed as |
 |---|---|---|
-| GRUB menu theme | `assets/boot/grub/nexus/` (`theme.txt`, background, logo, three fonts, selection box) | `/usr/share/grub/themes/nexus` (package `nexus-artwork`); copied to `/boot/grub/themes/nexus` by `nexus-grub-install`; copied onto the ISO by `assemble.sh` |
-| Plymouth splash | `assets/boot/plymouth/nexus/` (`nexus.plymouth`, `nexus.script`, images) | `/usr/share/plymouth/themes/nexus` (package `nexus-artwork`) |
+| GRUB menu theme | `assets/boot/grub/shadow/` (`theme.txt`, background, logo, three fonts, selection box) | `/usr/share/grub/themes/shadow` (package `shadow-artwork`); copied to `/boot/grub/themes/shadow` by `shadow-grub-install`; copied onto the ISO by `assemble.sh` |
+| Plymouth splash | `assets/boot/plymouth/shadow/` (`shadow.plymouth`, `shadow.script`, images) | `/usr/share/plymouth/themes/shadow` (package `shadow-artwork`) |
 
 Both are regenerated from the logo, wallpaper and fonts by
 `assets/src/boot/gen-boot-theme.sh`.

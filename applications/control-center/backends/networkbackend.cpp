@@ -18,7 +18,7 @@
 
 using namespace NetHw;
 
-NEXUS_CC_DUMP("network", [] {
+SHADOW_CC_DUMP("network", [] {
     NetworkBackend backend;
     waitUntilReady(&backend, 12000);
     return QJsonValue(backend.toJson());
@@ -508,7 +508,7 @@ void NetworkBackend::applyIp(const QString &device, const QVariantMap &settings)
 QString NetworkBackend::proxyFile() const
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-           + QStringLiteral("/environment.d/90-nexus-proxy.conf");
+           + QStringLiteral("/environment.d/90-shadow-proxy.conf");
 }
 
 void NetworkBackend::loadProxyFile()
@@ -623,7 +623,7 @@ bool NetworkBackend::writeProxyFile(const QVariantMap &proxy, QString *error)
     }
 
     QStringList lines = {
-        QStringLiteral("# Proxy settings of the session, written by the NEXUS Control Center (Wired & Proxy)."),
+        QStringLiteral("# Proxy settings of the session, written by the SHADOW Control Center (Wired & Proxy)."),
         QStringLiteral("# Read by systemd --user at login (environment.d(5)). Changes made here are overwritten."),
     };
     const auto both = [&lines](const QString &variable, const QString &value) {

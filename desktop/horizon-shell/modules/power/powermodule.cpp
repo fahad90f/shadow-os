@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // The "power" shell module: idle actions (screens off, lock, suspend) from
-// ~/.config/nexus/power.conf, low-battery notices and update notices.
+// ~/.config/shadow/power.conf, low-battery notices and update notices.
 #include "module.h"
 #include "powerservice.h"
 

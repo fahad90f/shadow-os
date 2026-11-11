@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
 // Places sidebar: standard folders, bookmarks, storage devices (Solid) and
 // network locations. Every entry is a drop target and has a context menu.

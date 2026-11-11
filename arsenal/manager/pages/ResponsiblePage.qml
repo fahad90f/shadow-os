@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.arsenal
+import org.shadow.ui
+import org.shadow.arsenal
 
 // The conditions of use, always available.
 NxPage {
@@ -12,7 +12,7 @@ NxPage {
     signal message(string text, string kind)
 
     title: qsTr("Responsible use")
-    subtitle: qsTr("NEXUS Arsenal is for security professionals, students and developers doing authorised testing, research, defence and forensics.")
+    subtitle: qsTr("SHADOW Arsenal is for security professionals, students and developers doing authorised testing, research, defence and forensics.")
     maxContentWidth: 760
 
     NxCard {
@@ -31,14 +31,14 @@ NxPage {
             icon: arsenal.acknowledged ? "check-circle" : "alert-triangle"
             iconColor: arsenal.acknowledged ? Theme.success : Theme.warning
             title: arsenal.acknowledged ? qsTr("You acknowledged these conditions") : qsTr("Not acknowledged yet")
-            subtitle: qsTr("Stored for your user account only, in ~/.config/nexus/arsenal.conf")
+            subtitle: qsTr("Stored for your user account only, in ~/.config/shadow/arsenal.conf")
             value: arsenal.acknowledgedAt
         }
     }
 
     NxSection {
         title: qsTr("Further reading")
-        description: qsTr("Documents installed with NEXUS Arsenal")
+        description: qsTr("Documents installed with SHADOW Arsenal")
         Repeater {
             model: [
                 { file: "legal-use.md", icon: "file-text", title: qsTr("Legal and responsible use") },

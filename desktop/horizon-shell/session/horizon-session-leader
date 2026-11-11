@@ -1,7 +1,7 @@
 #!/bin/sh
-# horizon-session-leader — supervisor of a NEXUS HORIZON session.
+# horizon-session-leader — supervisor of a Shadow Horizon session.
 #
-# Started by the compositor (see nexus-horizon-session) once it is ready. It
+# Started by the compositor (see shadow-horizon-session) once it is ready. It
 #   1. publishes the session environment to systemd and D-Bus activation, so
 #      user services, portals and XDG autostart entries see the display;
 #   2. starts the session target (which pulls in XDG autostart applications);
@@ -20,8 +20,8 @@ XCURSOR_THEME XCURSOR_SIZE"
 # waits for the first one instead, so the compositor still ends the session
 # when the real supervisor exits.
 if [ -n "$XDG_RUNTIME_DIR" ]; then
-    pidfile="$XDG_RUNTIME_DIR/nexus/session-leader.pid"
-    mkdir -p "$XDG_RUNTIME_DIR/nexus"
+    pidfile="$XDG_RUNTIME_DIR/shadow/session-leader.pid"
+    mkdir -p "$XDG_RUNTIME_DIR/shadow"
     if [ -r "$pidfile" ]; then
         other="$(cat "$pidfile" 2>/dev/null)"
         if [ -n "$other" ] && [ "$other" != "$$" ] && kill -0 "$other" 2>/dev/null \
@@ -54,12 +54,12 @@ if command -v kbuildsycoca6 >/dev/null 2>&1; then
 fi
 
 if have_systemd_user; then
-    systemctl --user --no-block start nexus-horizon-session.target
+    systemctl --user --no-block start shadow-horizon-session.target
 fi
 
 cleanup() {
     if have_systemd_user; then
-        systemctl --user stop nexus-horizon-session.target
+        systemctl --user stop shadow-horizon-session.target
         # shellcheck disable=SC2086
         systemctl --user unset-environment $ENV_VARS
     fi

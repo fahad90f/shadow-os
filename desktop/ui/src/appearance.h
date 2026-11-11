@@ -6,13 +6,13 @@
 #include <QQmlEngine>
 #include <QString>
 
-namespace Nexus {
+namespace Shadow {
 
-// Process-wide appearance state shared by every NEXUS application.
+// Process-wide appearance state shared by every SHADOW application.
 //
-// The state lives in ~/.config/nexus/appearance.conf (system default:
-// /etc/xdg/nexus/appearance.conf). Every process watches that file, so a
-// change made in the Control Center re-themes all running NEXUS apps and the
+// The state lives in ~/.config/shadow/appearance.conf (system default:
+// /etc/xdg/shadow/appearance.conf). Every process watches that file, so a
+// change made in the Control Center re-themes all running SHADOW apps and the
 // shell immediately, without restarts or a session bus round-trip.
 class Appearance : public QObject
 {
@@ -75,4 +75,4 @@ private:
     qreal m_fontScale = 1.0;
 };
 
-} // namespace Nexus
+} // namespace Shadow

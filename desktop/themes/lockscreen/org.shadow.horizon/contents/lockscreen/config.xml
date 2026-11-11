@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Settings of the SHADOW lock screen. KScreenLocker stores them in
+     kscreenlockerrc, group [Greeter][LnF][General], and hands them to
+     LockScreen.qml as the "config" object. -->
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="wallpaper" type="String">
+      <label>Picture behind the lock screen; the plain background colour is used when it cannot be read.</label>
+      <default>/usr/share/backgrounds/shadow/shadow-horizon.jpg</default>
+    </entry>
+  </group>
+</kcfg>

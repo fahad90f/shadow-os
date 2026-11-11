@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.sysinfo
+import org.shadow.ui
+import org.shadow.sysinfo
 
 NxWindow {
     id: window
@@ -41,7 +41,7 @@ NxWindow {
 
         NxSection {
             title: qsTr("Software")
-            NxRow { icon: "nexus"; title: qsTr("Operating system"); value: (info.osName + " " + info.osVersion).trim() }
+            NxRow { icon: "shadow"; title: qsTr("Operating system"); value: (info.osName + " " + info.osVersion).trim() }
             NxRow { icon: "cpu"; title: qsTr("Kernel"); value: info.kernel; monoValue: true }
             NxRow { icon: "layers"; title: qsTr("Architecture"); value: info.architecture; monoValue: true }
             NxRow { icon: "monitor"; title: qsTr("Desktop"); value: info.desktop === "" ? qsTr("Not in a desktop session") : info.desktop + (info.sessionType !== "" ? " (" + info.sessionType + ")" : "") }

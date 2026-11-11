@@ -1,19 +1,19 @@
-# NEXUS Recovery
+# SHADOW Recovery
 
-Repairs a NEXUS OS installation that no longer starts or updates. It runs
+Repairs a Shadow OS installation that no longer starts or updates. It runs
 
-* from the **NEXUS OS medium**: the boot-menu entry "Recovery environment"
-  starts the live session with `nexus.autostart=recovery`, and the shell then
-  opens NEXUS Recovery — or
-* on the **installed system itself** (application menu → NEXUS Recovery), for
+* from the **Shadow OS medium**: the boot-menu entry "Recovery environment"
+  starts the live session with `shadow.autostart=recovery`, and the shell then
+  opens SHADOW Recovery — or
+* on the **installed system itself** (application menu → SHADOW Recovery), for
   what can be repaired while it runs.
 
-Two programs, one package (`nexus-recovery`, CMake component `recovery`):
+Two programs, one package (`shadow-recovery`, CMake component `recovery`):
 
 | Program | What it is |
 |---|---|
-| `nexus-recovery` (`org.nexus.recovery`) | the window; runs as the logged-in user |
-| `nexus-recovery-engine` (`/usr/sbin`, code in `/usr/lib/nexus-recovery/nexus_recovery`) | does the work as root; Python 3, standard library only; usable by hand on a console |
+| `shadow-recovery` (`org.shadow.recovery`) | the window; runs as the logged-in user |
+| `shadow-recovery-engine` (`/usr/sbin`, code in `/usr/lib/shadow-recovery/shadow_recovery`) | does the work as root; Python 3, standard library only; usable by hand on a console |
 
 ## For users
 
@@ -27,14 +27,14 @@ Two programs, one package (`nexus-recovery`, CMake component `recovery`):
    | Action | Use it when | What it runs | What it changes |
    |---|---|---|---|
    | Check the file systems | after a crash or power loss; before anything else if the disk may be damaged | `e2fsck -f -n`, `fsck.vfat -n` on root, `/boot`, the EFI partition (unmounted) | nothing. If damage is found, *Repair…* (after a confirmation) runs `e2fsck -f -y` / `fsck.vfat -a` |
-   | Repair the boot loader | the computer shows a GRUB prompt, "no bootable device", or stops in the initramfs | `update-initramfs -u -k all`, `nexus-grub-install --verbose`, `update-grub` inside the installation | files in `/boot`, the loader on the EFI partition or boot sector, the firmware's "NEXUS OS" entry |
+   | Repair the boot loader | the computer shows a GRUB prompt, "no bootable device", or stops in the initramfs | `update-initramfs -u -k all`, `shadow-grub-install --verbose`, `update-grub` inside the installation | files in `/boot`, the loader on the EFI partition or boot sector, the firmware's "Shadow OS" entry |
    | Repair the package system | an update was interrupted; the Updater reports a broken package system | `dpkg --audit`, `dpkg --configure -a`, `apt-get -f install -y` inside the installation | installed packages and their configuration |
    | Set a new password | a password was forgotten | `chpasswd` (and `faillock --reset`) inside the installation | that account's password — data encrypted with the old one (a wallet) stays locked; the disk-encryption passphrase is *not* changed |
    | Save logs to… | you want help: attach the archive to a report | collects the installer's log, the journal of the last three starts, APT/dpkg logs, `fstab`, `crypttab`, boot configuration, and Recovery's own log | nothing on the installation; writes one new `.tar.gz` (never overwrites) |
    | Open a terminal in the installed system | you want to repair by hand | a root shell whose `/` is the installation (`chroot`) | whatever you type |
 
    The **Output** box shows every command and its output as it happens; the
-   same goes to `/var/log/nexus-recovery/recovery-<date>.log` (on the live
+   same goes to `/var/log/shadow-recovery/recovery-<date>.log` (on the live
    medium that is in memory — use *Save logs to…* to keep it).
 3. **Restart.** *Restart…* unmounts the installation, closes the encrypted
    volumes Recovery opened and restarts. Remove the medium when the screen
@@ -43,18 +43,18 @@ Two programs, one package (`nexus-recovery`, CMake component `recovery`):
 On an installed system an administrator has to authenticate; in the live
 session no password is asked for (the live user has none).
 
-Without a graphical session: `sudo nexus-recovery-engine scan --pretty`, then
+Without a graphical session: `sudo shadow-recovery-engine scan --pretty`, then
 the sub-commands below with the `id` it printed.
 
 ## The engine
 
 ```
-nexus-recovery-engine [--pretty] <command>
+shadow-recovery-engine [--pretty] <command>
   scan                                  find installed systems (changes nothing)
   unlock --device DEV                   open a LUKS volume; passphrase on stdin
   lock [--device DEV]                   close the LUKS volumes the engine opened
   activate-lvm --volume-group VG        vgchange -ay
-  mount --target ID [--read-only]       assemble the installation under /run/nexus-recovery/mnt-ID
+  mount --target ID [--read-only]       assemble the installation under /run/shadow-recovery/mnt-ID
   umount --target ID                    undo exactly that
   fsck --target ID [--device DEV] [--repair]
   repair-boot --target ID [--dry-run]
@@ -70,7 +70,7 @@ Output: one JSON object per line — `step` (title and exact command), `output`
 (failed) or 2 (usage). `ID` is the root file system's UUID from `scan`;
 `running` means the system the engine runs on.
 
-How it keeps to its limits (`engine/nexus_recovery/`):
+How it keeps to its limits (`engine/shadow_recovery/`):
 
 * **scan** (`scan.py`): `lsblk -J` (completed with `blkid -p` where udev has
   no data). Every ext2/3/4, btrfs, xfs or f2fs file system that is not the
@@ -78,7 +78,7 @@ How it keeps to its limits (`engine/nexus_recovery/`):
   read-only *without journal/log replay* (`ro,noload`, `ro,norecovery`,
   `ro,rescue=nologreplay`) on a private directory, read and unmounted. An
   installation is a file system with `/etc/os-release` and `/usr`; it counts
-  as NEXUS OS with `ID=nexus` or `/etc/nexus/boot.conf`. Reported per
+  as Shadow OS with `ID=shadow` or `/etc/shadow/boot.conf`. Reported per
   installation: root device, `fstab` file systems resolved to devices,
   `crypttab`, `boot.conf`, login accounts, what is missing. Symbolic links
   inside an installation are resolved inside it, never into the running system.
@@ -88,9 +88,9 @@ How it keeps to its limits (`engine/nexus_recovery/`):
 * **mount** (`target.py`): root, then `/boot`, `/boot/efi`, `/efi`, `/usr`,
   `/var` from the installation's `fstab` (nothing else — `/home` is left
   alone), `/dev` (rbind), `/proc`, `/sys`, efivars, `/run`. Every mount is
-  recorded in `/run/nexus-recovery/targets/ID.json`; **umount** unmounts
+  recorded in `/run/shadow-recovery/targets/ID.json`; **umount** unmounts
   exactly that list and names the processes in the way when it is busy. Only
-  NEXUS OS installations are mounted; the running system is not.
+  Shadow OS installations are mounted; the running system is not.
 * **fsck** refuses a mounted file system (the running root above all), checks
   with `-n` first and repairs only with `--repair`, and only what the check
   found damaged.
@@ -104,33 +104,33 @@ How it keeps to its limits (`engine/nexus_recovery/`):
 * **logs** creates the archive with the *calling user's* rights
   (`PKEXEC_UID`), mode 0600, `O_EXCL|O_NOFOLLOW`; `/etc/shadow` is never included.
 * **Log**: every command that changes something appends its commands and
-  their output to `/var/log/nexus-recovery/recovery-<date>.log` (0600).
+  their output to `/var/log/shadow-recovery/recovery-<date>.log` (0600).
 * No shell anywhere: argument vectors only.
-* It does not import the installer engine (`nexus-installer` exists on the
+* It does not import the installer engine (`shadow-installer` exists on the
   live medium only).
 
 Test overrides (for a root shell; pkexec does not pass environment on):
-`NEXUS_RECOVERY_TEST_DEVICES=/dev/loopN,…` confines the engine to those loop
-devices; `NEXUS_RECOVERY_STATE_DIR`, `NEXUS_RECOVERY_LOG_DIR`.
+`SHADOW_RECOVERY_TEST_DEVICES=/dev/loopN,…` confines the engine to those loop
+devices; `SHADOW_RECOVERY_STATE_DIR`, `SHADOW_RECOVERY_LOG_DIR`.
 
 ## The window
 
 `recovery.{h,cpp}` drive the engine: one run at a time, started as
-`pkexec /usr/sbin/nexus-recovery-engine <arguments>` (directly when already
+`pkexec /usr/sbin/shadow-recovery-engine <arguments>` (directly when already
 root), secrets written to its stdin and wiped. Polkit:
-`polkit/org.nexus.recovery.policy` — action `org.nexus.recovery.run`, bound
+`polkit/org.shadow.recovery.policy` — action `org.shadow.recovery.run`, bound
 to exactly that program, `auth_admin_keep`;
-`polkit/49-nexus-recovery-live.rules` grants it without a password to the
-live user while `/run/nexus/live-session` exists. Actions that need the
+`polkit/49-shadow-recovery-live.rules` grants it without a password to the
+live user while `/run/shadow/live-session` exists. Actions that need the
 installation mounted run the engine's `mount` first (shown in the output);
 the file-system check runs `umount` first. Confirmations: file-system repair
 (`NxConfirmDialog`, destructive), new password (account + typed twice, in a
 dialog that says it cannot be undone), restart. Restart is logind `Reboot`
 (offered only when `CanReboot` allows it). The terminal is
-`nexus-terminal -e pkexec nexus-recovery-engine shell --target ID --exec`;
-without NEXUS Terminal the row shows the console command instead.
+`shadow-terminal -e pkexec shadow-recovery-engine shell --target ID --exec`;
+without SHADOW Terminal the row shows the console command instead.
 
-`nexus-recovery --dump status|scan`; `--engine PATH` / `$NEXUS_RECOVERY_ENGINE`
+`shadow-recovery --dump status|scan`; `--engine PATH` / `$SHADOW_RECOVERY_ENGINE`
 (development); `--scan-file FILE` (test mode: shows a recorded scan result,
 runs no engine, all actions disabled — used by the smoke test with
 `tests/scan-sample.json`, a recording of the engine test below).
@@ -140,9 +140,9 @@ runs no engine, all actions disabled — used by the smoke test with
 `python3`, `util-linux` (lsblk, blkid, mount, findmnt), `e2fsprogs`,
 `dosfstools`, `cryptsetup-bin`, `lvm2`, `coreutils`, `pkexec`, `polkitd` and an authentication agent,
 `systemd` (journalctl for the log archive, logind for the restart), the
-NEXUS UI library (`nexus-ui`). Recommended: `nexus-terminal`, `efibootmgr`.
-Inside the installation being repaired: `initramfs-tools`, `nexus-boot`,
-`grub2-common`, `dpkg`, `apt`, `passwd` — what a NEXUS OS installation has.
+SHADOW UI library (`shadow-ui`). Recommended: `shadow-terminal`, `efibootmgr`.
+Inside the installation being repaired: `initramfs-tools`, `shadow-boot`,
+`grub2-common`, `dpkg`, `apt`, `passwd` — what a Shadow OS installation has.
 
 ## Tested (build chroot, as root)
 
@@ -174,12 +174,12 @@ Inside the installation being repaired: `initramfs-tools`, `nexus-boot`,
   (stand-in tools), Check (unmounts first; only `-n` was run), Mount/Unmount,
   Unlock (see below). Screenshots `build/work/shots/recovery-gui-1…8-*.png`,
   `recovery-1-noengine.png`, `recovery-2-testmode.png`.
-* `cmake --install --component nexus-recovery` installs the files listed above.
+* `cmake --install --component shadow-recovery` installs the files listed above.
 
 ## Not tested — to be done in a VM
 
 * **`repair-boot` with the real tools** (`update-initramfs`,
-  `nexus-grub-install`, `update-grub`): only its command sequence (dry run)
+  `shadow-grub-install`, `update-grub`): only its command sequence (dry run)
   and its control flow with stand-ins were run. Same for **`repair-packages`**
   (`dpkg`, `apt-get`), including the network inside the chroot.
 * **LUKS unlock/lock, the re-open under the crypttab name, LVM activation**:
@@ -193,12 +193,12 @@ Inside the installation being repaired: `initramfs-tools`, `nexus-boot`,
   outside the loop-device restriction here, on purpose.
 * pkexec/polkit (policy file, live rule, authentication dialog): the window
   was run as root, which starts the engine directly. Restart through logind,
-  the terminal action (no `nexus-terminal` build was on PATH), the journal
+  the terminal action (no `shadow-terminal` build was on PATH), the journal
   export (the fake system has no journal).
 
 ## Limitations
 
-* Only NEXUS OS installations are repaired; other systems are listed but not
+* Only Shadow OS installations are repaired; other systems are listed but not
   selectable.
 * `repair-packages` needs working name resolution inside the installation to
   download packages; Recovery does not touch the installation's network
@@ -213,11 +213,11 @@ Inside the installation being repaired: `initramfs-tools`, `nexus-boot`,
 
 ## Needed outside this directory
 
-* `debian/control`: a package `nexus-recovery` (Architecture: any; Depends:
-  `${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+* `debian/control`: a package `shadow-recovery` (Architecture: any; Depends:
+  `${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
   python3, util-linux, e2fsprogs, dosfstools, cryptsetup-bin, lvm2, pkexec,
-  polkitd, systemd`; Recommends: `nexus-terminal, efibootmgr`). `debian/rules`
+  polkitd, systemd`; Recommends: `shadow-terminal, efibootmgr`). `debian/rules`
   picks it up through the CMake component of the same name; a
-  `python3 -m py_compile system/recovery/engine/nexus_recovery/*.py` check
+  `python3 -m py_compile system/recovery/engine/shadow_recovery/*.py` check
   like the installer's would fit there.
 * The package belongs in the live image *and* on installed systems.

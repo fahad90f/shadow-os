@@ -4,7 +4,7 @@ What does not work, is not finished, or has not been verified. This list is
 meant to be complete and blunt; if you find something missing, it is a
 documentation bug.
 
-NEXUS OS 0.1.0 is a development version. Do not use it where data loss or
+Shadow OS 0.1.0 is a development version. Do not use it where data loss or
 downtime matters.
 
 ## Verification
@@ -16,7 +16,7 @@ downtime matters.
 * **arm64 is not supported.** Configuration for it exists (package lists,
   kernel fragment, boot paths, test matrix), package names resolve and
   `Architecture: all` packages are published for arm64, but no arm64 image
-  has been built or booted. `NEXUS_ARCHES` in `distro/base/nexus.conf` lists
+  has been built or booted. `SHADOW_ARCHES` in `distro/base/shadow.conf` lists
   it; that is an intention, not a fact.
 * The desktop image has been booted under UEFI only. Its Secure Boot and
   BIOS boots, the graphical installer run, the lock screen and the login
@@ -34,11 +34,11 @@ downtime matters.
 
 ## Distribution and updates
 
-* **No hosted NEXUS package repository exists.** `nexus.sources` is shipped
-  disabled. NEXUS packages on an installed system receive **no updates**,
-  including security fixes for NEXUS components.
-* The NEXUS packages of a release ship as a signed repository on the disk
-  (`/usr/share/nexus/repository`, desktop image). It is a snapshot.
+* **No hosted SHADOW package repository exists.** `shadow.sources` is shipped
+  disabled. SHADOW packages on an installed system receive **no updates**,
+  including security fixes for SHADOW components.
+* The SHADOW packages of a release ship as a signed repository on the disk
+  (`/usr/share/shadow/repository`, desktop image). It is a snapshot.
 * **The archive signing key used so far is a development key** generated on
   the build machine, without a passphrase. There is no release key and no
   release-signing procedure. Treat every existing image as a development
@@ -47,7 +47,7 @@ downtime matters.
 * No automatic updates and no background update check.
 * No rollback: no snapshots, no transactional updates, one version per
   package in the repository.
-* No upgrade path to a later NEXUS OS or Debian release is defined.
+* No upgrade path to a later Shadow OS or Debian release is defined.
 * Images contain whatever Debian package versions the mirror offered at
   build time; the base-layer cache does not notice Debian updates unless
   you build with `--fresh`.
@@ -57,15 +57,15 @@ downtime matters.
 
 ## Kernel
 
-* The image ships **Debian's signed kernel**, not a NEXUS kernel.
-* The NEXUS kernel's configuration pipeline works; a **full build has never
-  completed**. No NEXUS kernel package exists, none has been booted, and
+* The image ships **Debian's signed kernel**, not a SHADOW kernel.
+* The SHADOW kernel's configuration pipeline works; a **full build has never
+  completed**. No SHADOW kernel package exists, none has been booted, and
   nothing would install one.
-* The build-time hardening options of the NEXUS configuration that Debian
+* The build-time hardening options of the SHADOW configuration that Debian
   does not already set (1000 Hz and full preemption, `UBSAN_BOUNDS`,
   `RANDOM_KMALLOC_CACHES`, `ZERO_CALL_USED_REGS`, strict IOMMU invalidation,
-  always-on BPF JIT) are therefore **not in effect** on a NEXUS OS system.
-* A NEXUS kernel would be unsigned unless a Secure Boot key is supplied;
+  always-on BPF JIT) are therefore **not in effect** on a Shadow OS system.
+* A SHADOW kernel would be unsigned unless a Secure Boot key is supplied;
   the project has no such key.
 * The kernel build keeps the temporary module-signing key in its build
   tree; it is "discarded" only when that tree is deleted.
@@ -73,17 +73,17 @@ downtime matters.
 ## Boot
 
 * The boot-loader directory on the ESP is `EFI/debian` (required by
-  Debian's signed GRUB). NEXUS OS cannot share an EFI System Partition with
+  Debian's signed GRUB). Shadow OS cannot share an EFI System Partition with
   a Debian installation or another distribution that uses that directory.
 * The boot-loader refresh trigger has not been exercised by a real GRUB or
   shim update. A failed refresh is reported only by
-  `nexus-security-status`; the Updater does not show it.
+  `shadow-security-status`; the Updater does not show it.
 * The GRUB menu has no password.
 * GRUB's recovery-mode entries are kept, but the root account is locked, so
   the rescue shell is expected to be unusable unless you set a root
   password.
 * The live medium's "Recovery environment" entry starts a program
-  (`nexus-recovery`) that does not exist in the image.
+  (`shadow-recovery`) that does not exist in the image.
 * The Plymouth passphrase prompt on an encrypted installation of the
   desktop image is unverified.
 
@@ -112,7 +112,7 @@ downtime matters.
 
 ## Desktop
 
-* The compositor is KWin. NEXUS HORIZON is a shell and session on top of
+* The compositor is KWin. Shadow Horizon is a shell and session on top of
   it, with dependencies on KWin-specific interfaces, KScreenLocker,
   `plasma-integration` and KDE's portal back-end. A native compositor is
   not implemented.
@@ -144,10 +144,10 @@ Not in the image, although the desktop refers to them:
 
 | Missing | Effect |
 |---|---|
-| Terminal (`nexus-terminal`) — has a README, excluded from package builds | **the desktop image contains no terminal emulator.** The terminal shortcuts and the Arsenal manager's "show usage in terminal" report "not installed". Use a text console (Ctrl+Alt+F3) or install a terminal from Debian |
-| Screenshot (`nexus-screenshot`) | the Print shortcuts report "not installed" |
+| Terminal (`shadow-terminal`) — has a README, excluded from package builds | **the desktop image contains no terminal emulator.** The terminal shortcuts and the Arsenal manager's "show usage in terminal" report "not installed". Use a text console (Ctrl+Alt+F3) or install a terminal from Debian |
+| Screenshot (`shadow-screenshot`) | the Print shortcuts report "not installed" |
 | Editor, Archive Manager, Disk Manager | not available; default dock pins for missing applications are not shown |
-| Security Center | the status report exists only as the command `nexus-security-status` |
+| Security Center | the status report exists only as the command `shadow-security-status` |
 | Recovery tool | see "Boot" |
 | Control Center pages: Appearance, Accessibility, Startup, Language, Date & Time, Storage, Users, Privacy, Firewall, Security, Updates | not available. In particular there is no graphical way to manage users, date and time, the firewall, or the appearance beyond the quick-settings dark-mode switch |
 | Shell power module | not integrated |
@@ -190,14 +190,14 @@ In the image, with limits stated in their READMEs
 * The "security distribution" consists of on-demand profiles of Debian
   packages. No security tool profile is installed by default, whatever the
   variant file's comment says.
-* NEXUS ships no AppArmor profiles; NEXUS applications and helpers run
+* SHADOW ships no AppArmor profiles; SHADOW applications and helpers run
   unconfined.
 * The firewall filters inbound traffic by port only; no outbound filtering
   and no per-application rules. There is no graphical firewall management
   in the image.
 * Audit rules are not locked.
 * The lock screen has a 5-second grace period by default.
-* No vulnerability in a NEXUS component can currently be fixed on installed
+* No vulnerability in a SHADOW component can currently be fixed on installed
   systems through an update channel.
 * The complete list of deliberate exceptions is in
   [security/hardening.md](security/hardening.md).

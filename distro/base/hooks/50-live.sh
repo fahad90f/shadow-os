@@ -1,5 +1,5 @@
 # Image-level adjustments for the live medium (session defaults themselves
-# come from the nexus-live package).
+# come from the shadow-live package).
 
 # The root account has no password; administration goes through sudo/polkit.
 passwd -l root >/dev/null

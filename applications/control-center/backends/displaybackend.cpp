@@ -17,14 +17,14 @@
 #include <cmath>
 #include <functional>
 
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
 #include <KConfig>
 #include <KConfigGroup>
 #endif
 
 using namespace NetHw;
 
-NEXUS_CC_DUMP("display", [] {
+SHADOW_CC_DUMP("display", [] {
     DisplayBackend backend;
     waitUntilReady(&backend, 15000);
     return QJsonValue(backend.toJson());
@@ -147,7 +147,7 @@ bool touchesAny(const QRect &rect, const QList<QRect> &others)
     return false;
 }
 
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
 // "HHmm" (kwinrc) ↔ "HH:mm" (UI)
 QString timeFromConfig(const QString &value, const QString &fallback)
 {
@@ -997,7 +997,7 @@ void DisplayBackend::revert()
 
 void DisplayBackend::loadNightLightConfig()
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     const KConfig config(QStringLiteral("kwinrc"), KConfig::NoGlobals);
     const KConfigGroup group = config.group(QStringLiteral("NightColor"));
     m_nightEnabled = group.readEntry("Active", false);
@@ -1032,7 +1032,7 @@ void DisplayBackend::queryNightLight()
         m_nightLoaded = true;
         updateReady();
     };
-#ifndef NEXUS_HAVE_KCONFIG
+#ifndef SHADOW_HAVE_KCONFIG
     unavailable(tr("This build has no KConfig support, which Night Light settings need."));
 #else
     QDBusConnection bus = QDBusConnection::sessionBus();
@@ -1069,13 +1069,13 @@ void DisplayBackend::nightLightWritten()
 
 void DisplayBackend::setNightLightEnabled(bool enabled)
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     if (!m_nightAvailable)
         return;
     const QString mode = m_nightMode;
     const bool ok = writeNightColor([enabled, mode](KConfigGroup &group) {
         group.writeEntry("Active", enabled, KConfig::Notify);
-        // "Automatic" needs a location service feeding KWin, which NEXUS does
+        // "Automatic" needs a location service feeding KWin, which SHADOW does
         // not run; switching Night Light on from here uses fixed times instead.
         if (enabled && mode == QLatin1String("automatic"))
             group.writeEntry("Mode", QStringLiteral("Times"), KConfig::Notify);
@@ -1090,7 +1090,7 @@ void DisplayBackend::setNightLightEnabled(bool enabled)
 
 void DisplayBackend::setNightLightMode(const QString &mode)
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     if (!m_nightAvailable)
         return;
     QString value;
@@ -1114,7 +1114,7 @@ void DisplayBackend::setNightLightMode(const QString &mode)
 
 void DisplayBackend::setNightTemperature(int kelvin)
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     if (!m_nightAvailable)
         return;
     kelvin = qBound(kMinNightTemperature, kelvin, kMaxNightTemperature);
@@ -1129,7 +1129,7 @@ void DisplayBackend::setNightTemperature(int kelvin)
 
 bool DisplayBackend::setNightLightTimes(const QString &evening, const QString &morning)
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     if (!m_nightAvailable)
         return false;
     static const QRegularExpression pattern(QStringLiteral("^([01][0-9]|2[0-3]):[0-5][0-9]$"));
@@ -1164,7 +1164,7 @@ bool DisplayBackend::setNightLightTimes(const QString &evening, const QString &m
 
 bool DisplayBackend::setNightLightTransitionMinutes(int minutes)
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     if (!m_nightAvailable)
         return false;
     const int apart = qAbs(QTime::fromString(m_nightEvening, QStringLiteral("HH:mm")).msecsSinceStartOfDay()
@@ -1186,7 +1186,7 @@ bool DisplayBackend::setNightLightTransitionMinutes(int minutes)
 
 bool DisplayBackend::setNightLightLocation(double latitude, double longitude)
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     if (!m_nightAvailable)
         return false;
     if (!(latitude >= -90 && latitude <= 90) || !(longitude >= -180 && longitude <= 180)) {

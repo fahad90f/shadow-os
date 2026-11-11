@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Shared loader for the NEXUS Arsenal profile manifests (Python standard library only).
+"""Shared loader for the SHADOW Arsenal profile manifests (Python standard library only).
 
 Used by validate.py, check-availability.py, profile-size.py, gen-control.py and
 gen-profiles-doc.py so that all of them read the manifests the same way.
@@ -15,7 +15,7 @@ REPO_ROOT = os.path.dirname(ARSENAL_DIR)
 # Files in the profiles directory that are not profile manifests.
 NON_PROFILE_FILES = {"schema.json", "categories.json", "sizes.json"}
 
-# Architectures NEXUS OS is built for (distro/base/nexus.conf: NEXUS_ARCHES).
+# Architectures Shadow OS is built for (distro/base/shadow.conf: SHADOW_ARCHES).
 ARCHITECTURES = ("amd64", "arm64")
 
 # The order profiles are presented in (cards, documentation, control file).

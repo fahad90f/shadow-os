@@ -11,7 +11,7 @@
 #include <QJsonArray>
 #include <QTimer>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 QJsonObject UpdateDetailEntry::toJson() const
 {
@@ -55,13 +55,13 @@ QString QueryResult::errorMessage() const
     if (ok)
         return {};
     if (hasError) {
-        return QCoreApplication::translate("NexusPk", "%1 (PackageKit error “%2”)%3")
+        return QCoreApplication::translate("ShadowPk", "%1 (PackageKit error “%2”)%3")
             .arg(errorText(error), errorKey(error),
                  errorDetails.trimmed().isEmpty() ? QString() : QStringLiteral(": ") + errorDetails.trimmed());
     }
     if (exit == PackageKit::Transaction::ExitCancelled || exit == PackageKit::Transaction::ExitCancelledPriority)
-        return QCoreApplication::translate("NexusPk", "The request was cancelled");
-    return QCoreApplication::translate("NexusPk", "PackageKit ended the request without a result (exit “%1”)")
+        return QCoreApplication::translate("ShadowPk", "The request was cancelled");
+    return QCoreApplication::translate("ShadowPk", "PackageKit ended the request without a result (exit “%1”)")
         .arg(exitKey(exit));
 }
 
@@ -92,7 +92,7 @@ Query::Query(QObject *context, PackageKit::Transaction *transaction, Callback do
         QTimer::singleShot(0, this, [this] {
             m_result.hasError = true;
             m_result.error = T::ErrorInternalError;
-            m_result.errorDetails = QCoreApplication::translate("NexusPk", "PackageKit did not create a transaction");
+            m_result.errorDetails = QCoreApplication::translate("ShadowPk", "PackageKit did not create a transaction");
             finish(T::ExitFailed, 0);
         });
         return;
@@ -155,7 +155,7 @@ Query::Query(QObject *context, PackageKit::Transaction *transaction, Callback do
         if (!m_result.hasError) {
             m_result.hasError = true;
             m_result.error = T::ErrorInternalError;
-            m_result.errorDetails = QCoreApplication::translate("NexusPk", "The PackageKit transaction ended unexpectedly");
+            m_result.errorDetails = QCoreApplication::translate("ShadowPk", "The PackageKit transaction ended unexpectedly");
         }
         finish(T::ExitFailed, 0);
     });
@@ -247,4 +247,4 @@ void resolvePackages(QObject *context, const QStringList &names,
     });
 }
 
-} // namespace NexusPk
+} // namespace ShadowPk

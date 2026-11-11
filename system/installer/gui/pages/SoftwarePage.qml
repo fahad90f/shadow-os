@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 StepPage {
     id: page
@@ -13,8 +13,8 @@ StepPage {
     property string expanded: ""
 
     title: qsTr("Software")
-    subtitle: qsTr("Optional tool profiles of NEXUS Arsenal. They are downloaded from the package repositories at the end of "
-                 + "the installation, so they need a network connection — and they can just as well be installed later from NEXUS Arsenal.")
+    subtitle: qsTr("Optional tool profiles of SHADOW Arsenal. They are downloaded from the package repositories at the end of "
+                 + "the installation, so they need a network connection — and they can just as well be installed later from SHADOW Arsenal.")
 
     function toggle(id, on) {
         const list = wiz.profiles.filter(x => x !== id)
@@ -31,7 +31,7 @@ StepPage {
             message: page.online
                      ? qsTr("If a download fails, the installation still completes and the engine reports which profiles are missing.")
                      : qsTr("The system check found no network connection. Continue without profiles and install them later from "
-                          + "NEXUS Arsenal, or connect to a network, go back to “System check” and choose “Check again”.")
+                          + "SHADOW Arsenal, or connect to a network, go back to “System check” and choose “Check again”.")
         }
 
         NxSection {

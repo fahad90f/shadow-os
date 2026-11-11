@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install what a Debian or Ubuntu build host needs to build and test NEXUS OS.
+# Install what a Debian or Ubuntu build host needs to build and test Shadow OS.
 #
 #   sudo scripts/host-setup.sh [--no-test-tools]
 #

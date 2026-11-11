@@ -9,10 +9,10 @@
 #include <QVariantList>
 
 // Desktop side of the Appearance page: wallpaper and the dock/panel options
-// of the NEXUS HORIZON shell.
+// of the Shadow Horizon shell.
 //
-// Everything is stored in ~/.config/nexus/horizon.conf (system default:
-// /etc/xdg/nexus/horizon.conf), the file the shell watches — keys are
+// Everything is stored in ~/.config/shadow/horizon.conf (system default:
+// /etc/xdg/shadow/horizon.conf), the file the shell watches — keys are
 // documented in desktop/horizon-shell/src/shellsettings.h:
 //
 //   [Desktop] Wallpaper, WallpaperLight, WallpaperFill
@@ -20,11 +20,11 @@
 //   [Panel]   Clock24h, ClockSeconds, ClockDate
 //
 // Colour scheme, accent, transparency, motion and font scale are not handled
-// here: the page binds them to the Appearance singleton of org.nexus.ui.
+// here: the page binds them to the Appearance singleton of org.shadow.ui.
 //
-// Bundled wallpapers are the images in /usr/share/backgrounds/nexus. For an
+// Bundled wallpapers are the images in /usr/share/backgrounds/shadow. For an
 // uninstalled build tree the directory can be overridden with the environment
-// variable NEXUS_WALLPAPER_DIR (developer override, e.g. /src/assets/wallpapers).
+// variable SHADOW_WALLPAPER_DIR (developer override, e.g. /src/assets/wallpapers).
 class AppearanceBackend : public QObject
 {
     Q_OBJECT

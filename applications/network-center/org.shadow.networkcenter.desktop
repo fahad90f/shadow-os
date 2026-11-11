@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Network Center
+GenericName=Network Management and Diagnostics
+Comment=Manage connections, Wi-Fi, IP and DNS settings and VPNs; inspect routes and sockets; diagnose problems and capture packets
+Exec=shadow-network-center
+Icon=org.shadow.networkcenter
+Terminal=false
+Categories=System;Network;Monitor;
+Keywords=network;wifi;ethernet;ip;dns;route;vpn;wireguard;ping;traceroute;capture;firewall;socket;connection;
+StartupNotify=true
+StartupWMClass=org.shadow.networkcenter
+X-SHADOW-Component=network-center

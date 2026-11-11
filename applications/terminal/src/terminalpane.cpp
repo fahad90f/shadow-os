@@ -250,7 +250,7 @@ bool TerminalPane::start()
     QStringList environment = {
         QStringLiteral("TERM=xterm-256color"),
         QStringLiteral("COLORTERM=truecolor"),
-        QStringLiteral("TERM_PROGRAM=nexus-terminal"),
+        QStringLiteral("TERM_PROGRAM=shadow-terminal"),
         QStringLiteral("TERM_PROGRAM_VERSION=") + QCoreApplication::applicationVersion(),
         QStringLiteral("SHELL=")
             + (m_spec.kind == PaneSpec::Kind::Shell && p.commandMode != QLatin1String("custom")

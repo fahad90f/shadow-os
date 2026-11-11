@@ -4,8 +4,8 @@
   "name": "Forensics",
   "summary": "Acquisition and analysis tools for disk, memory, file and artifact forensics",
   "description": "A digital-forensics kit for authorized incident response and investigation: imaging and write-safe acquisition, filesystem and deleted-file analysis, carving, memory and registry artifacts, malware triage and anti-virus scanning. Use these on evidence you are authorized to examine, and keep an auditable chain of custody.",
-  "icon": "nexus-forensics",
-  "metapackage": "nexus-arsenal-forensics",
+  "icon": "shadow-forensics",
+  "metapackage": "shadow-arsenal-forensics",
   "tools": [
     {
       "package": "sleuthkit",

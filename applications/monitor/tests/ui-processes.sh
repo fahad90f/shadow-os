@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Drives nexus-monitor with real key presses and mouse clicks (xdotool) under
+# Drives shadow-monitor with real key presses and mouse clicks (xdotool) under
 # the virtual X server of "scripts/dev.sh run" and checks the effect on real
 # processes. One scenario per invocation ("dev.sh run" allows 60 seconds):
 #
@@ -44,10 +44,10 @@ set -u
 
 SCENARIO="${1:-}"
 B="${LD_LIBRARY_PATH%%/lib*}"
-APP="$B/bin/nexus-monitor"
+APP="$B/bin/shadow-monitor"
 [ -x "$APP" ] || { echo "ui-processes: $APP not found (run through scripts/dev.sh run)"; exit 2; }
 [ "$(id -u)" = 0 ] || { echo "ui-processes: must run as root (it switches to nobody itself)"; exit 2; }
-export NEXUS_WINDOW_SIZE=1240x800
+export SHADOW_WINDOW_SIZE=1240x800
 
 TOKEN="nxv${RANDOM}x${RANDOM}"      # appears in no other command line
 FAILED=0
@@ -284,12 +284,12 @@ launch)
     shot 1-sensors
     "$APP" disks; sleep 1.5
     shot 2-disks
-    check "a second launch did not start a second instance" test "$(pgrep -c -x nexus-monitor)" = 1
+    check "a second launch did not start a second instance" test "$(pgrep -c -x shadow-monitor)" = 1
     "$APP" --page nonsense 2>/dev/null
     check "an unknown page is rejected with exit code 2" test $? = 2
     click "93 767"; sleep 0.8                   # "2 s"
     shot 3-interval
-    check "the update interval was stored" grep -q "intervalMs=2000" "$HOME/.config/nexus/monitor.conf"
+    check "the update interval was stored" grep -q "intervalMs=2000" "$HOME/.config/shadow/monitor.conf"
     ;;
 *)
     echo "usage: ui-processes.sh terminate|kill|button|keyboard|suspend|renice|foreign|views|launch"; exit 2 ;;

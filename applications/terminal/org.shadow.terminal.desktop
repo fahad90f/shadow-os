@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+GenericName=Terminal Emulator
+Comment=Use the command line: tabs, split panes, profiles and SSH connections
+Exec=shadow-terminal
+Icon=org.shadow.terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;cmd;console;bash;zsh;ssh;
+StartupNotify=true
+StartupWMClass=org.shadow.terminal
+Actions=new-window;
+X-SHADOW-Component=terminal
+
+[Desktop Action new-window]
+Name=New Window
+Exec=shadow-terminal --no-restore

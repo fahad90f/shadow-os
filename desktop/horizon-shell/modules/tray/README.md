@@ -36,7 +36,7 @@ there is no XEmbed→StatusNotifierItem bridge in this module.
   wheel: `Scroll`. `NeedsAttention` shows the attention icon, a dot and a pulse.
   Reachable with Tab; Return/Space and the Menu key work.
 * **Menu overlay** (`TrayMenuOverlay.qml`): an `OverlaySurface` drawing the menu in the
-  NEXUS style under the icon — check marks, radio dots, icons, separators, disabled
+  SHADOW style under the icon — check marks, radio dots, icons, separators, disabled
   entries, submenus as further cards that keep to one side and stay on the screen, a
   scrolling list when a menu is taller than the screen, "asking the application / does
   not answer / empty" states. Keyboard: Up/Down/Home/End, Right or Return opens a
@@ -56,7 +56,7 @@ needsAttention iconSource hasIcon toolTipTitle toolTipText hasMenu menu itemIsMe
 `showMenu(item, x)`, `showToolTip(item, x)`, `hideToolTip()`.
 
 Icons are served by the image provider `image://nxtray/...`, registered with
-`Nexus::App::engine()`; a symbolic (single grey tone) icon that would be invisible on
+`Shadow::App::engine()`; a symbolic (single grey tone) icon that would be invisible on
 the panel is recoloured with the text colour.
 
 ## Untrusted input — limits (`trayutil.h`)

@@ -10,8 +10,8 @@
 // hands it out with the same protocol KWin uses (reply with the image
 // geometry, then raw pixels written into the caller's pipe).
 //
-//   DISPLAY=$NEXUS_NESTED_X QT_QPA_PLATFORM=xcb nexus-screenshot-fakekwin &
-//   NEXUS_SCREENSHOT_KWIN_SERVICE=org.nexus.test.FakeKWin nexus-screenshot …
+//   DISPLAY=$SHADOW_NESTED_X QT_QPA_PLATFORM=xcb shadow-screenshot-fakekwin &
+//   SHADOW_SCREENSHOT_KWIN_SERVICE=org.shadow.test.FakeKWin shadow-screenshot …
 //
 // Not covered by the double: single-window capture (answers with an error,
 // as it does not know the compositor's windows) and the pointer option.
@@ -130,7 +130,7 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
     FakeScreenShot2 service;
     QDBusConnection bus = QDBusConnection::sessionBus();
-    if (!bus.registerService(QStringLiteral("org.nexus.test.FakeKWin"))
+    if (!bus.registerService(QStringLiteral("org.shadow.test.FakeKWin"))
         || !bus.registerObject(QStringLiteral("/org/kde/KWin/ScreenShot2"), &service,
                                QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllProperties)) {
         std::fprintf(stderr, "fakekwin: cannot register on the session bus\n");

@@ -1,7 +1,7 @@
 # <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
 #
 # The smoke test passes when the window is up, the style sheet parsed and the
-# program of the first terminal is running (NEXUS-SMOKE-OK org.nexus.terminal).
-nexus-terminal
+# program of the first terminal is running (SHADOW-SMOKE-OK org.shadow.terminal).
+shadow-terminal
 # the same with an explicit command as argument vector instead of the profile's shell
-nexus-terminal --workdir /tmp -e /bin/sh
+shadow-terminal --workdir /tmp -e /bin/sh

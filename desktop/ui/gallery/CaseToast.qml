@@ -2,13 +2,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Test page: toasts of an NxWindow with a sidebar. A long message wraps
 // inside a width-limited toast instead of spanning the window.
 NxWindow {
     id: window
-    title: "NexusUI Gallery — toast"
+    title: "ShadowUI Gallery — toast"
     width: 1100
     height: 640
 

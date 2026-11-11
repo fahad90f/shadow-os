@@ -1,0 +1,2 @@
+system/installer/engine/shadow-installer-engine usr/sbin
+system/installer/engine/shadow_installer usr/lib/shadow-installer

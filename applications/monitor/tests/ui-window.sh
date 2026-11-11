@@ -10,7 +10,7 @@
 #   measured as scheduler time slices of the sampling threads
 #   (/proc/<pid>/task/<tid>/schedstat) while the window is mapped, unmapped
 #   and mapped again
-#   the "System Information" button starts nexus-sysinfo (needs it built into
+#   the "System Information" button starts shadow-sysinfo (needs it built into
 #   the same build directory: dev.sh build --dir monitor --only "monitor;sysinfo")
 #
 # Needs xdotool (development tools of the build chroot).
@@ -19,9 +19,9 @@
 set -u
 
 B="${LD_LIBRARY_PATH%%/lib*}"
-APP="$B/bin/nexus-monitor"
+APP="$B/bin/shadow-monitor"
 [ -x "$APP" ] || { echo "ui-window: $APP not found (run through scripts/dev.sh run)"; exit 2; }
-export NEXUS_WINDOW_SIZE=1240x1300
+export SHADOW_WINDOW_SIZE=1240x1300
 FAILED=0
 
 check() {
@@ -34,7 +34,7 @@ slices() {
     local total=0 task
     for task in /proc/"$APPPID"/task/*; do
         case "$(cat "$task/comm" 2>/dev/null)" in
-            nexus-monitor-s*|nexus-monitor-p*) total=$((total + $(awk '{print $3}' "$task/schedstat"))) ;;
+            shadow-monitor-s*|shadow-monitor-p*) total=$((total + $(awk '{print $3}' "$task/schedstat"))) ;;
         esac
     done
     echo "$total"
@@ -42,7 +42,7 @@ slices() {
 
 "$APP" > /tmp/ui-window.log 2>&1 &
 APPPID=$!
-trap 'kill -9 "$APPPID" 2>/dev/null; pkill -9 -x nexus-sysinfo 2>/dev/null; rm -f /tmp/ui-window.log' EXIT
+trap 'kill -9 "$APPPID" 2>/dev/null; pkill -9 -x shadow-sysinfo 2>/dev/null; rm -f /tmp/ui-window.log' EXIT
 WID=$(xdotool search --sync --onlyvisible --name "System Monitor" | head -1)
 xdotool windowfocus --sync "$WID"
 xdotool mousemove 1200 20
@@ -63,12 +63,12 @@ a=$(slices); sleep 4; b=$(slices)
 echo "  visible: $((b - a)) time slices in 4 s"
 check "sampling resumes when the window is shown again" test $((b - a)) -ge 3
 
-if [ -x "$B/bin/nexus-sysinfo" ]; then
+if [ -x "$B/bin/shadow-sysinfo" ]; then
     xdotool mousemove 1123 977 click 1; sleep 3     # "System Information"
     import -window root -crop 1240x1300+0+0 +repage /shots/ui-window-sysinfo.png 2>/dev/null
-    check "the System Information button started nexus-sysinfo" running nexus-sysinfo
+    check "the System Information button started shadow-sysinfo" running shadow-sysinfo
 else
-    echo "  skip  nexus-sysinfo is not built into $B/bin"
+    echo "  skip  shadow-sysinfo is not built into $B/bin"
 fi
 
 if grep -q "qml\|QML\|TypeError\|ReferenceError" /tmp/ui-window.log; then

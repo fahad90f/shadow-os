@@ -4,10 +4,10 @@ import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.archivemanager
+import org.shadow.ui
+import org.shadow.archivemanager
 
-// NEXUS Archive Manager — main window: toolbar, the contents of the open
+// SHADOW Archive Manager — main window: toolbar, the contents of the open
 // archive, progress bar and the dialogs for extracting and creating.
 NxWindow {
     id: window

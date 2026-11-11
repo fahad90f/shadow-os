@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Shadow OS
+Description=Shadow OS boot splash: logo, progress and disk-unlock prompt
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/shadow
+ScriptFile=/usr/share/plymouth/themes/shadow/shadow.script

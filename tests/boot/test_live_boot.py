@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Boot the NEXUS OS live ISO through real firmware and verify the live session.
+"""Boot the Shadow OS live ISO through real firmware and verify the live session.
 
-    tests/boot/test_live_boot.py --iso build/out/iso/nexus-os-<ver>-<arch>.iso \
+    tests/boot/test_live_boot.py --iso build/out/iso/shadow-os-<ver>-<arch>.iso \
         [--arch amd64|arm64] [--firmware uefi|uefi-secureboot|bios] [--media cdrom|usb]
 
 What is verified (all from inside the guest, over the serial console):
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     ap.add_argument("--arch", default="amd64", choices=["amd64", "arm64"])
     ap.add_argument("--firmware", default="uefi", choices=["uefi", "uefi-secureboot", "bios"])
     ap.add_argument("--media", default="cdrom", choices=["cdrom", "usb"])
-    ap.add_argument("--user", default="nexus")
+    ap.add_argument("--user", default="shadow")
     ap.add_argument("--password", default="live")
     ap.add_argument("--memory", type=int, default=4096)
     ap.add_argument("--timeout", type=float, default=900)

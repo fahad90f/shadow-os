@@ -9,7 +9,7 @@
 #                   to switch the screens off and on
 #
 # UPower, logind, NetworkManager and the notification service are reached
-# with plain QtDBus (already linked through Nexus::App).
+# with plain QtDBus (already linked through Shadow::App).
 find_package(KF6IdleTime REQUIRED)
 
 qt6_generate_wayland_protocol_client_sources(horizon-shell

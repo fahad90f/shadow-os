@@ -2,16 +2,16 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
-// Live view of one NexusPk::Job: what PackageKit is doing right now (status,
+// Live view of one ShadowPk::Job: what PackageKit is doing right now (status,
 // percentage, per-package progress, download figures), a Cancel button for as
 // long as PackageKit allows cancelling, and — once it is over — the outcome
 // with PackageKit's error code and details.
 NxCard {
     id: root
 
-    // NexusPk::Job; the panel hides itself while this is null.
+    // ShadowPk::Job; the panel hides itself while this is null.
     property QtObject job: null
     property bool showItems: false
     property bool showLog: false

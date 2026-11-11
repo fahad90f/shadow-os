@@ -1,11 +1,11 @@
-"""QEMU harness for NEXUS OS boot, live-session and installer tests.
+"""QEMU harness for Shadow OS boot, live-session and installer tests.
 
 Standard library only, so it runs on any build host and in CI.
 
 A VM is described by how it boots (UEFI, UEFI with Secure Boot enforced, or
 legacy BIOS on amd64), what media and disks are attached, and — for the
 serial-console automation — an SMBIOS system serial that the boot menu on the
-NEXUS media recognises (see system/boot/grub/live-grub.cfg.in). Everything the
+SHADOW media recognises (see system/boot/grub/live-grub.cfg.in). Everything the
 guest prints on its first serial port is captured to a log file and is also
 available for pattern matching through :meth:`VM.expect`.
 
@@ -45,8 +45,8 @@ FIRMWARE = {
     },
 }
 
-AUTOTEST_SERIAL = "NEXUS-AUTOTEST"
-AUTOTEST_SERIAL_INSTALLED = "NEXUS-AUTOTEST-INSTALLED"
+AUTOTEST_SERIAL = "SHADOW-AUTOTEST"
+AUTOTEST_SERIAL_INSTALLED = "SHADOW-AUTOTEST-INSTALLED"
 
 
 class TestFailure(AssertionError):
@@ -77,7 +77,7 @@ class VM:
         self.smbios_serial = smbios_serial
         self.graphics = graphics
         self._own_workdir = workdir is None
-        self.workdir = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix=f"nexus-{name}-"))
+        self.workdir = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix=f"shadow-{name}-"))
         self.workdir.mkdir(parents=True, exist_ok=True)
         self.serial_log = self.workdir / f"{name}.serial.log"
         self.qemu_log = self.workdir / f"{name}.qemu.log"
@@ -120,7 +120,7 @@ class VM:
                                  "-device", f"virtio-blk-pci,drive=hd{idx}"])
         elif bus == "nvme":
             self._drives.append(["-drive", f"file={image},if=none,id=hd{idx},format={fmt}",
-                                 "-device", f"nvme,drive=hd{idx},serial=NEXUSNVME{idx}"])
+                                 "-device", f"nvme,drive=hd{idx},serial=SHADOWNVME{idx}"])
         elif bus == "sata":
             self._drives.append(["-drive", f"file={image},if=none,id=hd{idx},format={fmt}",
                                  "-device", f"ide-hd,drive=hd{idx}"])

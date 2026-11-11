@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
 // Page of one application (an AppStream component) or of one plain package.
 //
@@ -437,7 +437,7 @@ NxPage {
             value: pkg.repo !== "" ? pkg.repoText + "  (" + pkg.repo + ")" : qsTr("Not reported by PackageKit")
             NxBadge {
                 visible: pkg.repoCategory !== ""
-                text: pkg.repoCategory === "debian" ? qsTr("Debian base") : pkg.repoCategory === "nexus" ? qsTr("NEXUS") : qsTr("Third party")
+                text: pkg.repoCategory === "debian" ? qsTr("Debian base") : pkg.repoCategory === "shadow" ? qsTr("SHADOW") : qsTr("Third party")
                 kind: pkg.repoCategory === "third-party" ? "warning" : "accent"
                 dot: false
             }

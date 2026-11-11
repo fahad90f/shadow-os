@@ -4,7 +4,7 @@ import QtQuick.Controls
 
 // Push button with explicit visual intent.
 //   kind: "primary" | "secondary" | "ghost" | "danger"
-//   iconName: glyph from the NEXUS symbolic set shown before the label
+//   iconName: glyph from the SHADOW symbolic set shown before the label
 Button {
     id: root
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Runs the NEXUS SDDM theme in the real Qt 6 greeter (test mode) under Xvfb
+# Runs the SHADOW SDDM theme in the real Qt 6 greeter (test mode) under Xvfb
 # and takes screenshots. To be started inside the build chroot:
 #
 #   scripts/dev.sh exec --dir themes -- sh /src/desktop/themes/tests/sddm-test.sh [options] [-- actions]
@@ -41,11 +41,11 @@ while [ $# -gt 0 ]; do
 done
 actions="${*:-shot start}"
 
-work="$(mktemp -d /tmp/nexus-sddm-test.XXXXXX)"
+work="$(mktemp -d /tmp/shadow-sddm-test.XXXXXX)"
 trap 'rm -rf "$work"' EXIT
-cp -r /src/desktop/themes/sddm/nexus "$work/theme"
+cp -r /src/desktop/themes/sddm/shadow "$work/theme"
 if [ "$wallpaper" = 1 ]; then
-    printf '[General]\nbackground=/src/assets/wallpapers/nexus-horizon.jpg\n' > "$work/theme/theme.conf.user"
+    printf '[General]\nbackground=/src/assets/wallpapers/shadow-horizon.jpg\n' > "$work/theme/theme.conf.user"
 fi
 if [ "$fake" = 1 ]; then
     sed -i -e 's/sddm\.can\(Suspend\|Reboot\|PowerOff\)/true/g' \
@@ -72,7 +72,7 @@ if [ -n "$users" ]; then
 fi
 if [ -n "$sessions" ]; then
     i=0
-    for name in "NEXUS HORIZON" "NEXUS HORIZON (safe graphics)" "Recovery console" "Kiosk"; do
+    for name in "Shadow Horizon" "Shadow Horizon (safe graphics)" "Recovery console" "Kiosk"; do
         [ "$i" -lt "$sessions" ] || break
         printf '[Desktop Entry]\nType=Application\nName=%s\nComment=Test session %d\nExec=/bin/true\n' "$name" "$i" > "$work/sessions/session$i.desktop"
         i=$(( i + 1 ))
@@ -87,7 +87,7 @@ xdo() { xdotool "\$@"; }
 shot() { import -window root "/shots/$prefix-\$1.png"; }
 sddm-greeter-qt6 --test-mode --theme "$work/theme" > "/shots/$prefix.log" 2>&1 &
 greeter=\$!
-sleep \${NEXUS_SDDM_WAIT:-6}
+sleep \${SHADOW_SDDM_WAIT:-6}
 $actions
 kill \$greeter 2>/dev/null
 wait \$greeter 2>/dev/null

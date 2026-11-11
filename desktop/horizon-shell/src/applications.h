@@ -9,7 +9,7 @@
 
 struct AppEntry
 {
-    QString desktopId;      // storage id, e.g. "org.nexus.files.desktop"
+    QString desktopId;      // storage id, e.g. "org.shadow.files.desktop"
     QString name, genericName, comment, icon, group;
     QStringList keywords;
     int launches = 0;

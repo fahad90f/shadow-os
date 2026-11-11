@@ -19,7 +19,7 @@ $H 'ip|nc-eth|{"ipv4":{"dns":"","search":"","gateway":""},"ipv6":{"method":"disa
 nmcli -t -f connection.dns-over-tls,ipv4.addresses,ipv4.gateway,ipv4.dns,ipv4.dns-search,ipv6.method,ipv6.addresses,ipv6.dns con show nc-eth
 $H 'import|wireguard|/tmp/nc-nm/wgtest.conf' 'import|wireguard|/etc/hostname' 'auto|wgtest|0' 'up|wgtest'
 nmcli -t -f NAME,TYPE,DEVICE,STATE,AUTOCONNECT con show; ip -br addr | grep -i wg
-/build/netcenter/bin/nexus-network-center --dump vpn | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["activeCount"], [(c["name"],c["vpnLabel"],c["state"],c["device"],c["autoconnect"]) for c in d["connections"]])'
+/build/netcenter/bin/shadow-network-center --dump vpn | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["activeCount"], [(c["name"],c["vpnLabel"],c["state"],c["device"],c["autoconnect"]) for c in d["connections"]])'
 nmcli con add type wifi con-name nc-wifi2 ssid "Other" wifi-sec.key-mgmt wpa-psk connection.autoconnect no >/dev/null
 $H 'down|wgtest' 'del|wgtest' 'secret|nc-wifi2|some password' 'del|nc-eth' 'devup|nctest0'
 nmcli -t -f NAME,TYPE,DEVICE,STATE con show

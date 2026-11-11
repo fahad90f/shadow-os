@@ -8,7 +8,7 @@
 #include <QVariantList>
 
 // Compositor side of the Accessibility page (text size and reduced motion are
-// bound by the page to the Appearance singleton of org.nexus.ui).
+// bound by the page to the Appearance singleton of org.shadow.ui).
 //
 // KWin effects — screen magnifier and friends — are switched through KWin's
 // D-Bus interface on the session bus

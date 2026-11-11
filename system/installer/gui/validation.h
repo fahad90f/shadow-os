@@ -8,7 +8,7 @@
 // Input rules of the installation engine, mirrored so that the wizard can
 // explain a problem while the user types instead of failing at the summary.
 //
-// Source of truth: system/installer/engine/nexus_installer/answers.py
+// Source of truth: system/installer/engine/shadow_installer/answers.py
 // (USERNAME_RE, RESERVED_USERS, HOSTNAME_RE, the fullname/password/passphrase
 // checks in parse()). The engine validates everything again; if the two ever
 // disagree, the engine wins and its message is shown on the summary page.

@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Asks for one secret (Wi-Fi passphrase, VPN password). The text is handed
 // to the caller through submitted() and cleared as soon as the dialog closes.

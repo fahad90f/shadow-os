@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -49,7 +49,7 @@ NxPage {
         visible: kb.available && kb.ready && !kb.compositorRunning
         kind: "info"
         title: qsTr("KWin is not running in this session")
-        message: qsTr("Changes are saved to kxkbrc and kcminputrc and apply the next time a NEXUS desktop session starts.")
+        message: qsTr("Changes are saved to kxkbrc and kcminputrc and apply the next time a SHADOW desktop session starts.")
     }
 
     NxSection {

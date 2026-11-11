@@ -7,13 +7,13 @@
 
 #include <Transaction>
 
-// Helpers shared by NEXUS Store and NEXUS Updater for talking to PackageKit.
+// Helpers shared by SHADOW Store and SHADOW Updater for talking to PackageKit.
 //
 // PackageKit identifies everything by enumerations and by "package IDs" of
 // the form  name;version;arch;data . The functions here turn both into the
 // stable machine-readable keys used in --dump output (PackageKit's own dashed
 // spelling, e.g. "no-network") and into text for the UI.
-namespace NexusPk {
+namespace ShadowPk {
 
 // ---- enumerations -> PackageKit's dashed keys ------------------------------
 QString errorKey(PackageKit::Transaction::Error value);        // "package-download-failed"
@@ -81,4 +81,4 @@ QStringList foreignArchitectures();
 // Name of the account behind a numeric user id ("root", "alice"); the number as text if unknown.
 QString userNameForUid(uint uid);
 
-} // namespace NexusPk
+} // namespace ShadowPk

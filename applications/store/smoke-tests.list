@@ -1,10 +1,10 @@
 # <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
-nexus-store
-nexus-store --search editor
-nexus-store appstream://org.nexus.store.does-not-exist
-nexus-store nexus-store-no-such-package
-nexus-store --page installed
-nexus-store --page updates
-nexus-store --page repos
-nexus-store --page development
-nexus-store org.kde.kate
+shadow-store
+shadow-store --search editor
+shadow-store appstream://org.shadow.store.does-not-exist
+shadow-store shadow-store-no-such-package
+shadow-store --page installed
+shadow-store --page updates
+shadow-store --page repos
+shadow-store --page development
+shadow-store org.kde.kate

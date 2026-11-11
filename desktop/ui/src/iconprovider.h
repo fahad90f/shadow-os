@@ -3,12 +3,12 @@
 
 #include <QQuickImageProvider>
 
-namespace Nexus {
+namespace Shadow {
 
 // image://nxicon/<name>?color=<#rrggbb>
 //
-// Renders a glyph from the NEXUS symbolic icon set (compiled into the UI
-// library under :/nexus/icons) in the requested colour and size. The SVG
+// Renders a glyph from the SHADOW symbolic icon set (compiled into the UI
+// library under :/shadow/icons) in the requested colour and size. The SVG
 // sources use "currentColor", so one file serves every theme and state.
 class SymbolicIconProvider : public QQuickImageProvider
 {
@@ -29,4 +29,4 @@ public:
     QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requestedSize) override;
 };
 
-} // namespace Nexus
+} // namespace Shadow

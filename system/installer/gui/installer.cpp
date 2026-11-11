@@ -131,7 +131,7 @@ QString Installer::installBlockedReason() const
         return tr("Test mode: the hardware shown comes from the file %1, not from this computer. "
                   "Nothing can be installed in this mode.").arg(o.probeFile);
     if (!o.liveSession && !o.allowInstalledSystem)
-        return tr("This is not a NEXUS OS live session (%1 does not exist). Installing from a system that "
+        return tr("This is not a Shadow OS live session (%1 does not exist). Installing from a system that "
                   "runs from its own disk is refused unless the installer is started with "
                   "--allow-installed-system.").arg(Options::liveSessionMarker());
     return QString();
@@ -149,7 +149,7 @@ Installer::Invocation Installer::engineCommand(const QStringList &engineArgument
     if (!engine.isFile()) {
         inv.problem = o.customEngine
             ? tr("The installation engine %1 does not exist.").arg(o.enginePath)
-            : tr("The installation engine %1 is not installed (package “nexus-installer”).").arg(o.enginePath);
+            : tr("The installation engine %1 is not installed (package “shadow-installer”).").arg(o.enginePath);
         return inv;
     }
     if (o.testMode()) {
@@ -184,9 +184,9 @@ QProcess *Installer::createProcess(const Invocation &invocation)
     env.insert(QStringLiteral("PYTHONDONTWRITEBYTECODE"), QStringLiteral("1"));
     const Options &o = Options::instance();
     if (o.testMode() && !o.simulateScenario.isEmpty())
-        env.insert(QStringLiteral("NEXUS_TEST_ENGINE_SCENARIO"), o.simulateScenario);
+        env.insert(QStringLiteral("SHADOW_TEST_ENGINE_SCENARIO"), o.simulateScenario);
     else
-        env.remove(QStringLiteral("NEXUS_TEST_ENGINE_SCENARIO"));
+        env.remove(QStringLiteral("SHADOW_TEST_ENGINE_SCENARIO"));
     process->setProcessEnvironment(env);
     return process;
 }
@@ -452,8 +452,8 @@ void Installer::clearSecrets()
 QByteArray Installer::buildStdinDocument() const
 {
     const QString marker = QUuid::createUuid().toString(QUuid::Id128);
-    const QString passwordToken = QStringLiteral("NEXUS-SECRET-A-") + marker;
-    const QString passphraseToken = QStringLiteral("NEXUS-SECRET-B-") + marker;
+    const QString passwordToken = QStringLiteral("SHADOW-SECRET-A-") + marker;
+    const QString passphraseToken = QStringLiteral("SHADOW-SECRET-B-") + marker;
 
     QJsonObject doc = m_answers;
     QJsonObject user = doc.value(QLatin1String("user")).toObject();
@@ -495,7 +495,7 @@ bool Installer::writeAnswersRecord()
         QString base = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
         if (base.isEmpty())
             base = QDir::tempPath();
-        m_privateDir = std::make_unique<QTemporaryDir>(base + QStringLiteral("/nexus-installer-XXXXXX"));   // mode 0700
+        m_privateDir = std::make_unique<QTemporaryDir>(base + QStringLiteral("/shadow-installer-XXXXXX"));   // mode 0700
         if (!m_privateDir->isValid()) {
             m_privateDir.reset();
             m_answersFile.clear();
@@ -971,7 +971,7 @@ void Installer::loadProfiles()
         }
         QStringList sorted(packages.cbegin(), packages.cend());
         sorted.sort();
-        const QString metapackage = object.value(QLatin1String("metapackage")).toString(QStringLiteral("nexus-arsenal-") + it.key());
+        const QString metapackage = object.value(QLatin1String("metapackage")).toString(QStringLiteral("shadow-arsenal-") + it.key());
         m_profiles.append(QVariantMap{
             {QStringLiteral("id"), it.key()},
             {QStringLiteral("name"), object.value(QLatin1String("name")).toString()},
@@ -991,7 +991,7 @@ void Installer::loadPreset(const QString &path)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
-        qWarning("nexus-installer: cannot read the preset %s", qPrintable(path));
+        qWarning("shadow-installer: cannot read the preset %s", qPrintable(path));
         return;
     }
     QJsonObject doc = QJsonDocument::fromJson(file.readAll()).object();

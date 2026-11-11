@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // One or two history series drawn over the same time and value axes.
 //   SeriesChart { series: [{ values: monitor.networkRxHistory, color: Theme.accent }, ...] }

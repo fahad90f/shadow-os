@@ -15,8 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "system/installer/engine"))
 
-from nexus_installer import answers as A, plan as P, probe as PR  # noqa: E402
-from nexus_installer.util import InstallError  # noqa: E402
+from shadow_installer import answers as A, plan as P, probe as PR  # noqa: E402
+from shadow_installer.util import InstallError  # noqa: E402
 
 MIB, GIB = 1024**2, 1024**3
 ESP_GUID = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
@@ -62,7 +62,7 @@ def report(disks, fw="uefi", arch="amd64", secure=True, ram=8 * GIB, installed=6
 
 def answers(**storage):
     base = {"version": 1, "locale": "en_US.UTF-8", "keyboard": {"layout": "us"}, "timezone": "Etc/UTC",
-            "hostname": "nexus", "user": {"fullname": "Test User", "username": "tester", "password": "secret"},
+            "hostname": "shadow", "user": {"fullname": "Test User", "username": "tester", "password": "secret"},
             "storage": {"mode": "erase-disk", "disk": "/dev/vda"}}
     base["storage"].update(storage)
     return base
@@ -100,7 +100,7 @@ class AnswerValidation(unittest.TestCase):
             data["user"][field] = value
             with self.assertRaises(InstallError, msg=value):
                 parse(data)
-        for host in ("Nexus", "-nexus", "nexus_", "a" * 64, "ne xus", "nexus;rm"):
+        for host in ("Shadow", "-shadow", "shadow_", "a" * 64, "ne xus", "shadow;rm"):
             data = answers()
             data["hostname"] = host
             with self.assertRaises(InstallError, msg=host):
@@ -228,11 +228,11 @@ class EraseDisk(unittest.TestCase):
 
     def test_volume_names_avoid_collisions(self):
         rep = report([disk()])
-        rep["volume_groups"] = ["nexus"]
-        rep["mapper_names"] = ["nexus_crypt", "nexus-root"]
+        rep["volume_groups"] = ["shadow"]
+        rep["mapper_names"] = ["shadow_crypt", "shadow-root"]
         plan = build(answers(encrypt=True, passphrase="correct horse battery"), rep)
-        self.assertEqual(plan["lvm"]["vg"], "nexus1")
-        self.assertEqual(plan["lvm"]["crypt_name"], "nexus_crypt1")
+        self.assertEqual(plan["lvm"]["vg"], "shadow1")
+        self.assertEqual(plan["lvm"]["crypt_name"], "shadow_crypt1")
 
     def test_refuses_dangerous_targets(self):
         cases = {

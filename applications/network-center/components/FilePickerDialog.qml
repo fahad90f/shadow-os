@@ -2,12 +2,12 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.networkcenter
+import org.shadow.ui
+import org.shadow.networkcenter
 
-// Chooses one existing file. A small NexusUI dialog rather than
+// Chooses one existing file. A small ShadowUI dialog rather than
 // QtQuick.Dialogs' FileDialog, whose built-in fallback is not covered by the
-// NEXUS style.
+// SHADOW style.
 Dialog {
     id: root
 

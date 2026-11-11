@@ -1,5 +1,5 @@
-# NEXUS OS Installer — graphical front-end of the installation engine
-# (../engine, package nexus-installer). See README.md.
+# Shadow OS Installer — graphical front-end of the installation engine
+# (../engine, package shadow-installer). See README.md.
 find_package(KF6Config QUIET)
 
 set(_components
@@ -14,8 +14,8 @@ foreach(_file IN LISTS _components _pages)
     set_source_files_properties("${_file}" PROPERTIES QT_RESOURCE_ALIAS "${_name}")
 endforeach()
 
-nexus_add_app(nexus-installer
-    URI org.nexus.installer
+shadow_add_app(shadow-installer
+    URI org.shadow.installer
     SOURCES main.cpp options.h secret.h
             installer.cpp installer.h
             keyboard.cpp keyboard.h
@@ -23,17 +23,17 @@ nexus_add_app(nexus-installer
             timezones.cpp timezones.h
             validation.cpp validation.h
     QML Main.qml ${_components} ${_pages}
-    DESKTOP org.nexus.installer.desktop
+    DESKTOP org.shadow.installer.desktop
 )
 
 # Writing the live session's keyboard configuration (kxkbrc) needs KConfig;
 # without it the keyboard step says that it cannot switch the session.
 if(TARGET KF6::ConfigCore)
-    target_link_libraries(nexus-installer PRIVATE KF6::ConfigCore)
-    target_compile_definitions(nexus-installer PRIVATE NEXUS_HAVE_KCONFIG)
+    target_link_libraries(shadow-installer PRIVATE KF6::ConfigCore)
+    target_compile_definitions(shadow-installer PRIVATE SHADOW_HAVE_KCONFIG)
 endif()
 
 # Privilege separation: the engine is started through pkexec with this action.
-install(FILES polkit/org.nexus.installer.policy DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/actions)
+install(FILES polkit/org.shadow.installer.policy DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/actions)
 # Lets the live user run that one action without a password, in the live session only.
-install(FILES polkit/49-nexus-installer-live.rules DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/rules.d)
+install(FILES polkit/49-shadow-installer-live.rules DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/rules.d)

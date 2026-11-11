@@ -131,7 +131,7 @@ void RemoteImage::fetch()
     setStatus(QStringLiteral("loading"));
     QNetworkRequest request(m_source);
     request.setRawHeader("Accept", "image/png, image/jpeg, image/webp, image/gif");
-    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("nexus-store/%1").arg(QCoreApplication::applicationVersion()));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("shadow-store/%1").arg(QCoreApplication::applicationVersion()));
     request.setMaximumRedirectsAllowed(5);
     QNetworkReply *reply = network()->get(request);
     m_reply = reply;

@@ -59,7 +59,7 @@ private:
 //                PackageKit reported
 //
 // Packages that are not from a signed source are never installed, and a
-// removal that would take parts of the NEXUS desktop with it is refused.
+// removal that would take parts of the SHADOW desktop with it is refused.
 class PkJob : public QObject
 {
     Q_OBJECT

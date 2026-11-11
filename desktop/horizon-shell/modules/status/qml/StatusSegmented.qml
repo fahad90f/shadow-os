@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // A segmented choice for the quick settings, as wide as it is allowed to be.
 // It shows 'currentIndex' and never changes it itself: choosing a segment

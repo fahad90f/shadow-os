@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// traytest — status notifier items for testing the NEXUS HORIZON system
+// traytest — status notifier items for testing the Shadow Horizon system
 // tray. Everything the tray does to an item is printed on stdout as an
 // "event ..." line, so a test can check that a click in the shell arrived.
 //
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
     parser.process(app);
 
     // ---- main item ----------------------------------------------------------------
-    auto *mainItem = new KStatusNotifierItem(QStringLiteral("nexus-tray-test-main"), &app);
+    auto *mainItem = new KStatusNotifierItem(QStringLiteral("shadow-tray-test-main"), &app);
     mainItem->setCategory(KStatusNotifierItem::ApplicationStatus);
     mainItem->setStatus(KStatusNotifierItem::Active);
     mainItem->setTitle(QStringLiteral("Tray test"));
@@ -148,7 +148,7 @@ int main(int argc, char **argv)
     mainItem->setContextMenu(menu);
 
     // ---- pixmap item --------------------------------------------------------------
-    auto *pixmapItem = new KStatusNotifierItem(QStringLiteral("nexus-tray-test-pixmap"), &app);
+    auto *pixmapItem = new KStatusNotifierItem(QStringLiteral("shadow-tray-test-pixmap"), &app);
     pixmapItem->setStatus(KStatusNotifierItem::Active);
     pixmapItem->setTitle(QStringLiteral("Pixmap item"));
     pixmapItem->setIconByPixmap(paintedIcon(QColor(0x9b, 0x6b, 0xff), QStringLiteral("P"), {16, 22, 32, 48}));
@@ -161,7 +161,7 @@ int main(int argc, char **argv)
     pixmapItem->setContextMenu(pixmapMenu);
 
     // ---- status item --------------------------------------------------------------
-    auto *statusItem = new KStatusNotifierItem(QStringLiteral("nexus-tray-test-status"), &app);
+    auto *statusItem = new KStatusNotifierItem(QStringLiteral("shadow-tray-test-status"), &app);
     statusItem->setTitle(QStringLiteral("Status item"));
     statusItem->setIconByPixmap(paintedIcon(QColor(0x3d, 0x8b, 0xff), QStringLiteral("S"), {22, 44}));
     statusItem->setAttentionIconByPixmap(paintedIcon(QColor(0xff, 0xb0, 0x20), QStringLiteral("A"), {22, 44}));
@@ -186,7 +186,7 @@ int main(int argc, char **argv)
 
     // ---- an item that misbehaves ----------------------------------------------------
     if (parser.isSet(QStringLiteral("hostile"))) {
-        auto *hostile = new KStatusNotifierItem(QStringLiteral("nexus-tray-test-hostile"), &app);
+        auto *hostile = new KStatusNotifierItem(QStringLiteral("shadow-tray-test-hostile"), &app);
         hostile->setStatus(KStatusNotifierItem::Active);
         hostile->setTitle(QString(100000, QLatin1Char('T')) + QChar(0x202E) + QStringLiteral("evil\n\a"));
         hostile->setIconByPixmap(paintedIcon(QColor(0xff, 0x4d, 0x6a), QStringLiteral("H"), {16, 512, 1500, 2048}));

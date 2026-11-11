@@ -29,7 +29,7 @@ struct AppEntry
     QString packageName;        // first DEB package of the component ("" if the metadata names none)
     QString kind;               // AppStream kind: "desktop-application", "console-application", …
     bool application = false;   // desktop, console or web application
-    quint32 categories = 0;     // bit per NEXUS category (index into Catalog::categoryDefinitions())
+    quint32 categories = 0;     // bit per SHADOW category (index into Catalog::categoryDefinitions())
     QString localIcon;          // icon file on disk (cached or local icon), if any
     QString stockIcon;          // icon-theme name, if any
     QString remoteIcon;         // https URL of the icon on the catalogue's media server, if any
@@ -38,7 +38,7 @@ struct AppEntry
 };
 
 // The software catalogue: AppStream pool, an index of it for fast browsing,
-// the NEXUS category mapping, searching and full component details.
+// the SHADOW category mapping, searching and full component details.
 //
 // Loading and searching run on worker threads; the index is swapped in on
 // the GUI thread when a load finishes.

@@ -48,8 +48,8 @@ void Shortcuts::add(const char *name, const QString &description, const QList<QK
     auto *action = new QAction(this);
     action->setObjectName(QString::fromLatin1(name));
     action->setText(description);
-    action->setProperty("componentName", QStringLiteral("nexus-horizon"));
-    action->setProperty("componentDisplayName", QStringLiteral("NEXUS HORIZON"));
+    action->setProperty("componentName", QStringLiteral("shadow-horizon"));
+    action->setProperty("componentDisplayName", QStringLiteral("Shadow Horizon"));
     KGlobalAccel::self()->setDefaultShortcut(action, keys);
     KGlobalAccel::self()->setShortcut(action, keys);      // keeps a binding the user changed
     // A default key can get lost from the stored binding (it was briefly
@@ -63,7 +63,7 @@ void Shortcuts::add(const char *name, const QString &description, const QList<QK
     if (subset) {
         bool free = true;
         for (const QKeySequence &k : keys)
-            free = free && (active.contains(k) || KGlobalAccel::isGlobalShortcutAvailable(k, QStringLiteral("nexus-horizon")));
+            free = free && (active.contains(k) || KGlobalAccel::isGlobalShortcutAvailable(k, QStringLiteral("shadow-horizon")));
         if (free)
             KGlobalAccel::self()->setShortcut(action, keys, KGlobalAccel::NoAutoloading);
     }

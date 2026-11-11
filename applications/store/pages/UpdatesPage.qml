@@ -2,10 +2,10 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
-// Updates for installed software, from PackageKit. The same list NEXUS
+// Updates for installed software, from PackageKit. The same list SHADOW
 // Updater shows; history, restart handling and recovery live there.
 PkListPage {
     id: page
@@ -28,7 +28,7 @@ PkListPage {
     actions: [
         NxButton {
             visible: page.store.updaterAvailable
-            text: qsTr("Open NEXUS Updater")
+            text: qsTr("Open SHADOW Updater")
             iconName: "external-link"
             onClicked: page.store.openUpdater("updates")
         },

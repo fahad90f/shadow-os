@@ -11,17 +11,17 @@
 #include <QStandardPaths>
 #include <QUrl>
 
-NEXUS_CC_DUMP("appearance", [] { return QJsonValue(AppearanceBackend().toJson()); })
+SHADOW_CC_DUMP("appearance", [] { return QJsonValue(AppearanceBackend().toJson()); })
 
 namespace {
 // Same store as the shell (desktop/horizon-shell/src/shellsettings.cpp).
 QSettings shellSettings()
 {
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("horizon"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("horizon"));
 }
 QSettings appearanceSettings()
 {
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("appearance"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("appearance"));
 }
 
 const QStringList kFillModes = {QStringLiteral("crop"), QStringLiteral("fit"), QStringLiteral("stretch"),
@@ -37,7 +37,7 @@ QString toLocalPath(const QString &pathOrUrl)
 QString prettyName(const QString &path)
 {
     QString base = QFileInfo(path).completeBaseName();
-    if (base.startsWith(QLatin1String("nexus-")))
+    if (base.startsWith(QLatin1String("shadow-")))
         base = base.mid(6);
     base.replace(QLatin1Char('-'), QLatin1Char(' ')).replace(QLatin1Char('_'), QLatin1Char(' '));
     if (!base.isEmpty())
@@ -57,13 +57,13 @@ AppearanceBackend::AppearanceBackend(QObject *parent)
 
 QString AppearanceBackend::wallpaperDirectory() const
 {
-    const QString override = qEnvironmentVariable("NEXUS_WALLPAPER_DIR");
-    return override.isEmpty() ? QStringLiteral("/usr/share/backgrounds/nexus") : override;
+    const QString override = qEnvironmentVariable("SHADOW_WALLPAPER_DIR");
+    return override.isEmpty() ? QStringLiteral("/usr/share/backgrounds/shadow") : override;
 }
 
 QString AppearanceBackend::settingsFile() const
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/nexus/horizon.conf");
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/shadow/horizon.conf");
 }
 
 QStringList AppearanceBackend::imageNameFilters() const
@@ -97,9 +97,9 @@ void AppearanceBackend::load()
     s.sync();
     // Defaults are the ones of the shell.
     const QString dark = s.value(QStringLiteral("Desktop/Wallpaper"),
-                                 QStringLiteral("/usr/share/backgrounds/nexus/nexus-horizon.jpg")).toString();
+                                 QStringLiteral("/usr/share/backgrounds/shadow/shadow-horizon.jpg")).toString();
     const QString light = s.value(QStringLiteral("Desktop/WallpaperLight"),
-                                  QStringLiteral("/usr/share/backgrounds/nexus/nexus-daylight.jpg")).toString();
+                                  QStringLiteral("/usr/share/backgrounds/shadow/shadow-daylight.jpg")).toString();
     QString fill = s.value(QStringLiteral("Desktop/WallpaperFill"), QStringLiteral("crop")).toString();
     if (!kFillModes.contains(fill))
         fill = QStringLiteral("crop");
@@ -267,7 +267,7 @@ QJsonObject AppearanceBackend::toJson() const
         wallpapers << QJsonObject::fromVariantMap(w.toMap());
     return {
         {QStringLiteral("appearanceFile"),
-         QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/nexus/appearance.conf")},
+         QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/shadow/appearance.conf")},
         {QStringLiteral("colorScheme"), a.value(QStringLiteral("ColorScheme"), QStringLiteral("dark")).toString()},
         {QStringLiteral("accent"), a.value(QStringLiteral("Accent"), QStringLiteral("cyan")).toString()},
         {QStringLiteral("reduceMotion"), a.value(QStringLiteral("ReduceMotion"), false).toBool()},

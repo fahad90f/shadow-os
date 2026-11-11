@@ -102,7 +102,7 @@ private:
         const Track &track = kTracks[m_track];
         QVariantMap map{
             {QStringLiteral("mpris:trackid"),
-             QVariant::fromValue(QDBusObjectPath(QStringLiteral("/org/nexus/test/track/%1").arg(m_track + 1)))},
+             QVariant::fromValue(QDBusObjectPath(QStringLiteral("/org/shadow/test/track/%1").arg(m_track + 1)))},
             {QStringLiteral("xesam:title"), QString::fromLatin1(track.title)},
             {QStringLiteral("xesam:artist"), QStringList{QString::fromLatin1(track.artist)}},
             {QStringLiteral("xesam:album"), QString::fromLatin1(track.album)},
@@ -178,7 +178,7 @@ private:
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    QString name = QStringLiteral("nexustest");
+    QString name = QStringLiteral("shadowtest");
     QString art;
     bool playing = false;
     const QStringList args = app.arguments();
@@ -196,7 +196,7 @@ int main(int argc, char **argv)
     }
 
     QDBusConnection bus = QDBusConnection::sessionBus();
-    Player player(bus, QStringLiteral("NEXUS Test Player (%1)").arg(name), playing, art);
+    Player player(bus, QStringLiteral("SHADOW Test Player (%1)").arg(name), playing, art);
     if (!bus.registerVirtualObject(kPath, &player)
         || !bus.registerService(QStringLiteral("org.mpris.MediaPlayer2.") + name)) {
         QTextStream(stderr) << "status-test-mpris-player: cannot register on the session bus" << Qt::endl;

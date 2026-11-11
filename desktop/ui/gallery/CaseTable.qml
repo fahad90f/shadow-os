@@ -2,13 +2,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Test page: NxDataTable selection. Nothing is selected until the caller or
 // the user selects a row; giving the table a model does not select row 0.
 NxWindow {
     id: window
-    title: "NexusUI Gallery — table"
+    title: "ShadowUI Gallery — table"
     width: 1000
     height: 640
 

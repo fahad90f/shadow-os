@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.updater
+import org.shadow.ui
+import org.shadow.updater
 
 NxPage {
     id: page
@@ -30,7 +30,7 @@ NxPage {
         NxRow {
             icon: "refresh"
             title: qsTr("Check for updates automatically")
-            subtitle: qsTr("Stores whether the desktop session should look for updates periodically and notify you. The check is “nexus-updater --check”; it only refreshes the software lists and counts the updates.")
+            subtitle: qsTr("Stores whether the desktop session should look for updates periodically and notify you. The check is “shadow-updater --check”; it only refreshes the software lists and counts the updates.")
             Switch {
                 checked: page.updater.autoCheck
                 Accessible.name: qsTr("Check for updates automatically")

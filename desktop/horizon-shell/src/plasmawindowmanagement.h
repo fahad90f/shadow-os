@@ -13,7 +13,7 @@
 //
 // KWin only offers this global to clients it trusts: the shell's desktop file
 // lists the interface in X-KDE-Wayland-Interfaces
-// (org.nexus.horizon.shell.desktop).
+// (org.shadow.horizon.shell.desktop).
 
 class PlasmaWindow : public QObject, public QtWayland::org_kde_plasma_window
 {

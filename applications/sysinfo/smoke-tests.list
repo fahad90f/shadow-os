@@ -1,2 +1,2 @@
 # <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
-nexus-sysinfo
+shadow-sysinfo

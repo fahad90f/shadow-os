@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // The tool tip of a tray item, under its icon. A surface of its own: the
 // panel is only as high as its buttons, a tool tip inside it has no room.
@@ -20,7 +20,7 @@ ShellSurface {
 
     screen: shell.primaryScreen
     layer: "overlay"
-    scope: "nexus-tray-tooltip"
+    scope: "shadow-tray-tooltip"
     anchorTop: true
     anchorRight: true
     keyboard: "none"

@@ -13,7 +13,7 @@
 
 #include <algorithm>
 
-using NexusPk::Service;
+using ShadowPk::Service;
 using T = PackageKit::Transaction;
 
 PackageInfo::PackageInfo(QObject *parent)
@@ -42,7 +42,7 @@ QString PackageInfo::arch() const
 
 QString PackageInfo::archRelation() const
 {
-    return NexusPk::archRelation(arch());
+    return ShadowPk::archRelation(arch());
 }
 
 QString PackageInfo::repo() const
@@ -52,7 +52,7 @@ QString PackageInfo::repo() const
 
 QString PackageInfo::repoText() const
 {
-    return NexusPk::repoText(repo());
+    return ShadowPk::repoText(repo());
 }
 
 QString PackageInfo::repoCategory() const
@@ -61,13 +61,13 @@ QString PackageInfo::repoCategory() const
     if (r.isEmpty() || r == QLatin1String("local"))
         return {};
     // The origin part of a repository ID is the Release file's "Origin", lower-cased.
-    return NexusPk::repoCategory(QString(), NexusPk::describeRepo(r).value(QStringLiteral("origin")).toString());
+    return ShadowPk::repoCategory(QString(), ShadowPk::describeRepo(r).value(QStringLiteral("origin")).toString());
 }
 
 void PackageInfo::reset()
 {
     m_error.clear();
-    m_resolved = NexusPk::ResolvedPackage();
+    m_resolved = ShadowPk::ResolvedPackage();
     m_summary.clear();
     m_description.clear();
     m_url.clear();
@@ -108,8 +108,8 @@ void PackageInfo::refresh()
     m_state = QStringLiteral("loading");
     Q_EMIT changed();
     const QString name = m_name;
-    NexusPk::resolvePackages(this, {name}, [this, serial, name](const QHash<QString, NexusPk::ResolvedPackage> &found,
-                                                              const NexusPk::QueryResult &result) {
+    ShadowPk::resolvePackages(this, {name}, [this, serial, name](const QHash<QString, ShadowPk::ResolvedPackage> &found,
+                                                              const ShadowPk::QueryResult &result) {
         if (serial != m_serial)
             return;
         if (!result.ok) {
@@ -155,10 +155,10 @@ void PackageInfo::loadDetails()
         return;
     const quint64 serial = m_serial;
     ++m_pending;
-    NexusPk::Query::run(this, PackageKit::Daemon::getDetails(ids), [this, serial](const NexusPk::QueryResult &result) {
+    ShadowPk::Query::run(this, PackageKit::Daemon::getDetails(ids), [this, serial](const ShadowPk::QueryResult &result) {
         if (serial != m_serial)
             return;
-        for (const NexusPk::PackageDetails &d : result.details) {
+        for (const ShadowPk::PackageDetails &d : result.details) {
             const bool forCandidate = m_resolved.hasCandidate && d.packageId == m_resolved.candidate.id;
             const bool forInstalled = m_resolved.installed && d.packageId == m_resolved.installedEntry.id;
             if (!forCandidate && !forInstalled)
@@ -197,11 +197,11 @@ void PackageInfo::simulate()
                                                       : PackageKit::Daemon::installPackages(ids, flags);
     m_simulationState = QStringLiteral("running");
     ++m_pending;
-    NexusPk::Query::run(this, t, [this, serial](const NexusPk::QueryResult &result) {
+    ShadowPk::Query::run(this, t, [this, serial](const ShadowPk::QueryResult &result) {
         if (serial != m_serial)
             return;
         if (result.exit == T::ExitSuccess || result.exit == T::ExitNeedUntrusted) {
-            m_changes = NexusPk::summarizeChanges(result.packages, result.downloadSize, {m_name});
+            m_changes = ShadowPk::summarizeChanges(result.packages, result.downloadSize, {m_name});
             const bool untrusted = result.exit == T::ExitNeedUntrusted
                                    || m_changes.value(QStringLiteral("untrustedCount")).toInt() > 0;
             m_trust = untrusted ? QStringLiteral("untrusted") : QStringLiteral("trusted");
@@ -229,8 +229,8 @@ void PackageInfo::loadDepends()
     const quint64 serial = m_serial;
     m_dependsState = QStringLiteral("loading");
     ++m_pending;
-    NexusPk::Query::run(this, PackageKit::Daemon::dependsOn(id, T::FilterNone, false),
-                        [this, serial](const NexusPk::QueryResult &result) {
+    ShadowPk::Query::run(this, PackageKit::Daemon::dependsOn(id, T::FilterNone, false),
+                        [this, serial](const ShadowPk::QueryResult &result) {
         if (serial != m_serial)
             return;
         if (!result.ok) {
@@ -239,13 +239,13 @@ void PackageInfo::loadDepends()
             queryDone();
             return;
         }
-        QList<NexusPk::PackageEntry> entries = result.packages;
-        std::sort(entries.begin(), entries.end(), [](const NexusPk::PackageEntry &a, const NexusPk::PackageEntry &b) {
+        QList<ShadowPk::PackageEntry> entries = result.packages;
+        std::sort(entries.begin(), entries.end(), [](const ShadowPk::PackageEntry &a, const ShadowPk::PackageEntry &b) {
             return QString::compare(a.name, b.name, Qt::CaseInsensitive) < 0;
         });
         QVariantList list;
         QString last;
-        for (const NexusPk::PackageEntry &e : std::as_const(entries)) {
+        for (const ShadowPk::PackageEntry &e : std::as_const(entries)) {
             const QString key = e.name + QLatin1Char(':') + e.arch;
             if (key == last)
                 continue;
@@ -289,7 +289,7 @@ QJsonObject PackageInfo::toJson() const
     }
     o.insert(QStringLiteral("updateAvailable"), updateAvailable());
     o.insert(QStringLiteral("architecture"), arch());
-    o.insert(QStringLiteral("systemArchitecture"), NexusPk::systemArchitecture());
+    o.insert(QStringLiteral("systemArchitecture"), ShadowPk::systemArchitecture());
     o.insert(QStringLiteral("architectureRelation"), archRelation());
     o.insert(QStringLiteral("availableForThisArchitecture"), !foreignOnly() && (installed() || candidateAvailable()));
     o.insert(QStringLiteral("originRepository"), repo());

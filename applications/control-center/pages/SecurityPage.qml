@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -22,13 +22,13 @@ NxPage {
     // What a recommendation's "action" hint can lead to from here.
     function actionLabel(action) {
         if (action === "firewall-enable" && page.ApplicationWindow.window.pageFor("firewall") !== null) return qsTr("Firewall settings")
-        if (action === "open-updater" && security.updaterAvailable) return qsTr("Open NEXUS Updater")
+        if (action === "open-updater" && security.updaterAvailable) return qsTr("Open SHADOW Updater")
         return ""
     }
     function runAction(action) {
         if (action === "firewall-enable") page.ApplicationWindow.window.openPage("firewall")
         else if (action === "open-updater" && !security.openUpdater())
-            page.ApplicationWindow.window.toaster.show(qsTr("Could not start NEXUS Updater"), "danger")
+            page.ApplicationWindow.window.toaster.show(qsTr("Could not start SHADOW Updater"), "danger")
     }
 
     actions: [
@@ -164,7 +164,7 @@ NxPage {
     NxSection {
         visible: security.available
         title: qsTr("Recommendations")
-        description: qsTr("Findings of nexus-security-status, most severe first.")
+        description: qsTr("Findings of shadow-security-status, most severe first.")
 
         Repeater {
             model: security.recommendations

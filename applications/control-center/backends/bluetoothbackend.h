@@ -25,7 +25,7 @@
 // "rfkill-hard" (blocked by a hardware switch or firmware), "no-adapter",
 // "service-not-running" (bluetooth.service / org.bluez is not there),
 // "no-system-bus" and "unsupported-build" (compiled without BluezQt,
-// NEXUS_HAVE_BLUEZQT).
+// SHADOW_HAVE_BLUEZQT).
 //
 // Rows of the device models: ubi (D-Bus path, the key), address, name,
 // kind, deviceIcon, paired, trusted, connected, battery (-1 = not reported),

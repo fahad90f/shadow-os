@@ -1,6 +1,6 @@
-# NEXUS Arsenal
+# SHADOW Arsenal
 
-Security tool profiles for NEXUS OS: curated sets of Debian packages for
+Security tool profiles for Shadow OS: curated sets of Debian packages for
 authorised testing, research, defence and forensics, installed **on demand**
 through the package manager — never by default — and a manager application to
 browse, install and remove them.
@@ -10,7 +10,7 @@ arsenal/
 ├── profiles/     the manifests: one JSON file per profile, categories.json, schema.json, sizes.json
 ├── tools/        validate.py, check-availability.py, profile-size.py, gen-control.py, gen-profiles-doc.py
 ├── packaging/    control.in (generated) and install rules for debian/
-├── manager/      the application nexus-arsenal (org.nexus.arsenal) — see manager/README.md
+├── manager/      the application shadow-arsenal (org.shadow.arsenal) — see manager/README.md
 └── docs/         legal-use.md, lab-setup.md, profiles.md (generated), adding-tools.md
 ```
 
@@ -23,7 +23,7 @@ arsenal/
   samples, credentials or word lists.
 * Well-known tools that are not in Debian main are listed per profile under
   `external` with their licence, the reason and the vendor's official
-  instructions. They are shown as "not installable from NEXUS repositories";
+  instructions. They are shown as "not installable from SHADOW repositories";
   nothing downloads or repackages them.
 * `complete` is the union of the other profiles by reference (`includes`).
 
@@ -58,12 +58,12 @@ Exact commands: [docs/adding-tools.md](docs/adding-tools.md), section *Verify*.
 
 ## Run-time package dependencies
 
-* `nexus-arsenal` (manager): `nexus-ui`, `nexus-arsenal-data`, `dpkg`, `apt`,
-  `libpackagekitqt6-2` (via shlibs), Qt 6 QML modules as for every NEXUS
+* `shadow-arsenal` (manager): `shadow-ui`, `shadow-arsenal-data`, `dpkg`, `apt`,
+  `libpackagekitqt6-2` (via shlibs), Qt 6 QML modules as for every SHADOW
   application; recommended `packagekit`, `polkitd` (with a polkit agent in the
-  session), `nexus-terminal`.
-* `nexus-arsenal-data`: none.
-* `nexus-arsenal-<id>`: `nexus-arsenal-data`; Recommends the tools.
+  session), `shadow-terminal`.
+* `shadow-arsenal-data`: none.
+* `shadow-arsenal-<id>`: `shadow-arsenal-data`; Recommends the tools.
 * The scripts in `tools/` are build-time only: `python3`, `apt`, `dpkg`.
 
 ## Packaging
@@ -83,14 +83,14 @@ Tested (build chroot, amd64, Debian trixie; details in manager/README.md):
 * `profile-size.py`: all nine profiles resolve with `apt-get --simulate`.
 * Manager: builds, smoke test passes without QML warnings, dumps match
   `dpkg-query`, first-start acknowledgement, navigation, tool details, the apt
-  fallback, and starting tools in NEXUS Terminal exercised in a nested session.
+  fallback, and starting tools in SHADOW Terminal exercised in a nested session.
 
 Not tested / known limits:
 
 * **PackageKit transactions** (resolve, simulate, install, remove, progress,
   cancellation, polkit prompt, error paths): the chroot has no system bus. The
   code is exercised only up to "PackageKit is not available".
-* The `nexus-arsenal-*` metapackages do not exist in any repository yet, so
+* The `shadow-arsenal-*` metapackages do not exist in any repository yet, so
   "install profile" through the metapackage and "remove profile" are untested;
   `control.in` has not been run through `dpkg-gencontrol`.
 * Only one external entry (Nikto) carries the `packages` field that lets

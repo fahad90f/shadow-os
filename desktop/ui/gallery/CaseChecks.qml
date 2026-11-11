@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 
-// Scripted checks of a gallery test page (nexus-ui-gallery --case X --selftest).
+// Scripted checks of a gallery test page (shadow-ui-gallery --case X --selftest).
 //
 //   CaseChecks {
 //       name: "rows"
@@ -34,7 +34,7 @@ QtObject {
             console.log("CASE-PASS " + name + ": " + what)
         } else {
             failures++
-            console.error("NEXUS-CASE-FAILED " + name + ": " + what)
+            console.error("SHADOW-CASE-FAILED " + name + ": " + what)
         }
     }
     function compare(actual, expected, what) {
@@ -52,17 +52,17 @@ QtObject {
                     checks.steps[checks._next]()
                 } catch (e) {
                     checks.failures++
-                    console.error("NEXUS-CASE-FAILED " + checks.name + ": step " + checks._next + " threw " + e)
+                    console.error("SHADOW-CASE-FAILED " + checks.name + ": step " + checks._next + " threw " + e)
                 }
                 checks._next++
                 return
             }
             checks.done = true
             if (checks.failures > 0) {
-                console.error("NEXUS-CASE-FAILED " + checks.name + ": " + checks.failures + " check(s) failed")
+                console.error("SHADOW-CASE-FAILED " + checks.name + ": " + checks.failures + " check(s) failed")
                 Qt.exit(4)
             } else {
-                console.log("NEXUS-CASE-OK " + checks.name + " (" + checks.passed + " checks)")
+                console.log("SHADOW-CASE-OK " + checks.name + " (" + checks.passed + " checks)")
             }
         }
     }

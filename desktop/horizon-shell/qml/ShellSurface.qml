@@ -23,7 +23,7 @@ Window {
     property int exclusiveZone: 0
     // "none" | "exclusive" | "ondemand"
     property string keyboard: "none"
-    property string scope: "nexus-shell"
+    property string scope: "shadow-shell"
 
     flags: Qt.FramelessWindowHint
     color: "transparent"

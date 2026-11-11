@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls.impl
 import QtQuick.Templates as T
-import org.nexus.ui
+import org.shadow.ui
 
 // Variants: default (secondary), highlighted (primary), flat (ghost).
 // NxButton adds "danger" through its 'kind' property, read here by duck typing.

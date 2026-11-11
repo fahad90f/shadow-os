@@ -2,13 +2,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.arsenal
+import org.shadow.ui
+import org.shadow.arsenal
 
 NxWindow {
     id: window
 
-    title: qsTr("NEXUS Arsenal")
+    title: qsTr("SHADOW Arsenal")
     width: 1240
     height: 820
 
@@ -59,7 +59,7 @@ NxWindow {
     }
 
     Connections {
-        target: nexusApp
+        target: shadowApp
         function onActivationRequested(arguments) {
             const page = arsenal.pageFromArguments(arguments)
             if (page !== "")

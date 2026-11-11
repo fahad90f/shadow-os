@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // A page whose body is one long virtualised list (updates, history, search
 // results, installed packages). It looks like NxPage — title block, actions,

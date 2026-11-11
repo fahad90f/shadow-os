@@ -1,6 +1,6 @@
-# Using NEXUS HORIZON
+# Using Shadow Horizon
 
-NEXUS HORIZON is the desktop of NEXUS OS: a top panel, a dock, an
+Shadow Horizon is the desktop of Shadow OS: a top panel, a dock, an
 application launcher and a set of popups, drawn by one program
 (`horizon-shell`) on the KWin Wayland compositor. This page describes what
 you see and how to use it. How it works inside is in
@@ -34,7 +34,7 @@ Left to right:
 
 | Item | What it does |
 |---|---|
-| NEXUS button | opens the launcher |
+| SHADOW button | opens the launcher |
 | Workspace pills | one per workspace, the current one is wider and in the accent colour; click a pill to switch. Shown when there is more than one workspace |
 | Application name and window title | of the active window |
 | Clock (centre) | date and time. When the status module is present, a click opens the calendar |
@@ -70,7 +70,7 @@ these applications are not in the image yet
 ## Launcher
 
 Open it with the **Meta** key (the Super/Windows key, tapped on its own),
-**Alt+F1**, or the NEXUS button.
+**Alt+F1**, or the SHADOW button.
 
 * Type to search; the grid narrows as you type.
 * Arrow keys move, **Return** starts the selected application, **Escape**
@@ -85,7 +85,7 @@ The launcher lists every installed application that has a desktop entry.
 
 ## Workspaces and windows
 
-Windows are managed by KWin with the defaults NEXUS ships in
+Windows are managed by KWin with the defaults SHADOW ships in
 `/etc/xdg/kwinrc`:
 
 | Setting | Default |
@@ -103,7 +103,7 @@ Windows are managed by KWin with the defaults NEXUS ships in
 
 The keyboard shortcuts for window management — switching windows and
 workspaces, moving, tiling, the overview — are **KWin's own defaults**.
-NEXUS does not change or define them, so they are not listed here; the
+SHADOW does not change or define them, so they are not listed here; the
 Control Center's Keyboard page shows the shortcuts that are registered on
 your system (read-only).
 
@@ -119,27 +119,27 @@ KDE's global-shortcut service, your binding is kept.
 | Keys | Action | What happens |
 |---|---|---|
 | **Meta** (tapped alone), **Alt+F1** | Open the application launcher | toggles the launcher |
-| **Ctrl+Alt+T**, **Meta+Return** | Open a terminal | starts `nexus-terminal` |
-| **Meta+E** | Open the file manager | starts `nexus-files` (NEXUS Files) |
-| **Meta+I** | Open the Control Center | starts `nexus-control-center` |
+| **Ctrl+Alt+T**, **Meta+Return** | Open a terminal | starts `shadow-terminal` |
+| **Meta+E** | Open the file manager | starts `shadow-files` (SHADOW Files) |
+| **Meta+I** | Open the Control Center | starts `shadow-control-center` |
 | **Meta+A** | Show quick settings | toggles the quick settings (status module) |
 | **Meta+N** | Show notifications | toggles the notification centre (notifications module) |
 | **Ctrl+Alt+Delete** | Show the power and session menu | toggles the session menu |
-| **Ctrl+Shift+Escape** | Open the task manager | starts `nexus-monitor --page processes` |
-| **Print** | Take a screenshot | starts `nexus-screenshot` |
-| **Meta+Shift+S** | Take a screenshot of a region | starts `nexus-screenshot --region` |
+| **Ctrl+Shift+Escape** | Open the task manager | starts `shadow-monitor --page processes` |
+| **Print** | Take a screenshot | starts `shadow-screenshot` |
+| **Meta+Shift+S** | Take a screenshot of a region | starts `shadow-screenshot --region` |
 | **Volume Up** / **Volume Down** / **Mute** keys | Increase / decrease volume, mute | handled by the status module, with an on-screen display |
 | **Microphone Mute** key | Mute the microphone | status module |
 | **Brightness Up** / **Brightness Down** keys | Screen brightness | status module |
 | **Play/Pause**, **Next**, **Previous** media keys | Media control | status module (MPRIS players) |
 
 When a shortcut names a program that is not installed, the shell shows a
-short message such as "nexus-terminal is not installed." This currently
-applies to `nexus-terminal` and `nexus-screenshot`, which are not part of
+short message such as "shadow-terminal is not installed." This currently
+applies to `shadow-terminal` and `shadow-screenshot`, which are not part of
 the image yet.
 
 The shortcuts need KDE's global-shortcut service on the session bus; in the
-NEXUS HORIZON session KWin provides it.
+Shadow Horizon session KWin provides it.
 
 `horizon-shell --dump shortcuts` prints the registered shortcuts and their
 current keys as JSON.
@@ -182,7 +182,7 @@ session's notification service.
   action), Delete (dismiss), Escape.
 * **Do Not Disturb** holds back popups except critical ones; held-back
   notifications are in the centre. The setting is stored in
-  `~/.config/nexus/notifications.conf`.
+  `~/.config/shadow/notifications.conf`.
 
 Limits: no sounds, no inline reply, and the history is lost when the shell
 restarts. Popups and the centre appear on the primary screen only.
@@ -246,7 +246,7 @@ directly to polkit and is not stored or logged by the shell.
 
 ## Appearance
 
-NEXUS applications and the shell share one appearance state:
+SHADOW applications and the shell share one appearance state:
 
 | Setting | Values |
 |---|---|
@@ -257,12 +257,12 @@ NEXUS applications and the shell share one appearance state:
 | Font scale | 0.8–1.6, default 1.0 |
 
 You can switch dark mode from the quick settings. When the colour scheme or
-accent changes, the shell runs `nexus-apply-appearance`, which carries the
+accent changes, the shell runs `shadow-apply-appearance`, which carries the
 change over to third-party Qt/KDE and GTK applications, window decorations
 and the icon theme. From a terminal:
 
 ```sh
-nexus-apply-appearance --mode light --accent violet
+shadow-apply-appearance --mode light --accent violet
 ```
 
 A Control Center page for appearance exists in the source tree but is not
@@ -270,17 +270,17 @@ part of the image yet; until then, use the quick settings, the command
 above, or edit `appearance.conf` (below).
 
 Translucent "glass" surfaces need GPU compositing. With CPU rendering — a
-virtual machine without 3D, or `NEXUS_SOFTWARE_RENDERING=1` — surfaces are
+virtual machine without 3D, or `SHADOW_SOFTWARE_RENDERING=1` — surfaces are
 opaque.
 
-Wallpapers shipped in `/usr/share/backgrounds/nexus/`: `nexus-horizon.jpg`
-(default, dark), `nexus-daylight.jpg` (default for the light scheme),
-`nexus-lattice.jpg`, `nexus-aurora.jpg`.
+Wallpapers shipped in `/usr/share/backgrounds/shadow/`: `shadow-horizon.jpg`
+(default, dark), `shadow-daylight.jpg` (default for the light scheme),
+`shadow-lattice.jpg`, `shadow-aurora.jpg`.
 
 ## Settings files
 
-All under `~/.config/nexus/`. System-wide defaults can be placed under
-`/etc/xdg/nexus/` with the same file names. The files are plain INI; the
+All under `~/.config/shadow/`. System-wide defaults can be placed under
+`/etc/xdg/shadow/` with the same file names. The files are plain INI; the
 programs watch them and follow changes immediately.
 
 | File | Written by | Content |
@@ -297,7 +297,7 @@ programs watch them and follow changes immediately.
 Example — auto-hide the dock, larger icons, 12-hour clock with seconds:
 
 ```ini
-# ~/.config/nexus/horizon.conf
+# ~/.config/shadow/horizon.conf
 [Dock]
 AutoHide=true
 IconSize=56

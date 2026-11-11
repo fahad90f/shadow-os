@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
-// Section header of the update list: one per group of NexusPk::UpdateChecker.
+// Section header of the update list: one per group of ShadowPk::UpdateChecker.
 Item {
     id: root
 
     // The group key ListView passes to a section delegate.
     required property string section
-    // NexusPk::UpdateChecker
+    // ShadowPk::UpdateChecker
     property QtObject checker: null
 
     readonly property int count: !checker ? 0
         : section === "security" ? checker.securityCount
         : section === "kernel" ? checker.kernelCount
-        : section === "nexus" ? checker.nexusCount
+        : section === "shadow" ? checker.shadowCount
         : section === "blocked" ? checker.blockedCount : checker.otherCount
     readonly property string title: section === "security" ? qsTr("Security updates")
         : section === "kernel" ? qsTr("Kernel")
-        : section === "nexus" ? qsTr("NEXUS desktop and applications")
+        : section === "shadow" ? qsTr("SHADOW desktop and applications")
         : section === "blocked" ? qsTr("Held back") : qsTr("Other system packages")
     readonly property string note: section === "security" ? qsTr("Classified as security fixes by PackageKit (from the security archive).")
         : section === "blocked" ? qsTr("Kept back by the package manager: installing these would add or remove other packages. They are not installed from here.")
@@ -40,7 +40,7 @@ Item {
             spacing: Theme.spaceSm
             NxIcon {
                 name: root.section === "security" ? "shield-alert" : root.section === "kernel" ? "cpu"
-                    : root.section === "nexus" ? "nexus" : root.section === "blocked" ? "lock" : "package"
+                    : root.section === "shadow" ? "shadow" : root.section === "blocked" ? "lock" : "package"
                 size: Theme.iconSmall
                 color: root.section === "security" ? Theme.danger : root.section === "blocked" ? Theme.warning : Theme.textSecondary
             }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Validate the NEXUS Arsenal profile manifests.
+"""Validate the SHADOW Arsenal profile manifests.
 
     arsenal/tools/validate.py [--profiles-dir DIR] [--quiet]
 
@@ -15,7 +15,7 @@ Two layers of checks:
 
 2. Rules a schema cannot express:
    * the file name, the id and the metapackage name agree;
-   * categories exist in categories.json; their glyphs exist in NexusUI;
+   * categories exist in categories.json; their glyphs exist in ShadowUI;
    * a package or an external tool is listed once per profile;
    * a package listed by several profiles has the same entry in each;
    * CLI tools name their command, GUI tools their desktop entry;
@@ -136,8 +136,8 @@ def check_profile(ident, manifest, category_ids, errors):
     path = os.path.basename(manifest["_path"])
     if path != f"{ident}.json":
         errors.append(f"{path}: the id '{ident}' does not match the file name")
-    if manifest.get("metapackage") != f"nexus-arsenal-{ident}":
-        errors.append(f"{path}: metapackage must be 'nexus-arsenal-{ident}'")
+    if manifest.get("metapackage") != f"shadow-arsenal-{ident}":
+        errors.append(f"{path}: metapackage must be 'shadow-arsenal-{ident}'")
 
     seen = set()
     for index, tool in enumerate(manifest.get("tools", [])):
@@ -239,14 +239,14 @@ def check_categories(categories, errors):
                 errors.append(f"{where}: id '{ident}' is defined twice")
             ids.add(ident)
 
-    # Glyph names are checked against the NexusUI icon set when it is at hand.
+    # Glyph names are checked against the ShadowUI icon set when it is at hand.
     glyph_list = os.path.join(am.REPO_ROOT, "desktop", "ui", "icons", "icons.list")
     if os.path.isfile(glyph_list):
         with open(glyph_list, encoding="utf-8") as handle:
             glyphs = {line.strip()[:-4] for line in handle if line.strip().endswith(".svg")}
         for category in categories:
             if isinstance(category, dict) and category.get("icon") not in glyphs:
-                errors.append(f"categories.json: '{category.get('id')}': no NexusUI glyph named {category.get('icon')!r}")
+                errors.append(f"categories.json: '{category.get('id')}': no ShadowUI glyph named {category.get('icon')!r}")
     return ids
 
 

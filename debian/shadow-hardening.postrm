@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|purge|abort-install)
+        if dpkg-divert --list /etc/nftables.conf | grep -q "by shadow-hardening"; then
+            dpkg-divert --package shadow-hardening --remove --rename \
+                --divert /etc/nftables.conf.debian /etc/nftables.conf
+        fi
+        ;;
+esac
+if [ "$1" = "purge" ]; then
+    rm -f /etc/nftables.d/50-shadow-allowed.nft /etc/shadow/firewall.json
+    rmdir --ignore-fail-on-non-empty /etc/nftables.d /etc/shadow 2>/dev/null || true
+fi
+
+#DEBHELPER#
+exit 0

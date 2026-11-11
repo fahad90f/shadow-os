@@ -5,7 +5,7 @@
 
 #include <algorithm>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 PackageEntry PackageEntry::fromId(const QString &packageId, PackageKit::Transaction::Info rawInfo, const QString &summary)
 {
@@ -375,4 +375,4 @@ QJsonArray PackageModel::toJson() const
     return array;
 }
 
-} // namespace NexusPk
+} // namespace ShadowPk

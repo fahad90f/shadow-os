@@ -25,7 +25,7 @@ PolkitAgent::~PolkitAgent()
 bool PolkitAgent::registerAgent()
 {
     const PolkitQt1::UnixSessionSubject subject(QCoreApplication::applicationPid());
-    const bool ok = registerListener(subject, QStringLiteral("/org/nexus/PolicyKit1/AuthenticationAgent"));
+    const bool ok = registerListener(subject, QStringLiteral("/org/shadow/PolicyKit1/AuthenticationAgent"));
     if (ok != m_registered) {
         m_registered = ok;
         Q_EMIT registeredChanged();

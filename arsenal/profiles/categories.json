@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "comment": "The one definition of the tool categories. Manifests refer to a category by id; tools/validate.py rejects any other value. 'icon' is a glyph of the NEXUS symbolic icon set (desktop/ui/icons).",
+  "comment": "The one definition of the tool categories. Manifests refer to a category by id; tools/validate.py rejects any other value. 'icon' is a glyph of the SHADOW symbolic icon set (desktop/ui/icons).",
   "categories": [
     {
       "id": "information-gathering",

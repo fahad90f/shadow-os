@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+<title>Shadow OS</title>
+<defs>
+<linearGradient id="nx-g" gradientUnits="userSpaceOnUse" x1="40" y1="40" x2="216" y2="216"><stop offset="0" stop-color="#22D8F5"/><stop offset="0.55" stop-color="#3D8BFF"/><stop offset="1" stop-color="#9B6BFF"/></linearGradient>
+<filter id="nx-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+</defs>
+<path d="M128.00 28.00 L214.60 78.00 L214.60 178.00 L128.00 228.00 L41.40 178.00 L41.40 78.00Z" fill="none" stroke="#0A1020" stroke-width="13" stroke-linejoin="round"/>
+<path d="M92 170V88L164 168V86" fill="none" stroke="#0A1020" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="92" cy="88" r="13.5" fill="#0A1020"/>
+<circle cx="164" cy="168" r="13.5" fill="#0A1020"/>
+</svg>

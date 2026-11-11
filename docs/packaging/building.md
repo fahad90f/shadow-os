@@ -1,6 +1,6 @@
-# Building NEXUS packages
+# Building SHADOW packages
 
-How the NEXUS binary packages are built, and the developer loop for working
+How the SHADOW binary packages are built, and the developer loop for working
 on one component. Image building is in [iso.md](iso.md); publishing in
 [repositories.md](repositories.md).
 
@@ -30,21 +30,21 @@ tests. The package list is in the script.
 ## Configuration
 
 `build/lib/common.sh` is sourced by every build script. It reads
-`distro/base/nexus.conf` and accepts these environment variables:
+`distro/base/shadow.conf` and accepts these environment variables:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NEXUS_WORK` | `build/work` | chroots, caches, image staging, signing home |
-| `NEXUS_OUT` | `build/out` | packages, repository, ISO images, kernel configuration |
-| `NEXUS_JOBS` | `nproc` | parallel jobs |
-| `NEXUS_BUILD_MIRROR` | `http://deb.debian.org/debian` | Debian mirror used while building |
-| `NEXUS_BUILD_SECURITY_MIRROR` | `http://deb.debian.org/debian-security` | security mirror used while building |
-| `NEXUS_REPO_URL` | empty | URL of a published NEXUS repository ([repositories.md](repositories.md)) |
-| `NEXUS_SIGNING_HOME` | `$NEXUS_WORK/signing` | GnuPG home of the repository signing key |
+| `SHADOW_WORK` | `build/work` | chroots, caches, image staging, signing home |
+| `SHADOW_OUT` | `build/out` | packages, repository, ISO images, kernel configuration |
+| `SHADOW_JOBS` | `nproc` | parallel jobs |
+| `SHADOW_BUILD_MIRROR` | `http://deb.debian.org/debian` | Debian mirror used while building |
+| `SHADOW_BUILD_SECURITY_MIRROR` | `http://deb.debian.org/debian-security` | security mirror used while building |
+| `SHADOW_REPO_URL` | empty | URL of a published SHADOW repository ([repositories.md](repositories.md)) |
+| `SHADOW_SIGNING_HOME` | `$SHADOW_WORK/signing` | GnuPG home of the repository signing key |
 | `SOURCE_DATE_EPOCH` | time of the last git commit | timestamp for reproducible output |
 
 `sudo` does not pass your environment on by default. Use
-`sudo env NEXUS_JOBS=2 build/packages/build.sh`, or `sudo -E`.
+`sudo env SHADOW_JOBS=2 build/packages/build.sh`, or `sudo -E`.
 
 ## 1. The build chroot
 
@@ -92,19 +92,19 @@ sudo build/packages/build.sh [--arch amd64|arm64] [--indep | --arch-only]
 
 What it does:
 
-1. Checks that the version in `debian/changelog` equals `NEXUS_VERSION` in
-   `distro/base/nexus.conf`.
-2. Exports the source into the chroot at `/build/pkg/nexus-os-<version>`:
+1. Checks that the version in `debian/changelog` equals `SHADOW_VERSION` in
+   `distro/base/shadow.conf`.
+2. Exports the source into the chroot at `/build/pkg/shadow-os-<version>`:
    **tracked files with their working-tree content.** Untracked files are
    left out so unfinished work cannot break a build; set
-   `NEXUS_EXPORT_UNTRACKED=1` to include untracked, non-ignored files.
+   `SHADOW_EXPORT_UNTRACKED=1` to include untracked, non-ignored files.
    Paths listed in `build/packages/wip.exclude` (work in progress that is
    committed but not yet integrated) are left out as well.
 3. Makes sure a repository signing key exists
    (`build/packages/signing-key.sh`) and hands its public half to the build;
-   it ends up in `nexus-archive-keyring`.
+   it ends up in `shadow-archive-keyring`.
 4. Runs `dpkg-buildpackage -us -uc --no-sign` in the chroot with
-   `DEB_BUILD_OPTIONS=parallel=$NEXUS_JOBS` and `NEXUS_REPO_URL`.
+   `DEB_BUILD_OPTIONS=parallel=$SHADOW_JOBS` and `SHADOW_REPO_URL`.
 5. Copies the resulting `.deb` files to `build/out/packages/`.
 
 ### What `debian/rules` does
@@ -113,44 +113,44 @@ What it does:
   hardening=+all`; build type `RelWithDebInfo`.
 * **Compiled packages:** one `cmake --install --component <package>` per
   package returned by `dh_listpackages -a`. A component that installs no
-  file is an error. The `nexus-arsenal-*` metapackages are skipped (they are
+  file is an error. The `shadow-arsenal-*` metapackages are skipped (they are
   empty by design).
 * **Architecture-independent packages:**
   * `scripts/gen-identity.sh debian/generated` renders `os-release`,
-    `issue`, `issue.net` and `nexus-release` from `nexus.conf`;
+    `issue`, `issue.net` and `shadow-release` from `shadow.conf`;
   * `scripts/gen-apt-source.sh debian/generated` prepares the archive keyring
-    and `nexus.sources`;
+    and `shadow.sources`;
   * the installer engine is byte-compiled as a syntax check and the planner
     unit tests run (`python3 tests/installation/test_plan.py`) — a failing
     planner test fails the package build;
-  * `nexus-artwork` and `nexus-themes` are installed from the CMake project
-    configured with `-DNEXUS_DATA_ONLY=ON` (no compiler needed);
+  * `shadow-artwork` and `shadow-themes` are installed from the CMake project
+    configured with `-DSHADOW_DATA_ONLY=ON` (no compiler needed);
   * the rest is assembled by the `debian/*.install` files.
 * GUI smoke tests do not run during the package build; they are run with
   `tests/desktop/smoke.sh`.
 
 ### Packages
 
-From `debian/control` (source package `nexus-os`):
+From `debian/control` (source package `shadow-os`):
 
 | Package | Arch | Content |
 |---|---|---|
-| `nexus-base-files` | all | `os-release`, `issue`, `issue.net` (diverting Debian's), `/usr/share/nexus/nexus-release` |
-| `nexus-archive-keyring` | all | repository public key and `nexus.sources` |
-| `nexus-boot` | all | `nexus-grub-install`, `/etc/default/grub`, `10-nexus.cfg`, dpkg trigger |
-| `nexus-installer` | all | installer engine |
-| `nexus-installer-gui` | any | graphical installer |
-| `nexus-live` | all | live-session configuration |
-| `nexus-hardening` | all | security baseline |
-| `nexus-artwork` | all | wallpapers, logos, GRUB and Plymouth themes |
-| `nexus-themes` | all | colour schemes, icon themes, SDDM theme, lock screen, `nexus-apply-appearance` |
-| `nexus-ui` | any | NexusUI library, style and icons |
-| `nexus-horizon` | any | shell and session |
-| `nexus-sysinfo`, `nexus-monitor`, `nexus-files`, `nexus-store`, `nexus-updater`, `nexus-control-center`, `nexus-network-center` | any | applications |
-| `nexus-arsenal` | any | Arsenal manager |
-| `nexus-arsenal-data` | all | profile manifests |
-| `nexus-arsenal-core`, `-web`, `-network`, `-redteam`, `-blueteam`, `-forensics`, `-developer`, `-complete` | all | profile metapackages |
-| `nexus-arsenal-reversing` | any | profile metapackage (one tool is amd64-only) |
+| `shadow-base-files` | all | `os-release`, `issue`, `issue.net` (diverting Debian's), `/usr/share/shadow/shadow-release` |
+| `shadow-archive-keyring` | all | repository public key and `shadow.sources` |
+| `shadow-boot` | all | `shadow-grub-install`, `/etc/default/grub`, `10-shadow.cfg`, dpkg trigger |
+| `shadow-installer` | all | installer engine |
+| `shadow-installer-gui` | any | graphical installer |
+| `shadow-live` | all | live-session configuration |
+| `shadow-hardening` | all | security baseline |
+| `shadow-artwork` | all | wallpapers, logos, GRUB and Plymouth themes |
+| `shadow-themes` | all | colour schemes, icon themes, SDDM theme, lock screen, `shadow-apply-appearance` |
+| `shadow-ui` | any | ShadowUI library, style and icons |
+| `shadow-horizon` | any | shell and session |
+| `shadow-sysinfo`, `shadow-monitor`, `shadow-files`, `shadow-store`, `shadow-updater`, `shadow-control-center`, `shadow-network-center` | any | applications |
+| `shadow-arsenal` | any | Arsenal manager |
+| `shadow-arsenal-data` | all | profile manifests |
+| `shadow-arsenal-core`, `-web`, `-network`, `-redteam`, `-blueteam`, `-forensics`, `-developer`, `-complete` | all | profile metapackages |
+| `shadow-arsenal-reversing` | any | profile metapackage (one tool is amd64-only) |
 
 Components that exist in the tree but have no package yet are listed in
 `build/packages/wip.exclude`; see [../limitations.md](../limitations.md).
@@ -171,24 +171,24 @@ scripts/dev.sh shell  [--dir NAME]
 scripts/dev.sh exec   [--dir NAME] -- <command> [args...]
 ```
 
-It needs root and the build chroot (`NEXUS_DEV_ARCH` selects the chroot's
+It needs root and the build chroot (`SHADOW_DEV_ARCH` selects the chroot's
 architecture). `nested`, and applications whose back-ends call system tools,
 need the chroot to have been created with `--dev-tools`.
 
 | Verb | What it does |
 |---|---|
 | `build` | Configures once (CMake, Ninja, `RelWithDebInfo`) and builds. `--dir` selects the build tree (default `dev`); use one per component so parallel work does not collide. `--only` restricts the components (directory names, e.g. `monitor`, `horizon-shell`); `--modules` restricts the shell modules compiled into `horizon-shell` (`-` for none); `--cc-pages` restricts Control Center pages |
-| `run` | Starts a built GUI binary under a virtual X server (Xvfb) with software OpenGL, a throw-away `HOME` and a private session bus. `--shot` saves a screenshot of the main window to `build/work/shots/`; `--smoke` makes the run fail if the QML engine reported a warning or error; `--light`/`--accent` set the appearance. `NEXUS_RUN_TIMEOUT` (default 60 s) limits the run |
-| `nested` | A real NEXUS HORIZON session for tests: `kwin_wayland` runs inside Xvfb and `<commands>` run in it as session clients. Inside the commands, `xdo …` sends input with xdotool and `shot NAME.png` takes a screenshot. Logs and files written to `$NEXUS_LOGS` end up in `build/work/shots/nested-logs/<dir>/` |
+| `run` | Starts a built GUI binary under a virtual X server (Xvfb) with software OpenGL, a throw-away `HOME` and a private session bus. `--shot` saves a screenshot of the main window to `build/work/shots/`; `--smoke` makes the run fail if the QML engine reported a warning or error; `--light`/`--accent` set the appearance. `SHADOW_RUN_TIMEOUT` (default 60 s) limits the run |
+| `nested` | A real Shadow Horizon session for tests: `kwin_wayland` runs inside Xvfb and `<commands>` run in it as session clients. Inside the commands, `xdo …` sends input with xdotool and `shot NAME.png` takes a screenshot. Logs and files written to `$SHADOW_LOGS` end up in `build/work/shots/nested-logs/<dir>/` |
 | `shell` | Interactive shell in the chroot |
 | `exec` | One command in the chroot, e.g. `scripts/dev.sh exec -- apt-cache policy nmap` |
 
 Typical cycle for one application:
 
 ```sh
-sudo env NEXUS_JOBS=2 scripts/dev.sh build --dir monitor --only monitor
-sudo scripts/dev.sh run --dir monitor --smoke --shot monitor.png nexus-monitor
-sudo scripts/dev.sh run --dir monitor nexus-monitor --dump cpu
+sudo env SHADOW_JOBS=2 scripts/dev.sh build --dir monitor --only monitor
+sudo scripts/dev.sh run --dir monitor --smoke --shot monitor.png shadow-monitor
+sudo scripts/dev.sh run --dir monitor shadow-monitor --dump cpu
 sudo tests/desktop/smoke.sh --dir monitor monitor
 ```
 
@@ -202,9 +202,9 @@ booted image. The contract is in
 
 | Script | Purpose |
 |---|---|
-| `scripts/gen-identity.sh <dir>` | identity files from `distro/base/nexus.conf` |
-| `scripts/gen-apt-source.sh <dir>` | archive keyring and `nexus.sources` (`NEXUS_ARCHIVE_KEY`, `NEXUS_REPO_URL`) |
-| `scripts/gen-tokens.py qml\|render\|docs\|check` | everything derived from the design tokens `desktop/themes/tokens/nexus-tokens.json` |
+| `scripts/gen-identity.sh <dir>` | identity files from `distro/base/shadow.conf` |
+| `scripts/gen-apt-source.sh <dir>` | archive keyring and `shadow.sources` (`SHADOW_ARCHIVE_KEY`, `SHADOW_REPO_URL`) |
+| `scripts/gen-tokens.py qml\|render\|docs\|check` | everything derived from the design tokens `desktop/themes/tokens/shadow-tokens.json` |
 | `desktop/themes/tools/generate.py [--check\|--list]` | generated theme files (committed) |
 | `assets/src/icons/gen-symbolic.py`, `gen-app-icons.py` | symbolic icon set (`desktop/ui/icons`), application and category icons |
 | `assets/src/logos/gen-logos.py`, `assets/src/wallpapers/gen-wallpapers.py` | logo family, wallpapers |

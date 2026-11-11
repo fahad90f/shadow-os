@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // Status glyphs that show a level, which a fixed symbolic icon cannot:
 //
 //   kind "wifi"      the Wi-Fi fan with 'level' (0–3) of its three arcs lit
 //   kind "battery"   the battery outline filled to 'level' (0–1)
 //
-// Drawn on the 24-unit grid and with the stroke of the NEXUS symbolic icon
+// Drawn on the 24-unit grid and with the stroke of the SHADOW symbolic icon
 // set, so they sit next to NxIcon glyphs without looking foreign.
 Canvas {
     id: root

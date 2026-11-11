@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # @@GENERATED@@
 #
-# System defaults for Qt and KDE Frameworks applications in a NEXUS HORIZON
+# System defaults for Qt and KDE Frameworks applications in a Shadow Horizon
 # session. Installed as /etc/xdg/kdeglobals and read through the "kde" Qt
 # platform theme (package plasma-integration, QT_QPA_PLATFORMTHEME=kde) by
 # every Qt application, and by KWin for the window decoration.
-# ~/.config/kdeglobals overrides it per key; nexus-apply-appearance
+# ~/.config/kdeglobals overrides it per key; shadow-apply-appearance
 # (desktop/themes/tools) writes that file when the user changes the
 # appearance (light mode, accent).
 #
@@ -24,22 +24,22 @@ menuFont=@{font.ui},10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 toolBarFont=@{font.ui},10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 smallestReadableFont=@{font.ui},8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 fixed=@{font.mono},10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
-# "Open terminal here" in KDE applications starts the NEXUS terminal.
-TerminalApplication=nexus-terminal
-TerminalService=org.nexus.terminal.desktop
+# "Open terminal here" in KDE applications starts the SHADOW terminal.
+TerminalApplication=shadow-terminal
+TerminalService=org.shadow.terminal.desktop
 
 [KDE]
 widgetStyle=Breeze
 SingleClick=false
 # 1 = the durations the widget style and KWin were designed with (their
-# 100/200/400 ms steps sit next to the 140/220/340 ms of the NEXUS motion
+# 100/200/400 ms steps sit next to the 140/220/340 ms of the SHADOW motion
 # tokens); 0 switches animations off ("reduce motion").
 AnimationDurationFactor=1
 ShowIconsOnPushButtons=true
 ShowIconsInMenuItems=true
 
 [Icons]
-Theme=nexus
+Theme=shadow
 
 [WM]
 activeFont=@{font.ui},10,-1,5,600,0,0,0,0,0,0,0,0,0,0,1

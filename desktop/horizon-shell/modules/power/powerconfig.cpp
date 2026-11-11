@@ -13,7 +13,7 @@ namespace {
 
 QString configDir()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/nexus");
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/shadow");
 }
 
 // A whole number of minutes from 0 to 1440; anything else is the default.
@@ -56,7 +56,7 @@ double Config::timeScale()
 {
     static const double scale = [] {
         bool ok = false;
-        const double value = qEnvironmentVariable("NEXUS_POWER_TIME_SCALE").toDouble(&ok);
+        const double value = qEnvironmentVariable("SHADOW_POWER_TIME_SCALE").toDouble(&ok);
         return ok && value > 0 ? value : 1.0;
     }();
     return scale;
@@ -75,8 +75,8 @@ void Config::reload()
             m_watcher->addPath(file);
     }
 
-    // QSettings falls back, per key, to /etc/xdg/nexus/<name>.conf.
-    const QSettings power(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("power"));
+    // QSettings falls back, per key, to /etc/xdg/shadow/<name>.conf.
+    const QSettings power(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("power"));
     IdleMinutes ac, battery;
     ac.screenOff = minutes(power, "IdleScreenOffMinutes", 10);
     ac.lock = minutes(power, "IdleLockMinutes", 15);
@@ -90,7 +90,7 @@ void Config::reload()
         Q_EMIT idleChanged();
     }
 
-    const QSettings updater(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("updater"));
+    const QSettings updater(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("updater"));
     const bool autoCheck = updater.value(QStringLiteral("Updates/AutoCheck"), true).toBool();
     const int interval = qBound(1, updater.value(QStringLiteral("Updates/CheckIntervalHours"), 24).toInt(), 24 * 30);
     if (autoCheck != m_autoCheck || interval != m_intervalHours) {

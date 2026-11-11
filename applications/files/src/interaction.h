@@ -34,7 +34,7 @@ public:
 
     // Dynamic property set on a KIO job that the user cancelled (operations
     // list, "Stop" in a dialog) — to tell it apart from a job KIO gave up on.
-    static constexpr const char *cancelledProperty = "nexusCancelledByUser";
+    static constexpr const char *cancelledProperty = "shadowCancelledByUser";
 
     static Interaction *instance();
     static Interaction *create(QQmlEngine *, QJSEngine *);

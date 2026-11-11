@@ -1,0 +1,11 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Shadow OS installer engine (see shadow_installer/__init__.py)."""
+import sys
+
+sys.path.insert(0, "/usr/lib/shadow-installer")
+sys.dont_write_bytecode = True
+
+from shadow_installer.__main__ import main  # noqa: E402
+
+sys.exit(main())

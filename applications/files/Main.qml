@@ -4,10 +4,10 @@ import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.files
+import org.shadow.ui
+import org.shadow.files
 
-// NEXUS Files — main window: sidebar, toolbar, tabs, panes, preview panel,
+// SHADOW Files — main window: sidebar, toolbar, tabs, panes, preview panel,
 // menus, dialogs and keyboard shortcuts. Panes and dialogs reach this object
 // as `shell`.
 NxWindow {
@@ -17,7 +17,7 @@ NxWindow {
     width: 1240
     height: 800
 
-    // ---- preferences: ~/.config/nexus/files.conf, [View] ---------------------------
+    // ---- preferences: ~/.config/shadow/files.conf, [View] ---------------------------
 
     readonly property alias prefs: prefsObject
     QtObject {

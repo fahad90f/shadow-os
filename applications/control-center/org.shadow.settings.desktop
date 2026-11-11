@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+GenericName=System Settings
+Comment=Open the SHADOW Control Center
+Exec=shadow-control-center %u
+Icon=org.shadow.controlcenter
+Terminal=false
+NoDisplay=true
+Categories=Settings;
+Keywords=settings;preferences;
+StartupWMClass=org.shadow.controlcenter

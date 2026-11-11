@@ -13,7 +13,7 @@
 
 using namespace NetHw;
 
-NEXUS_CC_DUMP("wifi", [] {
+SHADOW_CC_DUMP("wifi", [] {
     WifiBackend backend;
     waitUntilReady(&backend, 12000);
     return QJsonValue(backend.toJson());

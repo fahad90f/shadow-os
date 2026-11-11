@@ -12,14 +12,14 @@
 namespace {
 QSettings usage()
 {
-    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("nexus"), QStringLiteral("horizon-usage"));
+    return QSettings(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("shadow"), QStringLiteral("horizon-usage"));
 }
 
 // Launcher groups, in display order, and the freedesktop main categories they collect.
 const QList<QPair<QString, QStringList>> &groupTable()
 {
     static const QList<QPair<QString, QStringList>> table = {
-        {QStringLiteral("Security"), {QStringLiteral("Security"), QStringLiteral("X-NEXUS-Security")}},
+        {QStringLiteral("Security"), {QStringLiteral("Security"), QStringLiteral("X-SHADOW-Security")}},
         {QStringLiteral("Development"), {QStringLiteral("Development"), QStringLiteral("IDE")}},
         {QStringLiteral("Internet"), {QStringLiteral("Network")}},
         {QStringLiteral("Office"), {QStringLiteral("Office")}},

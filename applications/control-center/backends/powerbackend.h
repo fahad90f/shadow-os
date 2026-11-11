@@ -30,7 +30,7 @@ class RowModel;
 //   /etc/systemd/logind.conf (+ drop-ins)   lid actions when logind is unreachable
 //
 // ---------------------------------------------------------------------------
-// ~/.config/nexus/power.conf — idle behaviour, honoured by the NEXUS HORIZON
+// ~/.config/shadow/power.conf — idle behaviour, honoured by the Shadow Horizon
 // shell. This back-end is the only writer; the shell only reads.
 //
 //   [Power]
@@ -43,15 +43,15 @@ class RowModel;
 //   IdleSuspendMinutesOnBattery=20     (org.freedesktop.UPower OnBattery = true)
 //
 //   * INI syntax, UTF-8, one [Power] group — QSettings::NativeFormat with
-//     organisation "nexus" and application "power", exactly like
+//     organisation "shadow" and application "power", exactly like
 //     appearance.conf. A system-wide default may be installed as
-//     /etc/xdg/nexus/power.conf; QSettings falls back to it per key.
+//     /etc/xdg/shadow/power.conf; QSettings falls back to it per key.
 //   * Every value is a whole number of minutes from 0 to 1440; 0 means never.
 //   * A key that is missing (or not a number in range) has the default shown
 //     above. Unknown keys must be ignored by readers.
 //   * The file is replaced atomically (write to a temporary file, rename) on
-//     every change, so readers should watch the directory ~/.config/nexus and
-//     re-read the file when it changes (see Nexus::Appearance::watch()).
+//     every change, so readers should watch the directory ~/.config/shadow and
+//     re-read the file when it changes (see Shadow::Appearance::watch()).
 //   * The lid switch is not configured here: it is handled by systemd-logind
 //     (HandleLidSwitch… in logind.conf) and only displayed on this page.
 // ---------------------------------------------------------------------------
@@ -98,7 +98,7 @@ class PowerBackend : public QObject
     Q_PROPERTY(QString lidActionDocked READ lidActionDocked NOTIFY logindChanged)
     Q_PROPERTY(QString lidActionSource READ lidActionSource NOTIFY logindChanged)
 
-    // ~/.config/nexus/power.conf
+    // ~/.config/shadow/power.conf
     Q_PROPERTY(int idleScreenOffMinutes READ idleScreenOffMinutes NOTIFY settingsChanged)
     Q_PROPERTY(int idleLockMinutes READ idleLockMinutes NOTIFY settingsChanged)
     Q_PROPERTY(int idleSuspendMinutes READ idleSuspendMinutes NOTIFY settingsChanged)

@@ -26,17 +26,17 @@ namespace {
 // Bump when the text of the responsible-use statement changes materially;
 // everyone is then asked again.
 const int kTermsVersion = 1;
-const QString kTerminal = QStringLiteral("nexus-terminal");
+const QString kTerminal = QStringLiteral("shadow-terminal");
 
 QString settingsPath()
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-           + QStringLiteral("/nexus/arsenal.conf");
+           + QStringLiteral("/shadow/arsenal.conf");
 }
 
 QString debianArchitecture()
 {
-    const Nexus::CommandResult result = Nexus::Command::runSync(
+    const Shadow::CommandResult result = Shadow::Command::runSync(
         QStringLiteral("dpkg"), {QStringLiteral("--print-architecture")}, 3000);
     const QString answer = result.outText().trimmed();
     if (result.ok() && !answer.isEmpty())
@@ -156,7 +156,7 @@ void Controller::acknowledge()
 
 bool Controller::terminalAvailable() const
 {
-    return Nexus::Command::available(kTerminal);
+    return Shadow::Command::available(kTerminal);
 }
 
 QString Controller::resolveIcon(const QString &name) const
@@ -165,7 +165,7 @@ QString Controller::resolveIcon(const QString &name) const
         return QString();
     if (QIcon::hasThemeIcon(name))
         return name;
-    // Not in the current icon theme: look where the NEXUS icons are installed,
+    // Not in the current icon theme: look where the SHADOW icons are installed,
     // and — when the manifests are read from a source tree — in its assets.
     QStringList roots = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
     for (QString &root : roots)
@@ -226,7 +226,7 @@ QString Controller::removeBlockedReason(const Tool &tool, const PackageState &st
         return tr("This is an essential system package and cannot be removed.");
     if (state.priority == QLatin1String("required") || state.priority == QLatin1String("important")
         || state.priority == QLatin1String("standard"))
-        return tr("This package is part of the Debian base system (priority “%1”); NEXUS Arsenal does "
+        return tr("This package is part of the Debian base system (priority “%1”); SHADOW Arsenal does "
                   "not remove it.").arg(state.priority);
     return QString();
 }
@@ -675,7 +675,7 @@ QString Controller::launch(const QString &package)
         return tr("The desktop entry %1 has no usable Exec line.").arg(path);
     if (inTerminal) {
         if (!terminalAvailable())
-            return tr("%1 runs in a terminal, but NEXUS Terminal (package nexus-terminal) is not installed.")
+            return tr("%1 runs in a terminal, but SHADOW Terminal (package shadow-terminal) is not installed.")
                 .arg(tool->name);
         arguments = QStringList{kTerminal, QStringLiteral("-e")} + arguments;
     }
@@ -691,16 +691,16 @@ QString Controller::openInTerminal(const QString &package)
     if (!tool || tool->command.isEmpty())
         return tr("This tool has no command-line interface.");
     if (!terminalAvailable())
-        return tr("NEXUS Terminal (package nexus-terminal) is not installed.");
+        return tr("SHADOW Terminal (package shadow-terminal) is not installed.");
     const QString binary = executable(tool->command);
     if (binary.isEmpty())
         return tr("The command “%1” was not found. Is the package %2 installed?").arg(tool->command, tool->package);
-    // nexus-terminal: everything after -e is the command's argument vector;
+    // shadow-terminal: everything after -e is the command's argument vector;
     // --hold keeps the tab open after the usage text has been printed.
     const QStringList arguments = QStringList{QStringLiteral("--hold"), QStringLiteral("-T"), tool->name,
                                               QStringLiteral("-e"), binary} + tool->helpArguments();
     if (!QProcess::startDetached(kTerminal, arguments))
-        return tr("NEXUS Terminal could not be started.");
+        return tr("SHADOW Terminal could not be started.");
     return QString();
 }
 
@@ -724,7 +724,7 @@ QString Controller::documentPath(const QString &name) const
     if (!plain.match(name).hasMatch())
         return QString();
     const QStringList candidates = {
-        QStringLiteral("/usr/share/doc/nexus-arsenal/") + name,
+        QStringLiteral("/usr/share/doc/shadow-arsenal/") + name,
         QDir::cleanPath(m_manifests.directory() + QStringLiteral("/../docs/") + name),   // source tree
     };
     for (const QString &path : candidates) {

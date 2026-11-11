@@ -19,7 +19,7 @@ class QToolButton;
 class QVBoxLayout;
 class QVariantAnimation;
 
-// Widget building blocks that carry the NEXUS look: every size comes from the
+// Widget building blocks that carry the SHADOW look: every size comes from the
 // design tokens, every colour from the generated style sheet. The roles and
 // kinds named here are the selectors used in style/terminal.qss.in.
 namespace Ui {
@@ -59,7 +59,7 @@ QFrame *divider(QWidget *parent = nullptr);
 void repolish(QWidget *widget);
 void setProperty(QWidget *widget, const char *name, const QVariant &value);
 
-// Modal question in the NEXUS style. Returns true if the user confirmed.
+// Modal question in the SHADOW style. Returns true if the user confirmed.
 // 'destructive' makes the confirm button red and Cancel the default.
 bool confirm(QWidget *parent, const QString &title, const QString &message, const QString &confirmText,
              bool destructive = false);
@@ -68,7 +68,7 @@ bool confirm(QWidget *parent, const QString &title, const QString &message, cons
 // control characters were removed). Shows exactly what would be sent.
 bool confirmPaste(QWidget *parent, const QString &text, bool controlsRemoved);
 
-// On/off switch, the NEXUS equivalent of a check box in settings rows.
+// On/off switch, the SHADOW equivalent of a check box in settings rows.
 class Switch : public QAbstractButton
 {
     Q_OBJECT

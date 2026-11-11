@@ -102,7 +102,7 @@ SaveResult writeBytes(const QString &path, const QByteArray &bytes)
 
 QString resourceRoot()
 {
-    for (const QString &root : {QStringLiteral(":/qt/qml/org/nexus/editor"), QStringLiteral(":/org/nexus/editor")}) {
+    for (const QString &root : {QStringLiteral(":/qt/qml/org/shadow/editor"), QStringLiteral(":/org/shadow/editor")}) {
         if (QFileInfo::exists(root + QStringLiteral("/themes")))
             return root;
     }
@@ -320,7 +320,7 @@ void EditorDocument::applyTheme()
     if (!m_highlighter)
         return;
     auto &repository = syntaxRepository();
-    KSyntaxHighlighting::Theme theme = repository.theme(m_dark ? QStringLiteral("NEXUS Dark") : QStringLiteral("NEXUS Light"));
+    KSyntaxHighlighting::Theme theme = repository.theme(m_dark ? QStringLiteral("SHADOW Dark") : QStringLiteral("SHADOW Light"));
     if (!theme.isValid())
         theme = repository.defaultTheme(m_dark ? KSyntaxHighlighting::Repository::DarkTheme
                                                : KSyntaxHighlighting::Repository::LightTheme);

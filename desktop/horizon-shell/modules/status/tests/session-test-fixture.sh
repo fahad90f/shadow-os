@@ -6,7 +6,7 @@
 # system bus. The fixture follows the services' published D-Bus interfaces;
 # it is not the services. Sourced in the nested session:
 #
-#   NEXUS_RUN_TIMEOUT=400 scripts/dev.sh nested --dir modstatus --wait 1 -- \
+#   SHADOW_RUN_TIMEOUT=400 scripts/dev.sh nested --dir modstatus --wait 1 -- \
 #       '. /src/desktop/horizon-shell/modules/status/tests/session-test-fixture.sh'
 #
 # Results: build/work/shots/nested-logs/modstatus/session-test-fixture.log,
@@ -14,7 +14,7 @@
 # build/work/shots/modstatus-f*.png.
 : "${STATUS_TEST_SIZE:=1600}"
 TESTS=/src/desktop/horizon-shell/modules/status/tests
-LOG="$NEXUS_LOGS/session-test-fixture.log"
+LOG="$SHADOW_LOGS/session-test-fixture.log"
 : > "$LOG"
 failures=0
 note() { echo "$*" | tee -a "$LOG"; }
@@ -49,14 +49,14 @@ mkdir -p "$HOME/backlight/fixture_backlight"
 echo 1000 > "$HOME/backlight/fixture_backlight/max_brightness"
 echo 600 > "$HOME/backlight/fixture_backlight/brightness"
 echo raw > "$HOME/backlight/fixture_backlight/type"
-export NEXUS_STATUS_BACKLIGHT_DIR="$HOME/backlight"
+export SHADOW_STATUS_BACKLIGHT_DIR="$HOME/backlight"
 
 horizon-shell > "$HOME/shell.log" 2>&1 &
 sleep 8
 
 # ---- Wi-Fi, battery on discharge, balanced profile ---------------------------------
-dump > "$NEXUS_LOGS/dump-status-fixture.json"
-D="$NEXUS_LOGS/dump-status-fixture.json"
+dump > "$SHADOW_LOGS/dump-status-fixture.json"
+D="$SHADOW_LOGS/dump-status-fixture.json"
 check "network available" "$(field network.available < "$D")" true
 check "network state" "$(field network.state < "$D")" connected
 check "connectivity" "$(field network.connectivity < "$D")" full
@@ -139,7 +139,7 @@ check "NetworkManager gone" "$(dump | field network.reason)" "NetworkManager is 
 check "UPower gone" "$(dump | field battery.reason)" "UPower is not running."
 xdo key Escape; sleep 0.5
 
-cp "$HOME/shell.log" "$NEXUS_LOGS/shell-fixture.log"
-cp "$HOME/fixture.log" "$NEXUS_LOGS/fixture.log"
+cp "$HOME/shell.log" "$SHADOW_LOGS/shell-fixture.log"
+cp "$HOME/fixture.log" "$SHADOW_LOGS/fixture.log"
 note "shell warnings: $(grep -c -i 'warn\|TypeError\|ReferenceError' "$HOME/shell.log")"
 note "FAILED: $failures"

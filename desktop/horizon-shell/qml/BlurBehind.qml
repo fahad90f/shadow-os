@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
-import org.nexus.ui
+import org.shadow.ui
 
 // Makes the compositor blur whatever is behind this item's rectangle, so a
 // translucent "glass" background stays legible.

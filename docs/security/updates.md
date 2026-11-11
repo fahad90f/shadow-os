@@ -8,12 +8,12 @@ and the boot loader, and what to do when an update fails.
 | What | Source | State |
 |---|---|---|
 | Debian packages — almost the whole system, including the kernel, GRUB, shim, KWin, Qt, firmware and browsers | `trixie-security` (security fixes) and `trixie-updates` / `trixie` point releases, from `deb.debian.org` over HTTPS, authenticated with Debian's archive keyring | enabled |
-| NEXUS packages (`nexus-*`: shell, applications, installer, hardening, themes) | the NEXUS repository | **no hosted repository exists.** NEXUS packages on an installed system receive **no updates** until one is published and enabled ([../packaging/repositories.md](../packaging/repositories.md)) |
-| Device firmware (UEFI, SSD, docks) | LVFS through `fwupd` | `fwupd` is installed; there is no NEXUS front-end. Use `fwupdmgr refresh && fwupdmgr get-updates` yourself; untested |
+| SHADOW packages (`shadow-*`: shell, applications, installer, hardening, themes) | the SHADOW repository | **no hosted repository exists.** SHADOW packages on an installed system receive **no updates** until one is published and enabled ([../packaging/repositories.md](../packaging/repositories.md)) |
+| Device firmware (UEFI, SSD, docks) | LVFS through `fwupd` | `fwupd` is installed; there is no SHADOW front-end. Use `fwupdmgr refresh && fwupdmgr get-updates` yourself; untested |
 
 Security support for the base system is therefore Debian's: the security
 team's advisories for Debian 13 apply as they are. A vulnerability in a
-NEXUS component has no update channel today — see [../../SECURITY.md](../../SECURITY.md).
+SHADOW component has no update channel today — see [../../SECURITY.md](../../SECURITY.md).
 
 **Updates are not installed automatically, and nothing checks for them in
 the background.** `unattended-upgrades` is not in the image, and the
@@ -22,13 +22,13 @@ yourself.
 
 ## Installing updates
 
-### NEXUS Updater
+### SHADOW Updater
 
-Start **Updater** from the launcher (`nexus-updater`).
+Start **Updater** from the launcher (`shadow-updater`).
 
 | Page | Use |
 |---|---|
-| Updates | "Check" refreshes the package lists. Updates are grouped: **security** (what PackageKit reports as security updates — derived from the security archive, never guessed from names), kernel, NEXUS packages, others, and held-back updates. Install all, security only, or a selection. Every installation is simulated first and removals are confirmed |
+| Updates | "Check" refreshes the package lists. Updates are grouped: **security** (what PackageKit reports as security updates — derived from the security archive, never guessed from names), kernel, SHADOW packages, others, and held-back updates. Install all, security only, or a selection. Every installation is simulated first and removals are confirmed |
 | History | what was installed, upgraded and removed, from APT's history log |
 | Last transaction | the log of the last job run from the Updater; "Copy details for a bug report" |
 | Recovery | checks whether the package system is consistent, and offers Repair |
@@ -54,11 +54,11 @@ sudo apt full-upgrade
 A check without a window, for scripts:
 
 ```sh
-nexus-updater --check ; echo $?
+shadow-updater --check ; echo $?
 # 0 = no updates, 10 = updates, 11 = security updates, 1 = the check failed
 ```
 
-The NEXUS Store also lists and installs updates.
+The SHADOW Store also lists and installs updates.
 
 ## Security updates
 
@@ -67,8 +67,8 @@ The NEXUS Store also lists and installs updates.
 * On the command line, `apt full-upgrade` installs everything available,
   security updates included.
 * To see what is pending and why:
-  `nexus-updater --dump updates`, or
-  `sudo nexus-security-status --section updates --pretty`.
+  `shadow-updater --dump updates`, or
+  `sudo shadow-security-status --section updates --pretty`.
 
 ## Kernel updates
 
@@ -87,7 +87,7 @@ used after a restart. Out-of-tree (DKMS) modules, if you installed any, are
 rebuilt by DKMS and under Secure Boot need your own signature.
 
 Kernel updates through this path are standard Debian behaviour; a kernel
-update on an installed NEXUS OS system has not been observed yet.
+update on an installed Shadow OS system has not been observed yet.
 
 ## Boot-loader updates and the trigger
 
@@ -97,27 +97,27 @@ package update alone would leave the old copies in use — including after a
 security fix, and including copies that a later Secure Boot revocation
 would refuse to start.
 
-`nexus-boot` closes that gap:
+`shadow-boot` closes that gap:
 
 * it has a dpkg trigger on `/usr/lib/grub` and `/usr/lib/shim`;
-* when an update changes files there, `nexus-grub-install` runs
+* when an update changes files there, `shadow-grub-install` runs
   automatically and re-installs the boot loader exactly the way the system
-  was installed (`/etc/nexus/boot.conf`): signed binaries to the ESP, the
-  "NEXUS OS" firmware entry, the legacy boot sector where applicable.
+  was installed (`/etc/shadow/boot.conf`): signed binaries to the ESP, the
+  "Shadow OS" firmware entry, the legacy boot sector where applicable.
 
 If the refresh fails, the update itself is not failed. Instead a marker is
-written to `/var/lib/nexus/boot-loader-refresh-failed` and a warning is
-printed in the package log. `sudo nexus-security-status --section secureboot`
+written to `/var/lib/shadow/boot-loader-refresh-failed` and a warning is
+printed in the package log. `sudo shadow-security-status --section secureboot`
 reports the marker. To fix it:
 
 ```sh
-sudo nexus-grub-install --verbose
+sudo shadow-grub-install --verbose
 ```
 
 and read the output. One cause the script checks for explicitly is an EFI
 System Partition that is not mounted at `/boot/efi`. A successful automatic refresh removes the
 marker; after a successful manual run you can remove it yourself
-(`sudo rm /var/lib/nexus/boot-loader-refresh-failed`).
+(`sudo rm /var/lib/shadow/boot-loader-refresh-failed`).
 
 Details: [../architecture/boot.md](../architecture/boot.md). The manual
 re-installation is exercised by the installation tests; a triggered refresh
@@ -190,6 +190,6 @@ machine matters.
 
 ## Release upgrades
 
-There is one NEXUS OS version (0.1.0) and one Debian release (13). No
-upgrade path to a future NEXUS OS version or Debian release is defined or
+There is one Shadow OS version (0.1.0) and one Debian release (13). No
+upgrade path to a future Shadow OS version or Debian release is defined or
 tested.

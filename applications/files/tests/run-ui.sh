@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Runs one UI scenario of NEXUS Files in the nested NEXUS HORIZON session
+# Runs one UI scenario of SHADOW Files in the nested Shadow Horizon session
 # (KWin/Wayland inside Xvfb) of the build chroot:
 #
 #   applications/files/tests/run-ui.sh <scenario> [build-dir]

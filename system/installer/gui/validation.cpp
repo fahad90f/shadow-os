@@ -31,7 +31,7 @@ const QSet<QString> &reservedUsers()
         QStringLiteral("www-data"), QStringLiteral("backup"), QStringLiteral("list"), QStringLiteral("irc"),
         QStringLiteral("nobody"), QStringLiteral("systemd-network"), QStringLiteral("systemd-timesync"),
         QStringLiteral("messagebus"), QStringLiteral("sddm"), QStringLiteral("polkitd"), QStringLiteral("avahi"),
-        QStringLiteral("nexus-live"), QStringLiteral("admin"), QStringLiteral("adm"), QStringLiteral("sudo"),
+        QStringLiteral("shadow-live"), QStringLiteral("admin"), QStringLiteral("adm"), QStringLiteral("sudo"),
         QStringLiteral("staff"), QStringLiteral("users"),
     };
     return names;

@@ -13,7 +13,7 @@
 
 #include <functional>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 // One package as PackageKit reported it, plus the optional facts the views
 // add (installed version of an update, size, selection, live progress).
@@ -33,8 +33,8 @@ struct PackageEntry
 
     QString installedVersion;   // updates: the version currently installed
     qulonglong size = 0;        // bytes; 0 = not known
-    QString group;              // updates: "security" | "kernel" | "nexus" | "other" | "blocked"
-    QStringList tags;           // updates: extra facts shown as badges ("kernel", "nexus")
+    QString group;              // updates: "security" | "kernel" | "shadow" | "other" | "blocked"
+    QStringList tags;           // updates: extra facts shown as badges ("kernel", "shadow")
     bool selected = false;      // updates: chosen for installation
     int percentage = -1;        // live transactions: progress of this item, -1 = not known
     QString status;             // live transactions: what is happening to this item
@@ -132,4 +132,4 @@ private:
     QString m_filter;
 };
 
-} // namespace NexusPk
+} // namespace ShadowPk

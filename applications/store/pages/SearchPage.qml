@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.store
+import org.shadow.ui
+import org.shadow.store
 
 // Search results. Two sources, chosen explicitly:
 //   Applications   AppStream full-text search (name, summary, keywords) in the catalogue

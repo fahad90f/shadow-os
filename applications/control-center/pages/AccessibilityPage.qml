@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.controlcenter
+import org.shadow.ui
+import org.shadow.controlcenter
 
 NxPage {
     id: page
@@ -39,8 +39,8 @@ NxPage {
             icon: "type"
             title: qsTr("Text size")
             subtitle: page.fontScaleIgnored
-                ? qsTr("Saved, but this version of the NEXUS UI library does not scale its text yet.")
-                : qsTr("Scales the text of NEXUS applications.")
+                ? qsTr("Saved, but this version of the SHADOW UI library does not scale its text yet.")
+                : qsTr("Scales the text of SHADOW applications.")
             Label {
                 anchors.verticalCenter: parent.verticalCenter
                 text: Math.round(fontSlider.value * 100) + " %"
@@ -78,7 +78,7 @@ NxPage {
         NxRow {
             icon: "activity"
             title: qsTr("Reduce motion")
-            subtitle: qsTr("Switches off animations in NEXUS applications and the shell.")
+            subtitle: qsTr("Switches off animations in SHADOW applications and the shell.")
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
                 checked: Appearance.reduceMotion

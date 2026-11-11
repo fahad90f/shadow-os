@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Minimal FTP server for the network-location tests of NEXUS Files.
+"""Minimal FTP server for the network-location tests of SHADOW Files.
 
     ftpd.py <root> <port> [user password]
 
@@ -43,7 +43,7 @@ class Handler(socketserver.StreamRequestHandler):
         self.authed = False
         self.rename_from = None
         self.rest = 0
-        self.reply("220 NEXUS Files test server")
+        self.reply("220 SHADOW Files test server")
         while True:
             line = self.rfile.readline()
             if not line:

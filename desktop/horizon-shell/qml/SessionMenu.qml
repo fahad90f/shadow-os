@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Lock / log out / suspend / restart / power off. Actions that end the
 // session ask for confirmation first.
 OverlaySurface {
     id: root
 
-    scope: "nexus-session-menu"
+    scope: "shadow-session-menu"
     scrimOpacity: 0.7
 
     // The action waiting for confirmation ("" = choosing).
@@ -18,7 +18,7 @@ OverlaySurface {
     readonly property var actions: [
         { key: "lock", icon: "lock", label: qsTr("Lock"), enabled: session.canLock, confirm: "" },
         { key: "logout", icon: "logout", label: qsTr("Log out"), enabled: true,
-          confirm: qsTr("Log out of NEXUS OS? Applications that are still open will be closed.") },
+          confirm: qsTr("Log out of Shadow OS? Applications that are still open will be closed.") },
         { key: "suspend", icon: "moon", label: qsTr("Suspend"), enabled: session.canSuspend, confirm: "" },
         { key: "hibernate", icon: "harddrive", label: qsTr("Hibernate"), enabled: session.canHibernate, confirm: "" },
         { key: "reboot", icon: "refresh", label: qsTr("Restart"), enabled: session.canReboot,

@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 using T = PackageKit::Transaction;
 
@@ -26,7 +26,7 @@ int groupOrder(const QString &group)
 {
     if (group == QLatin1String("security")) return 0;
     if (group == QLatin1String("kernel")) return 1;
-    if (group == QLatin1String("nexus")) return 2;
+    if (group == QLatin1String("shadow")) return 2;
     if (group == QLatin1String("other")) return 3;
     return 4;
 }
@@ -46,9 +46,9 @@ bool UpdateChecker::isKernelPackage(const QString &name)
     return std::any_of(prefixes.cbegin(), prefixes.cend(), [&name](const QString &p) { return name.startsWith(p); });
 }
 
-bool UpdateChecker::isNexusPackage(const QString &name)
+bool UpdateChecker::isShadowPackage(const QString &name)
 {
-    return name.startsWith(QLatin1String("nexus-")) || name.startsWith(QLatin1String("libnexus"));
+    return name.startsWith(QLatin1String("shadow-")) || name.startsWith(QLatin1String("libshadow"));
 }
 
 QString UpdateChecker::groupFor(const PackageEntry &entry)
@@ -59,8 +59,8 @@ QString UpdateChecker::groupFor(const PackageEntry &entry)
         return QStringLiteral("security");
     if (isKernelPackage(entry.name))
         return QStringLiteral("kernel");
-    if (isNexusPackage(entry.name))
-        return QStringLiteral("nexus");
+    if (isShadowPackage(entry.name))
+        return QStringLiteral("shadow");
     return QStringLiteral("other");
 }
 
@@ -84,7 +84,7 @@ void UpdateChecker::trackProgress(PackageKit::Transaction *transaction)
         PackageKit::Transaction *t = m_transaction;
         if (!t)
             return;
-        m_statusText = NexusPk::statusText(t->status());
+        m_statusText = ShadowPk::statusText(t->status());
         const uint p = t->percentage();
         m_percentage = p <= 100 ? int(p) : -1;
         Q_EMIT progressChanged();
@@ -182,8 +182,8 @@ void UpdateChecker::gotUpdates(const QueryResult &result)
         e.group = groupFor(e);
         if (isKernelPackage(e.name))
             e.tags << QStringLiteral("kernel");
-        if (isNexusPackage(e.name))
-            e.tags << QStringLiteral("nexus");
+        if (isShadowPackage(e.name))
+            e.tags << QStringLiteral("shadow");
         e.selected = e.group != QLatin1String("blocked");
         e.installed = false;
     }
@@ -417,7 +417,7 @@ QJsonObject UpdateChecker::toJson() const
         {QStringLiteral("count"), count()},
         {QStringLiteral("securityCount"), securityCount()},
         {QStringLiteral("kernelCount"), kernelCount()},
-        {QStringLiteral("nexusCount"), nexusCount()},
+        {QStringLiteral("shadowCount"), shadowCount()},
         {QStringLiteral("otherCount"), otherCount()},
         {QStringLiteral("blockedCount"), blockedCount()},
         {QStringLiteral("refreshed"), m_refreshed},
@@ -436,4 +436,4 @@ QJsonObject UpdateChecker::toJson() const
     return o;
 }
 
-} // namespace NexusPk
+} // namespace ShadowPk

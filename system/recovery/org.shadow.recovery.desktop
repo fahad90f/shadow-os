@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=SHADOW Recovery
+GenericName=System Repair
+Comment=Repair an installed Shadow OS that no longer starts or updates
+Exec=shadow-recovery
+Icon=org.shadow.recovery
+Terminal=false
+Categories=System;
+Keywords=repair;rescue;boot;grub;password;fsck;recovery;
+StartupNotify=true
+StartupWMClass=org.shadow.recovery
+X-SHADOW-Component=recovery

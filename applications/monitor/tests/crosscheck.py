@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Cross-check "nexus-monitor --dump <topic>" against the system's own tools.
+"""Cross-check "shadow-monitor --dump <topic>" against the system's own tools.
 
     sudo scripts/dev.sh run --dir monitor python3 /src/applications/monitor/tests/crosscheck.py
 
@@ -30,15 +30,15 @@ CHECKS = 0
 
 
 def binary():
-    exe = shutil.which("nexus-monitor")
+    exe = shutil.which("shadow-monitor")
     if exe:
         return exe
     # scripts/dev.sh run exports LD_LIBRARY_PATH=<build dir>/lib.
     for path in os.environ.get("LD_LIBRARY_PATH", "").split(":"):
-        candidate = os.path.join(os.path.dirname(path.rstrip("/")), "bin", "nexus-monitor")
+        candidate = os.path.join(os.path.dirname(path.rstrip("/")), "bin", "shadow-monitor")
         if os.access(candidate, os.X_OK):
             return candidate
-    sys.exit("crosscheck: nexus-monitor not found (PATH or LD_LIBRARY_PATH=<build>/lib)")
+    sys.exit("crosscheck: shadow-monitor not found (PATH or LD_LIBRARY_PATH=<build>/lib)")
 
 
 EXE = binary()

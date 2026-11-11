@@ -108,7 +108,7 @@ void SystemInfo::readOsRelease()
         else if (key == QLatin1String("VERSION_ID")) m_osVersion = value;
         else if (key == QLatin1String("VERSION_CODENAME")) m_osCodename = value;
         else if (key == QLatin1String("ID_LIKE")) idLike = value;
-        else if (key == QLatin1String("NEXUS_BASE")) m_osBase = value;
+        else if (key == QLatin1String("SHADOW_BASE")) m_osBase = value;
     }
     if (m_osBase.isEmpty() && !idLike.isEmpty())
         m_osBase = idLike;
@@ -150,7 +150,7 @@ void SystemInfo::readCpu()
 
     if (m_cpuModel.isEmpty()) {
         // AArch64 has no "model name"; lscpu resolves implementer/part to a name.
-        const Nexus::CommandResult r = Nexus::Command::runSync(QStringLiteral("lscpu"), {}, 3000);
+        const Shadow::CommandResult r = Shadow::Command::runSync(QStringLiteral("lscpu"), {}, 3000);
         if (r.ok()) {
             const QStringList lines = r.outText().split(QLatin1Char('\n'));
             for (const QString &line : lines) {
@@ -208,7 +208,7 @@ void SystemInfo::readDmi()
         m_systemProduct = model;
     }
 
-    const Nexus::CommandResult virt = Nexus::Command::runSync(QStringLiteral("systemd-detect-virt"), {}, 3000);
+    const Shadow::CommandResult virt = Shadow::Command::runSync(QStringLiteral("systemd-detect-virt"), {}, 3000);
     const QString v = virt.outText().trimmed();
     m_virtualization = (v.isEmpty() || v == QLatin1String("none")) ? QString() : v;
 }
@@ -249,8 +249,8 @@ void SystemInfo::readGpus()
 {
     m_gpus.clear();
     // Preferred: lspci resolves vendor/device IDs to names.
-    if (Nexus::Command::available(QStringLiteral("lspci"))) {
-        const Nexus::CommandResult r = Nexus::Command::runSync(QStringLiteral("lspci"), {QStringLiteral("-mm")}, 5000);
+    if (Shadow::Command::available(QStringLiteral("lspci"))) {
+        const Shadow::CommandResult r = Shadow::Command::runSync(QStringLiteral("lspci"), {QStringLiteral("-mm")}, 5000);
         if (r.ok()) {
             static const QRegularExpression rx(QStringLiteral("\"([^\"]*)\""));
             const QStringList lines = r.outText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);

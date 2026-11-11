@@ -4,8 +4,8 @@
   "name": "Web Application",
   "summary": "Tools for authorized testing of web applications and their transport security",
   "description": "Scanners, fuzzers, proxies and TLS auditors for assessing web applications you own or are contracted to test. Includes content discovery, parameter mining, a SQL-injection tester, HTTP clients and transport-security checks. Several well-known web scanners (Burp Suite, OWASP ZAP, Nikto, Nuclei) are proprietary or not in Debian and are listed separately with official install links.",
-  "icon": "nexus-web-security",
-  "metapackage": "nexus-arsenal-web",
+  "icon": "shadow-web-security",
+  "metapackage": "shadow-arsenal-web",
   "tools": [
     {
       "package": "whatweb",
@@ -188,7 +188,7 @@
       "license": "Proprietary (PortSwigger). A free Community Edition exists with reduced features.",
       "why": {
         "reason": "proprietary",
-        "text": "Burp Suite is closed-source commercial software and cannot be redistributed by NEXUS; PortSwigger provides the installer directly."
+        "text": "Burp Suite is closed-source commercial software and cannot be redistributed by SHADOW; PortSwigger provides the installer directly."
       },
       "how": {
         "text": "Download the Community or Professional edition installer for Linux from PortSwigger and run it; Professional requires a licence.",
@@ -219,7 +219,7 @@
       "license": "GPL-2.0 for the program; Debian files the package under non-free because of the terms of its bundled databases.",
       "why": {
         "reason": "not-in-debian-main",
-        "text": "Debian trixie carries Nikto only in the non-free component. NEXUS OS uses Debian main only, so no package is offered; upstream recommends running it from a git checkout."
+        "text": "Debian trixie carries Nikto only in the non-free component. Shadow OS uses Debian main only, so no package is offered; upstream recommends running it from a git checkout."
       },
       "how": {
         "text": "Clone the official repository and run program/nikto.pl; it needs only Perl, which is already installed.",

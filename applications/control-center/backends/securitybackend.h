@@ -8,11 +8,11 @@
 #include <QVariantList>
 
 // Security page: a read-only rendering of the report printed by
-// /usr/sbin/nexus-security-status (sections firewall, apparmor, encryption,
+// /usr/sbin/shadow-security-status (sections firewall, apparmor, encryption,
 // secureboot, updates, listening, services, logins, audit, hardening and the
 // recommendations the tool derives from them).
 //
-// The tool is run through pkexec (polkit action org.nexus.security.read-status,
+// The tool is run through pkexec (polkit action org.shadow.security.read-status,
 // no password for an active local session), directly when the Control Center
 // itself runs as root. If polkit refuses or is absent the tool is run without
 // privileges; it then reports less and the page says so ("limited").
@@ -21,7 +21,7 @@
 // every state and every line of evidence is a field of the report, and the
 // recommendations are shown as the tool words them. No scores.
 //
-// Test hook (development only): NEXUS_SECURITY_STATUS_TOOL replaces the path.
+// Test hook (development only): SHADOW_SECURITY_STATUS_TOOL replaces the path.
 class SecurityBackend : public QObject
 {
     Q_OBJECT

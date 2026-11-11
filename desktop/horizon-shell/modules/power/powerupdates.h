@@ -18,13 +18,13 @@ class Notifier;
 
 // Periodic update check.
 //
-// When ~/.config/nexus/updater.conf has Updates/AutoCheck=true (the default)
-// and nexus-updater is installed, "nexus-updater --check" is run a few
+// When ~/.config/shadow/updater.conf has Updates/AutoCheck=true (the default)
+// and shadow-updater is installed, "shadow-updater --check" is run a few
 // minutes after the shell started and then every Updates/CheckIntervalHours.
 // The updater prints one JSON object and reports through its exit status:
 // 0 nothing to do, 10 updates, 11 security updates, 1 the check failed
 // (applications/updater/README.md). 10 and 11 produce a notification with an
-// action that opens NEXUS Updater; 0 and 1 produce none.
+// action that opens SHADOW Updater; 0 and 1 produce none.
 //
 // A check only starts while the network is up: NetworkManager's State is
 // "connected" (site or global), or — where NetworkManager is not running — a

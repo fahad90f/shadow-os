@@ -21,8 +21,8 @@ check() { if [ "$2" = "$3" ]; then ok "$1 ($2)"; else bad "$1: got '$2', expecte
 
 export HOME="$WORK/home"; mkdir -p "$HOME"
 export XDG_RUNTIME_DIR="$HOME/run"; mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.nexus.style QT_LOGGING_RULES="qt.qpa.*=false"
-export NEXUS_WINDOW_SIZE=980x1500
+export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_CONTROLS_STYLE=org.shadow.style QT_LOGGING_RULES="qt.qpa.*=false"
+export SHADOW_WINDOW_SIZE=980x1500
 display=":$(( 300 + RANDOM % 600 ))"
 Xvfb "$display" -screen 0 980x1500x24 -nolisten tcp > /dev/null 2>&1 & xvfb=$!
 sleep 1.5
@@ -31,9 +31,9 @@ xdo() { xdotool "$@"; }
 shot() { import -window root "/shots/$1"; }
 click() { xdo mousemove "$1" "$2" click 1; sleep "${3:-1}"; }
 MP="$WORK/state/mnt-$ROOT_UUID"
-for device in ${NEXUS_RECOVERY_TEST_DEVICES//,/ }; do guard "$device"; done
+for device in ${SHADOW_RECOVERY_TEST_DEVICES//,/ }; do guard "$device"; done
 
-dbus-run-session -- nexus-recovery --engine "$ENGINE" > "$WORK/gui.log" 2>&1 & gui=$!
+dbus-run-session -- shadow-recovery --engine "$ENGINE" > "$WORK/gui.log" 2>&1 & gui=$!
 sleep 7
 shot recovery-gui-1-scanned.png
 
@@ -47,7 +47,7 @@ if [ "${GUI_TEST_ONLY_FIRST:-0}" != 1 ]; then
     shot recovery-gui-2-logs-dialog.png
     xdo key Return
     sleep 6
-    archive="$(ls "$HOME"/nexus-recovery-logs-*.tar.gz 2>/dev/null | head -n1)"
+    archive="$(ls "$HOME"/shadow-recovery-logs-*.tar.gz 2>/dev/null | head -n1)"
     check "mounted by the front-end" "$(grep -c " $MP " /proc/self/mounts)" 1
     check "an archive was written to the suggested place" "$([ -n "$archive" ] && tar -tzf "$archive" | grep -c '^target/etc/fstab$')" 1
     shot recovery-gui-3-logs-done.png
@@ -70,7 +70,7 @@ if [ "${GUI_TEST_ONLY_FIRST:-0}" != 1 ]; then
 
     note "-- Repair the boot loader (stand-in tools in the fake system)"
     click $BTN_X $Y_BOOT 7
-    check "the three boot steps ran in the installation" "$(tr '\n' ';' < "$MP/var/log/stub-calls.log")" "update-initramfs -u -k all;nexus-grub-install --verbose;update-grub ;"
+    check "the three boot steps ran in the installation" "$(tr '\n' ';' < "$MP/var/log/stub-calls.log")" "update-initramfs -u -k all;shadow-grub-install --verbose;update-grub ;"
     shot recovery-gui-6-boot.png
 
     note "-- Check the file systems (unmounts first)"

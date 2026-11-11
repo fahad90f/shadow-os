@@ -13,7 +13,7 @@
 // The kernel only tells a user which processes own *their* sockets. For the
 // sockets of other users the process column is empty; showAllProcesses()
 // re-reads the list through the privileged helper (polkit action
-// org.nexus.networkcenter.sockets), which runs exactly the same `ss` call as
+// org.shadow.networkcenter.sockets), which runs exactly the same `ss` call as
 // root.
 class SocketList : public QObject
 {

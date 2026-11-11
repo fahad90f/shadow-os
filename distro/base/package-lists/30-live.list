@@ -1,4 +1,4 @@
-# Live-session support. Configuration lives in the nexus-live package
+# Live-session support. Configuration lives in the shadow-live package
 # (system/live); the installer removes all of this from the installed system.
 live-boot
 live-boot-initramfs-tools

@@ -1,24 +1,24 @@
-# The NEXUS kernel
+# The SHADOW kernel
 
 ## Status
 
 | | |
 |---|---|
 | Kernel in the ISO images | Debian's signed `linux-image-amd64` (6.12 series), unmodified |
-| NEXUS kernel configuration | implemented; `kernel/build.sh --configure-only` verified for amd64 |
-| NEXUS kernel build | **not completed.** A full build was started and did not finish in the build environment (disk and time limits). No NEXUS kernel package has been produced or booted |
-| NEXUS kernel in the image | **no** |
-| Secure Boot | a NEXUS kernel is unsigned unless you supply a key; Debian's kernel is signed |
+| SHADOW kernel configuration | implemented; `kernel/build.sh --configure-only` verified for amd64 |
+| SHADOW kernel build | **not completed.** A full build was started and did not finish in the build environment (disk and time limits). No SHADOW kernel package has been produced or booted |
+| SHADOW kernel in the image | **no** |
+| Secure Boot | a SHADOW kernel is unsigned unless you supply a key; Debian's kernel is signed |
 | arm64 | fragments and cross-compile support exist in the script; never configured, built or booted |
 
 Everything below describes what `kernel/build.sh` and the files in `kernel/`
 implement. Only the configuration step has been run successfully.
 
-## What the NEXUS kernel is
+## What the SHADOW kernel is
 
 Debian's kernel **source** for the suite's longterm series (package
 `linux-source-6.12`, the source Debian's security team maintains), built
-with Debian's **configuration** for the architecture plus the NEXUS
+with Debian's **configuration** for the architecture plus the SHADOW
 fragments, with the patches listed in `kernel/patches/series` applied (none).
 kernel.org is not contacted. Hardware support is therefore Debian's.
 
@@ -32,8 +32,8 @@ Must run as root on an amd64 host (arm64 would be cross-compiled).
 
 | Environment variable | Values | Effect |
 |---|---|---|
-| `NEXUS_KERNEL_DEBUGINFO` | `btf` (default), `none` | `btf` keeps Debian's debug-info settings (BTF type information, needed by CO-RE eBPF tools); the script's header estimates about 25 GB of disk. `none` disables debug info and BTF; about 6 GB and much faster |
-| `NEXUS_SB_KEY`, `NEXUS_SB_CERT` | paths to a PEM key and certificate | when both are set, the kernel image is signed with `sbsign` |
+| `SHADOW_KERNEL_DEBUGINFO` | `btf` (default), `none` | `btf` keeps Debian's debug-info settings (BTF type information, needed by CO-RE eBPF tools); the script's header estimates about 25 GB of disk. `none` disables debug info and BTF; about 6 GB and much faster |
+| `SHADOW_SB_KEY`, `SHADOW_SB_CERT` | paths to a PEM key and certificate | when both are set, the kernel image is signed with `sbsign` |
 
 Steps:
 
@@ -52,21 +52,21 @@ Steps:
      `SYSTEM_TRUSTED_KEYS=""`, `SYSTEM_REVOCATION_KEYS=""`,
      `MODULE_SIG_KEY="certs/signing_key.pem"`; sets `LOCALVERSION=""` and
      disables `LOCALVERSION_AUTO`;
-   * with `NEXUS_KERNEL_DEBUGINFO=none` switches debug info and BTF off;
-   * merges `kernel/config/nexus-common.config` and the architecture
-     fragment (`kernel/x86_64/nexus.config` or `kernel/aarch64/nexus.config`)
+   * with `SHADOW_KERNEL_DEBUGINFO=none` switches debug info and BTF off;
+   * merges `kernel/config/shadow-common.config` and the architecture
+     fragment (`kernel/x86_64/shadow.config` or `kernel/aarch64/shadow.config`)
      with `scripts/kconfig/merge_config.sh -m`, then runs `make olddefconfig`.
 4. **Verification.** Every line of `kernel/config/required.list` is checked
    against the final `.config` (see below). Any mismatch aborts the build.
    `scripts/diffconfig` then writes the difference to Debian's configuration.
    With `--configure-only` the script stops here.
-5. **Build.** `make bindeb-pkg` with `LOCALVERSION=-nexus-<arch>` and package
-   version `<kernel version>-1+nexus<version without dots>` (for example
-   `…-1+nexus010`), producing `linux-image-…` and `linux-headers-…` packages.
+5. **Build.** `make bindeb-pkg` with `LOCALVERSION=-shadow-<arch>` and package
+   version `<kernel version>-1+shadow<version without dots>` (for example
+   `…-1+shadow010`), producing `linux-image-…` and `linux-headers-…` packages.
 6. **Optional Secure Boot signature.** If a key and certificate were given,
    the `vmlinuz` inside the image package is signed with `sbsign` and the
    package is rebuilt. The state (`signed`/`unsigned`) is recorded.
-7. **Meta package.** `linux-image-nexus-<arch>`, depending on exactly the
+7. **Meta package.** `linux-image-shadow-<arch>`, depending on exactly the
    image just built.
 
 Output:
@@ -78,18 +78,18 @@ Output:
 | `build/out/packages/linux-*.deb` | image, headers and meta package (debug and `linux-libc-dev` packages are not copied) — only after a complete build |
 
 Nothing adds these packages to an image: no package list or variant
-references `linux-image-nexus-*`.
+references `linux-image-shadow-*`.
 
 ## Configuration changes and their reasons
 
 From the comments in the fragments. "Pinned" means Debian already has the
 value; it is listed so that a later rebase cannot lose it silently.
 
-### All architectures (`kernel/config/nexus-common.config`)
+### All architectures (`kernel/config/shadow-common.config`)
 
 | Options | Effect | Reason / cost |
 |---|---|---|
-| `DEFAULT_HOSTNAME="nexus"` | host name before one is configured | identity |
+| `DEFAULT_HOSTNAME="shadow"` | host name before one is configured | identity |
 | `HZ_1000`, `HZ=1000` (not `HZ_250`) | 1000 Hz timer tick | lower input and audio latency on an interactive workstation; small throughput cost |
 | `PREEMPT=y`, `PREEMPT_DYNAMIC=y` (not `PREEMPT_VOLUNTARY`) | full preemption by default | same; still switchable at boot with `preempt=voluntary` |
 | `SCHED_AUTOGROUP=y` | per-session scheduling groups | desktop responsiveness |
@@ -110,7 +110,7 @@ value; it is listed so that a later rebase cannot lose it silently.
 | `MODULE_SIG`, `MODULE_SIG_ALL`, `MODULE_SIG_SHA512`, `MODULE_SIG_HASH="sha512"`, not `MODULE_SIG_FORCE` | all in-tree modules signed at build time | see "Module signing" |
 | `IOMMU_DEFAULT_DMA_STRICT` (not `IOMMU_DEFAULT_DMA_LAZY`) | strict IOMMU TLB invalidation | closes the window in which a device can still reach memory that was just unmapped; costs throughput on very fast storage/network devices; `iommu.strict=0` on the kernel command line reverts it |
 
-### amd64 (`kernel/x86_64/nexus.config`)
+### amd64 (`kernel/x86_64/shadow.config`)
 
 | Options | Effect | Reason / cost |
 |---|---|---|
@@ -120,7 +120,7 @@ value; it is listed so that a later rebase cannot lose it silently.
 | `IA32_EMULATION=y`, not `COMPAT_VDSO` | 32-bit programs keep working (Wine, legacy tools); no fixed-address compat vDSO | compatibility without the legacy vDSO |
 | `INTEL_IOMMU`, `AMD_IOMMU` | IOMMU support | DMA protection, device passthrough for lab VMs. Whether the Intel IOMMU is on by default is left as Debian has it (on, except for integrated graphics); `intel_iommu=on` forces it |
 
-### arm64 (`kernel/aarch64/nexus.config`) — never configured or built
+### arm64 (`kernel/aarch64/shadow.config`) — never configured or built
 
 `ARM64_PTR_AUTH`, `ARM64_PTR_AUTH_KERNEL`, `ARM64_BTI`, `ARM64_BTI_KERNEL`
 (pointer authentication and branch target identification), `ARM64_MTE`
@@ -142,7 +142,7 @@ the functional changes were:
 * `IOMMU_DEFAULT_DMA_LAZY` → `IOMMU_DEFAULT_DMA_STRICT`
 * module signature hash SHA-256 → SHA-512, `MODULE_SIG_ALL` set with a
   build-time key, Debian's trusted-key file names cleared
-* `DEFAULT_HOSTNAME` → `"nexus"`
+* `DEFAULT_HOSTNAME` → `"shadow"`
 
 Regenerate the file to see the current list; it changes with every Debian
 kernel update.
@@ -164,7 +164,7 @@ required and the found value printed.
 
 The list has two parts:
 
-* the NEXUS hardening and responsiveness options from the fragments;
+* the SHADOW hardening and responsiveness options from the fragments;
 * options a distribution kernel must not lose — boot, live medium,
   encryption, containers, virtualisation: `MODULES`, `EFI`, `EFI_STUB`,
   `BLK_DEV_INITRD`, `SQUASHFS`, `OVERLAY_FS`, `DM_CRYPT`, `EXT4_FS`,
@@ -176,9 +176,9 @@ The list has two parts:
 ## Patch policy
 
 `kernel/patches/series` is intentionally empty. Debian's source already
-carries the out-of-tree hardening NEXUS wants (for example the
+carries the out-of-tree hardening SHADOW wants (for example the
 `perf_event_open` restriction and the Secure Boot lockdown integration);
-everything else NEXUS changes is configuration.
+everything else SHADOW changes is configuration.
 
 A patch is added only when all of these hold:
 
@@ -192,10 +192,10 @@ to `kernel/patches/`, applied in order with `-p1`.
 
 ## Out-of-tree modules
 
-NEXUS OS ships none (`kernel/modules/README.md`). Hardware that needs a
+Shadow OS ships none (`kernel/modules/README.md`). Hardware that needs a
 driver outside the mainline kernel is handled the Debian way, with a
 `*-dkms` package from the Debian archive; the headers package built next to
-the NEXUS kernel image exists for that.
+the SHADOW kernel image exists for that.
 
 ## Module signing
 
@@ -217,14 +217,14 @@ the NEXUS kernel image exists for that.
 | Kernel | Signed by | Boots under Secure Boot |
 |---|---|---|
 | Debian's `linux-image-amd64` (shipped) | Debian | yes, through shim's embedded Debian key |
-| NEXUS kernel, no key supplied | nobody | no — unless you enrol the image's hash or sign it yourself |
-| NEXUS kernel with `NEXUS_SB_KEY`/`NEXUS_SB_CERT` | your key | only after the certificate is enrolled as a MOK on the machine |
+| SHADOW kernel, no key supplied | nobody | no — unless you enrol the image's hash or sign it yourself |
+| SHADOW kernel with `SHADOW_SB_KEY`/`SHADOW_SB_CERT` | your key | only after the certificate is enrolled as a MOK on the machine |
 
 The project has no Secure Boot signing key and no shim review of its own.
 This, together with the incomplete build, is why the image ships Debian's
 kernel. With Debian's kernel, the options in the tables above that are not
 already Debian defaults are **not in effect**; the hardening that applies to
-the shipped image is what `nexus-hardening` sets at run time through sysctl
+the shipped image is what `shadow-hardening` sets at run time through sysctl
 and the kernel command line ([../security/hardening.md](../security/hardening.md)).
 
 ## Kernel updates

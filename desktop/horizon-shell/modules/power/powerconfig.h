@@ -20,16 +20,16 @@ struct IdleMinutes {
 
 // The two settings files this module reads (it never writes either):
 //
-//   ~/.config/nexus/power.conf    [Power] Idle…Minutes / …OnBattery, written by
+//   ~/.config/shadow/power.conf    [Power] Idle…Minutes / …OnBattery, written by
 //                                 the Control Center's Power page (format:
 //                                 applications/control-center/backends/powerbackend.h)
-//   ~/.config/nexus/updater.conf  [Updates] AutoCheck, CheckIntervalHours,
-//                                 written by NEXUS Updater
+//   ~/.config/shadow/updater.conf  [Updates] AutoCheck, CheckIntervalHours,
+//                                 written by SHADOW Updater
 //
-// Both are re-read when anything in ~/.config/nexus changes (the writers
+// Both are re-read when anything in ~/.config/shadow changes (the writers
 // replace the files atomically, so the directory is watched, not the files).
 //
-// Developer override: NEXUS_POWER_TIME_SCALE=<factor> divides every duration
+// Developer override: SHADOW_POWER_TIME_SCALE=<factor> divides every duration
 // this module waits for (idle timeouts, update-check delays) by <factor>;
 // 60 turns minutes into seconds. Unset or invalid: 1.
 class Config : public QObject

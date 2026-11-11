@@ -2,9 +2,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
-// A well-known tool that the NEXUS repositories do not carry: what it is, why
+// A well-known tool that the SHADOW repositories do not carry: what it is, why
 // there is no package, and where its vendor publishes it. Nothing here
 // downloads or installs anything.
 NxCard {
@@ -63,7 +63,7 @@ NxCard {
         NxBanner {
             Layout.fillWidth: true
             kind: "info"
-            title: qsTr("Not installable from NEXUS repositories")
+            title: qsTr("Not installable from SHADOW repositories")
             message: root.entry.why
         }
 

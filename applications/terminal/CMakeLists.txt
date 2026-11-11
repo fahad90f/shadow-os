@@ -1,6 +1,6 @@
-# NEXUS Terminal — terminal emulator with tabs, split panes, profiles and SSH.
+# SHADOW Terminal — terminal emulator with tabs, split panes, profiles and SSH.
 #
-# The one NEXUS application built with Qt Widgets instead of QML: the terminal
+# The one SHADOW application built with Qt Widgets instead of QML: the terminal
 # view is QTermWidget (a QWidget), so the window around it is made of widgets
 # too. Its chrome is styled by Qt style sheets that are generated from the
 # design tokens at build time, which keeps it in the same visual language as
@@ -17,7 +17,7 @@ get_target_property(_qtw_link qtermwidget6 INTERFACE_LINK_LIBRARIES)
 set(_qtw_link_fixed "")
 foreach(_item IN LISTS _qtw_link)
     if(IS_ABSOLUTE "${_item}" AND NOT EXISTS "${_item}")
-        message(STATUS "nexus-terminal: ignoring missing '${_item}' from the qtermwidget6 link interface")
+        message(STATUS "shadow-terminal: ignoring missing '${_item}' from the qtermwidget6 link interface")
         continue()
     endif()
     list(APPEND _qtw_link_fixed "${_item}")
@@ -32,16 +32,16 @@ set_target_properties(qtermwidget6 PROPERTIES INTERFACE_LINK_LIBRARIES "${_qtw_l
 #   theme/<mode>-<accent>.json        colour table used by C++ (icons, palette)
 #   glyphs/<mode>-<accent>/*.png      indicator images referenced by the style sheet
 #   tokens.h                          sizes, fonts and names as C++ constants
-#   color-schemes/*.colorscheme       "NEXUS Obsidian" / "NEXUS Daylight"
+#   color-schemes/*.colorscheme       "SHADOW Obsidian" / "SHADOW Daylight"
 #
 # One variant per appearance mode and accent, so the application can follow
-# Nexus::Appearance at run time without a single hard-coded colour.
-set(TERMINAL_TOKENS "${CMAKE_SOURCE_DIR}/desktop/themes/tokens/nexus-tokens.json")
+# Shadow::Appearance at run time without a single hard-coded colour.
+set(TERMINAL_TOKENS "${CMAKE_SOURCE_DIR}/desktop/themes/tokens/shadow-tokens.json")
 set(TERMINAL_GEN_TOKENS "${CMAKE_SOURCE_DIR}/scripts/gen-tokens.py")
 set(TERMINAL_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 # Laid out like the install tree, so an uninstalled binary in <build>/bin finds
 # its data through the same relative path as an installed one.
-set(TERMINAL_BUILD_DATA_DIR "${CMAKE_BINARY_DIR}/${NEXUS_DATA_DIR}/terminal")
+set(TERMINAL_BUILD_DATA_DIR "${CMAKE_BINARY_DIR}/${SHADOW_DATA_DIR}/terminal")
 
 file(READ "${TERMINAL_TOKENS}" _tokens_json)
 string(JSON _accent_count LENGTH "${_tokens_json}" accent)
@@ -82,7 +82,7 @@ execute_process(
     OUTPUT_VARIABLE _glyph_files OUTPUT_STRIP_TRAILING_WHITESPACE
     RESULT_VARIABLE _glyph_rc)
 if(_glyph_rc)
-    message(FATAL_ERROR "nexus-terminal: tools/glyphs.py --list failed")
+    message(FATAL_ERROR "shadow-terminal: tools/glyphs.py --list failed")
 endif()
 string(REPLACE "\n" ";" TERMINAL_GLYPH_FILES "${_glyph_files}")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${TERMINAL_GEN_GLYPHS}")
@@ -121,51 +121,51 @@ endforeach()
 terminal_render(src/tokens.h.in "${TERMINAL_GEN_DIR}/tokens.h" dark ${TERMINAL_ACCENT_DEFAULT})
 set_source_files_properties("${TERMINAL_GEN_DIR}/tokens.h" PROPERTIES SKIP_AUTOGEN ON)
 
-# The two NEXUS colour schemes. The file name (without suffix) is the name
+# The two SHADOW colour schemes. The file name (without suffix) is the name
 # QTermWidget knows a scheme by.
 set(TERMINAL_SCHEME_FILES
-    "${TERMINAL_BUILD_DATA_DIR}/color-schemes/NexusObsidian.colorscheme"
-    "${TERMINAL_BUILD_DATA_DIR}/color-schemes/NexusDaylight.colorscheme")
-terminal_render(style/NexusObsidian.colorscheme.in
-    "${TERMINAL_BUILD_DATA_DIR}/color-schemes/NexusObsidian.colorscheme" dark ${TERMINAL_ACCENT_DEFAULT})
-terminal_render(style/NexusDaylight.colorscheme.in
-    "${TERMINAL_BUILD_DATA_DIR}/color-schemes/NexusDaylight.colorscheme" light ${TERMINAL_ACCENT_DEFAULT})
+    "${TERMINAL_BUILD_DATA_DIR}/color-schemes/ShadowObsidian.colorscheme"
+    "${TERMINAL_BUILD_DATA_DIR}/color-schemes/ShadowDaylight.colorscheme")
+terminal_render(style/ShadowObsidian.colorscheme.in
+    "${TERMINAL_BUILD_DATA_DIR}/color-schemes/ShadowObsidian.colorscheme" dark ${TERMINAL_ACCENT_DEFAULT})
+terminal_render(style/ShadowDaylight.colorscheme.in
+    "${TERMINAL_BUILD_DATA_DIR}/color-schemes/ShadowDaylight.colorscheme" light ${TERMINAL_ACCENT_DEFAULT})
 
 # ---- executable ----------------------------------------------------------------------
 file(GLOB TERMINAL_SOURCES CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" src/*.cpp src/*.h)
 file(GLOB TERMINAL_ICONS CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" icons/*.svg)
 
-qt_add_executable(nexus-terminal
+qt_add_executable(shadow-terminal
     main.cpp
     ${TERMINAL_SOURCES}
     "${TERMINAL_GEN_DIR}/tokens.h")
 
-qt_add_resources(nexus-terminal terminal_theme
+qt_add_resources(shadow-terminal terminal_theme
     PREFIX /terminal
     BASE "${TERMINAL_GEN_DIR}"
     FILES ${TERMINAL_THEME_FILES})
 # Copy of the colour schemes inside the binary: the fallback when the data
 # directory cannot be found (binary copied out of its tree).
-qt_add_resources(nexus-terminal terminal_schemes
+qt_add_resources(shadow-terminal terminal_schemes
     PREFIX /terminal
     BASE "${TERMINAL_BUILD_DATA_DIR}"
     FILES ${TERMINAL_SCHEME_FILES})
 if(TERMINAL_ICONS)
-    qt_add_resources(nexus-terminal terminal_icons
+    qt_add_resources(shadow-terminal terminal_icons
         PREFIX /terminal
         FILES ${TERMINAL_ICONS})
 endif()
 
 file(RELATIVE_PATH _data_reldir
-     "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_PREFIX}/${NEXUS_DATA_DIR}/terminal")
-target_compile_definitions(nexus-terminal PRIVATE
-    NEXUS_TERMINAL_DATA_DIR="${CMAKE_INSTALL_PREFIX}/${NEXUS_DATA_DIR}/terminal"
-    NEXUS_TERMINAL_DATA_RELDIR="${_data_reldir}")
-target_include_directories(nexus-terminal PRIVATE
+     "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_PREFIX}/${SHADOW_DATA_DIR}/terminal")
+target_compile_definitions(shadow-terminal PRIVATE
+    SHADOW_TERMINAL_DATA_DIR="${CMAKE_INSTALL_PREFIX}/${SHADOW_DATA_DIR}/terminal"
+    SHADOW_TERMINAL_DATA_RELDIR="${_data_reldir}")
+target_include_directories(shadow-terminal PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src" "${TERMINAL_GEN_DIR}")
-target_link_libraries(nexus-terminal PRIVATE Qt6::Widgets Qt6::Svg qtermwidget6 nexusui)
+target_link_libraries(shadow-terminal PRIVATE Qt6::Widgets Qt6::Svg qtermwidget6 shadowui)
 
 # ---- install ---------------------------------------------------------------------------
-install(TARGETS nexus-terminal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES org.nexus.terminal.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-install(FILES ${TERMINAL_SCHEME_FILES} DESTINATION ${NEXUS_DATA_DIR}/terminal/color-schemes)
+install(TARGETS shadow-terminal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES org.shadow.terminal.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES ${TERMINAL_SCHEME_FILES} DESTINATION ${SHADOW_DATA_DIR}/terminal/color-schemes)

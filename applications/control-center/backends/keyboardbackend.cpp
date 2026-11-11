@@ -15,14 +15,14 @@
 
 #include <memory>
 
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
 #include <KConfig>
 #include <KConfigGroup>
 #endif
 
 using namespace NetHw;
 
-NEXUS_CC_DUMP("keyboard", [] {
+SHADOW_CC_DUMP("keyboard", [] {
     KeyboardBackend backend;
     waitUntilReady(&backend);
     return QJsonValue(backend.toJson());
@@ -260,7 +260,7 @@ void KeyboardBackend::loadConfig()
     int delay = 600, rate = 25;
     bool repeatConfigured = false;
 
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     {
         const KConfig xkb(QStringLiteral("kxkbrc"), KConfig::NoGlobals);
         const KConfigGroup group = xkb.group(QStringLiteral("Layout"));
@@ -338,7 +338,7 @@ void KeyboardBackend::rebuildLayoutModel()
 
 bool KeyboardBackend::saveLayoutConfig()
 {
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     KConfig xkb(QStringLiteral("kxkbrc"), KConfig::NoGlobals);
     KConfigGroup group = xkb.group(QStringLiteral("Layout"));
     group.writeEntry("Use", !m_layoutList.isEmpty());
@@ -538,7 +538,7 @@ bool KeyboardBackend::setRepeat(int delayMs, int ratePerSecond)
     }
     if (delayMs == m_repeatDelay && ratePerSecond == m_repeatRate && m_repeatConfigured)
         return true;
-#ifdef NEXUS_HAVE_KCONFIG
+#ifdef SHADOW_HAVE_KCONFIG
     KConfig input(QStringLiteral("kcminputrc"), KConfig::NoGlobals);
     KConfigGroup keyboard = input.group(QStringLiteral("Keyboard"));
     keyboard.writeEntry("RepeatDelay", delayMs, KConfig::Notify);

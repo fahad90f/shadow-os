@@ -4,8 +4,8 @@
   "name": "Reverse Engineering",
   "summary": "Disassemblers, debuggers and analysis tools for binaries and firmware",
   "description": "Static and dynamic analysis of binaries, libraries, firmware and mobile apps: debuggers, decompilers, tracers, hex editors, ELF/PE inspection, emulation and fuzzing. For malware analysis, run samples only inside an isolated lab (see the lab-setup guide). Ghidra, radare2 and Cutter are not in Debian main and are listed as external tools with install links.",
-  "icon": "nexus-reverse-engineering",
-  "metapackage": "nexus-arsenal-reversing",
+  "icon": "shadow-reverse-engineering",
+  "metapackage": "shadow-arsenal-reversing",
   "tools": [
     {
       "package": "gdb",
@@ -228,7 +228,7 @@
       "license": "Apache-2.0 (open source), released by the NSA; not packaged in Debian.",
       "why": {
         "reason": "not-in-debian",
-        "text": "Ghidra is free and open source but ships as a large self-contained Java release and is not packaged in Debian; it needs a JDK, which NEXUS can install."
+        "text": "Ghidra is free and open source but ships as a large self-contained Java release and is not packaged in Debian; it needs a JDK, which SHADOW can install."
       },
       "how": {
         "text": "Download the official release archive from the Ghidra site, extract it, and run ghidraRun; a JDK (e.g. Debian's default-jdk) is required.",

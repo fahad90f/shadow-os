@@ -8,7 +8,7 @@ notification centre and the bell in the panel.
 * **Service** — `org.freedesktop.Notifications` at `/org/freedesktop/Notifications`,
   Desktop Notifications Specification 1.2: `Notify`, `CloseNotification`,
   `GetCapabilities` (`actions body body-hyperlinks body-markup icon-static persistence`),
-  `GetServerInformation` (`NEXUS HORIZON`, `NEXUS`, shell version, `1.2`); signals
+  `GetServerInformation` (`Shadow Horizon`, `SHADOW`, shell version, `1.2`); signals
   `NotificationClosed` (1 expired, 2 dismissed by the user, 3 closed by the client),
   `ActionInvoked` and, before it when the compositor hands out a token,
   `ActivationToken`.
@@ -32,7 +32,7 @@ notification centre and the bell in the panel.
 * **Panel** (`NotificationButton.qml`, order 40): `PanelButton` with the `bell` glyph
   (`bell-off` in Do Not Disturb), `badge` = unread count, `checked` while the centre is open.
 * **Do Not Disturb**: holds back popups except those of critical urgency; what arrives
-  is in the centre. Persisted in `~/.config/nexus/notifications.conf`
+  is in the centre. Persisted in `~/.config/shadow/notifications.conf`
   (`[Notifications] DoNotDisturb=true|false`); the file is watched, so another program
   (Control Center) may change it.
 
@@ -70,7 +70,7 @@ Every client of the session bus can call `Notify`; what it sends is treated as h
   host, regular, ≤ 4 MiB, ≤ 4096 px and of a known image format; anything with a URL
   scheme is ignored — nothing is ever fetched. Kept as copies of at most 128 px.
   Shown through the module's own image provider (`image://nxnotify/...`, registered
-  with `Nexus::App::engine()`).
+  with `Shadow::App::engine()`).
 * **Counts**: 6 action buttons, 250 notifications in the centre and 50 per
   application (the oldest are closed with reason 1), one popup allowance per client
   (a burst of 10, then one per second; the rest is in the centre only).
@@ -87,12 +87,12 @@ broadcast; `CloseNotification` for an unknown id returns without an error.
 ## Diagnostics
 
 `horizon-shell --dump notifications` prints configuration, capabilities, limits, who
-owns the service and — if that is a NEXUS HORIZON shell — its state (counts, popup
+owns the service and — if that is a Shadow Horizon shell — its state (counts, popup
 queue, statistics; per notification only flags and lengths). The texts of
 notifications are included only when the *shell* was started with
-`NEXUS_NOTIFICATIONS_DEBUG=1`, because every program that may talk to the notification
+`SHADOW_NOTIFICATIONS_DEBUG=1`, because every program that may talk to the notification
 service could otherwise read everybody's notifications. The state comes from the
-method `GetState` of the interface `org.nexus.horizon.Notifications` on the service's object.
+method `GetState` of the interface `org.shadow.horizon.Notifications` on the service's object.
 
 ## Run-time dependencies (Debian packages)
 
@@ -143,7 +143,7 @@ Those of the shell itself (`libqt6dbus6`, `libqt6svg6`, `libkf6windowsystem6`), 
   critical pops up), light and dark theme.
 * Another daemon owning the name before the shell starts: not taken over, banner
   shown, `--dump` reports the other owner; the shell became the service when it left.
-* `desktop-entry` (name and icon of an installed NEXUS application), `image-path` as
+* `desktop-entry` (name and icon of an installed SHADOW application), `image-path` as
   `file:` URL (SVG), `app_icon` as path and as theme name.
 
 ### Not tested

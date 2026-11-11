@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // The top panel: launcher button, workspaces and the active window on the
 // left; clock in the centre; status area and session button on the right.
@@ -23,7 +23,7 @@ ShellSurface {
     signal clockRequested()
 
     layer: "top"
-    scope: "nexus-panel"
+    scope: "shadow-panel"
     anchorTop: true; anchorLeft: true; anchorRight: true
     exclusiveZone: Theme.panelHeight
     width: screen ? screen.width : 1280
@@ -59,7 +59,7 @@ ShellSurface {
         spacing: Theme.spaceXs
 
         PanelButton {
-            icon: "nexus"
+            icon: "shadow"
             iconColor: Theme.accent
             checked: root.launcherOpen
             tooltip: qsTr("Applications")
@@ -146,8 +146,8 @@ ShellSurface {
             icon: "download"
             text: qsTr("Install")
             iconColor: Theme.accent
-            tooltip: qsTr("Install NEXUS OS on this computer")
-            onClicked: session.run("nexus-installer")
+            tooltip: qsTr("Install Shadow OS on this computer")
+            onClicked: session.run("shadow-installer")
         }
         PanelButton {
             icon: "power"

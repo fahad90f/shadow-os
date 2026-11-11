@@ -4,8 +4,8 @@
   "name": "Blue Team",
   "summary": "Defensive tooling for intrusion detection, hardening and system auditing",
   "description": "Tools for defenders and system owners: network and host intrusion detection, file-integrity and rootkit checks, log analysis, security auditing and benchmarking, sandboxing and firewalls. All are open-source packages from Debian; they help you watch, harden and audit systems you administer.",
-  "icon": "nexus-blue-team",
-  "metapackage": "nexus-arsenal-blueteam",
+  "icon": "shadow-blue-team",
+  "metapackage": "shadow-arsenal-blueteam",
   "tools": [
     {
       "package": "suricata",

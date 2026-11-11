@@ -13,7 +13,7 @@
 //
 // Every function here blocks on file or process I/O. Call them from a worker
 // thread (QtConcurrent::run) in a GUI, or directly in --dump mode.
-namespace NexusPk {
+namespace ShadowPk {
 
 // ---- APT history --------------------------------------------------------------
 // /var/log/apt/history.log and its rotations (history.log.1, history.log.2.gz …):
@@ -54,7 +54,7 @@ QJsonObject checkDpkgHealth();
 //                  category, categoryText } ], errors: [..] }
 // verification: "signed" (APT stored a signed Release for it), "unsigned",
 // "signature-check-disabled" (trusted=yes), "not-downloaded" or "disabled".
-// category: "debian" (the Debian base), "nexus" or "third-party".
+// category: "debian" (the Debian base), "shadow" or "third-party".
 QJsonObject readAptSources(const QString &root = QString());
 
 // Classify a repository by what PackageKit reports about it (ID and description).
@@ -64,4 +64,4 @@ QString repoCategoryText(const QString &category);
 // dpkg's version ordering (digits numerically, '~' before everything).
 int compareVersions(const QString &a, const QString &b);
 
-} // namespace NexusPk
+} // namespace ShadowPk

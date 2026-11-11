@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# NexusUI tests that need real pointer events (Qt Quick Test), run inside the
+# ShadowUI tests that need real pointer events (Qt Quick Test), run inside the
 # build chroot against the libraries of one build directory:
 #
 #   scripts/dev.sh exec --dir <DIR> -- /src/desktop/ui/gallery/tests/run-tests.sh [software]
@@ -9,9 +9,9 @@
 # Exit status 0 when every test function passed.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-export HOME="$(mktemp -d /tmp/nexus-uitest-home.XXXXXX)"
+export HOME="$(mktemp -d /tmp/shadow-uitest-home.XXXXXX)"
 export XDG_RUNTIME_DIR="$HOME/run"; mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-export QT_QUICK_CONTROLS_STYLE=org.nexus.style LIBGL_ALWAYS_SOFTWARE=1
+export QT_QUICK_CONTROLS_STYLE=org.shadow.style LIBGL_ALWAYS_SOFTWARE=1
 [ "${1:-}" = software ] && export QT_QUICK_BACKEND=software
 rc=0
 for t in "$HERE"/tst_*.qml; do

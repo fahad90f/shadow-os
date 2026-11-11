@@ -1,6 +1,6 @@
-# NEXUS Archive Manager
+# SHADOW Archive Manager
 
-`nexus-archive-manager` (application id `org.nexus.archivemanager`) opens,
+`shadow-archive-manager` (application id `org.shadow.archivemanager`) opens,
 extracts, tests, creates and edits archives. It is a front end to two
 command-line tools, `bsdtar` and `7z`; its own job is to drive them safely and
 to decide what may be written to disk.
@@ -23,24 +23,24 @@ file name.
 ## Command line (used by the file manager)
 
 ```
-nexus-archive-manager [<archive>]                  browse
-nexus-archive-manager --extract <archive>          window with the extraction dialog
-nexus-archive-manager --extract <archive> --to <dir>
+shadow-archive-manager [<archive>]                  browse
+shadow-archive-manager --extract <archive>          window with the extraction dialog
+shadow-archive-manager --extract <archive> --to <dir>
                                                    extract into <dir> at once, show progress, quit when done;
                                                    stays open if anything needs a decision (password, low disk
                                                    space, suspected bomb) or was skipped for safety
-nexus-archive-manager --create <output> <files…>   "New archive" dialog pre-filled (format from the name of
+shadow-archive-manager --create <output> <files…>   "New archive" dialog pre-filled (format from the name of
                                                    <output>); quits after the archive is written
 
 Without a window (for scripts and tests):
-nexus-archive-manager --headless --extract <archive> [--to <dir>] [--entry <path>]… [--overwrite rename|skip|overwrite] [--force]
-nexus-archive-manager --headless --create <output> <files…> [--format <id>] [--level store|fast|normal|best] [--encrypt-names]
-nexus-archive-manager --list <archive>             JSON: format, sizes, every entry with its hazards
-nexus-archive-manager --test <archive>             integrity test
-nexus-archive-manager --add <archive> <files…>     add to the top level
-nexus-archive-manager --delete <archive> <entries…>
+shadow-archive-manager --headless --extract <archive> [--to <dir>] [--entry <path>]… [--overwrite rename|skip|overwrite] [--force]
+shadow-archive-manager --headless --create <output> <files…> [--format <id>] [--level store|fast|normal|best] [--encrypt-names]
+shadow-archive-manager --list <archive>             JSON: format, sizes, every entry with its hazards
+shadow-archive-manager --test <archive>             integrity test
+shadow-archive-manager --add <archive> <files…>     add to the top level
+shadow-archive-manager --delete <archive> <entries…>
    … --password-stdin                              read the password (one line) from standard input
-nexus-archive-manager --dump formats|tools
+shadow-archive-manager --dump formats|tools
 ```
 
 * `--extract` without `--to` ("extract here"): a single top-level item is
@@ -58,7 +58,7 @@ nexus-archive-manager --dump formats|tools
 **Nothing a tool writes goes directly into the user's folder.**
 
 1. The tool unpacks into a private staging directory (mode 0700,
-   `.nexus-extract-XXXXXX`) created *inside* the destination, with the tool's
+   `.shadow-extract-XXXXXX`) created *inside* the destination, with the tool's
    own protections left on: `bsdtar` without `-P` (refuses `..`, strips a
    leading `/`, will not write through a symbolic link) plus
    `--no-same-owner --no-same-permissions --no-acls --no-xattrs --no-fflags`;
@@ -107,7 +107,7 @@ Other measures:
   this" is reported as such.
 * **Changing an archive**: ZIP/7z are updated by `7z` (which writes a new file
   and renames it). Tar has no index, so adding or deleting writes a complete
-  new archive with `bsdtar … @old` to `.<name>.nexus-part` and renames it over
+  new archive with `bsdtar … @old` to `.<name>.shadow-part` and renames it over
   the original when it is complete; the original is untouched if anything
   fails. New archives are also written under a temporary name first.
 * **gzip integrity**: libarchive does not verify the CRC at the end of a gzip
@@ -142,7 +142,7 @@ left out rather than faked.
 transitional name), `xdg-utils` (preview; `gio` from `libglib2.0-bin` is used
 if `xdg-open` is missing), `libqt6concurrent6`, `libqt6quick6`,
 `qml6-module-qtquick-controls`, `qml6-module-qtquick-layouts`,
-`qml6-module-qtcore`, the NEXUS UI library. Optional: `7zip-rar` is *not*
+`qml6-module-qtcore`, the SHADOW UI library. Optional: `7zip-rar` is *not*
 used. `zip`/`unzip` and KArchive are not needed.
 A missing tool is reported per format (`--dump tools`, and in the dialogs).
 
@@ -168,14 +168,14 @@ A missing tool is reported per format (`--dump tools`, and in the dialogs).
   large one takes time; it can be cancelled.
 * Multi-volume archives, self-extracting archives and archive comments are not
   handled. No "open with…" for previews, no in-archive rename or move.
-* If the application is killed during extraction, a `.nexus-extract-XXXXXX`
+* If the application is killed during extraction, a `.shadow-extract-XXXXXX`
   folder may remain in the destination.
 * The file chooser is the application's own simple dialog (no bookmarks or
   filters).
 
 ## Tested (build chroot, Debian 13, bsdtar 3.7.4, 7-Zip 25.01, as root)
 
-Build: `NEXUS_JOBS=2 scripts/dev.sh build --dir arced --only "archive-manager;editor"`.
+Build: `SHADOW_JOBS=2 scripts/dev.sh build --dir arced --only "archive-manager;editor"`.
 Smoke: `tests/desktop/smoke.sh --dir arced archive-manager` — PASS, zero QML warnings.
 
 Headless, with archives built for the purpose (Python `tarfile`/`zipfile`):
@@ -228,7 +228,7 @@ opening it → password dialog, wrong password → retry, right password →
 listing with lock icons; `--extract --to` batch run → files present, process
 exits; bomb warning in the extraction dialog; delete with confirmation (tar.gz
 rewritten); add through the file chooser; preview of a text file opening in
-NEXUS Text Editor through `gio open`; preview with no application registered →
+SHADOW Text Editor through `gio open`; preview with no application registered →
 error dialog. Light and dark screenshots.
 
 ## Not tested

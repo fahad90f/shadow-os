@@ -13,7 +13,7 @@
 #include <QTime>
 #include <QTimer>
 
-namespace NexusPk {
+namespace ShadowPk {
 
 using T = PackageKit::Transaction;
 
@@ -144,11 +144,11 @@ QString Job::statusText() const
         // PackageKit reports once it is past its queue.
         if (m_status == T::StatusUnknown || m_status == T::StatusSetup || m_status == T::StatusWait)
             return tr("Calculating what will change");
-        return tr("Calculating what will change — %1").arg(NexusPk::statusText(m_status));
+        return tr("Calculating what will change — %1").arg(ShadowPk::statusText(m_status));
     }
     if (m_cancelRequested)
         return tr("Cancelling");
-    return NexusPk::statusText(m_status);
+    return ShadowPk::statusText(m_status);
 }
 
 bool Job::cancellable() const
@@ -194,7 +194,7 @@ void Job::updateFromTransaction()
     const T::Status status = t->status();
     if (status != m_status) {
         m_status = status;
-        log(tr("Status: %1 (%2)").arg(NexusPk::statusText(status), statusKey(status)));
+        log(tr("Status: %1 (%2)").arg(ShadowPk::statusText(status), statusKey(status)));
     }
     const uint percentage = t->percentage();
     m_percentage = percentage <= 100 ? int(percentage) : -1;
@@ -290,11 +290,11 @@ void Job::simulationDone(const QueryResult &result)
             if (!untrusted.isEmpty())
                 log(tr("NOT AUTHENTICATED: %1").arg(untrusted.join(QLatin1Char(' '))));
             if (result.hasError)
-                log(tr("PackageKit: %1: %2").arg(NexusPk::errorKey(result.error), result.errorDetails));
+                log(tr("PackageKit: %1: %2").arg(ShadowPk::errorKey(result.error), result.errorDetails));
             raisePrompt(QStringLiteral("untrusted"), QVariantMap{
                 {QStringLiteral("packages"), m_changes.value(QStringLiteral("untrusted"))},
                 {QStringLiteral("details"), result.errorDetails},
-                {QStringLiteral("errorKey"), result.hasError ? NexusPk::errorKey(result.error) : QString()},
+                {QStringLiteral("errorKey"), result.hasError ? ShadowPk::errorKey(result.error) : QString()},
                 {QStringLiteral("afterSimulation"), true},
             });
             return;
@@ -396,7 +396,7 @@ void Job::attach(PackageKit::Transaction *t)
     });
     connect(t, &T::itemProgress, this, [this](const QString &itemId, T::Status status, uint percentage) {
         const PackageEntry *e = m_items.find(itemId);
-        const QString text = e && !e->status.isEmpty() ? e->status : NexusPk::statusText(status);
+        const QString text = e && !e->status.isEmpty() ? e->status : ShadowPk::statusText(status);
         m_items.setItemProgress(itemId, text, percentage <= 100 ? int(percentage) : -1);
     });
     connect(t, &T::errorCode, this, [this](T::Error error, const QString &details) {
@@ -466,7 +466,7 @@ void Job::attach(PackageKit::Transaction *t)
 void Job::recordError(PackageKit::Transaction::Error error, const QString &details)
 {
     m_hasError = true;
-    m_errorKey = NexusPk::errorKey(error);
+    m_errorKey = ShadowPk::errorKey(error);
     m_errorTitle = errorText(error);
     m_errorDetails = details;
     if (error == T::ErrorUnfinishedTransaction)
@@ -772,13 +772,13 @@ Job *update(const QStringList &packageIds, const QString &title, QObject *parent
 
 Job *refresh(bool force, QObject *parent)
 {
-    return new Job(QStringLiteral("refresh"), QCoreApplication::translate("NexusPk", "Refreshing software lists"),
+    return new Job(QStringLiteral("refresh"), QCoreApplication::translate("ShadowPk", "Refreshing software lists"),
                    [force](T::TransactionFlags) { return PackageKit::Daemon::refreshCache(force); }, parent);
 }
 
 Job *repair(QObject *parent)
 {
-    auto *job = new Job(QStringLiteral("repair"), QCoreApplication::translate("NexusPk", "Repairing the package system"),
+    auto *job = new Job(QStringLiteral("repair"), QCoreApplication::translate("ShadowPk", "Repairing the package system"),
                         [](T::TransactionFlags flags) { return PackageKit::Daemon::repairSystem(flags); }, parent);
     job->setSimulateFirst(true);
     job->setConfirm(Job::Confirm::IfRemovals);
@@ -793,4 +793,4 @@ Job *repoEnable(const QString &repoId, bool enable, const QString &title, QObjec
 
 } // namespace Jobs
 
-} // namespace NexusPk
+} // namespace ShadowPk

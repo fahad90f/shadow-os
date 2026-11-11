@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QQmlContext>
 
-// nexus-ui-gallery                      the component overview
-// nexus-ui-gallery --case <name>        one focused test page (Case<Name>.qml):
+// shadow-ui-gallery                      the component overview
+// shadow-ui-gallery --case <name>        one focused test page (Case<Name>.qml):
 //                                       dialogs, segmented, rows, table, toast,
 //                                       page, motion, glyphs, filedialog,
 //                                       folderdialog
-// nexus-ui-gallery --case <name> --selftest
+// shadow-ui-gallery --case <name> --selftest
 //                                       the page also runs its scripted checks,
-//                                       prints NEXUS-CASE-OK <name> or
-//                                       NEXUS-CASE-FAILED … and exits 4 on failure
+//                                       prints SHADOW-CASE-OK <name> or
+//                                       SHADOW-CASE-FAILED … and exits 4 on failure
 int main(int argc, char **argv)
 {
-    Nexus::App app(argc, argv, {
-        QStringLiteral("org.nexus.gallery"),
-        QStringLiteral("NexusUI Gallery"),
-        QStringLiteral("nexus"),
-        QStringLiteral("Visual reference of the NEXUS design system components"),
+    Shadow::App app(argc, argv, {
+        QStringLiteral("org.shadow.gallery"),
+        QStringLiteral("ShadowUI Gallery"),
+        QStringLiteral("shadow"),
+        QStringLiteral("Visual reference of the SHADOW design system components"),
     });
     QCommandLineOption caseOption(QStringLiteral("case"),
         QStringLiteral("Open the test page <name> instead of the overview "
@@ -43,7 +43,7 @@ int main(int argc, char **argv)
             QStringLiteral("filedialog"), QStringLiteral("folderdialog"),
         };
         if (!known.contains(name)) {
-            fprintf(stderr, "nexus-ui-gallery: unknown case '%s' (known: %s)\n", qPrintable(name),
+            fprintf(stderr, "shadow-ui-gallery: unknown case '%s' (known: %s)\n", qPrintable(name),
                     qPrintable(known.join(QStringLiteral(", "))));
             return 2;
         }
@@ -52,16 +52,16 @@ int main(int argc, char **argv)
     const bool selfTest = app.parser().isSet(selfTestOption);
     // Under the smoke-test hook the application exits after a delay; give the
     // scripted checks (a few seconds at most) time to finish first.
-    if (selfTest && qEnvironmentVariableIsEmpty("NEXUS_SCREENSHOT_DELAY"))
-        qputenv("NEXUS_SCREENSHOT_DELAY", "6000");
-    const int rc = app.run(QStringLiteral("org.nexus.gallery"), type);
+    if (selfTest && qEnvironmentVariableIsEmpty("SHADOW_SCREENSHOT_DELAY"))
+        qputenv("SHADOW_SCREENSHOT_DELAY", "6000");
+    const int rc = app.run(QStringLiteral("org.shadow.gallery"), type);
     if (selfTest && rc == 0) {
         // A run that ended before the checks did must not count as a pass.
         const auto roots = app.engine().rootObjects();
         const QObject *checks = roots.isEmpty() ? nullptr
             : roots.first()->findChild<QObject *>(QStringLiteral("caseChecks"));
         if (!checks || !checks->property("done").toBool()) {
-            fprintf(stderr, "NEXUS-CASE-FAILED %s: the scripted checks did not finish\n", qPrintable(type));
+            fprintf(stderr, "SHADOW-CASE-FAILED %s: the scripted checks did not finish\n", qPrintable(type));
             return 4;
         }
     }

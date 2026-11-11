@@ -4,7 +4,7 @@
 #include "storage.h"
 #include "systemsampler.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -38,8 +38,8 @@ QString pageList()
 }
 
 // "--page <key>" and "--page=<key>" are rewritten into the positional form
-// "<key>". Nexus::App hands only positional arguments over to an already
-// running instance, so this is what lets "nexus-monitor --page processes"
+// "<key>". Shadow::App hands only positional arguments over to an already
+// running instance, so this is what lets "shadow-monitor --page processes"
 // (the Task Manager launcher) switch the page of the open window.
 std::vector<char *> promotePageOption(int argc, char **argv)
 {
@@ -62,7 +62,7 @@ std::vector<char *> promotePageOption(int argc, char **argv)
 // half a second apart.
 const unsigned long kDumpIntervalMs = 500;
 
-int dump(Nexus::App &app)
+int dump(Shadow::App &app)
 {
     const QString topic = app.dumpTopic();
 
@@ -124,15 +124,15 @@ int main(int argc, char **argv)
     std::vector<char *> args = promotePageOption(argc, argv);
     int count = int(args.size()) - 1;
 
-    Nexus::AppInfo info;
-    info.id = QStringLiteral("org.nexus.monitor");
+    Shadow::AppInfo info;
+    info.id = QStringLiteral("org.shadow.monitor");
     info.displayName = QStringLiteral("System Monitor");
-    info.iconName = QStringLiteral("org.nexus.monitor");
+    info.iconName = QStringLiteral("org.shadow.monitor");
     info.description = QStringLiteral("Monitor processor, memory, graphics, disk, network, sensors, processes "
                                       "and services of this computer.");
     info.singleInstance = true;
 
-    Nexus::App app(count, args.data(), info);
+    Shadow::App app(count, args.data(), info);
     const QString pages = pageList();
     app.parser().addPositionalArgument(u"page"_s, u"Page to open: %1."_s.arg(pages), u"[page]"_s);
     app.parser().addOption(QCommandLineOption(u"page"_s, u"Open <page> (same as the positional argument)."_s, u"page"_s));
@@ -145,7 +145,7 @@ int main(int argc, char **argv)
         if (argument == "--dump"_L1) {
             ++i;                    // its value is a topic, not a page
         } else if (!argument.startsWith(u'-') && !isPage(argument)) {
-            std::fprintf(stderr, "nexus-monitor: unknown page '%s' (pages: %s)\n",
+            std::fprintf(stderr, "shadow-monitor: unknown page '%s' (pages: %s)\n",
                          qPrintable(argument), qPrintable(pages));
             return 2;
         }
@@ -155,5 +155,5 @@ int main(int argc, char **argv)
         return 0;
     if (!app.dumpTopic().isEmpty())
         return dump(app);
-    return app.run(u"org.nexus.monitor"_s);
+    return app.run(u"org.shadow.monitor"_s);
 }

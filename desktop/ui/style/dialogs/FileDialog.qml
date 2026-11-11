@@ -6,14 +6,14 @@ import QtQuick.Dialogs
 import QtQuick.Dialogs.quickimpl
 import QtQuick.Layouts
 import QtQuick.Templates as T
-import org.nexus.ui
+import org.shadow.ui
 
 import "." as Parts
 
-// NEXUS look of Qt Quick Dialogs' FileDialog (the Qt Quick implementation,
-// used when no native dialog is shown — which is always the case in NEXUS
-// applications, see Nexus::App). Qt picks this file instead of its built-in
-// one through the file selector "+org.nexus.style"; the logic (navigation,
+// SHADOW look of Qt Quick Dialogs' FileDialog (the Qt Quick implementation,
+// used when no native dialog is shown — which is always the case in SHADOW
+// applications, see Shadow::App). Qt picks this file instead of its built-in
+// one through the file selector "+org.shadow.style"; the logic (navigation,
 // filters, overwrite confirmation, keyboard) stays in Qt's FileDialogImpl,
 // which is told below which item plays which part.
 FileDialogImpl {

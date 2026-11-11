@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Install Shadow OS
+GenericName=System Installer
+Comment=Install Shadow OS on this computer
+Exec=shadow-installer
+Icon=org.shadow.installer
+Terminal=false
+Categories=System;
+Keywords=install;installer;setup;disk;partition;
+StartupNotify=true
+StartupWMClass=org.shadow.installer
+X-SHADOW-Component=installer

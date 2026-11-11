@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Unit-style checks of security/audit/nexus-security-status.
+"""Unit-style checks of security/audit/shadow-security-status.
 
     python3 tests/security/test_security_status.py [-v]
 
@@ -29,13 +29,13 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-TOOL = os.path.join(ROOT, "security", "audit", "nexus-security-status")
+TOOL = os.path.join(ROOT, "security", "audit", "shadow-security-status")
 AUDIT_LOG = os.path.join(HERE, "fixtures", "audit.log")
 
 
 def load_tool():
     sys.dont_write_bytecode = True
-    loader = importlib.machinery.SourceFileLoader("nexus_security_status", TOOL)
+    loader = importlib.machinery.SourceFileLoader("shadow_security_status", TOOL)
     spec = importlib.util.spec_from_loader(loader.name, loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
@@ -51,7 +51,7 @@ def write(path, text="", mode="w"):
 class Base(unittest.TestCase):
     def setUp(self):
         self.t = load_tool()
-        self.tmp = tempfile.mkdtemp(prefix="nexus-sec-test.")
+        self.tmp = tempfile.mkdtemp(prefix="shadow-sec-test.")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.t.PROC = os.path.join(self.tmp, "proc")
         self.t.SYS = os.path.join(self.tmp, "sys")
@@ -117,7 +117,7 @@ class Modules(Base):
         self.assertIn("not installed", info["modules_reason"])
 
     def test_shipped_baseline_against_fabricated_proc_modules(self):
-        self.t.BASELINE_MODPROBE = os.path.join(ROOT, "security/hardening/modprobe.d/nexus-hardening.conf")
+        self.t.BASELINE_MODPROBE = os.path.join(ROOT, "security/hardening/modprobe.d/shadow-hardening.conf")
         write(os.path.join(self.t.PROC, "modules"),
               "cramfs 61440 0 - Live 0xffffffffc0a00000\n"
               "n_hdlc 20480 0 - Live 0xffffffffc0b00000\n"
@@ -152,7 +152,7 @@ class AppArmor(Base):
         write(os.path.join(self.t.SYS, "module/apparmor/parameters/enabled"), "Y\n")
         write(os.path.join(self.t.SYS, "kernel/security/lsm"), "lockdown,capability,landlock,yama,apparmor\n")
         write(os.path.join(self.t.SYS, "kernel/security/apparmor/profiles"),
-              "/usr/sbin/cupsd (enforce)\nnexus-terminal (enforce)\n/usr/sbin/dnsmasq (complain)\n"
+              "/usr/sbin/cupsd (enforce)\nshadow-terminal (enforce)\n/usr/sbin/dnsmasq (complain)\n"
               "firefox (unconfined)\nrunaway (kill)\nodd one (prompt)\n")
         self.make_proc(702, "cupsd", "/usr/sbin/cupsd (enforce)")
         self.make_proc(1290, "dnsmasq", "/usr/sbin/dnsmasq (complain)", own_file=True)
@@ -165,7 +165,7 @@ class AppArmor(Base):
         info = self.t.section_apparmor()
         self.assertEqual(info["profiles"], {"enforce": 2, "complain": 1, "kill": 1, "unconfined": 1, "other": 1})
         self.assertEqual(info["profile_names"], {
-            "enforce": ["/usr/sbin/cupsd", "nexus-terminal"], "complain": ["/usr/sbin/dnsmasq"],
+            "enforce": ["/usr/sbin/cupsd", "shadow-terminal"], "complain": ["/usr/sbin/dnsmasq"],
             "kill": ["runaway"], "unconfined": ["firefox"], "other": ["odd one"]})
         self.assertEqual(info["processes"], [
             {"process": "cupsd", "pid": 702, "profile": "/usr/sbin/cupsd", "mode": "enforce"},
@@ -225,7 +225,7 @@ class Filesystems(Base):
         self.blockdev("nvme0n1", "259:0")
         self.blockdev("nvme0n1p1", "259:1", parent="nvme0n1", partition=True)
         self.blockdev("nvme0n1p3", "259:3", parent="nvme0n1", partition=True)
-        self.blockdev("dm-0", "253:0", slaves=["nvme0n1p3"], dm_uuid="CRYPT-LUKS2-0123456789abcdef-nexus_crypt")
+        self.blockdev("dm-0", "253:0", slaves=["nvme0n1p3"], dm_uuid="CRYPT-LUKS2-0123456789abcdef-shadow_crypt")
         self.blockdev("dm-1", "253:1", slaves=["dm-0"], dm_uuid="LVM-aaaa")
         self.blockdev("dm-2", "253:2", slaves=["dm-0"], dm_uuid="LVM-bbbb")
         self.blockdev("sdb", "8:16")
@@ -240,9 +240,9 @@ class Filesystems(Base):
         write(os.path.join(self.t.PROC, "self/mountinfo"), "\n".join([
             "22 1 0:21 / /proc rw,nosuid shared:12 - proc proc rw",
             "23 1 0:22 / /sys rw shared:2 - sysfs sysfs rw",
-            "28 1 253:1 / / rw,relatime shared:1 - ext4 /dev/mapper/nexus-root rw",
+            "28 1 253:1 / / rw,relatime shared:1 - ext4 /dev/mapper/shadow-root rw",
             "30 28 0:25 / /run rw shared:5 - tmpfs tmpfs rw",
-            "60 28 253:2 / /home rw shared:30 - ext4 /dev/mapper/nexus-home rw",
+            "60 28 253:2 / /home rw shared:30 - ext4 /dev/mapper/shadow-home rw",
             "61 28 259:1 / /boot/efi rw shared:31 - vfat /dev/nvme0n1p1 rw",
             "70 28 8:17 / /media/ada/USB\\040stick rw shared:40 - ext4 /dev/sdb1 rw",
             "71 28 253:3 / /scratch rw shared:41 - xfs /dev/mapper/scratch rw",
@@ -258,7 +258,7 @@ class Filesystems(Base):
         got = {r["mountpoint"]: r for r in rows}
         self.assertEqual(sorted(got), ["/", "/boot/efi", "/home", "/media/ada/USB stick", "/mnt/ghost", "/scratch",
                                        "/srv", "/tank"])
-        self.assertEqual(got["/"], {"mountpoint": "/", "device": "/dev/mapper/nexus-root", "fstype": "ext4",
+        self.assertEqual(got["/"], {"mountpoint": "/", "device": "/dev/mapper/shadow-root", "fstype": "ext4",
                                     "encrypted": True})
         self.assertIs(got["/home"]["encrypted"], True)          # LVM on LUKS
         self.assertIs(got["/boot/efi"]["encrypted"], False)     # partition straight on the disk
@@ -377,7 +377,7 @@ class SecureBoot(Base):
 
     def test_sbverify_output_is_used_when_installed(self):
         path = self.kernel(b"whatever")
-        self.fake_run({"sbverify": (0, "signature 1\nimage signature issuers:\n - /CN=NEXUS OS Secure Boot\n", "")})
+        self.fake_run({"sbverify": (0, "signature 1\nimage signature issuers:\n - /CN=Shadow OS Secure Boot\n", "")})
         info = self.t.section_secureboot()
         self.assertIs(info["kernel_signed"], True)
         self.assertEqual(info["kernel_signed_method"], "sbverify")
@@ -422,15 +422,15 @@ class LastUpgrade(Base):
                      "End-Date: 2025-12-01  07:01:00\n")
         self.assertEqual(self.t._last_upgrade(), self.expect("2026-02-09 19:44:00"))
         # dpkg -i of a newer version is only in dpkg's log
-        write(os.path.join(self.tmp, "dpkg.log"), "2026-02-11 06:30:00 upgrade nexus-ui:amd64 0.9.0 0.9.1\n"
-                                                 "2026-02-11 06:30:01 status installed nexus-ui:amd64 0.9.1\n")
+        write(os.path.join(self.tmp, "dpkg.log"), "2026-02-11 06:30:00 upgrade shadow-ui:amd64 0.9.0 0.9.1\n"
+                                                 "2026-02-11 06:30:01 status installed shadow-ui:amd64 0.9.1\n")
         self.assertEqual(self.t._last_upgrade(), self.expect("2026-02-11 06:30:00"))
 
 
 # --------------------------------------------------------------------------- audit.recent_events
 class Audit(Base):
     def test_keys_come_from_the_shipped_rules(self):
-        self.t.AUDIT_RULES = os.path.join(ROOT, "security/audit/50-nexus.rules")
+        self.t.AUDIT_RULES = os.path.join(ROOT, "security/audit/50-shadow.rules")
         keys = self.t._audit_keys()
         self.assertEqual(sorted(keys), sorted(self.t.AUDIT_KEYS))
         self.t.AUDIT_RULES = os.path.join(self.tmp, "absent.rules")
@@ -508,21 +508,21 @@ class Audit(Base):
 class Firewall(Base):
     def test_ruleset_fetched_when_the_firewall_tool_lacks_it(self):
         status = {"installed": True, "enabled_at_boot": True, "active": True, "allowed": [], "rule_count": 30}
-        ruleset = "table inet nexus_filter {\n}\n"
-        self.fake_run({"nexus-firewall": (0, json.dumps(status), ""), "nft": (0, ruleset, "")})
+        ruleset = "table inet shadow_filter {\n}\n"
+        self.fake_run({"shadow-firewall": (0, json.dumps(status), ""), "nft": (0, ruleset, "")})
         info = self.t.section_firewall()
         self.assertEqual(info["ruleset"], ruleset)
-        self.assertIn(["nft", "list", "table", "inet", "nexus_filter"], self.calls)
+        self.assertIn(["nft", "list", "table", "inet", "shadow_filter"], self.calls)
         self.assertEqual(info["rule_count"], 30)
 
     def test_ruleset_of_the_tool_is_passed_through(self):
         status = {"active": False, "ruleset": None, "ruleset_reason": "The firewall table is not loaded.",
                   "allowed_port_count": None}
-        self.fake_run({"nexus-firewall": (3, json.dumps(status), "")})
+        self.fake_run({"shadow-firewall": (3, json.dumps(status), "")})
         info = self.t.section_firewall()
         self.assertIsNone(info["ruleset"])
         self.assertEqual(info["ruleset_reason"], "The firewall table is not loaded.")
-        self.assertEqual([c[0] for c in self.calls], ["nexus-firewall"])
+        self.assertEqual([c[0] for c in self.calls], ["shadow-firewall"])
 
 
 class WholeProgram(unittest.TestCase):

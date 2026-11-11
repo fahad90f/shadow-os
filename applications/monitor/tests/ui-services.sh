@@ -23,10 +23,10 @@
 set -u
 
 B="${LD_LIBRARY_PATH%%/lib*}"
-APP="$B/bin/nexus-monitor"
-STATE=/tmp/nexus-monitor-fixture/systemd-state.json
+APP="$B/bin/shadow-monitor"
+STATE=/tmp/shadow-monitor-fixture/systemd-state.json
 [ -f "$STATE" ] || { echo "ui-services: run through fixture.py"; exit 2; }
-export NEXUS_WINDOW_SIZE=1240x800
+export SHADOW_WINDOW_SIZE=1240x800
 FAILED=0
 
 shot() { import -window root -crop 1240x800+0+0 +repage "/shots/ui-services-$1.png" 2>/dev/null; }

@@ -39,7 +39,7 @@ constexpr int kNoticeMs = 6000;             // how long a status message stays
 constexpr int kHangUpWaitMs = 300;          // grace period for shells when the window closes
 constexpr int kMaxRestoredTabs = 24;
 constexpr int kSessionVersion = 1;
-const char kFileManager[] = "nexus-files";
+const char kFileManager[] = "shadow-files";
 
 QString plainText(QString text)
 {
@@ -847,7 +847,7 @@ void MainWindow::openFileManager()
         return;
     const QString program = QStandardPaths::findExecutable(QString::fromLatin1(kFileManager));
     if (program.isEmpty()) {
-        showNotice(tr("NEXUS Files (%1) is not installed.").arg(QString::fromLatin1(kFileManager)), true);
+        showNotice(tr("SHADOW Files (%1) is not installed.").arg(QString::fromLatin1(kFileManager)), true);
         return;
     }
     const QString directory = pane->workingDirectory();
@@ -1010,7 +1010,7 @@ void MainWindow::showPreferences(PreferencesDialog::Page page)
 void MainWindow::showAbout()
 {
     Ui::Dialog dialog(tr("About Terminal"), this);
-    dialog.setSubtitle(tr("Terminal emulator of NEXUS OS: tabs, split panes, profiles and SSH connections."));
+    dialog.setSubtitle(tr("Terminal emulator of Shadow OS: tabs, split panes, profiles and SSH connections."));
     dialog.setFixedWidth(Tokens::SidebarWidth * 2);
     QFrame *card = Ui::card(&dialog);
     dialog.content()->addWidget(card);
@@ -1116,7 +1116,7 @@ void MainWindow::updateActionStates()
     QAction *files = action(QStringLiteral("open-file-manager"));
     const bool haveFiles = !QStandardPaths::findExecutable(QString::fromLatin1(kFileManager)).isEmpty();
     files->setEnabled(haveFiles);
-    files->setStatusTip(haveFiles ? QString() : tr("NEXUS Files is not installed"));
+    files->setStatusTip(haveFiles ? QString() : tr("SHADOW Files is not installed"));
     files->setText(haveFiles ? tr("Open File Manager Here") : tr("Open File Manager Here (not installed)"));
 }
 

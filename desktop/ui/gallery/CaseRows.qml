@@ -2,13 +2,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // Test page: NxRow draws a divider above itself unless it is the first
 // visible row of its parent. Exactly one row per section may be "first".
 NxWindow {
     id: window
-    title: "NexusUI Gallery — rows"
+    title: "ShadowUI Gallery — rows"
     width: 1000
     height: 760
 

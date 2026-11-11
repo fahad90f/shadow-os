@@ -149,7 +149,7 @@ private:
     int m_pending = 0;
     QString m_error;
 
-    Nexus::CommandResult m_addrResult, m_route4Result, m_route6Result, m_neighResult;
+    Shadow::CommandResult m_addrResult, m_route4Result, m_route6Result, m_neighResult;
 
     QVariantList m_interfaces;          // without counters (they change every second)
     QVariantList m_interfacesFull;      // with the counters of the last `ip -s` run and address lifetimes

@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
+import org.shadow.ui
 
 // First start: the conditions of use have to be acknowledged before the
 // manager can be used. The answer is stored per user.
@@ -12,7 +12,7 @@ Dialog {
     signal declined()
 
     modal: true
-    title: qsTr("Before you use NEXUS Arsenal")
+    title: qsTr("Before you use SHADOW Arsenal")
     width: Math.min(640, parent ? parent.width - Theme.spaceXxl : 640)
     height: Math.min(implicitHeight, parent ? parent.height - Theme.spaceXl : implicitHeight)
     anchors.centerIn: parent

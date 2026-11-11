@@ -66,7 +66,7 @@ bool Manifests::load(const QString &dirPath)
 
     const QDir dir(dirPath);
     if (!dir.exists()) {
-        m_error = tr("The profile directory %1 does not exist. It is installed by the package nexus-arsenal-data.")
+        m_error = tr("The profile directory %1 does not exist. It is installed by the package shadow-arsenal-data.")
                       .arg(dirPath);
         return false;
     }

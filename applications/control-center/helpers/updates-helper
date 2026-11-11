@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Privileged helper of the Control Center's Updates page.
 
-Run through pkexec (action org.nexus.controlcenter.updates.configure):
+Run through pkexec (action org.shadow.controlcenter.updates.configure):
 
     updates-helper set-auto-upgrades <update-lists: 0|1> <unattended-upgrade: 0|1>
 

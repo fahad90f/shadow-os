@@ -20,8 +20,8 @@ namespace {
 
 struct Config
 {
-    QString statusTool = QStringLiteral("/usr/sbin/nexus-security-status");
-    QString firewallTool = QStringLiteral("/usr/sbin/nexus-firewall");
+    QString statusTool = QStringLiteral("/usr/sbin/shadow-security-status");
+    QString firewallTool = QStringLiteral("/usr/sbin/shadow-firewall");
     QString initialPage;
     bool direct = false;
 };
@@ -140,19 +140,19 @@ void SecurityCenter::configure(const QString &toolsDirArgument, const QString &i
 
     QString dir = toolsDirArgument;
     if (dir.isEmpty())
-        dir = qEnvironmentVariable("NEXUS_SECURITY_TOOLS_DIR");
+        dir = qEnvironmentVariable("SHADOW_SECURITY_TOOLS_DIR");
     if (!dir.isEmpty()) {
         const QDir d(dir);
         const auto pick = [&d](const QString &sub, const QString &name) {
             const QString nested = d.absoluteFilePath(sub + QLatin1Char('/') + name);
             return QFileInfo::exists(nested) ? nested : d.absoluteFilePath(name);
         };
-        c.statusTool = pick(QStringLiteral("audit"), QStringLiteral("nexus-security-status"));
-        c.firewallTool = pick(QStringLiteral("firewall"), QStringLiteral("nexus-firewall"));
+        c.statusTool = pick(QStringLiteral("audit"), QStringLiteral("shadow-security-status"));
+        c.firewallTool = pick(QStringLiteral("firewall"), QStringLiteral("shadow-firewall"));
         c.direct = true;
     }
-    const QString status = qEnvironmentVariable("NEXUS_SECURITY_STATUS_TOOL");
-    const QString firewall = qEnvironmentVariable("NEXUS_FIREWALL_TOOL");
+    const QString status = qEnvironmentVariable("SHADOW_SECURITY_STATUS_TOOL");
+    const QString firewall = qEnvironmentVariable("SHADOW_FIREWALL_TOOL");
     if (!status.isEmpty()) {
         c.statusTool = QFileInfo(status).absoluteFilePath();
         c.direct = true;
@@ -162,7 +162,7 @@ void SecurityCenter::configure(const QString &toolsDirArgument, const QString &i
         c.direct = true;
     }
     if (c.direct) {
-        // nexus-security-status finds nexus-firewall through PATH.
+        // shadow-security-status finds shadow-firewall through PATH.
         const QByteArray path = QFile::encodeName(QFileInfo(c.firewallTool).absolutePath()) + ':' + qgetenv("PATH");
         qputenv("PATH", path);
     }
@@ -185,8 +185,8 @@ QJsonObject SecurityCenter::toolsJson()
         {QStringLiteral("statusToolInstalled"), QFileInfo(c.statusTool).isExecutable()},
         {QStringLiteral("firewallTool"), c.firewallTool},
         {QStringLiteral("firewallToolInstalled"), QFileInfo(c.firewallTool).isExecutable()},
-        {QStringLiteral("pkexecInstalled"), Nexus::Command::available(QStringLiteral("pkexec"))},
-        {QStringLiteral("updaterInstalled"), Nexus::Command::available(QStringLiteral("nexus-updater"))},
+        {QStringLiteral("pkexecInstalled"), Shadow::Command::available(QStringLiteral("pkexec"))},
+        {QStringLiteral("updaterInstalled"), Shadow::Command::available(QStringLiteral("shadow-updater"))},
     };
 }
 
@@ -194,7 +194,7 @@ bool SecurityCenter::direct() const { return config().direct; }
 QString SecurityCenter::statusTool() const { return config().statusTool; }
 QString SecurityCenter::firewallTool() const { return config().firewallTool; }
 QString SecurityCenter::initialPage() const { return config().initialPage; }
-bool SecurityCenter::updaterInstalled() const { return Nexus::Command::available(QStringLiteral("nexus-updater")); }
+bool SecurityCenter::updaterInstalled() const { return Shadow::Command::available(QStringLiteral("shadow-updater")); }
 
 // ---------------------------------------------------------------------------------- status tool
 SecurityCenter::SecurityCenter(QObject *parent)
@@ -278,7 +278,7 @@ void SecurityCenter::startRun(const QStringList &sections, bool full)
 {
     const Config &c = config();
     if (!QFileInfo(c.statusTool).isExecutable()) {
-        setError(tr("%1 is not installed. It is part of the nexus-hardening package.").arg(c.statusTool));
+        setError(tr("%1 is not installed. It is part of the shadow-hardening package.").arg(c.statusTool));
         Q_EMIT refreshFinished(false);
         return;
     }
@@ -297,7 +297,7 @@ void SecurityCenter::startRun(const QStringList &sections, bool full)
 
     const bool viaPkexec = !c.direct;
     const QString tool = c.statusTool;
-    Nexus::Command::run(this, program, arguments, [this, full, viaPkexec, tool](const Nexus::CommandResult &r) {
+    Shadow::Command::run(this, program, arguments, [this, full, viaPkexec, tool](const Shadow::CommandResult &r) {
         bool ok = false;
         QJsonParseError parseError{};
         const QJsonDocument doc = QJsonDocument::fromJson(r.out, &parseError);
@@ -378,7 +378,7 @@ void SecurityCenter::runFirewall(const QString &action, const QStringList &toolA
     const Config &c = config();
     clearFirewallError();
     if (!QFileInfo(c.firewallTool).isExecutable()) {
-        m_firewallError = tr("%1 is not installed. It is part of the nexus-hardening package.").arg(c.firewallTool);
+        m_firewallError = tr("%1 is not installed. It is part of the shadow-hardening package.").arg(c.firewallTool);
         Q_EMIT firewallErrorChanged();
         Q_EMIT firewallFinished(false, action, m_firewallError);
         return;
@@ -395,7 +395,7 @@ void SecurityCenter::runFirewall(const QString &action, const QStringList &toolA
 
     const bool viaPkexec = !c.direct;
     const QString tool = c.firewallTool;
-    Nexus::Command::run(this, program, arguments, [this, action, viaPkexec, tool](const Nexus::CommandResult &r) {
+    Shadow::Command::run(this, program, arguments, [this, action, viaPkexec, tool](const Shadow::CommandResult &r) {
         m_firewallBusy = false;
         m_firewallAction.clear();
         Q_EMIT firewallBusyChanged();
@@ -405,7 +405,7 @@ void SecurityCenter::runFirewall(const QString &action, const QStringList &toolA
         } else {
             message = describeFailure(tool, r.exitCode, r.errText(), viaPkexec);
             // The tool prefixes its own errors with its name.
-            if (message.startsWith(QLatin1String("nexus-firewall: ")))
+            if (message.startsWith(QLatin1String("shadow-firewall: ")))
                 message = message.mid(16);
             m_firewallError = message;
             Q_EMIT firewallErrorChanged();
@@ -465,9 +465,9 @@ QString SecurityCenter::reportAsJson() const
 QString SecurityCenter::reportAsText() const
 {
     QString out;
-    out += QStringLiteral("NEXUS OS security report\n");
+    out += QStringLiteral("Shadow OS security report\n");
     out += QStringLiteral("Host: %1\n").arg(QSysInfo::machineHostName());
-    out += QStringLiteral("Generated: %1 (by nexus-security-status, %2)\n")
+    out += QStringLiteral("Generated: %1 (by shadow-security-status, %2)\n")
                .arg(m_generated.isEmpty() ? QStringLiteral("no complete report yet") : m_generated,
                     m_privileged ? QStringLiteral("run as root") : QStringLiteral("run WITHOUT root: some checks are incomplete"));
     out += QLatin1Char('\n');
@@ -508,7 +508,7 @@ QString SecurityCenter::defaultSavePath(const QString &format) const
     if (dir.isEmpty() || !QFileInfo(dir).isDir())
         dir = QDir::homePath();
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmm"));
-    return QStringLiteral("%1/nexus-security-report-%2.%3")
+    return QStringLiteral("%1/shadow-security-report-%2.%3")
         .arg(dir, stamp, format == QLatin1String("json") ? QStringLiteral("json") : QStringLiteral("txt"));
 }
 
@@ -541,7 +541,7 @@ QString SecurityCenter::saveReport(const QString &pathArgument, const QString &f
 
 bool SecurityCenter::openUpdater() const
 {
-    return QProcess::startDetached(QStringLiteral("nexus-updater"), {});
+    return QProcess::startDetached(QStringLiteral("shadow-updater"), {});
 }
 
 QString SecurityCenter::localTime(const QString &iso, bool withDate) const

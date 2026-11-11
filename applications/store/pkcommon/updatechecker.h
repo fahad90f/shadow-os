@@ -11,10 +11,10 @@
 #include <QPointer>
 #include <QVariantMap>
 
-namespace NexusPk {
+namespace ShadowPk {
 
-// The list of available updates, as both NEXUS Updater and the Updates view
-// of NEXUS Store show it.
+// The list of available updates, as both SHADOW Updater and the Updates view
+// of SHADOW Store show it.
 //
 //   check(true)   RefreshCache, then GetUpdates
 //   check(false)  GetUpdates from the lists already on disk
@@ -26,7 +26,7 @@ namespace NexusPk {
 // Grouping — from PackageKit's update classification and the package name:
 //   security  PackageKit says "security"
 //   kernel    linux-image-*, linux-headers-*, linux-modules-*, linux-kbuild-*
-//   nexus     nexus-*, libnexus*
+//   shadow     shadow-*, libshadow*
 //   other     everything else
 //   blocked   held back by the package manager (cannot be selected)
 class UpdateChecker : public QObject
@@ -40,7 +40,7 @@ class UpdateChecker : public QObject
     Q_PROPERTY(int count READ count NOTIFY resultChanged)
     Q_PROPERTY(int securityCount READ securityCount NOTIFY resultChanged)
     Q_PROPERTY(int kernelCount READ kernelCount NOTIFY resultChanged)
-    Q_PROPERTY(int nexusCount READ nexusCount NOTIFY resultChanged)
+    Q_PROPERTY(int shadowCount READ shadowCount NOTIFY resultChanged)
     Q_PROPERTY(int otherCount READ otherCount NOTIFY resultChanged)
     Q_PROPERTY(int blockedCount READ blockedCount NOTIFY resultChanged)
     Q_PROPERTY(double totalSize READ totalSize NOTIFY resultChanged)
@@ -65,7 +65,7 @@ public:
     int count() const { return m_counts.value(QStringLiteral("total")); }
     int securityCount() const { return m_counts.value(QStringLiteral("security")); }
     int kernelCount() const { return m_counts.value(QStringLiteral("kernel")); }
-    int nexusCount() const { return m_counts.value(QStringLiteral("nexus")); }
+    int shadowCount() const { return m_counts.value(QStringLiteral("shadow")); }
     int otherCount() const { return m_counts.value(QStringLiteral("other")); }
     int blockedCount() const { return m_counts.value(QStringLiteral("blocked")); }
     double totalSize() const { return static_cast<double>(m_totalSize); }
@@ -99,7 +99,7 @@ public:
 
     static QString groupFor(const PackageEntry &entry);
     static bool isKernelPackage(const QString &name);
-    static bool isNexusPackage(const QString &name);
+    static bool isShadowPackage(const QString &name);
 
 Q_SIGNALS:
     void stateChanged();
@@ -142,4 +142,4 @@ private:
     bool m_detailsCancelled = false;
 };
 
-} // namespace NexusPk
+} // namespace ShadowPk

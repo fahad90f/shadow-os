@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.networkcenter
+import org.shadow.ui
+import org.shadow.networkcenter
 
 // Shown in place of a feature that needs NetworkManager while it cannot be
 // used: says which of the possible reasons applies and what the feature

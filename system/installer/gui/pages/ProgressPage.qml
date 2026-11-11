@@ -2,8 +2,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.nexus.ui
-import org.nexus.installer
+import org.shadow.ui
+import org.shadow.installer
 
 StepPage {
     id: page
@@ -18,7 +18,7 @@ StepPage {
         return (h > 0 ? h + ":" + two(m) : m) + ":" + two(s)
     }
 
-    title: Installer.simulation ? qsTr("Simulated installation (test engine)") : qsTr("Installing NEXUS OS")
+    title: Installer.simulation ? qsTr("Simulated installation (test engine)") : qsTr("Installing Shadow OS")
     subtitle: Installer.simulation
               ? qsTr("The test engine is playing the events of an installation. No program runs and no disk is touched.")
               : qsTr("Keep the computer switched on and the installation medium connected. There is no cancel button: "

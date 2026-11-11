@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "systeminfo.h"
 
-#include <nexusapp.h>
+#include <shadowapp.h>
 
 #include <QJsonArray>
 #include <QJsonObject>
 
 int main(int argc, char **argv)
 {
-    Nexus::App app(argc, argv, {
-        QStringLiteral("org.nexus.sysinfo"),
+    Shadow::App app(argc, argv, {
+        QStringLiteral("org.shadow.sysinfo"),
         QStringLiteral("System Information"),
-        QStringLiteral("org.nexus.sysinfo"),
+        QStringLiteral("org.shadow.sysinfo"),
         QStringLiteral("Hardware and software summary of this computer"),
     });
     app.setDumpTopics({QStringLiteral("system"), QStringLiteral("report")});
@@ -48,5 +48,5 @@ int main(int argc, char **argv)
             {QStringLiteral("filesystems"), QJsonArray::fromVariantList(info.filesystems())},
         });
     }
-    return app.run(QStringLiteral("org.nexus.sysinfo"));
+    return app.run(QStringLiteral("org.shadow.sysinfo"));
 }

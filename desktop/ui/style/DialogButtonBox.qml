@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Templates as T
-import org.nexus.ui
+import org.shadow.ui
 
 T.DialogButtonBox {
     id: control

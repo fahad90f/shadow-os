@@ -20,7 +20,7 @@
 // An entry is disabled with "Hidden=true" (the specification's way) plus
 // "X-GNOME-Autostart-enabled=false" (understood by sessions that keep hidden
 // entries listed). A system entry is disabled by a user file that is a copy
-// of the system file with those keys and "X-NEXUS-Autostart-Override=true";
+// of the system file with those keys and "X-SHADOW-Autostart-Override=true";
 // enabling it again removes that copy.
 class StartupBackend : public QObject
 {

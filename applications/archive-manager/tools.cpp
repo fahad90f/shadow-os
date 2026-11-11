@@ -37,12 +37,12 @@ QVariantList ArchiveTools::tools() const
     };
     for (const auto &tool : tools) {
         const QString name = QString::fromLatin1(tool.name);
-        const bool available = Nexus::Command::available(name);
+        const bool available = Shadow::Command::available(name);
         QString version;
         if (available) {
-            const Nexus::CommandResult r = name == QLatin1String("bsdtar")
-                ? Nexus::Command::runSync(name, {QStringLiteral("--version")}, 3000)
-                : Nexus::Command::runSync(name, {QStringLiteral("i")}, 3000);
+            const Shadow::CommandResult r = name == QLatin1String("bsdtar")
+                ? Shadow::Command::runSync(name, {QStringLiteral("--version")}, 3000)
+                : Shadow::Command::runSync(name, {QStringLiteral("i")}, 3000);
             const QStringList lines = r.outText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
             version = lines.value(0).trimmed();
         }

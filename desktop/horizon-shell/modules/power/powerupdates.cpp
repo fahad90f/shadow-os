@@ -76,7 +76,7 @@ UpdateChecker::UpdateChecker(Config *config, Notifier *notifier, QObject *parent
 
 QString UpdateChecker::updaterProgram()
 {
-    return QStandardPaths::findExecutable(QStringLiteral("nexus-updater"));
+    return QStandardPaths::findExecutable(QStringLiteral("shadow-updater"));
 }
 
 void UpdateChecker::reschedule(bool afterCheck)
@@ -105,7 +105,7 @@ void UpdateChecker::due()
         // (the Updater may get installed).
         m_firstDone = true;
         m_lastResult = QStringLiteral("not-run");
-        m_lastError = QStringLiteral("nexus-updater is not installed.");
+        m_lastError = QStringLiteral("shadow-updater is not installed.");
         reschedule(true);
         return;
     }
@@ -201,8 +201,8 @@ void UpdateChecker::finished(int exitCode, bool crashed, const QByteArray &outpu
     if (!startError.isEmpty() || crashed || (exitCode != 0 && exitCode != 10 && exitCode != 11)) {
         m_lastResult = QStringLiteral("failed");
         m_lastError = !startError.isEmpty() ? startError
-                      : crashed ? QStringLiteral("nexus-updater --check was killed or crashed.")
-                      : result.value(QLatin1String("error")).toString(QStringLiteral("nexus-updater --check exited with status %1.").arg(exitCode));
+                      : crashed ? QStringLiteral("shadow-updater --check was killed or crashed.")
+                      : result.value(QLatin1String("error")).toString(QStringLiteral("shadow-updater --check exited with status %1.").arg(exitCode));
         qWarning("horizon-shell power: update check failed: %s", qPrintable(m_lastError));
     } else if (exitCode == 0) {
         m_lastResult = QStringLiteral("none");
@@ -214,7 +214,7 @@ void UpdateChecker::finished(int exitCode, bool crashed, const QByteArray &outpu
         message.key = kKey;
         message.appName = tr("Software updates");
         message.icon = QStringLiteral("system-software-update");
-        message.desktopEntry = QStringLiteral("org.nexus.updater");
+        message.desktopEntry = QStringLiteral("org.shadow.updater");
         message.urgency = Notifier::Normal;
         message.summary = security ? tr("Security updates are available") : tr("Updates are available");
         // The counts are the updater's; without them (unexpected output) the
@@ -227,8 +227,8 @@ void UpdateChecker::finished(int exitCode, bool crashed, const QByteArray &outpu
             else if (m_lastSecurity > 1)
                 message.body += QLatin1Char(' ') + tr("%1 of them fix security problems.").arg(m_lastSecurity);
         } else {
-            message.body = security ? tr("Open NEXUS Updater to review and install them.")
-                                    : tr("Open NEXUS Updater to review them.");
+            message.body = security ? tr("Open SHADOW Updater to review and install them.")
+                                    : tr("Open SHADOW Updater to review them.");
         }
         if (result.value(QLatin1String("restartRequired")).toBool())
             message.body += QLatin1Char(' ') + tr("A restart is pending from an earlier update.");

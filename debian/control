@@ -1,7 +1,7 @@
-Source: nexus-os
+Source: shadow-os
 Section: misc
 Priority: optional
-Maintainer: NEXUS OS Developers <nexus-os@users.noreply.github.com>
+Maintainer: Shadow OS Developers <shadow-os@users.noreply.github.com>
 Rules-Requires-Root: no
 Standards-Version: 4.7.2
 Homepage: https://github.com/fahad90fa/Custom-OS
@@ -67,19 +67,19 @@ Build-Depends-Arch:
  libkf6statusnotifieritem-dev,
  libkf6guiaddons-dev
 
-Package: nexus-base-files
+Package: shadow-base-files
 Architecture: all
 Multi-Arch: foreign
 Depends: ${misc:Depends}, base-files
-Description: NEXUS OS identity and base system files
- Identifies the installed system as NEXUS OS: os-release, login banners and
- the distribution description used by system tools and the NEXUS desktop.
+Description: Shadow OS identity and base system files
+ Identifies the installed system as Shadow OS: os-release, login banners and
+ the distribution description used by system tools and the SHADOW desktop.
  .
  The files Debian's base-files package owns are diverted rather than
  replaced, so Debian point-release updates of base-files keep applying
  cleanly.
 
-Package: nexus-boot
+Package: shadow-boot
 Architecture: all
 Depends: ${misc:Depends},
  grub-common, grub2-common, efibootmgr, os-prober, mokutil,
@@ -88,26 +88,26 @@ Depends: ${misc:Depends},
  grub-efi-amd64-bin | grub-efi-arm64-bin
 Recommends: grub-pc-bin
 Conflicts: grub-pc, grub-efi-amd64, grub-efi-arm64, grub-efi-ia32, grub-coreboot, grub-ieee1275, grub-xen
-Description: NEXUS OS boot loader management
- Keeps the GRUB boot loader of an installed NEXUS OS system current.
+Description: Shadow OS boot loader management
+ Keeps the GRUB boot loader of an installed Shadow OS system current.
  .
- NEXUS OS starts through Debian's Microsoft-signed shim and Debian-signed
+ Shadow OS starts through Debian's Microsoft-signed shim and Debian-signed
  GRUB so that UEFI Secure Boot works without enrolling keys. This package
- provides nexus-grub-install, which copies those signed binaries onto the EFI
+ provides shadow-grub-install, which copies those signed binaries onto the EFI
  System Partition (or writes the legacy BIOS boot sector), maintains the
- "NEXUS OS" firmware boot entry, and is re-run automatically by a dpkg
+ "Shadow OS" firmware boot entry, and is re-run automatically by a dpkg
  trigger whenever a GRUB or shim security update is installed. It replaces
  the grub-pc/grub-efi-* front-end packages and ships the GRUB defaults.
 
-Package: nexus-installer
+Package: shadow-installer
 Architecture: all
 Depends: ${misc:Depends}, python3 (>= 3.11),
- nexus-boot,
+ shadow-boot,
  parted, gdisk, fdisk, util-linux, dosfstools, e2fsprogs, squashfs-tools,
  cryptsetup, cryptsetup-initramfs, lvm2, initramfs-tools, udev, passwd, locales,
  console-setup, apt
-Description: NEXUS OS installer engine
- The non-interactive engine that installs NEXUS OS from the live medium to
+Description: Shadow OS installer engine
+ The non-interactive engine that installs Shadow OS from the live medium to
  disk. It probes the machine, turns an answer file into an explicit plan
  (every partition created, formatted or kept), and carries out a plan only
  when given the hash of the plan that was shown.
@@ -117,58 +117,58 @@ Description: NEXUS OS installer engine
  Secure Boot, legacy BIOS on amd64, and LUKS2 full-disk encryption. The
  graphical installer and unattended installations both drive this engine.
 
-Package: nexus-live
+Package: shadow-live
 Architecture: all
 Depends: ${misc:Depends}, live-boot, live-boot-initramfs-tools, live-config, live-config-systemd,
  live-tools, user-setup, sudo
-Description: NEXUS OS live-session configuration
+Description: Shadow OS live-session configuration
  Configures the system for running from the installation medium: the live
  user account, host name and session start-up. It is removed from the
  installed system by the installer.
 
-Package: nexus-archive-keyring
+Package: shadow-archive-keyring
 Architecture: all
 Multi-Arch: foreign
 Depends: ${misc:Depends}
-Description: OpenPGP key and APT source of the NEXUS OS package repository
- The public key that authenticates the NEXUS OS package repository (NEXUS
+Description: OpenPGP key and APT source of the Shadow OS package repository
+ The public key that authenticates the Shadow OS package repository (SHADOW
  CORE, SECURITY and COMMUNITY) and the APT source entry for it.
  .
  The source entry is enabled only in builds that were given a repository URL;
  otherwise it is installed disabled, so the system never points at a
  repository that does not exist.
 
-Package: nexus-hardening
+Package: shadow-hardening
 Architecture: all
 Depends: ${misc:Depends}, python3, nftables, apparmor, auditd, sudo, iproute2, init-system-helpers,
  util-linux, procps
 Recommends: apparmor-profiles, apparmor-profiles-extra, apparmor-utils, cryptsetup-bin, mokutil,
- nexus-boot
-Description: NEXUS OS security baseline
- The security configuration NEXUS OS ships with, as one removable package:
+ shadow-boot
+Description: Shadow OS security baseline
+ The security configuration Shadow OS ships with, as one removable package:
  .
   * kernel hardening through sysctl and kernel command-line parameters;
   * no implicit loading of rarely used network protocol and filesystem
     modules;
-  * a default-deny nftables host firewall and nexus-firewall to manage it;
+  * a default-deny nftables host firewall and shadow-firewall to manage it;
   * audit rules for identity, privilege, kernel-module and boot-chain changes;
   * NetworkManager privacy defaults (per-network MAC address, IPv6 privacy);
-  * nexus-security-status, the read-only JSON report of firewall, AppArmor,
+  * shadow-security-status, the read-only JSON report of firewall, AppArmor,
     disk encryption, Secure Boot, updates, listening services, logins, audit
     and hardening state that the Security Center displays.
  .
  Every setting is documented with what it protects against and what it can
  affect; none of them disables a security mechanism to make software work.
 
-Package: nexus-artwork
+Package: shadow-artwork
 Architecture: all
 Multi-Arch: foreign
 Depends: ${misc:Depends}
-Description: NEXUS OS wallpapers and logos
- The original NEXUS OS artwork: the default wallpapers (Horizon, Lattice,
- Aurora and Daylight) and the NEXUS logo family in SVG.
+Description: Shadow OS wallpapers and logos
+ The original Shadow OS artwork: the default wallpapers (Horizon, Lattice,
+ Aurora and Daylight) and the SHADOW logo family in SVG.
 
-Package: nexus-ui
+Package: shadow-ui
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
  qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts,
@@ -178,15 +178,15 @@ Depends: ${shlibs:Depends}, ${misc:Depends},
  qt6-svg-plugins, qt6-wayland,
  fonts-inter-variable, fonts-jetbrains-mono
 Recommends: qt6-image-formats-plugins
-Description: NEXUS user-interface library (NexusUI)
- The shared foundation of the NEXUS HORIZON desktop and every NEXUS
- application: the design tokens as a QML theme, the NEXUS Qt Quick Controls
- style, the NexusUI component set and the symbolic icon set.
+Description: SHADOW user-interface library (ShadowUI)
+ The shared foundation of the Shadow Horizon desktop and every SHADOW
+ application: the design tokens as a QML theme, the SHADOW Qt Quick Controls
+ style, the ShadowUI component set and the symbolic icon set.
 
-Package: nexus-horizon
+Package: shadow-horizon
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
- nexus-ui (= ${binary:Version}), nexus-artwork, nexus-themes,
+ shadow-ui (= ${binary:Version}), shadow-artwork, shadow-themes,
  kwin-wayland, xwayland, kwin-style-breeze, qml6-module-org-kde-layershell, layer-shell-qt,
  plasma-integration, breeze-icon-theme, breeze-cursor-theme, hicolor-icon-theme,
  libkf6service-bin, kio6,
@@ -195,23 +195,23 @@ Depends: ${shlibs:Depends}, ${misc:Depends},
  shared-mime-info, desktop-file-utils
 Recommends: xdg-desktop-portal-gtk, sddm, pipewire, pipewire-pulse, wireplumber,
  network-manager, bluez, upower, power-profiles-daemon, udisks2, accountsservice
-Description: NEXUS HORIZON desktop shell and session
- The desktop of NEXUS OS: top panel, dock, application launcher, wallpaper,
+Description: Shadow Horizon desktop shell and session
+ The desktop of Shadow OS: top panel, dock, application launcher, wallpaper,
  session menu and the polkit authentication dialog, running as a Wayland
- session on the KWin compositor. Also provides the "NEXUS HORIZON" entry for
+ session on the KWin compositor. Also provides the "Shadow Horizon" entry for
  the login screen and the compositor defaults.
 
-Package: nexus-sysinfo
+Package: shadow-sysinfo
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  util-linux, pciutils
-Description: NEXUS System Information
+Description: SHADOW System Information
  Shows operating system and kernel versions, firmware, processor, memory,
  graphics, storage and virtualisation, read from the running system.
 
-Package: nexus-themes
+Package: shadow-themes
 Architecture: all
-Depends: ${misc:Depends}, nexus-artwork,
+Depends: ${misc:Depends}, shadow-artwork,
  plasma-integration, kde-style-breeze, kwin-style-breeze,
  breeze-icon-theme, breeze-cursor-theme, hicolor-icon-theme,
  fonts-inter-variable, fonts-jetbrains-mono,
@@ -220,95 +220,95 @@ Depends: ${misc:Depends}, nexus-artwork,
 Recommends: sddm, xdg-desktop-portal-kde, gsettings-desktop-schemas, libglib2.0-bin, adwaita-icon-theme
 Suggests: libpam-fprintd
 Provides: sddm-theme
-Description: NEXUS OS look for the whole system, login and lock screens
+Description: Shadow OS look for the whole system, login and lock screens
  Colour schemes and defaults that give third-party Qt, KDE and GTK
- applications and window decorations the NEXUS look, the NEXUS icon themes
+ applications and window decorations the SHADOW look, the SHADOW icon themes
  and application icons, the login screen (SDDM theme) and the lock screen,
- and nexus-apply-appearance, which switches all of them between dark and
+ and shadow-apply-appearance, which switches all of them between dark and
  light.
 
-Package: nexus-monitor
+Package: shadow-monitor
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  procps, bsdutils, pkexec, polkitd
-Recommends: pci.ids, util-linux, nexus-sysinfo
-Description: NEXUS Monitor and Task Manager
+Recommends: pci.ids, util-linux, shadow-sysinfo
+Description: SHADOW Monitor and Task Manager
  Live processor, memory, graphics, disk and network usage with history,
  sensors and battery, the process list with end, suspend and priority
  actions, and systemd services — all read from the running system.
 
-Package: nexus-installer-gui
+Package: shadow-installer-gui
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
- nexus-installer (= ${source:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
+ shadow-installer (= ${source:Version}),
  pkexec, polkitd, tzdata, xkb-data, locales, dbus-user-session
 Recommends: os-prober
-Description: NEXUS OS graphical installer
- The installation wizard of NEXUS OS: language, keyboard, system check, time
+Description: Shadow OS graphical installer
+ The installation wizard of Shadow OS: language, keyboard, system check, time
  zone, disk (whole disk, alongside other systems, or manual; optional LUKS2
  encryption), user account and optional security tool profiles. Nothing is
  written to a disk before the exact plan was shown and confirmed. It runs
  unprivileged and starts the installer engine through polkit.
 
-Package: nexus-store
+Package: shadow-store
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  packagekit, appstream, polkitd, ca-certificates
 Recommends: qt6-image-formats-plugins
-Description: NEXUS Store
+Description: SHADOW Store
  Browse, search, install, update and remove software through the system
  package manager (PackageKit/APT) with AppStream descriptions, real progress
  and the package trust information the package manager reports.
 
-Package: nexus-updater
+Package: shadow-updater
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  packagekit, polkitd, apt
-Description: NEXUS Updater
+Description: SHADOW Updater
  Lists and installs system, security, kernel and application updates through
  the package manager, with change logs, history, restart notices and a
  repair page for interrupted updates.
 
-Package: nexus-control-center
+Package: shadow-control-center
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  libkscreen-bin, xkb-data, polkitd, pkexec, pulseaudio-utils, python3, passwd,
- accountsservice, nexus-hardening, apt, locales, tzdata, util-linux, libkf6config-bin,
+ accountsservice, shadow-hardening, apt, locales, tzdata, util-linux, libkf6config-bin,
  qml6-module-qtquick-dialogs, qml6-module-qtquick-effects
 Recommends: network-manager, bluez, pipewire-pulse, wireplumber, upower, power-profiles-daemon,
- udisks2, smartmontools, nexus-updater, nexus-security-center
+ udisks2, smartmontools, shadow-updater, shadow-security-center
 Suggests: network-manager-openvpn
-Description: NEXUS Control Center
- The system settings application of NEXUS OS: network (Wi-Fi, wired and
+Description: SHADOW Control Center
+ The system settings application of Shadow OS: network (Wi-Fi, wired and
  proxy, Bluetooth, VPN), hardware (displays, sound, power, keyboard, mouse
  and touchpad, storage), personalisation (appearance, accessibility,
  startup applications), privacy and security (users, privacy, firewall,
  security overview) and system (updates, region and language, date and
  time, about), each talking to the real system service.
 
-Package: nexus-network-center
+Package: shadow-network-center
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  network-manager, iproute2, iputils-ping, python3, pkexec, polkitd
 Recommends: traceroute, bind9-dnsutils, tcpdump
 Suggests: wireshark, network-manager-openvpn
-Description: NEXUS Network Center
+Description: SHADOW Network Center
  Network interfaces, addresses, routes, DNS, sockets and connections, Wi-Fi
  and VPN management through NetworkManager, diagnostics (ping, traceroute,
  DNS lookup, port check) and packet capture through a narrowly scoped
  privileged helper. Packet capture is for networks you are authorised to
  monitor.
 
-Package: nexus-arsenal
+Package: shadow-arsenal
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
- nexus-arsenal-data (= ${source:Version}), dpkg, apt
-Recommends: packagekit, polkitd, nexus-terminal
-Description: NEXUS Arsenal - security tool profile manager
- Browse the NEXUS Arsenal profiles (web, network, red team, blue team,
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
+ shadow-arsenal-data (= ${source:Version}), dpkg, apt
+Recommends: packagekit, polkitd, shadow-terminal
+Description: SHADOW Arsenal - security tool profile manager
+ Browse the SHADOW Arsenal profiles (web, network, red team, blue team,
  forensics, reverse engineering, development), see which tools are installed
  and install or remove a whole profile or single tools through PackageKit.
- Tools that are not available from the NEXUS repositories are listed with a
+ Tools that are not available from the SHADOW repositories are listed with a
  link to their official source; nothing is downloaded behind your back.
  .
  The manager installs no tools by itself.
@@ -318,26 +318,26 @@ Description: NEXUS Arsenal - security tool profile manager
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-arsenal-data
+Package: shadow-arsenal-data
 Architecture: all
 Multi-Arch: foreign
 Depends: ${misc:Depends}
-Description: NEXUS Arsenal - profile manifests
- Machine-readable descriptions of the NEXUS Arsenal security tool profiles:
+Description: SHADOW Arsenal - profile manifests
+ Machine-readable descriptions of the SHADOW Arsenal security tool profiles:
  which Debian packages belong to a profile, what each tool is for and how it
  is started, and which well-known tools are not packaged and where their
  vendors publish them. Used by the Arsenal manager and by the
- nexus-arsenal-* metapackages.
+ shadow-arsenal-* metapackages.
  .
  This package contains manifests only: no tools, exploit code, payloads,
  word lists or credentials.
 
-Package: nexus-arsenal-core
+Package: shadow-arsenal-core
 Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- nexus-arsenal-data (>= ${source:Version})
+ shadow-arsenal-data (>= ${source:Version})
 Recommends:
  arp-scan,
  bind9-dnsutils,
@@ -354,8 +354,8 @@ Recommends:
  whois,
  wireshark,
  zenmap
-Suggests: nexus-arsenal
-Description: NEXUS Arsenal profile - Core Security
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Core Security
  A compact, broadly useful set of command-line and graphical tools for
  authorized security work: host and service discovery, a packet analyser, TLS
  checks, a password manager and the common network utilities the other
@@ -374,12 +374,12 @@ Description: NEXUS Arsenal profile - Core Security
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-arsenal-web
+Package: shadow-arsenal-web
 Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- nexus-arsenal-data (>= ${source:Version})
+ shadow-arsenal-data (>= ${source:Version})
 Recommends:
  arjun,
  cadaver,
@@ -400,8 +400,8 @@ Recommends:
  wfuzz,
  whatweb,
  wig
-Suggests: nexus-arsenal
-Description: NEXUS Arsenal profile - Web Application
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Web Application
  Scanners, fuzzers, proxies and TLS auditors for assessing web applications
  you own or are contracted to test. Includes content discovery, parameter
  mining, a SQL-injection tester, HTTP clients and transport-security checks.
@@ -421,12 +421,12 @@ Description: NEXUS Arsenal profile - Web Application
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-arsenal-network
+Package: shadow-arsenal-network
 Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- nexus-arsenal-data (>= ${source:Version})
+ shadow-arsenal-data (>= ${source:Version})
 Recommends:
  arp-scan,
  bind9-dnsutils,
@@ -454,8 +454,8 @@ Recommends:
  tshark,
  wireshark,
  zmap
-Suggests: nexus-arsenal
-Description: NEXUS Arsenal profile - Network Security
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Network Security
  A toolkit for assessing networks you are authorized to test: port and service
  scanning, host discovery, SMB/SNMP/DNS enumeration, packet capture and
  analysis, traffic generation and bandwidth monitoring. Pairs well with the
@@ -471,12 +471,12 @@ Description: NEXUS Arsenal profile - Network Security
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-arsenal-redteam
+Package: shadow-arsenal-redteam
 Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- nexus-arsenal-data (>= ${source:Version})
+ shadow-arsenal-data (>= ${source:Version})
 Recommends:
  aircrack-ng,
  cewl,
@@ -503,8 +503,8 @@ Recommends:
  thc-ipv6,
  weevely,
  wifite
-Suggests: nexus-arsenal
-Description: NEXUS Arsenal profile - Red Team
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Red Team
  Credential attacks, exploitation helpers, Active Directory and Windows
  protocol tooling, and pivoting utilities for engagements you have written
  authorization to perform. Several cornerstone frameworks (Metasploit,
@@ -524,12 +524,12 @@ Description: NEXUS Arsenal profile - Red Team
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-arsenal-blueteam
+Package: shadow-arsenal-blueteam
 Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- nexus-arsenal-data (>= ${source:Version})
+ shadow-arsenal-data (>= ${source:Version})
 Recommends:
  aide,
  arpwatch,
@@ -551,8 +551,8 @@ Recommends:
  usbguard,
  wireshark,
  yara
-Suggests: nexus-arsenal
-Description: NEXUS Arsenal profile - Blue Team
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Blue Team
  Tools for defenders and system owners: network and host intrusion detection,
  file-integrity and rootkit checks, log analysis, security auditing and
  benchmarking, sandboxing and firewalls. All are open-source packages from
@@ -571,12 +571,12 @@ Description: NEXUS Arsenal profile - Blue Team
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-arsenal-forensics
+Package: shadow-arsenal-forensics
 Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- nexus-arsenal-data (>= ${source:Version})
+ shadow-arsenal-data (>= ${source:Version})
 Recommends:
  autopsy,
  binwalk,
@@ -600,8 +600,8 @@ Recommends:
  testdisk,
  wxhexeditor,
  yara
-Suggests: nexus-arsenal
-Description: NEXUS Arsenal profile - Forensics
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Forensics
  A digital-forensics kit for authorized incident response and investigation:
  imaging and write-safe acquisition, filesystem and deleted-file analysis,
  carving, memory and registry artifacts, malware triage and anti-virus
@@ -620,12 +620,12 @@ Description: NEXUS Arsenal profile - Forensics
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-arsenal-reversing
+Package: shadow-arsenal-reversing
 Architecture: any
 Section: metapackages
 Depends:
  ${misc:Depends},
- nexus-arsenal-data (>= ${source:Version})
+ shadow-arsenal-data (>= ${source:Version})
 Recommends:
  androguard,
  apksigner,
@@ -650,8 +650,8 @@ Recommends:
  upx-ucl,
  valgrind,
  yara
-Suggests: nexus-arsenal
-Description: NEXUS Arsenal profile - Reverse Engineering
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Reverse Engineering
  Static and dynamic analysis of binaries, libraries, firmware and mobile apps:
  debuggers, decompilers, tracers, hex editors, ELF/PE inspection, emulation
  and fuzzing. For malware analysis, run samples only inside an isolated lab
@@ -670,12 +670,12 @@ Description: NEXUS Arsenal profile - Reverse Engineering
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-arsenal-developer
+Package: shadow-arsenal-developer
 Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- nexus-arsenal-data (>= ${source:Version})
+ shadow-arsenal-data (>= ${source:Version})
 Recommends:
  bandit,
  build-essential,
@@ -702,12 +702,12 @@ Recommends:
  shellcheck,
  virt-manager,
  yamllint
-Suggests: nexus-arsenal
-Description: NEXUS Arsenal profile - Developer
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Developer
  A software-development and secure-coding toolkit: toolchains for C/C++,
  Python, Go and Rust, build systems and debuggers, static analysers and secret
  scanners, container and virtualization tools, and editors. Aimed at
- developers building and reviewing software securely on NEXUS OS.
+ developers building and reviewing software securely on Shadow OS.
  .
  This metapackage recommends the 25 tools of the profile, all from Debian
  main; APT installs them with it. A tool can be removed again without removing
@@ -718,23 +718,23 @@ Description: NEXUS Arsenal profile - Developer
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-arsenal-complete
+Package: shadow-arsenal-complete
 Architecture: all
 Section: metapackages
 Depends:
  ${misc:Depends},
- nexus-arsenal-data (>= ${source:Version}),
- nexus-arsenal-core (>= ${source:Version}),
- nexus-arsenal-web (>= ${source:Version}),
- nexus-arsenal-network (>= ${source:Version}),
- nexus-arsenal-redteam (>= ${source:Version}),
- nexus-arsenal-blueteam (>= ${source:Version}),
- nexus-arsenal-forensics (>= ${source:Version}),
- nexus-arsenal-reversing (>= ${source:Version}),
- nexus-arsenal-developer (>= ${source:Version})
-Suggests: nexus-arsenal
-Description: NEXUS Arsenal profile - Complete Arsenal
- The union of all NEXUS Arsenal profiles. Installing it brings in every tool
+ shadow-arsenal-data (>= ${source:Version}),
+ shadow-arsenal-core (>= ${source:Version}),
+ shadow-arsenal-web (>= ${source:Version}),
+ shadow-arsenal-network (>= ${source:Version}),
+ shadow-arsenal-redteam (>= ${source:Version}),
+ shadow-arsenal-blueteam (>= ${source:Version}),
+ shadow-arsenal-forensics (>= ${source:Version}),
+ shadow-arsenal-reversing (>= ${source:Version}),
+ shadow-arsenal-developer (>= ${source:Version})
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Complete Arsenal
+ The union of all SHADOW Arsenal profiles. Installing it brings in every tool
  from Core Security, Web Application, Network Security, Red Team, Blue Team,
  Forensics, Reverse Engineering and Developer. It is a large installation;
  most users are better served installing the specific profiles they need. The
@@ -748,90 +748,90 @@ Description: NEXUS Arsenal profile - Complete Arsenal
  permission to test, and follow the law that applies to you. They come with no
  warranty.
 
-Package: nexus-files
+Package: shadow-files
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  kio6, libarchive-tools, breeze-icon-theme, shared-mime-info
-Recommends: udisks2, kio-extras, nexus-terminal
-Suggests: nexus-archive-manager
-Description: NEXUS Files
- The file manager of NEXUS OS: grid and list views, tabs and split view,
+Recommends: udisks2, kio-extras, shadow-terminal
+Suggests: shadow-archive-manager
+Description: SHADOW Files
+ The file manager of Shadow OS: grid and list views, tabs and split view,
  search, previews, trash with restore, permissions, archives, removable
  drives and network locations, with file operations that report progress
  and ask before replacing or deleting.
 
-Package: nexus-security-center
+Package: shadow-security-center
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
- nexus-hardening, pkexec, polkitd
-Recommends: nexus-updater
-Description: NEXUS Security Center
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
+ shadow-hardening, pkexec, polkitd
+Recommends: shadow-updater
+Description: SHADOW Security Center
  Shows the real security state of the machine as reported by system checks:
  firewall, AppArmor, disk encryption, Secure Boot, updates, listening
  services and connections, logins, audit events and kernel hardening, with
  the recommendations that follow from them, and manages the host firewall.
  It reports states with their evidence; it does not compute scores.
 
-Package: nexus-screenshot
+Package: shadow-screenshot
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  kwin-wayland, qt6-image-formats-plugins
-Recommends: xdg-desktop-portal, nexus-files
-Description: NEXUS Screenshot
+Recommends: xdg-desktop-portal, shadow-files
+Description: SHADOW Screenshot
  Captures the whole screen, one monitor, a window or a selected region, with
  optional delay, then offers saving, copying to the clipboard and simple
  annotations (crop, arrow, rectangle, text, pixelate). Also usable from the
  command line.
 
-Package: nexus-disk-manager
+Package: shadow-disk-manager
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  udisks2, polkitd, e2fsprogs, dosfstools
 Recommends: cryptsetup-bin, btrfs-progs, exfatprogs, ntfs-3g, smartmontools
 Suggests: xfsprogs, f2fs-tools
-Description: NEXUS Disk Manager
+Description: SHADOW Disk Manager
  Drives and partitions through UDisks2: partition map, mounting, LUKS
  unlock, formatting, partition tables, resizing, checking and disk images.
  Destructive actions name the device, list what will be lost, require the
  device name to be typed and are refused for the disk the system runs from.
 
-Package: nexus-recovery
+Package: shadow-recovery
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  python3, util-linux, e2fsprogs, dosfstools, cryptsetup-bin, lvm2, pkexec, polkitd
-Recommends: nexus-terminal, efibootmgr
-Description: NEXUS Recovery
- Repairs a NEXUS OS installation that no longer starts or updates, from the
+Recommends: shadow-terminal, efibootmgr
+Description: SHADOW Recovery
+ Repairs a Shadow OS installation that no longer starts or updates, from the
  installation medium or the system itself: finds installed systems, unlocks
  encrypted ones, re-installs the boot loader and initramfs, completes
  interrupted package operations, checks file systems, resets a password and
  collects logs. Every step explains what it changes before it runs.
 
-Package: nexus-editor
+Package: shadow-editor
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  fonts-jetbrains-mono
-Description: NEXUS Text Editor
+Description: SHADOW Text Editor
  A programmer's text editor: tabs, syntax highlighting, find and replace
  with regular expressions, encoding and line-ending handling that never
  corrupts a file, atomic saves and a warning when a file changed on disk.
 
-Package: nexus-archive-manager
+Package: shadow-archive-manager
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  libarchive-tools, 7zip, xdg-utils
-Description: NEXUS Archive Manager
+Description: SHADOW Archive Manager
  Browse, extract, create and test archives (tar and its compressed forms,
  zip, 7z, cpio; ISO and RAR read-only). Extraction never writes outside the
  chosen folder, drops device nodes and setuid bits, and warns before
  unpacking archives that expand implausibly.
 
-Package: nexus-terminal
+Package: shadow-terminal
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  qt6-wayland, fonts-jetbrains-mono, bash
 Recommends: openssh-client, xdg-utils
 Provides: x-terminal-emulator
-Description: NEXUS Terminal
- The terminal of NEXUS OS: tabs, split panes, profiles with NEXUS colour
+Description: SHADOW Terminal
+ The terminal of Shadow OS: tabs, split panes, profiles with SHADOW colour
  schemes, search, and a confirmation before closing a running program.

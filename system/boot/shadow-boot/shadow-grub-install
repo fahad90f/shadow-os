@@ -1,0 +1,156 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# shadow-grub-install — (re-)install the GRUB boot loader the way this system
+# was installed.
+#
+# Shadow OS boots through Debian's Microsoft-signed shim and Debian-signed GRUB
+# so that Secure Boot works without enrolling keys. Those signed binaries are
+# copied onto the EFI System Partition at installation time; when a GRUB or
+# shim security update arrives, the copies on the ESP must be refreshed or the
+# machine keeps booting the old (possibly revoked) binaries. This script does
+# that refresh. It is run
+#
+#   * by the installer, once, and
+#   * by a dpkg trigger of the shadow-boot package whenever the signed GRUB,
+#     shim or GRUB module packages change.
+#
+# How the system boots is recorded in /etc/shadow/boot.conf:
+#
+#   FIRMWARE=uefi|bios          how the installed system is started
+#   ESP_MOUNT=/boot/efi         mount point of the EFI System Partition
+#   ESP_REMOVABLE=yes|no        also maintain the fallback path EFI/BOOT
+#   ESP_NVRAM=yes|no            keep a "Shadow OS" firmware boot entry
+#   BIOS_DISK=/dev/disk/by-id/… legacy boot sector to maintain (required for bios)
+#   BIOS_DISK_OPTIONAL=…        additional legacy boot sector on a UEFI system
+#                               (best effort; lets the disk start in CSM mode)
+#
+# Debian's signed GRUB image has the directory EFI/debian compiled in as the
+# place it reads its configuration from, wherever the binary itself sits on
+# the ESP. The loader is therefore installed under the boot-loader id
+# "debian"; only the firmware menu label says "Shadow OS".
+set -eu
+
+CONF=/etc/shadow/boot.conf
+LABEL="Shadow OS"
+VERBOSE=0
+[ "${1:-}" = "--verbose" ] && VERBOSE=1
+
+say() { if [ "$VERBOSE" -eq 1 ]; then echo "shadow-grub-install: $*" >&2; fi; }
+warn() { echo "shadow-grub-install: warning: $*" >&2; }
+die() { echo "shadow-grub-install: error: $*" >&2; exit 1; }
+
+if [ ! -f "$CONF" ]; then
+    # Live session or a system not installed by the SHADOW installer.
+    say "no $CONF — nothing to do"
+    exit 0
+fi
+
+FIRMWARE=""; ESP_MOUNT="/boot/efi"; ESP_REMOVABLE="no"; ESP_NVRAM="no"; BIOS_DISK=""; BIOS_DISK_OPTIONAL=""
+while IFS='=' read -r key value; do
+    case "$key" in
+        FIRMWARE) FIRMWARE="$value" ;;
+        ESP_MOUNT) ESP_MOUNT="$value" ;;
+        ESP_REMOVABLE) ESP_REMOVABLE="$value" ;;
+        ESP_NVRAM) ESP_NVRAM="$value" ;;
+        BIOS_DISK) BIOS_DISK="$value" ;;
+        BIOS_DISK_OPTIONAL) BIOS_DISK_OPTIONAL="$value" ;;
+        ''|'#'*) ;;
+        *) warn "ignoring unknown setting '$key' in $CONF" ;;
+    esac
+done < "$CONF"
+
+case "$(dpkg --print-architecture)" in
+    amd64) EFI_TARGET=x86_64-efi; EFI_ARCH=x64 ;;
+    arm64) EFI_TARGET=arm64-efi; EFI_ARCH=aa64 ;;
+    *) die "unsupported architecture" ;;
+esac
+
+install_bios() {
+    disk="$1"
+    [ -b "$disk" ] || { warn "BIOS boot disk $disk not found"; return 1; }
+    [ -d /usr/lib/grub/i386-pc ] || { warn "grub-pc-bin is not installed"; return 1; }
+    say "installing GRUB (i386-pc) to $disk"
+    grub-install --target=i386-pc --recheck "$disk"
+}
+
+install_efi() {
+    mountpoint -q "$ESP_MOUNT" || die "the EFI System Partition is not mounted at $ESP_MOUNT"
+    [ -d "/usr/lib/grub/$EFI_TARGET" ] || die "GRUB EFI modules for $EFI_TARGET are not installed"
+    set -- --target="$EFI_TARGET" --efi-directory="$ESP_MOUNT" --bootloader-id=debian --no-nvram --recheck
+    if [ -e "/usr/lib/grub/$EFI_TARGET-signed/grub$EFI_ARCH.efi.signed" ] && [ -e "/usr/lib/shim/shim$EFI_ARCH.efi.signed" ]; then
+        set -- "$@" --uefi-secure-boot
+    else
+        warn "signed GRUB/shim not installed — the boot loader will not pass Secure Boot"
+        set -- "$@" --no-uefi-secure-boot
+    fi
+    [ "$ESP_REMOVABLE" = "yes" ] && set -- "$@" --force-extra-removable
+    say "grub-install $*"
+    grub-install "$@"
+    [ -s "$ESP_MOUNT/EFI/debian/grub.cfg" ] || die "grub-install did not write $ESP_MOUNT/EFI/debian/grub.cfg"
+
+    [ "$ESP_NVRAM" = "yes" ] || return 0
+    command -v efibootmgr >/dev/null 2>&1 || { warn "efibootmgr not installed; no firmware boot entry"; return 0; }
+    [ -d /sys/firmware/efi/efivars ] || { say "not booted through UEFI; firmware entry unchanged"; return 0; }
+
+    esp_dev="$(findmnt -n -o SOURCE --target "$ESP_MOUNT")"
+    disk="/dev/$(lsblk -n -d -o PKNAME "$esp_dev" | head -n1)"
+    partnum="$(cat "/sys/class/block/$(basename "$esp_dev")/partition" 2>/dev/null || true)"
+    if [ ! -b "$disk" ] || [ -z "$partnum" ]; then
+        warn "cannot determine disk/partition of $esp_dev; firmware boot entry not updated"
+        return 0
+    fi
+    if [ -e "$ESP_MOUNT/EFI/debian/shim$EFI_ARCH.efi" ]; then
+        loader="\\EFI\\debian\\shim$EFI_ARCH.efi"
+    else
+        loader="\\EFI\\debian\\grub$EFI_ARCH.efi"
+    fi
+    # Replace our own entry only; other systems' entries are left alone.
+    efibootmgr 2>/dev/null | sed -n "s/^Boot\\([0-9A-Fa-f]\\{4\\}\\)[* ] $LABEL\\(\\t.*\\)\\?\$/\\1/p" | while read -r num; do
+        efibootmgr --quiet --bootnum "$num" --delete-bootnum || true
+    done
+    if efibootmgr --quiet --create --disk "$disk" --part "$partnum" --label "$LABEL" --loader "$loader"; then
+        say "firmware boot entry '$LABEL' → $loader on $disk partition $partnum"
+    else
+        warn "could not create the firmware boot entry; the fallback path EFI/BOOT is used if present"
+    fi
+}
+
+# The boot menu theme has to be readable by GRUB before any filesystem is
+# unlocked, so it is kept under /boot (never encrypted on a Shadow OS
+# installation), not under /usr where the artwork package installs it.
+sync_theme() {
+    src=/usr/share/grub/themes/shadow
+    dst=/boot/grub/themes/shadow
+    [ -f "$src/theme.txt" ] || return 0
+    mkdir -p "$dst" || return 0
+    if cp -r "$src/." "$dst/"; then
+        say "boot menu theme copied to $dst"
+    else
+        warn "could not copy the boot menu theme to $dst (the menu falls back to text)"
+    fi
+}
+sync_theme
+
+case "$FIRMWARE" in
+    uefi)
+        install_efi
+        if [ -n "$BIOS_DISK_OPTIONAL" ]; then
+            install_bios "$BIOS_DISK_OPTIONAL" || warn "legacy boot sector not installed (UEFI boot is unaffected)"
+        fi
+        ;;
+    bios)
+        [ -n "$BIOS_DISK" ] || die "BIOS_DISK is not set in $CONF"
+        install_bios "$BIOS_DISK" || die "could not install the BIOS boot loader to $BIOS_DISK"
+        # A disk laid out by the installer also carries an EFI System Partition:
+        # keep a loader on its removable-media path so the disk still starts if
+        # the firmware is later switched to UEFI mode. Best effort.
+        if [ "$ESP_REMOVABLE" = "yes" ] && mountpoint -q "$ESP_MOUNT"; then
+            ( install_efi ) || warn "UEFI fallback loader not installed (BIOS boot is unaffected)"
+        fi
+        ;;
+    *)
+        die "FIRMWARE in $CONF must be 'uefi' or 'bios'"
+        ;;
+esac
+exit 0
