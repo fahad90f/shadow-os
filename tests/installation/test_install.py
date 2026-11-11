@@ -81,7 +81,19 @@ def plan_and_install(vm: VM, answers: dict, timeout: float) -> dict:
     report("plan produced", True, f"hash {plan['hash'][:12]}…, steps: {[s['id'] for s in plan['steps']]}")
     rc, out = vm.sudo(f"nexus-installer-engine install --answers /tmp/answers.json --confirm {plan['hash']}",
                       timeout=timeout, check=False)
-    events = [json.loads(line) for line in out.splitlines() if line.startswith("{")]
+    # The events travel over the serial console, where a kernel message can
+    # land in the middle of a line. Such a line is skipped; the verdict rests
+    # on the exit status and the "done" event, which must arrive intact.
+    events, garbled = [], 0
+    for line in out.splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            garbled += 1
+    if garbled:
+        print(f"# note: {garbled} progress line(s) garbled on the serial console were skipped", flush=True)
     errors = [e for e in events if e.get("event") == "error"]
     done = any(e.get("event") == "done" for e in events)
     if rc != 0 or errors or not done:
