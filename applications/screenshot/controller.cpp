@@ -72,7 +72,6 @@ Controller::Controller(QObject *parent)
     // this process no longer has to stay around to serve the picture.
 #ifdef NEXUS_HAVE_KGUIADDONS
     connect(KSystemClipboard::instance(), &KSystemClipboard::changed, this, [this](QClipboard::Mode mode) {
-        { FILE *f = fopen("/tmp/clipdbg", "a"); if (f) { fprintf(f, "%d changed mode=%d holds=%d cur=%p mine=%p\n", int(getpid()), int(mode), int(m_holdsClipboard), static_cast<const void *>(KSystemClipboard::instance()->mimeData(QClipboard::Clipboard)), static_cast<const void *>(m_clipboardData)); fclose(f); } }
         if (mode == QClipboard::Clipboard && m_holdsClipboard
             && KSystemClipboard::instance()->mimeData(QClipboard::Clipboard) != m_clipboardData)
             clipboardLost();

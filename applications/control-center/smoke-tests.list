@@ -13,3 +13,9 @@ nexus-control-center privacy
 nexus-control-center firewall
 nexus-control-center security
 nexus-control-center updates
+nexus-control-center appearance
+nexus-control-center accessibility
+nexus-control-center startup
+nexus-control-center language
+nexus-control-center datetime
+nexus-control-center storage

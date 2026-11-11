@@ -2,6 +2,8 @@
 #pragma once
 
 #include <QDateTime>
+#include "codeeditor.h"
+
 #include <QFileSystemWatcher>
 #include <QObject>
 #include <QPointer>
@@ -18,7 +20,7 @@ class Repository;
 class SyntaxHighlighter;
 }
 class QTextDocument;
-class CodeEditor;
+
 
 // Limits established by measurement (see README, "Large files").
 namespace EditorLimits {

@@ -189,14 +189,21 @@ void addUsage(QVariantMap &partition, const QStringList &mountPoints)
     partition.insert(QStringLiteral("usageKnown"), false);
     partition.insert(QStringLiteral("used"), 0.0);
     partition.insert(QStringLiteral("total"), 0.0);
+    partition.insert(QStringLiteral("available"), 0.0);
+    partition.insert(QStringLiteral("fraction"), 0.0);
     if (mountPoints.isEmpty())
         return;
     const QStorageInfo info(mountPoints.constFirst());
     if (!info.isValid() || !info.isReady() || info.bytesTotal() <= 0)
         return;
+    const double used = double(info.bytesTotal() - info.bytesFree());
+    const double available = double(info.bytesAvailable());
     partition.insert(QStringLiteral("usageKnown"), true);
     partition.insert(QStringLiteral("total"), double(info.bytesTotal()));
-    partition.insert(QStringLiteral("used"), double(info.bytesTotal() - info.bytesFree()));
+    partition.insert(QStringLiteral("used"), used);
+    partition.insert(QStringLiteral("available"), available);
+    // As df does: used space against what an ordinary user can ever use.
+    partition.insert(QStringLiteral("fraction"), used + available > 0 ? used / (used + available) : 0.0);
 }
 
 bool isSystemMount(const QStringList &mountPoints)

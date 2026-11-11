@@ -219,7 +219,10 @@ def collect_logs(out: Output, target_id: str, output: str) -> dict:
         account = pwd.getpwuid(uid)
     except KeyError:
         raise RecoveryError("The calling user is unknown.", code="usage")
-    if uid != os.geteuid():
+    drop = uid != os.geteuid()
+    groups = os.getgroups()
+    if drop:
+        os.setgroups(os.getgrouplist(account.pw_name, account.pw_gid))
         os.setegid(account.pw_gid)
         os.seteuid(uid)
     try:
@@ -229,9 +232,10 @@ def collect_logs(out: Output, target_id: str, output: str) -> dict:
     except OSError as exc:
         raise RecoveryError(f"{output} cannot be created: {exc.strerror}.", code="output")
     finally:
-        if uid != os.getuid():
+        if drop:
             os.seteuid(os.getuid())
             os.setegid(os.getgid())
+            os.setgroups(groups)
 
     def add_bytes(archive: tarfile.TarFile, name: str, data: bytes):
         info = tarfile.TarInfo(name)

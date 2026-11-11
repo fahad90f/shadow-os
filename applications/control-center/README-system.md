@@ -71,7 +71,7 @@ of the home folder to its end).
   directories, `~/.cache`, `~/.local/share/Trash`, other dot-entries
   ("application data and settings"), everything else. Nothing is cached; a
   cancelled walk is labelled as partial.
-* **Free-space bars** use df's formula (used / (used + available to users)),
+* **Usage bars** use df's formula (used / (used + available to users)),
   the text gives used, total and available bytes.
 
 ## Privileged operations
@@ -133,13 +133,18 @@ WebP and others). Optional: `smartmontools` (`smartctl`), NEXUS Disk Manager
 
 Build: `NEXUS_JOBS=2 scripts/dev.sh build --dir ccsys --only control-center
 --cc-pages "appearance;accessibility;startup;language;datetime;storage"` —
-no compiler warnings in these files. See the final section of this file's
-history in the engineer's report for the exact commands; in summary:
+no compiler warnings in these files.
 
-**In the build chroot (no services):** every page with `--smoke` (zero QML
-warnings) and a screenshot; every `--dump` topic. Storage really measured the
-temporary home and listed the VM's virtio disks through the `lsblk` fallback;
-Date & Time and Region & Language showed their read-only states.
+**In the build chroot (no services):** every page with
+`scripts/dev.sh run --dir ccsys --smoke --shot … nexus-control-center <key>`
+in dark and in light appearance (zero QML warnings, screenshots
+`ccsys-<key>-1.png`, `ccsys-<key>-light.png`); every `--dump` topic prints
+valid JSON; `tests/desktop/smoke.sh --dir ccsys control-center` passes.
+Storage listed the VM's virtio disks through the `lsblk` fallback; Date & Time
+and Region & Language showed their read-only states. The home-folder walk was
+compared with `du -s --block-size=1` on a prepared tree (XDG folders, cache,
+rubbish bin, a hard link, a symbolic link to `/usr`): the total and every
+folder matched to the byte.
 
 **In the nested session (real KWin 6.3.6, real `horizon-shell`):**
 
@@ -155,10 +160,14 @@ Date & Time and Region & Language showed their read-only states.
   installed theme. The nested session composites with QPainter, so nothing
   could be *seen* zooming, and the OpenGL-only effects were reported as
   unsupported by KWin itself — see "Effects and the software renderer".
+* Appearance, continued: placement "Stretch" and dock icon size 64 px were
+  written and the dock grew.
 * Startup: add a command, add an application (search, pick), disable/enable
-  a user entry, switch a system entry (from an `XDG_CONFIG_DIRS` test
-  directory) off and on again, condition badges — checked against the files
-  written.
+  a user entry, remove one (with the confirmation), switch a system entry
+  (from an `XDG_CONFIG_DIRS` test directory) off and on again, condition
+  badges — checked against the files written.
+* A second `nexus-control-center <key>` switched the running window to that
+  page.
 
 **Against the real systemd services on a private system bus** (one
 `scripts/dev.sh exec` in a private mount namespace with throw-away overlays
@@ -174,6 +183,12 @@ shared chroot was verified untouched afterwards):
   locale; the page then showed the new system setting.
 * `language-helper`: rejects unknown locales, shell metacharacters, path
   tricks, non-UTF-8 names and unknown sub-commands.
+* `udisksd` 2.10.1 on the same private bus: the page used the service
+  (`source: udisks`), but without a udev database the daemon exposes no block
+  devices in the chroot, so only the empty answer was exercised.
+
+The scaffolding for these runs is in `build/work/shots/ccsys-test/`
+(`sysbus.sh` and the phase scripts); it is not part of the product.
 
 ## Not tested
 
@@ -182,8 +197,12 @@ shared chroot was verified untouched afterwards):
 * polkit prompts for an ordinary user: every privileged call ran as root in
   the chroot, where polkit authorises without asking.
 * `SetLocale` succeeding on a distribution that allows it.
-* UDisks2 with real removable media: mount, unmount, eject, power off, SMART
-  from `Drive.Ata` / `NVMe.Controller`, and `smartctl` on real hardware.
+* UDisks2 with real devices: the mapping of drives, partitions, encrypted
+  containers and logical volumes to the list; mount, unmount, eject, power
+  off; SMART from `Drive.Ata` / `NVMe.Controller`; `smartctl` on real
+  hardware (in the VM it reports nothing for virtio disks).
+* Cancelling the home-folder walk: the test trees were measured faster than a
+  click could be sent.
 * KWin effects with OpenGL compositing (visible zoom, magnifying glass,
   invert, colour-blindness correction, shake cursor) and the trackmouse /
   mouseclick shortcuts.
@@ -208,11 +227,14 @@ shared chroot was verified untouched afterwards):
    should read the saved value first, e.g.
    `size="$(kreadconfig6 --file kcminputrc --group Mouse --key cursorSize)"`
    and export `XCURSOR_SIZE="${size:-24}"` (same for `cursorTheme`).
-3. **Packaging** — `/usr/libexec/nexus/language-helper` and the policy are
+3. **`applications/control-center/smoke-tests.list`** (shared file, not
+   edited): add `nexus-control-center appearance`, `… accessibility`,
+   `… startup`, `… language`, `… datetime`, `… storage`.
+4. **Packaging** — `/usr/libexec/nexus/language-helper` and the policy are
    installed by the existing CMake globs; the package must depend on
    `python3`, `pkexec`, `locales`. If the distribution prefers systemd-localed
    to be writable instead, it would have to drop Debian's
    `systemd-localed-read-only.conf`; the page works either way.
-4. **KWin with the software renderer** (`KWIN_COMPOSE=Q`): no screen
+5. **KWin with the software renderer** (`KWIN_COMPOSE=Q`): no screen
    magnifier is available on machines without a GPU driver. That is a
    compositor limitation; mentioned here because it is an accessibility gap.

@@ -73,7 +73,7 @@ public:
     // canEject, canPowerOff, canRemoveSafely, smart {state: ok|failing|unknown,
     // text, detail}, partitions [{device, objectPath, name, size, fsType,
     // label, kind, depth, mountPoints, mounted, canMount, canUnmount,
-    // usageKnown, used, total, readOnly}].
+    // usageKnown, used, total, available, fraction, readOnly}].
     QVariantList disks() const { return m_disks; }
     // Each mounted file system: mountPoint, device, fsType, name, total, used,
     // free, fraction, readOnly.

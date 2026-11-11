@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// NEXUS OS live session: let the live user run the recovery engine (polkit
+// action org.nexus.recovery.run, i.e. exactly /usr/sbin/nexus-recovery-engine
+// through pkexec) without a password.
+//
+// The grant applies only
+//   * to that one action,
+//   * to a local, active session of a member of the group "sudo" (the live
+//     user; it has no password to type), and
+//   * while /run/nexus/live-session exists. That marker is created at boot
+//     by live-config (system/live/2000-nexus-session) on the live medium
+//     only; /run is a tmpfs that only root can write to.
+//
+// On an installed system this rule returns nothing and the action's default
+// (administrator authentication) applies.
+polkit.addRule(function(action, subject) {
+    if (action.id !== "org.nexus.recovery.run")
+        return polkit.Result.NOT_HANDLED;
+    if (!subject.local || !subject.active || !subject.isInGroup("sudo"))
+        return polkit.Result.NOT_HANDLED;
+    try {
+        // Argument vector, no shell. Throws unless the command exits with 0.
+        polkit.spawn(["/usr/bin/test", "-e", "/run/nexus/live-session"]);
+    } catch (error) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    return polkit.Result.YES;
+});

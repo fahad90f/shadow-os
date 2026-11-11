@@ -272,15 +272,18 @@ Package: nexus-control-center
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
  libkscreen-bin, xkb-data, polkitd, pkexec, pulseaudio-utils, python3, passwd,
- accountsservice, nexus-hardening, apt,
+ accountsservice, nexus-hardening, apt, locales, tzdata, util-linux, libkf6config-bin,
  qml6-module-qtquick-dialogs, qml6-module-qtquick-effects
 Recommends: network-manager, bluez, pipewire-pulse, wireplumber, upower, power-profiles-daemon,
- nexus-updater, nexus-security-center
+ udisks2, smartmontools, nexus-updater, nexus-security-center
 Suggests: network-manager-openvpn
 Description: NEXUS Control Center
- The system settings application of NEXUS OS: Wi-Fi, wired networking and
- proxy, Bluetooth, VPN, displays, sound, power, keyboard, mouse and
- touchpad, and system information, each talking to the real system service.
+ The system settings application of NEXUS OS: network (Wi-Fi, wired and
+ proxy, Bluetooth, VPN), hardware (displays, sound, power, keyboard, mouse
+ and touchpad, storage), personalisation (appearance, accessibility,
+ startup applications), privacy and security (users, privacy, firewall,
+ security overview) and system (updates, region and language, date and
+ time, about), each talking to the real system service.
 
 Package: nexus-network-center
 Architecture: any

@@ -5,6 +5,7 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QPainter>
+#include <QQuickWindow>
 #include <QScrollBar>
 #include <QTextBlock>
 

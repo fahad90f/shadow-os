@@ -206,7 +206,7 @@ NxWindow {
                     onClicked: view.tool = (view.tool === modelData ? "" : modelData)
                 }
             }
-            NxDivider { vertical: true; Layout.fillHeight: true; Layout.leftMargin: Theme.spaceXs; Layout.rightMargin: Theme.spaceXs }
+            NxDivider { vertical: true; Layout.preferredHeight: Theme.controlHeight; Layout.leftMargin: Theme.spaceXs; Layout.rightMargin: Theme.spaceXs }
             Repeater {
                 model: window.inkColors
                 Rectangle {
@@ -238,7 +238,7 @@ NxWindow {
                     TapHandler { onTapped: window.inkIndex = swatch.index }
                 }
             }
-            NxDivider { vertical: true; Layout.fillHeight: true; Layout.leftMargin: Theme.spaceXs; Layout.rightMargin: Theme.spaceXs }
+            NxDivider { vertical: true; Layout.preferredHeight: Theme.controlHeight; Layout.leftMargin: Theme.spaceXs; Layout.rightMargin: Theme.spaceXs }
             NxIconButton {
                 iconName: "undo"
                 tooltip: qsTr("Undo")

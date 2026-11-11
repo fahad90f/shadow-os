@@ -319,7 +319,7 @@ NxPage {
                         else if (modelData.kind === "swap") parts.push(modelData.mounted ? qsTr("in use") : qsTr("not in use"))
                         else if (modelData.kind === "filesystem") parts.push(qsTr("not mounted"))
                         if (modelData.usageKnown)
-                            parts.push(qsTr("%1 free").arg(Theme.formatBytes(modelData.total - modelData.used)))
+                            parts.push(qsTr("%1 available").arg(Theme.formatBytes(modelData.available)))
                         if (modelData.readOnly) parts.push(qsTr("read-only"))
                         return parts.join("  ·  ")
                     }
@@ -327,7 +327,7 @@ NxPage {
                         visible: partitionRow.modelData.usageKnown
                         anchors.verticalCenter: parent.verticalCenter
                         width: 120
-                        value: partitionRow.modelData.total > 0 ? partitionRow.modelData.used / partitionRow.modelData.total : 0
+                        value: partitionRow.modelData.fraction
                         Accessible.name: qsTr("Usage of %1").arg(partitionRow.modelData.device)
                     }
                     NxButton {

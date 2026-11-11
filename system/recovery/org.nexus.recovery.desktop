@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=NEXUS Recovery
+GenericName=System Repair
+Comment=Repair an installed NEXUS OS that no longer starts or updates
+Exec=nexus-recovery
+Icon=org.nexus.recovery
+Terminal=false
+Categories=System;
+Keywords=repair;rescue;boot;grub;password;fsck;recovery;
+StartupNotify=true
+StartupWMClass=org.nexus.recovery
+X-NEXUS-Component=recovery

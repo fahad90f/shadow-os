@@ -33,8 +33,17 @@ export ELECTRON_OZONE_PLATFORM_HINT="auto"
 # and need this to lay out correctly under a non-reparenting window manager.
 export _JAVA_AWT_WM_NONREPARENTING="1"
 
-export XCURSOR_THEME="${XCURSOR_THEME:-breeze_cursors}"
-export XCURSOR_SIZE="${XCURSOR_SIZE:-24}"
+# Pointer theme and size: the user's saved choice (Control Center writes
+# kcminputrc), else the NEXUS defaults. The compositor prefers these
+# variables over its configuration, so they must carry the saved values.
+cursor_theme=""; cursor_size=""
+if command -v kreadconfig6 >/dev/null 2>&1; then
+    cursor_theme="$(kreadconfig6 --file kcminputrc --group Mouse --key cursorTheme 2>/dev/null)"
+    cursor_size="$(kreadconfig6 --file kcminputrc --group Mouse --key cursorSize 2>/dev/null)"
+fi
+case "$cursor_size" in ''|*[!0-9]*) cursor_size="" ;; esac
+export XCURSOR_THEME="${cursor_theme:-${XCURSOR_THEME:-breeze_cursors}}"
+export XCURSOR_SIZE="${cursor_size:-${XCURSOR_SIZE:-24}}"
 
 # A place for per-session state of NEXUS components.
 if [ -n "$XDG_RUNTIME_DIR" ]; then
