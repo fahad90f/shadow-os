@@ -32,7 +32,7 @@ SectionPage {
     sectionKey: "listening"
     title: qsTr("Network exposure")
     sectionTitle: qsTr("The listening sockets")
-    subtitle: qsTr("Programs that accept connections, and the connections that are established right now.")
+    subtitle: qsTr("Programs that accept connections, and the connections that are open right now.")
 
     NxBanner {
         visible: page.ready && page.ls.exposed_count > 0 && page.fwKnown
@@ -80,7 +80,7 @@ SectionPage {
             Layout.fillWidth: true
             label: qsTr("Connections")
             value: page.connReady ? String(page.conn.count) : qsTr("—")
-            detail: page.connReady ? qsTr("established now") : qsTr("not determined")
+            detail: page.connReady ? qsTr("connected sockets now") : qsTr("not determined")
             icon: "activity"
         }
     }
@@ -126,7 +126,7 @@ SectionPage {
 
     NxSection {
         visible: page.ready
-        title: qsTr("Established connections")
+        title: qsTr("Active connections")
         description: page.connReady
             ? (page.conn.count > Fmt.list(page.conn.connections).length
                 ? qsTr("The first %1 of %2 connections, from “ss -tunp state connected”.").arg(Fmt.list(page.conn.connections).length).arg(page.conn.count)
@@ -146,9 +146,10 @@ SectionPage {
             border.width: 0
             maxVisibleRows: 14
             sortRole: "process"
-            emptyText: qsTr("No connection is established")
+            emptyText: qsTr("No connection is open")
             columns: [
                 { title: qsTr("Protocol"), role: "protocol", width: 90, format: (v) => String(v).toUpperCase() },
+                { title: qsTr("State"), role: "state", width: 110, mono: true },
                 { title: qsTr("Local"), role: "local", fill: true, mono: true },
                 { title: qsTr("Remote"), role: "peer", fill: true, mono: true },
                 { title: qsTr("Process"), role: "processText", fill: true,

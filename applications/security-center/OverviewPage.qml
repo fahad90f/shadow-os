@@ -216,7 +216,7 @@ NxPage {
                 : page.join([
                       qsTr("Not bound to loopback: %1").arg(s.exposed_count),
                       Fmt.has(page.report.connections) && page.report.connections.available !== false
-                          ? qsTr("Established connections: %1").arg(page.report.connections.count) : ""])
+                          ? qsTr("Active connections: %1").arg(page.report.connections.count) : ""])
             onClicked: page.openPage("network")
         }
     }
