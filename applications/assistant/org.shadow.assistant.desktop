@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Shadow Assistant
+GenericName=AI Assistant
+Comment=A personal AI agent that can chat and carry out tasks on this computer
+Exec=shadow-assistant
+Icon=org.shadow.assistant
+Terminal=false
+Categories=Utility;System;
+Keywords=ai;assistant;chat;agent;jarvis;nemotron;nvidia;llm;
+StartupNotify=true
+StartupWMClass=org.shadow.assistant
+X-SHADOW-Component=assistant

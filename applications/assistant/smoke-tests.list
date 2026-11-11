@@ -1,0 +1,2 @@
+# <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
+shadow-assistant

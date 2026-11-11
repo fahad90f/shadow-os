@@ -21,6 +21,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 # A newer push supersedes a running build of the same branch.
 concurrency:
@@ -60,6 +62,7 @@ jobs:
           sudo mkdir -p -m 700 /var/lib/shadow-signing
           printf '%s' "$SHADOW_SIGNING_KEY" | sudo gpg --homedir /var/lib/shadow-signing --batch --import
           echo "SHADOW_SIGNING_HOME=/var/lib/shadow-signing" >> "$GITHUB_ENV"
+          echo "SHADOW_REPO_URL=https://fahad90fa.github.io/Custom-OS" >> "$GITHUB_ENV"
 
       - name: Static checks
         run: |
@@ -81,6 +84,16 @@ jobs:
 
       - name: Verify ISO checksum
         run: cd build/out/iso && sha256sum -c shadow-os-*-amd64.iso.sha256
+
+      - name: Upload packages and repository
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-packages-amd64
+          path: |
+            build/out/packages/*.deb
+            build/out/repo/**
+          retention-days: 30
+          compression-level: 6
 
       - name: Upload ISO
         uses: actions/upload-artifact@v4
@@ -248,3 +261,41 @@ jobs:
         run: |
           sudo -E python3 -u tests/boot/test_live_boot.py --arch arm64 \
             --iso "$(ls build/out/iso/shadow-os-*-arm64.iso)" --firmware uefi
+
+  # Publish the signed Shadow package repository to GitHub Pages, so installed
+  # systems update Shadow packages with "apt full-upgrade" / Shadow Updater.
+  # Requires: Settings -> Pages -> Source: GitHub Actions, and the
+  # SHADOW_SIGNING_KEY secret (see docs/packaging/online-updates.md).
+  pages:
+    needs: iso-amd64
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/awesome-ritchie-t7kh7s' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: shadow-packages-amd64
+          path: site
+      - name: Prepare site (repo at the root, with a landing page)
+        run: |
+          # The artifact holds packages/ and repo/; serve repo/ contents at /.
+          mkdir -p public
+          cp -r site/repo/* public/ 2>/dev/null || true
+          [ -e public/dists ] || { echo "no repository in artifact"; exit 1; }
+          cat > public/index.html <<'HTML'
+          <!doctype html><meta charset=utf-8><title>Shadow OS repository</title>
+          <body style="font-family:system-ui;background:#06080f;color:#cbd5e1;max-width:40rem;margin:4rem auto;padding:0 1rem">
+          <h1 style="color:#22d3ee">Shadow OS package repository</h1>
+          <p>This is the APT repository for Shadow OS. Installed systems use it
+          automatically. It is not meant to be browsed.</p>
+          </body>
+          HTML
+          touch public/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deploy
+        uses: actions/deploy-pages@v4

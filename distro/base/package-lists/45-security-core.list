@@ -1,0 +1,31 @@
+# Shadow OS always-on privacy and security core. The full offensive/defensive
+# toolkit is installed on demand through Shadow Arsenal (or in full by the
+# complete-arsenal metapackage); these are the everyday privacy and crypto
+# tools every Shadow OS install carries.
+
+# Anonymity and tunnelling
+tor
+torsocks
+proxychains4
+
+# VPN
+wireguard-tools
+openvpn
+network-manager-openvpn
+network-manager-openvpn-gnome
+
+# Encryption, secrets, secure comms
+keepassxc
+gnupg
+openssl
+age
+cryptsetup
+
+# Privacy utilities
+macchanger
+steghide
+libimage-exiftool-perl
+secure-delete
+
+# Extra confinement profiles for the hardened baseline
+apparmor-profiles-extra
