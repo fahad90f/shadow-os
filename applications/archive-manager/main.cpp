@@ -279,7 +279,9 @@ int main(int argc, char **argv)
         return runHeadless(app, job);
     }
 
-    Launch launch;
+    // Owned by the application context so it outlives the QML engine.
+    auto *launchObject = new Launch(app.context());
+    Launch &launch = *launchObject;
     launch.level = level;
     launch.conflict = conflict;
     launch.format = parser.value(formatOption);
@@ -294,6 +296,6 @@ int main(int argc, char **argv)
         if (parser.isSet(toOption))
             launch.destination = absolute(parser.value(toOption));
     }
-    app.expose(QStringLiteral("launch"), &launch);
+    app.expose(QStringLiteral("launch"), launchObject);
     return app.run(QStringLiteral("org.nexus.archivemanager"));
 }

@@ -193,7 +193,7 @@ NxWindow {
 
     // ---- start-up ------------------------------------------------------------------
     Component.onCompleted: {
-        if (prefs.restoreSession) {
+        if (prefs.restoreSession && !EditorBackend.benchmark) {
             const session = EditorBackend.session()
             for (const file of session.files) openFile(file.path, file.position)
             if (session.files.length > 0) currentTab = Math.min(session.current, views.length - 1)
@@ -213,6 +213,46 @@ NxWindow {
     }
     // Coming back to the window is when an external change matters.
     onActiveChanged: if (active) { for (const view of views) view.document.checkDisk() }
+
+    // ---- measurement (NEXUS_EDITOR_BENCH=1) ---------------------------------------
+    // Each step changes something and is timed until the next frame is on screen.
+    QtObject {
+        id: bench
+        property int step: -1
+        property double started: 0
+        property double launched: Date.now()
+        property var results: []
+        readonly property var steps: [
+            { name: "first frame after load", run: () => {} },
+            { name: "type one character at the start", run: () => window.currentView.editor.insert(0, "x") },
+            { name: "undo", run: () => window.currentView.editor.undo() },
+            { name: "jump to the end", run: () => { window.currentView.editor.cursorPosition = window.currentView.editor.length } },
+            { name: "type one character at the end", run: () => window.currentView.editor.insert(window.currentView.editor.length, "y") },
+            { name: "jump to the middle", run: () => window.currentView.goToLine(Math.floor(window.currentDocument.lineCount / 2), 1) },
+            { name: "toggle word wrap", run: () => { prefs.wordWrap = !prefs.wordWrap } },
+            { name: "toggle word wrap back", run: () => { prefs.wordWrap = !prefs.wordWrap } },
+        ]
+        function begin() {
+            console.log("BENCH file:", window.currentDocument.filePath, "lines:", window.currentDocument.lineCount,
+                        "characters:", window.currentView.editor.length, "highlighting:", window.currentDocument.highlighting)
+            console.log("BENCH launch to text in document:", Date.now() - launched, "ms; inserting the text:",
+                        window.currentDocument.insertMilliseconds, "ms")
+            next()
+        }
+        function next() {
+            step += 1
+            if (step >= steps.length) { Qt.quit(); return }
+            started = Date.now()
+            steps[step].run()
+            window.contentItem.update()
+        }
+        function frame() {
+            if (step < 0 || step >= steps.length) return
+            console.log("BENCH", steps[step].name + ":", Date.now() - started, "ms")
+            Qt.callLater(next)
+        }
+    }
+    onFrameSwapped: if (EditorBackend.benchmark && bench.step >= 0) bench.frame()
 
     // ---- shortcuts -----------------------------------------------------------------
     Shortcut { sequences: [StandardKey.New]; onActivated: window.newTab() }
@@ -423,11 +463,13 @@ NxWindow {
                     required property int index
                     prefs: prefs
                     onFileLoaded: {
+                        if (EditorBackend.benchmark) { bench.begin(); return }
                         EditorBackend.addRecentFile(document.filePath)
                         prefs.lastFolder = EditorBackend.parentPath(document.filePath)
                         window.storeSession()
                     }
                     onFailed: (message) => {
+                        if (EditorBackend.benchmark) { console.log("BENCH refused:", message); Qt.quit(); return }
                         errorDialog.message = message
                         errorDialog.open()
                         // A tab created only for a file that could not be opened is of no use.

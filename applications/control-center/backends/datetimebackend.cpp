@@ -253,9 +253,18 @@ QString DateTimeBackend::timezoneLabel() const
         return tr("Unknown");
     for (const Zone &zone : m_zones) {
         if (zone.id == m_timezone)
-            return zone.countries.isEmpty() ? zone.city : tr("%1 (%2)").arg(zone.city, zone.countries);
+            return zone.city;
     }
     return m_timezone;
+}
+
+QString DateTimeBackend::timezoneCountries() const
+{
+    for (const Zone &zone : m_zones) {
+        if (zone.id == m_timezone)
+            return zone.countries;
+    }
+    return QString();
 }
 
 // ---- clock -----------------------------------------------------------------------------

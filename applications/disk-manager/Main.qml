@@ -32,6 +32,7 @@ NxWindow {
 
     function volumeKey(v) { return v.free ? "free:" + v.offset : v.path }
     function shortName(dev) { return dev.replace("/dev/", "") }
+    function exactBytes(n) { return qsTr(" (%1 bytes)").arg(Number(n).toLocaleString(Qt.locale(), "f", 0)) }
     function contentText(v) {
         if (v.free) return qsTr("Free space")
         if (v.isContainer) return qsTr("Extended partition")
@@ -146,7 +147,7 @@ NxWindow {
             currentKey: window.device ? window.device.path : ""
             model: disks.devices.map(d => ({
                 "key": d.path,
-                "title": d.name + " (" + window.shortName(d.device) + ")",
+                "title": window.shortName(d.device) + " · " + d.name,
                 "icon": d.isLoop ? "file" : d.bus === "USB" ? "usb" : d.removable ? "eject" : "harddrive",
                 "section": !d.hasDrive ? qsTr("Other devices") : d.removable ? qsTr("Removable") : qsTr("Internal"),
                 "badge": Theme.formatBytes(d.size)
@@ -413,7 +414,7 @@ NxWindow {
 
                         NxKeyValue { label: qsTr("Device"); mono: true
                             value: !window.volume ? "" : window.volume.free ? qsTr("unallocated, starts at %1").arg(Theme.formatBytes(window.volume.offset)) : window.volume.device }
-                        NxKeyValue { label: qsTr("Size"); value: window.volume ? Theme.formatBytes(window.volume.size) + qsTr(" (%1 bytes)").arg(window.volume.size) : "" }
+                        NxKeyValue { label: qsTr("Size"); value: window.volume ? Theme.formatBytes(window.volume.size) + window.exactBytes(window.volume.size) : "" }
                         NxKeyValue { visible: window.volume !== null && !window.volume.free; label: qsTr("Content"); value: window.volume && !window.volume.free ? window.contentText(window.volume) : "" }
                         NxKeyValue { visible: window.volume !== null && !window.volume.free; label: qsTr("Label"); value: window.volume && !window.volume.free && window.volume.label !== "" ? window.volume.label : "—" }
                         NxKeyValue { visible: window.volume !== null && !window.volume.free; label: qsTr("UUID"); mono: true; value: window.volume && !window.volume.free && window.volume.uuid !== "" ? window.volume.uuid : "—" }
@@ -557,7 +558,7 @@ NxWindow {
                             value: !window.device ? "" : window.device.rotationRate === 0 ? qsTr("Solid state (no rotation)")
                                  : window.device.rotationRate > 0 ? qsTr("Hard disk, %1 rpm").arg(window.device.rotationRate) : qsTr("Rotating medium") }
                         NxKeyValue { label: qsTr("Removable"); value: window.device && window.device.removable ? qsTr("Yes") : qsTr("No") }
-                        NxKeyValue { label: qsTr("Capacity"); value: window.device ? Theme.formatBytes(window.device.size) + qsTr(" (%1 bytes)").arg(window.device.size) : "" }
+                        NxKeyValue { label: qsTr("Capacity"); value: window.device ? Theme.formatBytes(window.device.size) + window.exactBytes(window.device.size) : "" }
                         NxKeyValue { label: qsTr("Partitioning"); value: window.device ? window.tableName(window.device.tableType) : "" }
 
                         Flow {

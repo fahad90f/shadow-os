@@ -178,7 +178,7 @@ NxPage {
         NxRow {
             icon: "flag"
             title: dt.timezoneLabel
-            subtitle: dt.timezone
+            subtitle: [dt.timezone, dt.timezoneCountries].filter(s => s !== "").join("  ·  ")
             value: dt.utcOffsetText
         }
         Item {

@@ -21,6 +21,7 @@ class EditorBackend : public QObject
     Q_PROPERTY(QStringList monospaceFamilies READ monospaceFamilies CONSTANT)
     Q_PROPERTY(QVariantList syntaxes READ syntaxes CONSTANT)
     Q_PROPERTY(qreal maxFileBytes READ maxFileBytes CONSTANT)
+    Q_PROPERTY(bool benchmark READ benchmark CONSTANT)
 
 public:
     explicit EditorBackend(QObject *parent = nullptr);
@@ -30,6 +31,9 @@ public:
     QStringList monospaceFamilies() const;
     QVariantList syntaxes() const;     // [{ name, section }]
     qreal maxFileBytes() const;
+    // NEXUS_EDITOR_BENCH=1: time loading, rendering and editing of the file given
+    // on the command line, print the figures and quit (see README, "Large files").
+    bool benchmark() const { return qEnvironmentVariableIntValue("NEXUS_EDITOR_BENCH") == 1; }
 
     Q_INVOKABLE void addRecentFile(const QString &path);
     Q_INVOKABLE void clearRecentFiles();

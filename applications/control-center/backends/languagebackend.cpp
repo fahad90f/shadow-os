@@ -366,6 +366,7 @@ QVariantList LanguageBackend::formats() const
             {QStringLiteral("effective"), effective},
             {QStringLiteral("effectiveName"), displayName(effective)},
             {QStringLiteral("example"), effective.isEmpty() ? QString() : example(category, effective)},
+            {QStringLiteral("generated"), value.isEmpty() || isGenerated(value)},
             {QStringLiteral("system"), systemValue.isEmpty() ? m_system.value(kLang) : systemValue},
         };
     }

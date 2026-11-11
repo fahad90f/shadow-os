@@ -2,18 +2,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Privileged helper of the Control Center's Region & Language page.
 
-Run through pkexec (action org.nexus.controlcenter.language.generate):
+Run through pkexec (polkit action org.nexus.controlcenter.language.configure):
 
     language-helper generate <locale> [<locale>...]
+    language-helper set LANG=<locale> [LC_TIME=<locale>...]
+    language-helper generate <locale>... set LANG=<locale>...
 
-Makes the named locales available on this system: enables their lines in
-/etc/locale.gen and runs locale-gen. A locale is accepted only if it is
-listed with the UTF-8 character set in /usr/share/i18n/SUPPORTED, so nothing
-the caller sends ends up in the file unchecked. Prints one JSON document on
-stdout; exit status 0 on success.
+generate  makes locales available on this system: enables their lines in
+          /etc/locale.gen and runs locale-gen. A locale is accepted only if it
+          is listed with the UTF-8 character set in /usr/share/i18n/SUPPORTED.
+set       replaces the system locale settings with exactly the given
+          assignments (update-locale --reset; a direct write of
+          /etc/locale.conf where update-locale does not exist). Needed on
+          Debian, whose D-Bus policy forbids systemd-localed's SetLocale. A
+          variable is accepted only from the list below, a value only if the
+          locale is generated on this system.
 
-Setting the system locale itself is not done here: the page asks
-systemd-localed (org.freedesktop.locale1) for that.
+Nothing the caller sends reaches a shell or a file unchecked. Prints one JSON
+document on stdout; exit status 0 on success.
 """
 
 import json
@@ -26,6 +32,13 @@ import tempfile
 SUPPORTED = "/usr/share/i18n/SUPPORTED"
 LOCALE_GEN = "/etc/locale.gen"
 LOCALE_GEN_TOOL = "/usr/sbin/locale-gen"
+UPDATE_LOCALE_TOOL = "/usr/sbin/update-locale"
+LOCALE_CONF = "/etc/locale.conf"
+VARIABLES = ("LANG", "LANGUAGE", "LC_CTYPE", "LC_NUMERIC", "LC_TIME", "LC_COLLATE", "LC_MONETARY", "LC_MESSAGES",
+             "LC_PAPER", "LC_NAME", "LC_ADDRESS", "LC_TELEPHONE", "LC_MEASUREMENT", "LC_IDENTIFICATION")
+# LANGUAGE is a colon-separated priority list of languages, not a locale.
+LANGUAGE_LIST = re.compile(r"^[A-Za-z]{2,3}(_[A-Z]{2})?(@[a-z0-9]{1,16})?(:[A-Za-z]{2,3}(_[A-Z]{2})?(@[a-z0-9]{1,16})?){0,7}$")
+ENVIRONMENT = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C.UTF-8"}
 NAME = re.compile(r"^[A-Za-z]{2,3}(_[A-Z]{2})?(\.UTF-8)?(@[a-z0-9]{1,16})?$")
 MAX_LOCALES = 8
 
@@ -92,35 +105,127 @@ def enable_lines(wanted):
     return changed
 
 
-def generate(names):
+def check_generate(names):
     if not names or len(names) > MAX_LOCALES:
         finish(False, error="between 1 and %d locale names are expected" % MAX_LOCALES)
     known = supported_utf8()
     for name in names:
         if not NAME.match(name) or name not in known:
             finish(False, error="'%s' is not a UTF-8 locale listed in %s" % (name[:64], SUPPORTED))
-    if os.geteuid() != 0:
-        finish(False, error="administrator rights are required")
     if not os.access(LOCALE_GEN_TOOL, os.X_OK):
         finish(False, error="%s is not installed (package locales)" % LOCALE_GEN_TOOL)
 
+
+def generate(names):
+    """Returns the fields describing what was done; ends the program on failure."""
     changed = enable_lines(names)
-    environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C.UTF-8"}
     try:
-        result = subprocess.run([LOCALE_GEN_TOOL], env=environment, stdin=subprocess.DEVNULL,
+        result = subprocess.run([LOCALE_GEN_TOOL], env=ENVIRONMENT, stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=900, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
         finish(False, error="locale-gen could not be run: %s" % error, fileChanged=changed)
     output = result.stdout.decode("utf-8", "replace")[-2000:]
     if result.returncode != 0:
         finish(False, error="locale-gen failed with status %d" % result.returncode, output=output, fileChanged=changed)
-    finish(True, generated=names, fileChanged=changed, output=output)
+    return {"generated": names, "fileChanged": changed}
+
+
+def normalised(name):
+    return name.lower().replace("utf-8", "utf8")
+
+
+def generated_locales():
+    try:
+        result = subprocess.run(["/usr/bin/locale", "-a"], env=ENVIRONMENT, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30, check=False)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        finish(False, error="locale -a could not be run: %s" % error)
+    names = {normalised(line.strip()) for line in result.stdout.decode("utf-8", "replace").splitlines() if line.strip()}
+    names.add("c.utf8")
+    return names
+
+
+def parse_assignments(assignments):
+    """Syntax check only; whether the locales exist is checked after generating."""
+    if not assignments or len(assignments) > len(VARIABLES):
+        finish(False, error="between 1 and %d assignments are expected" % len(VARIABLES))
+    pairs = {}
+    for assignment in assignments:
+        key, separator, value = assignment.partition("=")
+        if not separator or key not in VARIABLES or key in pairs:
+            finish(False, error="'%s' is not an accepted locale variable" % assignment[:64])
+        if key == "LANGUAGE":
+            if not LANGUAGE_LIST.match(value):
+                finish(False, error="'%s' is not a valid LANGUAGE list" % value[:64])
+        elif value != "C.UTF-8" and not NAME.match(value):
+            finish(False, error="'%s' is not a valid locale name" % value[:64])
+        pairs[key] = value
+    if "LANG" not in pairs:
+        finish(False, error="LANG must be set")
+    return pairs
+
+
+def set_locale(pairs):
+    available = generated_locales()
+    for key, value in pairs.items():
+        if key == "LANGUAGE":
+            continue
+        if normalised(value) not in available and normalised(value).replace(".utf8", "") not in available:
+            finish(False, error="the locale '%s' is not generated on this system" % value)
+    assignments = ["%s=%s" % (key, pairs[key]) for key in VARIABLES if key in pairs]
+    if os.access(UPDATE_LOCALE_TOOL, os.X_OK):
+        try:
+            result = subprocess.run([UPDATE_LOCALE_TOOL, "--reset"] + assignments, env=ENVIRONMENT, stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60, check=False)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            finish(False, error="update-locale could not be run: %s" % error)
+        if result.returncode != 0:
+            finish(False, error="update-locale failed with status %d" % result.returncode,
+                   output=result.stdout.decode("utf-8", "replace")[-2000:])
+        return {"set": assignments, "method": "update-locale"}
+    try:
+        fd, temporary = tempfile.mkstemp(prefix=".locale.conf.", dir=os.path.dirname(LOCALE_CONF))
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write("".join(assignment + "\n" for assignment in assignments))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, LOCALE_CONF)
+    except OSError as error:
+        finish(False, error="cannot write %s: %s" % (LOCALE_CONF, error.strerror))
+    return {"set": assignments, "method": LOCALE_CONF}
 
 
 def main(arguments):
-    if len(arguments) >= 2 and arguments[0] == "generate":
-        generate(arguments[1:])
-    finish(False, error="usage: language-helper generate <locale> [<locale>...]")
+    names, assignments, mode = [], [], None
+    for argument in arguments:
+        if argument in ("generate", "set") and mode != argument and not (argument == "generate" and mode == "set"):
+            mode = argument
+        elif mode == "generate":
+            names.append(argument)
+        elif mode == "set":
+            assignments.append(argument)
+        else:
+            mode = "invalid"
+            break
+    if mode not in ("generate", "set") or (not names and not assignments):
+        finish(False, error="usage: language-helper [generate <locale>...] [set LANG=<locale> [LC_...=<locale>...]]")
+
+    # Everything is validated before anything is changed.
+    pairs = None
+    if names:
+        check_generate(names)
+    if assignments or mode == "set":
+        pairs = parse_assignments(assignments)
+    if os.geteuid() != 0:
+        finish(False, error="administrator rights are required")
+
+    done = {}
+    if names:
+        done.update(generate(names))
+    if pairs is not None:
+        done.update(set_locale(pairs))
+    finish(True, **done)
 
 
 if __name__ == "__main__":

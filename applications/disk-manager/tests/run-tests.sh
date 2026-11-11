@@ -54,7 +54,7 @@ print([v for v in dev['volumes'] if v['free']][0]['offset'])")"
 echo "      free space reported from offset $free_offset"
 rig_guard "$A"; act "create a partition without file system in the remaining space" ok create "$A" "$free_offset" 0
 lsblk -o NAME,SIZE,FSTYPE,LABEL "$A" | sed 's/^/      /'
-is "two partitions exist" "$(lsblk -n -o NAME "$A" | grep -c p[0-9])" 2
+is "two partitions exist" "$(lsblk -ln -o NAME "$A" | grep -c "^$(basename "$A")p[0-9]")" 2
 dump devices | jq_py "
 dev=[x for x in d if x['device']=='$A'][0]
 print('      model: table', dev['tableType'], [(v['device'] or 'FREE', v['size'], v.get('fsType','')) for v in dev['volumes']])"
@@ -82,7 +82,7 @@ rig_guard "${A}p1"; act "repair p1" ok repair "${A}p1"
 
 echo "--- resize"
 rig_guard "${A}p2"; act "delete p2" ok delete "${A}p2"
-is "one partition left" "$(lsblk -n -o NAME "$A" | grep -c p[0-9])" 1
+is "one partition left" "$(lsblk -ln -o NAME "$A" | grep -c "^$(basename "$A")p[0-9]")" 1
 rig_guard "${A}p1"; act "grow p1 to 320 MiB" ok resize "${A}p1" $((320*MIB))
 is "partition size after growing" "$(blockdev --getsize64 "${A}p1")" $((320*MIB))
 fsblocks="$(dumpe2fs -h "${A}p1" 2>/dev/null | awk -F: '/^Block count/{gsub(/ /,"",$2); print $2}')"
@@ -107,20 +107,20 @@ done
 rig_guard "${A}p1"; act "format with a type UDisks cannot create here is refused" refused format "${A}p1" xfs X
 rig_guard "${A}p1"; act "format p1 as ext4 again" ok format "${A}p1" ext4 SYSTEM
 
-echo "--- UDisks jobs during a long operation"
-rig_guard "${A}p1"
-( $CTL format "${A}p1" ext4 JOBTEST >"$RIG/job-format.out" 2>&1 ) &
-seen=""
-for _ in $(seq 40); do
-    j="$(dump jobs | jq_py "print(';'.join('%s %s progressValid=%s progress=%.2f' % (x['operation'], ','.join(x['targets']), x['progressValid'], x['progress']) for x in d))")"
-    [ -n "$j" ] && seen="$j" && echo "      job seen: $j"
-    kill -0 $! 2>/dev/null || break
-done
-wait
-[ -n "$seen" ] && ok "a running UDisks job was reported by --dump jobs" || echo "NOTE  the format finished before a job could be observed"
+echo "--- UDisks jobs while operations run"
+$CTL watch-jobs "$A" 12 >"$RIG/jobs.out" 2>&1 &
+watcher=$!
+sleep 2
+rig_guard "${A}p1"; act "format p1 (watched)" ok format "${A}p1" ext4 JOBTEST
+act "check p1 (watched)" ok check "${A}p1"
+wait $watcher
+sort "$RIG/jobs.out" | uniq -c | sed 's/^/      /'
+grep -q "^job format-mkfs" "$RIG/jobs.out" && ok "the model reported the UDisks format job while it ran" || bad "no format job seen"
+grep -q "^no jobs" "$RIG/jobs.out" && ok "the job list emptied when the work was done" || bad "job list never emptied"
 
 echo "--- destructive actions on a system disk are refused"
-mount "${A}p1" /boot && echo "      ${A}p1 mounted at /boot in this private namespace"
+if mount "${A}p1" /boot; then
+echo "      ${A}p1 mounted at /boot in this private namespace"
 echo "      protected disks: $(dump protected | tr -d '\n')"
 dump protected | grep -q "\"$A\"" && ok "$A is recognised as holding /boot" || bad "$A not protected"
 out="$($CTL refusal "$A")"; echo "      $out"
@@ -134,6 +134,9 @@ is "partition table untouched" "$(blkid -c /dev/null -o value -s PTTYPE "$A")" g
 is "file system untouched" "$(blkid -c /dev/null -o value -s LABEL "${A}p1")" JOBTEST
 umount /boot
 out="$($CTL refusal "$A")"; [ "$out" = '{"refusal":""}' ] && ok "no refusal once /boot is unmounted" || bad "still refused: $out"
+else
+bad "could not mount ${A}p1 at /boot — protection tests skipped"
+fi
 
 echo "--- disk images"
 rig_guard "$B"; act "format $B as a whole (no partition table)" ok format "$B" ext4 IMAGEME
@@ -167,6 +170,7 @@ if printf 'correct horse' | cryptsetup luksFormat --batch-mode --type luks2 --pb
 v=[x for x in d if x['device']=='$A'][0]['volumes'][0]
 print('      model:', v['device'], 'encrypted' if v['encrypted'] else '', 'canUnlock' if v['canUnlock'] else '', v['fsType'])
 sys.exit(0 if v['encrypted'] and v['canUnlock'] and not v['unlocked'] else 1)" && ok "locked LUKS volume is recognised" || bad "LUKS volume not recognised"
+    if [ -e /sys/class/misc/device-mapper ]; then
     out="$(printf 'wrong passphrase\n' | $CTL unlock "${A}p1" 2>&1)"; rc=$?; echo "      $out"
     [ $rc -eq 1 ] && ok "wrong passphrase is rejected" || bad "wrong passphrase accepted?"
     out="$(printf 'correct horse\n' | $CTL unlock "${A}p1" 2>&1)"; rc=$?; echo "      $out"
@@ -185,6 +189,11 @@ sys.exit(0 if v['encrypted'] and v['canUnlock'] and not v['unlocked'] else 1)" &
     else
         bad "no cleartext device in the model"
     fi
+    else
+        out="$(printf 'correct horse\n' | $CTL unlock "${A}p1" 2>&1)"; rc=$?; echo "      $out"
+        [ $rc -eq 1 ] && ok "unlock reports UDisks' error (this kernel has no device-mapper, so no volume can be opened)" || bad "unlock claimed success without device-mapper"
+        echo "NOTE  no device-mapper in this kernel: unlocking, mounting and locking a LUKS volume could NOT be tested"
+    fi
     grep -c "correct horse\|wrong passphrase" "$RIG/udisksd.log" >/dev/null 2>&1 && bad "passphrase appears in the udisksd log" || ok "passphrase not in the udisksd log"
 else
     echo "NOTE  cryptsetup luksFormat failed here: $(tr '\n' ' ' < "$RIG/luks.err") — LUKS unlock/lock not tested"
@@ -192,9 +201,11 @@ fi
 
 echo "--- delete, guard"
 rig_guard "${A}p1"; act "delete p1" ok delete "${A}p1"
-is "no partitions left" "$(lsblk -n -o NAME "$A" | grep -c 'p[0-9]')" 0
+is "no partitions left" "$(lsblk -ln -o NAME "$A" | grep -c "^$(basename "$A")p[0-9]")" 0
 ( rig_guard /dev/vda ) 2>/dev/null; is "rig_guard refuses a non-loop device (exit code)" $? 97
-[ -e /dev/vda ] && bad "/dev/vda exists inside the rig" || ok "the real disk has no device node inside the rig"
+reachable=""
+for real in $(lsblk -dn -o NAME 2>/dev/null | grep -v '^loop'); do [ -b "/dev/$real" ] && reachable="$reachable $real"; done
+[ -z "$reachable" ] && ok "no real disk ($(lsblk -dn -o NAME | grep -v '^loop' | tr '\n' ' ')) is reachable as a block device inside the rig" || bad "real disk nodes reachable:$reachable"
 out="$(NEXUS_DISKS_TEST_LOOP_ONLY=0 $CTL mount "$B" 2>&1)"; is "test driver refuses to run without the loop-only guard" $? 2
 
 echo "disk-manager tests: $pass passed, $fail failed"

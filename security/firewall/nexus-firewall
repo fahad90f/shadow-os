@@ -143,6 +143,18 @@ def apply(state, *, load):
         run(["nft", "--file", MAIN])
 
 
+def _element_text(elem):
+    """One element of an inet_service set as nft --json prints it → "22" / "8000-8010"."""
+    if isinstance(elem, dict) and "elem" in elem:       # element with attributes (timeout, comment…)
+        elem = elem["elem"].get("val") if isinstance(elem["elem"], dict) else elem["elem"]
+    if isinstance(elem, dict) and "range" in elem:
+        lo, hi = elem["range"]
+        return f"{lo}-{hi}"
+    if isinstance(elem, (int, str)) and not isinstance(elem, bool):
+        return str(elem)
+    raise ValueError(f"unexpected set element {elem!r}")
+
+
 def status():
     state = load_state()
     loaded = table_loaded()
@@ -150,14 +162,29 @@ def status():
         "installed": os.path.exists(MAIN),
         "enabled_at_boot": enabled_at_boot(),
         "active": loaded,
+        # The ports recorded in /etc/nexus/firewall.json (what the administrator asked for).
         "allowed": state["allowed"],
         "input_policy": None,
         "forward_policy": None,
+        # Rules (statements) of the loaded "inet nexus_filter" table. Opened
+        # ports are elements of the sets allowed_tcp/allowed_udp, not rules,
+        # so this number does not move when a port is opened or closed — see
+        # allowed_port_count for that.
         "rule_count": 0,
         "other_tables": [],
+        # Entries (single ports or ranges) the kernel really has in the sets
+        # allowed_tcp/allowed_udp of the loaded table; None when that cannot
+        # be read (allowed_port_count_reason says why).
+        "allowed_port_count": None,
+        "allowed_loaded": None,
+        # `nft list table inet nexus_filter` verbatim; None with ruleset_reason.
+        "ruleset": None,
     }
-    rc, out, _ = run(["nft", "--json", "list", "ruleset"], check=False)
-    if rc == 0:
+    rc, out, err = run(["nft", "--json", "list", "ruleset"], check=False)
+    if rc != 0:
+        info["allowed_port_count_reason"] = (err or out).strip() or f"nft exited with status {rc}"
+    else:
+        loaded_ports, sets_seen = [], set()
         try:
             for item in json.loads(out).get("nftables", []):
                 if "table" in item:
@@ -175,8 +202,30 @@ def status():
                     r = item["rule"]
                     if (r["family"], r["table"]) == TABLE:
                         info["rule_count"] += 1
-        except (json.JSONDecodeError, KeyError):
-            pass
+                elif "set" in item:
+                    s = item["set"]
+                    if (s["family"], s["table"]) == TABLE and s["name"] in ("allowed_tcp", "allowed_udp"):
+                        sets_seen.add(s["name"])
+                        for elem in s.get("elem", []) or []:
+                            loaded_ports.append({"port": _element_text(elem), "protocol": s["name"][-3:]})
+            if not loaded:
+                info["allowed_port_count_reason"] = "The firewall table is not loaded, so no port is open through it."
+            elif sets_seen != {"allowed_tcp", "allowed_udp"}:
+                info["allowed_port_count_reason"] = ("The loaded table has no allowed_tcp/allowed_udp sets "
+                                                     "(it was not loaded from the NEXUS ruleset).")
+            else:
+                info["allowed_loaded"] = loaded_ports
+                info["allowed_port_count"] = len(loaded_ports)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            info["allowed_port_count_reason"] = f"could not interpret the nft JSON output: {exc}"
+    if not loaded:
+        info["ruleset_reason"] = "The firewall table is not loaded."
+    else:
+        rc, out, err = run(["nft", "list", "table", *TABLE], check=False)
+        if rc == 0:
+            info["ruleset"] = out
+        else:
+            info["ruleset_reason"] = (err or out).strip() or f"nft exited with status {rc}"
     return info
 
 

@@ -106,7 +106,7 @@ NxPage {
                 }
                 NxBadge {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: formatRow.modelData.value !== "" && !lang.isGenerated(formatRow.modelData.value)
+                    visible: !formatRow.modelData.generated
                     text: qsTr("Not installed yet")
                     kind: "warning"
                 }

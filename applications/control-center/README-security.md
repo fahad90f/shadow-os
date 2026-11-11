@@ -136,7 +136,100 @@ about it.
 
 ## What was tested, and how
 
-See the final section of this file's history in the engineer's report; the
-summary, kept current:
+Everything below ran in the Debian 13 build chroot (no systemd, no hardware),
+build directory `ccsec`:
+`scripts/dev.sh build --dir ccsec --only control-center --cc-pages "users;privacy;firewall;security;updates"`.
+The GUI was driven with xdotool under Xvfb; each `scripts/dev.sh exec`
+invocation has a private mount namespace, in which `/etc` (and where needed
+`/var`, `/home`, `/tmp`, `/var/tmp`, `/var/lib/AccountsService`) was covered
+by a throw-away overlay or tmpfs first, so the shared chroot was not changed.
+The Control Center ran as root there unless stated, i.e. tools were started
+directly, not through `pkexec`.
 
-TESTED-PLACEHOLDER
+* **Smoke**: `tests/desktop/smoke.sh --dir ccsec control-center` → 1 passed,
+  0 failed; additionally `scripts/dev.sh run --dir ccsec --smoke
+  nexus-control-center <key>` for each of the five keys, dark and light:
+  `NEXUS-SMOKE-OK`, no QML warnings (states without any service:
+  `ccsec-<key>-1.png`, `ccsec-<key>-light.png`).
+* **Firewall** — real `security/firewall/nexus-firewall` and
+  `/etc/nftables.conf` from `security/firewall/`, inside `unshare -n` (own
+  network namespace, real nftables): `--dump firewall` equals
+  `nexus-firewall status --json` before and after changes; through the GUI:
+  turn on (table loaded, policies "drop", 32 rules, `ccsec-fw-b1.png`), open
+  `8000-8090/udp` with description and `22/tcp` (validation message for
+  `8000-80`, `ccsec-fw-b2.png`; result `ccsec-fw-c1.png`), close one port
+  (confirmation, `ccsec-fw-c2.png`), reload, close all (`ccsec-fw-c4.png`),
+  turn off after the warning (`ccsec-fw-c3.png`); `nexus-firewall list` /
+  `status` confirmed each step. As uid 65534 without polkit: state reported as
+  unknown with the reason.
+* **Security** — real `security/audit/nexus-security-status` as root:
+  `--dump security` and the page (`ccsec-sec-a1.png`, `ccsec-sec-a3.png`) show
+  what the tool reports for the chroot (firewall not active, AppArmor module
+  not loaded, legacy BIOS, no pending updates, baseline not installed, …) and
+  its two recommendations; the "Firewall settings" button opens the Firewall
+  page (`ccsec-sec-c1.png`). As uid 65534 without polkit: the report is
+  produced unprivileged and marked incomplete (`privileged: false`,
+  "polkit did not authorise the request"). The rendering of the branches the
+  chroot cannot produce (UEFI, LUKS, pending security updates, failed units,
+  failed logins, sysctl drift, …) was checked with a **test double** that
+  prints a hand-written report in the tool's format
+  (`ccsec-sec-testdouble-1.png` … `-3.png`; not real data).
+* **Updates** — `updates-helper` directly: usage errors, `1 1`, `0 0` on a
+  file with other lines (kept), refusal as non-root. GUI: automatic check
+  off → `AutoCheck=false`; interval → `CheckIntervalHours=72`; "Refresh the
+  package lists" switch → helper → `20auto-upgrades` written, then switched
+  off again; `/run/reboot-required` banner. "Check now" with a real
+  `nexus-updater` (built in `ccsecupd`): without a system bus the updater's
+  error is shown (`ccsec-upd-b1.png`); against a real `packagekitd` on a
+  private system bus (overlay over `/var`) the check ran and the page showed
+  "No updates were available" with the time the Updater recorded
+  (`ccsec-upd-c2.png`).
+* **Users** — real `accounts-daemon` and `polkitd` on a private system bus,
+  two accounts created with `useradd` in the overlay. `--dump users` lists
+  them with role, home, lock state. GUI as root (`ccsec-users-a1.png`,
+  `-b1…b7`, `-d3`, `-g1…g3`): add an administrator (checked with `id`,
+  `getent passwd`, a yescrypt hash in shadow, home created); make a standard
+  user an administrator (`sudo` group); change the full name; set another
+  account's password through the helper (hash changed; `su` with the new
+  password works, with a wrong one fails); automatic sign-in on →
+  `/etc/sddm.conf.d/20-autologin.conf`; picture → 256×256 PNG in
+  `/var/lib/AccountsService/icons/`, shown round in the list; remove an
+  account keeping its files, and another one with its files (typed
+  confirmation); removing the auto-login account clears the SDDM file; last
+  administrator: switch and Remove disabled with the reason. GUI as the
+  ordinary user `ada` (no polkit agent): "this is you", Remove blocked;
+  changing the own password with a wrong current password → "the current
+  password is not correct" (`ccsec-users-e3.png` of an earlier run), with the
+  right one → hash changed (`ccsec-users-e4.png`); own full name changed
+  through AccountsService; adding a user and automatic sign-in are refused
+  and say so, switches fall back (`ccsec-users-f1.png`, `-f3.png`).
+  `users-helper` directly: every refusal path (system account, unknown user,
+  invalid name, empty password, control characters, missing separator,
+  non-root) and `set-autologin` / `clear-autologin` with competing entries in
+  `10-nexus-live.conf` and `/etc/sddm.conf`.
+* **Privacy** — prepared home directory: `--dump privacy` reports the
+  measured sizes exactly (trash 409 613 bytes in 3 files, thumbnails 51 200,
+  old temporary files 65 541 in 2 files, a fresh file and another user's old
+  file not counted), 4 recent entries, 2 launcher counters, `Timeout=10` from
+  `/etc/xdg/kscreenlockerrc`, and NetworkManager values with the right source
+  file when `90-local.conf` overrides `80-nexus-privacy.conf`
+  (`ccsec-priv-b1.png`, `-b2.png`). GUI: every lock control writes
+  `~/.config/kscreenlockerrc`; both history lists cleared (other groups of
+  `horizon-usage.conf` kept); trash emptied (`files`/`info` kept), thumbnails
+  deleted, old temporary files deleted while the fresh and the foreign file
+  stayed (confirmation dialogs `ccsec-priv-c3.png`, `-c6.png`).
+
+## Not tested
+
+* Any polkit password prompt (`pkexec` and AccountsService with an agent in a
+  real session): in the chroot the privileged paths ran as root, and the
+  unprivileged paths only up to polkit's refusal.
+* `org.kde.screensaver configure` against a running locker (KWin's locker is
+  not started in the test sessions); only the file is verified.
+* logind's `ListUsers` ("signed in" block), SDDM actually logging a user in,
+  the `Session=` line (the session file is not installed in the chroot),
+  AccountsService's `Changed` signals arriving from another program.
+* unattended-upgrades installed, `apt-daily-upgrade.timer` state, a check
+  that finds updates (the Updater's own tests cover its result format).
+* The pages inside a full build with all other pages, and in a real NEXUS
+  HORIZON session.

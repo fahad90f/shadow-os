@@ -40,6 +40,7 @@ class DateTimeBackend : public QObject
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString timezone READ timezone NOTIFY stateChanged)
     Q_PROPERTY(QString timezoneLabel READ timezoneLabel NOTIFY stateChanged)
+    Q_PROPERTY(QString timezoneCountries READ timezoneCountries NOTIFY stateChanged)
     Q_PROPERTY(bool canNtp READ canNtp NOTIFY stateChanged)
     Q_PROPERTY(bool ntp READ ntp NOTIFY stateChanged)
     Q_PROPERTY(bool ntpSynchronized READ ntpSynchronized NOTIFY stateChanged)
@@ -71,6 +72,7 @@ public:
     bool busy() const { return m_busy; }
     QString timezone() const { return m_timezone; }
     QString timezoneLabel() const;
+    QString timezoneCountries() const;
     bool canNtp() const { return m_canNtp; }
     bool ntp() const { return m_ntp; }
     bool ntpSynchronized() const { return m_ntpSynchronized; }

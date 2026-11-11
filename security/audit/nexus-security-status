@@ -32,9 +32,12 @@ strictly read-only and takes no input beyond the section names.
 """
 import argparse
 import glob
+import gzip
 import json
 import os
+import pwd
 import re
+import struct
 import subprocess
 import sys
 import time
@@ -44,6 +47,23 @@ SECTIONS = ["firewall", "apparmor", "encryption", "secureboot", "updates", "list
 
 BASELINE_SYSCTL = "/usr/lib/sysctl.d/60-nexus-hardening.conf"
 BASELINE_CMDLINE = "/etc/default/grub.d/20-nexus-hardening.cfg"
+BASELINE_MODPROBE = "/usr/lib/modprobe.d/nexus-hardening.conf"
+AUDIT_RULES = "/etc/audit/rules.d/50-nexus.rules"
+# Rule keys of security/audit/50-nexus.rules; used when the installed rules
+# file cannot be read (the keys are then still the ones NEXUS ships).
+AUDIT_KEYS = ["identity", "privilege", "auth-config", "firewall", "mac-policy", "audit-config", "modules",
+              "time-change", "boot", "apt-sources"]
+RECENT_EVENTS_MAX = 50
+
+# Roots of the kernel interfaces. They are constants of the program (never
+# taken from the environment or the command line); tests/security/ points
+# them at fabricated trees.
+PROC = "/proc"
+SYS = "/sys"
+BOOT = "/boot"
+APT_HISTORY_GLOB = "/var/log/apt/history.log*"
+DPKG_LOG_GLOB = "/var/log/dpkg.log*"
+FIREWALL_TABLE = ("inet", "nexus_filter")
 
 
 def run(argv, timeout=20):
@@ -69,6 +89,27 @@ def unavailable(reason):
     return {"available": False, "reason": reason}
 
 
+def probe(info, key, func, empty=None):
+    """info[key] = func(); a failing probe yields `empty` plus info[key + "_reason"].
+
+    func returns the value, or (value, reason) when it has something to say
+    about a value it could not (fully) determine. One broken probe never takes
+    the rest of its section down.
+    """
+    try:
+        result = func()
+    except Exception as exc:  # noqa: BLE001
+        result = (empty, f"internal error: {exc!r}")
+    value, reason = result if isinstance(result, tuple) else (result, None)
+    info[key] = value
+    if reason:
+        info[key + "_reason"] = reason
+
+
+def iso_utc(epoch):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
 def systemd_running():
     return os.path.isdir("/run/systemd/system")
 
@@ -88,24 +129,89 @@ def section_firewall():
     if rc in (0, 3) and out.strip().startswith("{"):
         info = json.loads(out)
         info["available"] = True
+        if "ruleset" not in info:       # a nexus-firewall that does not report it yet
+            probe(info, "ruleset", lambda: _firewall_ruleset(info.get("active")))
         return info
     return unavailable((err or out).strip() or "nexus-firewall is not installed")
 
 
+def _firewall_ruleset(active):
+    if not active:
+        return None, "The firewall table is not loaded."
+    rc, out, err = run(["nft", "list", "table", *FIREWALL_TABLE])
+    if rc != 0:
+        return None, (err or out).strip() or f"nft exited with status {rc}"
+    return out
+
+
 # --------------------------------------------------------------------------- apparmor
+def _parse_label(value):
+    """'/usr/sbin/cupsd (enforce)' → (profile, mode); 'unconfined' → (None, 'unconfined')."""
+    value = value.strip().rstrip("\x00").strip()
+    if value == "unconfined":
+        return None, "unconfined"
+    m = re.match(r"^(.*) \((\w+)\)$", value)
+    if m:
+        return m.group(1), m.group(2)
+    return value, None      # a label without a mode suffix: report it as it is
+
+
+def _is_kernel_thread(pid):
+    stat = read(f"{PROC}/{pid}/stat")
+    if not stat or ")" not in stat:
+        return False
+    fields = stat[stat.rindex(")") + 1:].split()
+    try:
+        return bool(int(fields[6]) & 0x00200000)        # PF_KTHREAD in the flags field
+    except (IndexError, ValueError):
+        return False
+
+
+def _apparmor_processes():
+    """Every user-space process with the profile it runs under (kernel threads are left out)."""
+    rows, unreadable = [], 0
+    for entry in os.listdir(PROC):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        # attr/apparmor/current is AppArmor's own file; attr/current belongs to
+        # whichever LSM is "first" and is only AppArmor's on kernels without the former.
+        label = read(f"{PROC}/{pid}/attr/apparmor/current")
+        if label is None:
+            label = read(f"{PROC}/{pid}/attr/current")
+        if label is None or label == "":
+            if os.path.isdir(f"{PROC}/{pid}"):
+                unreadable += 1
+            continue
+        if _is_kernel_thread(pid):
+            continue
+        profile, mode = _parse_label(label)
+        rows.append({"process": read(f"{PROC}/{pid}/comm"), "pid": pid, "profile": profile, "mode": mode})
+    rows.sort(key=lambda r: r["pid"])
+    reason = f"The AppArmor label of {unreadable} process(es) could not be read." if unreadable else None
+    return rows, reason
 def section_apparmor():
-    enabled = read("/sys/module/apparmor/parameters/enabled")
+    enabled = read(f"{SYS}/module/apparmor/parameters/enabled")
     if enabled is None:
         return {"available": True, "enabled": False, "reason": "The AppArmor kernel module is not loaded."}
     info = {"available": True, "enabled": enabled == "Y",
-            "lsm": (read("/sys/kernel/security/lsm") or "").split(","),
+            "lsm": (read(f"{SYS}/kernel/security/lsm") or "").split(","),
             "profiles": {"enforce": 0, "complain": 0, "kill": 0, "unconfined": 0, "other": 0},
-            "profile_names": {"enforce": [], "complain": []},
-            "confined_processes": None}
-    listing = read("/sys/kernel/security/apparmor/profiles")
+            # Names per mode, with the same keys as "profiles" (a mode the
+            # kernel reports that is none of the first four is under "other").
+            "profile_names": {"enforce": [], "complain": [], "kill": [], "unconfined": [], "other": []},
+            "confined_processes": None,
+            "processes": None}
+    listing = read(f"{SYS}/kernel/security/apparmor/profiles")
     if listing is None:
         info["profiles"] = None
+        info["profile_names"] = None
         info["reason"] = "The profile list is not readable (securityfs not mounted or insufficient privilege)."
+        info["profile_names_reason"] = info["reason"]
+        if info["enabled"]:
+            probe(info, "processes", _apparmor_processes)
+        else:
+            info["processes_reason"] = "AppArmor is not enabled."
         return info
     for line in listing.splitlines():
         m = re.match(r"^(.*) \((\w+)\)$", line.strip())
@@ -114,14 +220,14 @@ def section_apparmor():
         mode = m.group(2)
         key = mode if mode in info["profiles"] else "other"
         info["profiles"][key] += 1
-        if mode in info["profile_names"]:
-            info["profile_names"][mode].append(m.group(1))
+        info["profile_names"][key].append(m.group(1))
     confined = 0
-    for attr in glob.glob("/proc/[0-9]*/attr/current"):
+    for attr in glob.glob(f"{PROC}/[0-9]*/attr/current"):
         value = read(attr)
         if value and value != "unconfined":
             confined += 1
     info["confined_processes"] = confined
+    probe(info, "processes", _apparmor_processes)
     info["service"] = unit_state("apparmor.service")
     return info
 
@@ -181,7 +287,9 @@ def section_encryption():
                 entry["pbkdf"] = m.group(1) if m else None
             luks.append(entry)
     live = os.path.exists("/run/nexus/live-session") or "boot=live" in (read("/proc/cmdline") or "")
-    return {"available": True, "live_session": live,
+    extra = {}
+    probe(extra, "filesystems", _mounted_filesystems)
+    return {**extra, "available": True, "live_session": live,
             "root": {"encrypted": root_enc, "device": root_dev},
             "home": {"separate": home_dev is not None, "encrypted": home_enc if home_dev else root_enc,
                      "device": home_dev},
@@ -189,6 +297,109 @@ def section_encryption():
                      "encrypted": swap_enc if swap_dev else (root_enc if _swapfile_on_root() else None),
                      "device": swap_dev},
             "luks_devices": luks}
+
+
+# Mounted file systems and the block-device stack beneath each of them.
+PSEUDO_FSTYPES = {
+    "autofs", "bdev", "binfmt_misc", "bpf", "cgroup", "cgroup2", "configfs", "debugfs", "devpts", "devtmpfs",
+    "efivarfs", "fusectl", "hugetlbfs", "mqueue", "nsfs", "overlay", "proc", "pstore", "ramfs", "rpc_pipefs",
+    "securityfs", "selinuxfs", "sysfs", "tmpfs", "tracefs", "squashfs_pseudo", "fuse.portal", "fuse.gvfsd-fuse",
+}
+NETWORK_FSTYPES = {"nfs", "nfs4", "cifs", "smb3", "9p", "ceph", "glusterfs", "fuse.sshfs", "afs", "virtiofs"}
+
+
+def _unescape_mount(text):
+    return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), text)
+
+
+def _sys_block_dir(major, minor):
+    path = f"{SYS}/dev/block/{major}:{minor}"
+    return os.path.realpath(path) if os.path.exists(path) else None
+
+
+def _stack_has_crypt(sysdir, seen=None, depth=0):
+    """True/False: is there a dm-crypt device in the stack of this block device? None: cannot tell."""
+    seen = set() if seen is None else seen
+    if sysdir in seen or depth > 16:
+        return False
+    seen.add(sysdir)
+    uuid = read(os.path.join(sysdir, "dm", "uuid"))
+    if uuid and uuid.startswith("CRYPT-"):
+        return True
+    if os.path.exists(os.path.join(sysdir, "partition")):      # a partition: continue with its disk
+        return _stack_has_crypt(os.path.dirname(sysdir), seen, depth + 1)
+    result = False
+    slaves = os.path.join(sysdir, "slaves")
+    if os.path.isdir(slaves):
+        for name in sorted(os.listdir(slaves)):
+            below = _stack_has_crypt(os.path.realpath(os.path.join(slaves, name)), seen, depth + 1)
+            if below:
+                return True
+            if below is None:
+                result = None
+    backing = read(os.path.join(sysdir, "loop", "backing_file"))
+    if backing is not None:
+        # A loop device is as encrypted as the file system that holds its image.
+        try:
+            dev = os.stat(backing.replace(" (deleted)", "")).st_dev
+        except OSError:
+            return None
+        below_dir = _sys_block_dir(os.major(dev), os.minor(dev)) if os.major(dev) else None
+        if below_dir is None:
+            return None
+        return _stack_has_crypt(below_dir, seen, depth + 1)
+    return result
+
+
+def _mounted_filesystems():
+    """[{mountpoint, device, fstype, encrypted}] for the mounted file systems that live on storage.
+
+    encrypted: True when a dm-crypt mapping (LUKS or plain) is somewhere in
+    the block-device stack below the file system, False when the stack was
+    walked down to its disks without finding one, None (with "reason") when
+    the stack cannot be walked. Kernel-internal and network file systems are
+    not listed.
+    """
+    text = read(f"{PROC}/self/mountinfo")
+    if text is None:
+        return None, f"{PROC}/self/mountinfo is not readable"
+    rows = {}
+    for line in text.splitlines():
+        left, sep, right = line.partition(" - ")
+        lf, rf = left.split(), right.split()
+        if not sep or len(lf) < 5 or len(rf) < 2:
+            continue
+        fstype, source = rf[0], _unescape_mount(rf[1])
+        mountpoint = _unescape_mount(lf[4])
+        if fstype in PSEUDO_FSTYPES or fstype in NETWORK_FSTYPES:
+            continue
+        major, _, minor = lf[2].partition(":")
+        entry = {"mountpoint": mountpoint, "device": source if source.startswith("/") else None,
+                 "fstype": fstype, "encrypted": None}
+        sysdir = None
+        if major.isdigit() and minor.isdigit() and int(major) != 0:
+            sysdir = _sys_block_dir(int(major), int(minor))
+        if sysdir is None and source.startswith("/dev/"):
+            # btrfs and others use an anonymous device number: go by the source device.
+            try:
+                st = os.stat(source)
+                sysdir = _sys_block_dir(os.major(st.st_rdev), os.minor(st.st_rdev))
+            except OSError:
+                sysdir = None
+        if sysdir is None:
+            if fstype in ("zfs", "bcachefs"):
+                entry["device"] = source
+                entry["reason"] = f"{fstype} manages its own devices; they are not examined."
+            elif not source.startswith("/dev/"):
+                continue        # no block device behind it (a pseudo file system not in the list above)
+            else:
+                entry["reason"] = "The block device of this file system is not visible in sysfs."
+        else:
+            entry["encrypted"] = _stack_has_crypt(sysdir)
+            if entry["encrypted"] is None:
+                entry["reason"] = "The device stack below this file system could not be followed to a disk."
+        rows[mountpoint] = entry        # a later mount on the same mount point hides the earlier one
+    return sorted(rows.values(), key=lambda r: r["mountpoint"])
 
 
 def _iter(devices):
@@ -205,28 +416,150 @@ def _swapfile_on_root():
 # --------------------------------------------------------------------------- secure boot
 def _efivar_byte(name):
     try:
-        with open(f"/sys/firmware/efi/efivars/{name}-8be4df61-93ca-11d2-aa0d-00e098032b8c", "rb") as fh:
+        with open(f"{SYS}/firmware/efi/efivars/{name}-8be4df61-93ca-11d2-aa0d-00e098032b8c", "rb") as fh:
             data = fh.read()
         return data[4] if len(data) >= 5 else None
     except OSError:
         return None
 
 
+def _kernel_lockdown():
+    lockdown = read(f"{SYS}/kernel/security/lockdown")
+    if lockdown is None:
+        return None, "The kernel does not expose its lockdown state (securityfs not mounted, or no lockdown LSM)."
+    m = re.search(r"\[(\w+)\]", lockdown)
+    if not m:
+        return None, f"Unexpected content of the lockdown file: {lockdown[:80]!r}"
+    return m.group(1)
+
+
+def _bzimage_release(path):
+    """Kernel release recorded in an x86 boot image header, or None (other formats, unreadable)."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(0x210)
+            if len(head) < 0x210 or head[0x202:0x206] != b"HdrS":
+                return None
+            offset = struct.unpack_from("<H", head, 0x20E)[0]
+            if not offset:
+                return None
+            fh.seek(offset + 0x200)
+            text = fh.read(128).split(b"\0")[0].decode("ascii", "replace")
+        return text.split()[0] if text.split() else None
+    except OSError:
+        return None
+
+
+def _kernel_image():
+    """Path of the image the running kernel was started from."""
+    release = os.uname().release
+    for name in ("vmlinuz", "vmlinux", "Image", "kernel"):
+        path = f"{BOOT}/{name}-{release}"
+        if os.path.isfile(path):
+            return path
+    # Live session: the kernel sits on the boot medium under a name without
+    # the release. Accept a file only if its own header names the running release.
+    for path in sorted(glob.glob("/run/live/medium/live/vmlinuz*") + glob.glob("/usr/lib/live/mount/medium/live/vmlinuz*")):
+        if os.path.isfile(path) and _bzimage_release(path) == release:
+            return path
+    return None, f"No kernel image for the running release {release} was found in {BOOT} or on a live medium."
+
+
+def pe_signature_present(path):
+    """Does this file carry an Authenticode signature table? → (True/False/None, reason).
+
+    Reads the PE/COFF headers: data directory 4 ("certificate table") holds
+    the file offset and size of the WIN_CERTIFICATE entries that sbsign
+    appends. Presence is all that is checked — not whether the signature is
+    valid or made with a key this machine's firmware trusts.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as fh:
+            dos = fh.read(64)
+            if dos[:2] == b"\x1f\x8b":
+                return None, "The image is gzip-compressed; a signature inside it cannot be inspected."
+            if len(dos) < 64 or dos[:2] != b"MZ":
+                return False, "The image is not an EFI (PE/COFF) binary, so it cannot carry a Secure Boot signature."
+            pe_offset = struct.unpack_from("<I", dos, 0x3C)[0]
+            fh.seek(pe_offset)
+            head = fh.read(24)
+            if len(head) < 24 or head[:4] != b"PE\0\0":
+                return False, "The image is not an EFI (PE/COFF) binary, so it cannot carry a Secure Boot signature."
+            opt_size = struct.unpack_from("<H", head, 20)[0]
+            opt = fh.read(opt_size)
+            if len(opt) < 2:
+                return None, "The PE optional header is truncated."
+            magic = struct.unpack_from("<H", opt, 0)[0]
+            if magic == 0x10B:
+                count_at, dirs_at = 92, 96
+            elif magic == 0x20B:
+                count_at, dirs_at = 108, 112
+            else:
+                return None, f"Unknown PE optional header type 0x{magic:x}."
+            if len(opt) < dirs_at:
+                return None, "The PE optional header is truncated."
+            count = struct.unpack_from("<I", opt, count_at)[0]
+            if count < 5 or len(opt) < dirs_at + 5 * 8:
+                return False, None      # no certificate table directory at all
+            cert_offset, cert_size = struct.unpack_from("<II", opt, dirs_at + 4 * 8)
+            if cert_offset == 0 or cert_size == 0:
+                return False, None
+            if cert_offset + cert_size > size or cert_size < 8:
+                return None, "The certificate table points outside the file."
+            fh.seek(cert_offset)
+            length, _revision, cert_type = struct.unpack("<IHH", fh.read(8))
+            if length < 8 or length > cert_size:
+                return None, "The certificate table is malformed."
+            if cert_type != 0x0002:     # WIN_CERT_TYPE_PKCS_SIGNED_DATA
+                return None, f"The certificate table holds an entry of unknown type 0x{cert_type:04x}."
+            return True, None
+    except (OSError, struct.error) as exc:
+        return None, f"The image could not be read: {exc}"
+
+
+def _kernel_signed(image):
+    """(True/False/None, reason, method): does the kernel image carry a signature?"""
+    if not image:
+        return None, "The kernel image was not found.", None
+    rc, out, err = run(["sbverify", "--list", image])
+    if rc == 0:
+        if re.search(r"^signature \d+", out, re.M):
+            return True, None, "sbverify"
+        if "No signature table present" in out + err:
+            return False, None, "sbverify"
+    signed, reason = pe_signature_present(image)
+    return signed, reason, "pe-header"
+
+
+def _secureboot_kernel(info):
+    probe(info, "kernel_lockdown", _kernel_lockdown)
+    probe(info, "kernel_image", _kernel_image)
+    try:
+        signed, reason, method = _kernel_signed(info["kernel_image"])
+    except Exception as exc:  # noqa: BLE001
+        signed, reason, method = None, f"internal error: {exc!r}", None
+    # "Signed" means the image carries a signature table; its validity against
+    # the firmware's keys is not verified here.
+    info["kernel_signed"] = signed
+    info["kernel_signed_method"] = method
+    if reason:
+        info["kernel_signed_reason"] = reason
+
+
 def section_secureboot():
-    if not os.path.isdir("/sys/firmware/efi"):
-        return {"available": True, "firmware": "bios", "supported": False, "enabled": False,
+    if not os.path.isdir(f"{SYS}/firmware/efi"):
+        info = {"available": True, "firmware": "bios", "supported": False, "enabled": False,
                 "reason": "This system was started in legacy BIOS mode, which has no Secure Boot."}
+        _secureboot_kernel(info)
+        return info
     sb, setup = _efivar_byte("SecureBoot"), _efivar_byte("SetupMode")
-    lockdown = read("/sys/kernel/security/lockdown")
-    active = None
-    if lockdown:
-        m = re.search(r"\[(\w+)\]", lockdown)
-        active = m.group(1) if m else None
     info = {"available": True, "firmware": "uefi", "supported": sb is not None,
             "enabled": sb == 1 if sb is not None else None, "setup_mode": setup == 1 if setup is not None else None,
-            "kernel_lockdown": active,
+            "kernel_lockdown": None,
             "shim_installed": bool(glob.glob("/boot/efi/EFI/*/shim*.efi")) or None,
             "mok_keys": None}
+    _secureboot_kernel(info)
     rc, out, _ = run(["mokutil", "--list-enrolled", "--short"])
     if rc == 0:
         info["mok_keys"] = len([l for l in out.splitlines() if l.strip()])
@@ -235,6 +568,63 @@ def section_secureboot():
 
 
 # --------------------------------------------------------------------------- updates
+def _log_text(path):
+    try:
+        if path.endswith(".gz"):
+            with gzip.open(path, "rt", encoding="utf-8", errors="replace") as fh:
+                return fh.read()
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except (OSError, EOFError):
+        return None
+
+
+def _local_to_epoch(date, clock):
+    """'2026-02-09', '19:44:00' in this machine's local time (how apt and dpkg log) → epoch."""
+    return time.mktime(time.strptime(f"{date} {clock}", "%Y-%m-%d %H:%M:%S"))
+
+
+def _last_upgrade():
+    """Time of the last transaction that upgraded a package → ISO 8601 UTC.
+
+    Source 1: apt's history (entries with an "Upgrade:" line; their End-Date).
+    Source 2: dpkg's log (" upgrade <package> <old> <new>" lines) — also sees
+    upgrades made with dpkg -i. Both are written in local time.
+    """
+    latest, seen_any = None, False
+    for path in glob.glob(APT_HISTORY_GLOB):
+        text = _log_text(path)
+        if text is None:
+            continue
+        seen_any = True
+        for block in re.split(r"\n\s*\n", text):
+            if not re.search(r"^Upgrade: ", block, re.M):
+                continue
+            m = re.search(r"^End-Date: (\d{4}-\d\d-\d\d)\s+(\d\d:\d\d:\d\d)", block, re.M) \
+                or re.search(r"^Start-Date: (\d{4}-\d\d-\d\d)\s+(\d\d:\d\d:\d\d)", block, re.M)
+            if m:
+                try:
+                    latest = max(latest or 0, _local_to_epoch(m.group(1), m.group(2)))
+                except (ValueError, OverflowError):
+                    pass
+    for path in glob.glob(DPKG_LOG_GLOB):
+        text = _log_text(path)
+        if text is None:
+            continue
+        seen_any = True
+        for m in re.finditer(r"^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) upgrade \S+ \S+ \S+$", text, re.M):
+            try:
+                latest = max(latest or 0, _local_to_epoch(m.group(1), m.group(2)))
+            except (ValueError, OverflowError):
+                pass
+    if latest:
+        return iso_utc(latest)
+    if not seen_any:
+        return None, "Neither apt's history nor dpkg's log is readable, so the time of the last upgrade is unknown."
+    return None, ("The apt history and dpkg log on this system record no package upgrade "
+                  "(they may have been rotated away, or nothing was upgraded since installation).")
+
+
 def section_updates():
     rc, out, err = run(["apt-get", "-s", "-o", "Debug::NoLocking=true", "dist-upgrade"], timeout=120)
     if rc != 0:
@@ -249,7 +639,9 @@ def section_updates():
     lists = glob.glob("/var/lib/apt/lists/*_InRelease") + glob.glob("/var/lib/apt/lists/*_Release")
     last_refresh = max((os.path.getmtime(p) for p in lists), default=None)
     reboot_pkgs = (read("/run/reboot-required.pkgs") or "").split()
-    return {"available": True, "upgradable": len(upgrades), "security": sum(1 for u in upgrades if u["security"]),
+    extra = {}
+    probe(extra, "last_upgrade", _last_upgrade)
+    return {**extra, "available": True, "upgradable": len(upgrades), "security": sum(1 for u in upgrades if u["security"]),
             "packages": upgrades[:200],
             "lists_present": bool(lists),
             "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last_refresh)) if last_refresh else None,

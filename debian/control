@@ -271,8 +271,11 @@ Description: NEXUS Updater
 Package: nexus-control-center
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
- libkscreen-bin, xkb-data, polkitd, pulseaudio-utils
-Recommends: network-manager, bluez, pipewire-pulse, wireplumber, upower, power-profiles-daemon
+ libkscreen-bin, xkb-data, polkitd, pkexec, pulseaudio-utils, python3, passwd,
+ accountsservice, nexus-hardening, apt,
+ qml6-module-qtquick-dialogs, qml6-module-qtquick-effects
+Recommends: network-manager, bluez, pipewire-pulse, wireplumber, upower, power-profiles-daemon,
+ nexus-updater, nexus-security-center
 Suggests: network-manager-openvpn
 Description: NEXUS Control Center
  The system settings application of NEXUS OS: Wi-Fi, wired networking and

@@ -11,10 +11,9 @@
 #   scripts/dev.sh exec --dir disks -- bash /src/applications/disk-manager/tests/udisks-rig.sh <script-or-command> [args...]
 #
 # Safety measures (the machine's real disks must never be touched):
-#   * /dev is replaced, in this mount namespace only, by a tmpfs that holds
-#     nothing but the basic character devices and the loop devices this rig
-#     creates. The node of the real disk (/dev/vda …) does not exist here, so
-#     no tool started from the rig can open it.
+#   * In this mount namespace only, the device node of every block device
+#     that is not a loop device (/dev/vda …) is covered by an empty regular
+#     file, so no tool started from the rig can open a real disk.
 #   * NEXUS_DISKS_TEST_LOOP_ONLY=1 is exported: the application back-end then
 #     refuses every modifying action on anything that is not a loop device.
 #   * rig_guard <device> must be called by test scripts before each modifying
@@ -56,7 +55,18 @@ rig_cleanup() {
     for dev in "${RIG_LOOPS[@]}"; do
         losetup -d "$dev" 2>/dev/null && rig_log "detached $dev"
     done
+    udevadm settle --timeout=5 2>/dev/null
     [ -n "${UDEVD_PID:-}" ] && kill "$UDEVD_PID" 2>/dev/null
+    # udev's /dev/block/MAJ:MIN links for our devices live in the shared devtmpfs: remove them.
+    if [ -d /dev/block ]; then
+        for link in /dev/block/*; do
+            [ -L "$link" ] || continue
+            for dev in "${RIG_LOOPS[@]}"; do
+                case "$(readlink "$link")" in "../$(basename "$dev")"|"../$(basename "$dev")p"[0-9]*) rm -f "$link" ;; esac
+            done
+        done
+        [ "${DEV_BLOCK_EXISTED:-1}" = 0 ] && rmdir /dev/block 2>/dev/null
+    fi
     [ -n "${BUS_PID:-}" ] && kill "$BUS_PID" 2>/dev/null
     sleep 0.3
     for dev in "${RIG_LOOPS[@]}"; do
@@ -66,22 +76,34 @@ rig_cleanup() {
 }
 trap rig_cleanup EXIT
 
-# ---- private /dev -----------------------------------------------------------
-mount -t tmpfs -o mode=755,nosuid tmpfs /dev || exit 1
-mknod -m 666 /dev/null c 1 3; mknod -m 666 /dev/zero c 1 5; mknod -m 666 /dev/full c 1 7
-mknod -m 666 /dev/random c 1 8; mknod -m 666 /dev/urandom c 1 9; mknod -m 666 /dev/tty c 5 0
-mknod -m 660 /dev/loop-control c 10 237
-[ -e /sys/class/misc/device-mapper/dev ] && { mkdir -p /dev/mapper; mknod -m 600 /dev/mapper/control c $(tr ':' ' ' < /sys/class/misc/device-mapper/dev); }
-mkdir -p /dev/shm /dev/pts; mount -t tmpfs tmpfs /dev/shm; mount -t devpts devpts /dev/pts 2>/dev/null
-ln -s /proc/self/fd /dev/fd
+# ---- /dev: real disks are masked ---------------------------------------------
+# /dev stays the kernel's devtmpfs (partition nodes must appear the moment
+# the kernel creates them), but in this private mount namespace every block
+# device node that is not a loop device is covered by an empty regular file.
+: > "$RIG/masked"
+for node in /dev/*; do
+    [ -b "$node" ] || continue
+    case "$(basename "$node")" in loop*) continue ;; esac
+    mount --bind "$RIG/masked" "$node" || { rig_log "cannot mask $node — aborting"; exit 1; }
+    rig_log "masked $node"
+done
+for node in /dev/*; do
+    [ -b "$node" ] || continue
+    case "$(basename "$node")" in loop*) ;; *) rig_log "unmasked block device $node — aborting"; exit 1 ;; esac
+done
+DEV_BLOCK_EXISTED=0; [ -d /dev/block ] && DEV_BLOCK_EXISTED=1
 # udev needs a writable sysfs (uevent files) — private to this namespace.
 mount -t sysfs sysfs /sys 2>/dev/null || mount -o remount,rw /sys
 
-# ---- udev: creates/removes the nodes of loop and device-mapper devices only --
-mkdir -p /run/udev/rules.d
-cat > /run/udev/rules.d/00-nexus-rig.rules <<'RULES'
-SUBSYSTEM=="block", KERNEL=="loop*|dm-*", ACTION=="add|change", RUN+="/bin/sh -c 'test -b /dev/%k || mknod -m 660 /dev/%k b %M %m'"
-SUBSYSTEM=="block", KERNEL=="loop*|dm-*", ACTION=="remove", RUN+="/bin/rm -f /dev/%k"
+# ---- udev: only what UDisks needs, and only for loop devices -----------------
+# The distribution's rules are hidden (they would create /dev/disk/by-*
+# links and change node permissions in the machine's shared /dev); the one
+# rule here just probes loop devices with blkid.
+mkdir -p "$RIG/no-rules" /run/udev/rules.d
+mount --bind "$RIG/no-rules" /usr/lib/udev/rules.d
+[ -d /etc/udev/rules.d ] && mount --bind "$RIG/no-rules" /etc/udev/rules.d
+cat > /run/udev/rules.d/60-nexus-rig.rules <<'RULES'
+SUBSYSTEM=="block", KERNEL=="loop*", IMPORT{builtin}="blkid"
 RULES
 /usr/lib/systemd/systemd-udevd --daemon >"$RIG/udevd.log" 2>&1
 UDEVD_PID="$(pgrep -n -f 'systemd-udevd --daemon')"
@@ -135,12 +157,8 @@ rig_loop() {
     file="$(mktemp "$RIG/disk.XXXXXX.img")"
     truncate -s "${size}M" "$file"
     [ "$BASHPID" = "$$" ] || { rig_log "rig_loop must not be called in a subshell"; return 1; }
-    dev="$(losetup -f)" || return 1
-    dev="${dev%% *}"            # "/dev/loopN (lost)" while the node does not exist yet
-    n="${dev#/dev/loop}"
-    case "$n" in ''|*[!0-9]*) rig_log "unexpected free loop device '$dev'"; return 1 ;; esac
-    [ -b "$dev" ] || mknod -m 660 "$dev" b 7 "$n"
-    losetup -P "$dev" "$file" || return 1
+    dev="$(losetup -f --show -P "$file")" || return 1
+    case "$dev" in /dev/loop[0-9]*) ;; *) rig_log "unexpected loop device '$dev'"; return 1 ;; esac
     RIG_LOOPS+=("$dev")
     udevadm settle --timeout=10 2>/dev/null
     RIG_DEV="$dev"

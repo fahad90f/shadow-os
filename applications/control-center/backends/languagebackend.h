@@ -67,7 +67,7 @@ public:
     QString sessionLanguage() const;
     QString language() const { return m_selected.value(QStringLiteral("LANG")); }
     // One per format category: category, title, value (selected locale, empty
-    // = same as the language), effective, example.
+    // = same as the language), effective, effectiveName, example, generated.
     QVariantList formats() const;
     bool dirty() const;
     QStringList toGenerate() const;

@@ -15,6 +15,7 @@
 //     create  /dev/X <offset> <size> [fstype] [label]
 //     image   /dev/X <file>     restore /dev/X <file>
 //     image-cancel /dev/X <file> <cancel-after-bytes>
+//     watch-jobs   /dev/X <seconds>       print every change of the job list
 //
 // The driver itself refuses to run unless NEXUS_DISKS_TEST_LOOP_ONLY=1 is
 // set, which makes the back-end reject every modifying action on anything
@@ -99,6 +100,26 @@ int main(int argc, char **argv)
     });
 
     const auto arg = [&args](int i) { return args.value(i); };
+    if (action == QLatin1String("watch-jobs")) {
+        // The job list exactly as the user interface receives it (jobsChanged).
+        QObject::connect(&client, &UDisksClient::jobsChanged, &app, [&client] {
+            const QVariantList jobs = client.jobs();
+            for (const QVariant &j : jobs) {
+                const QVariantMap m = j.toMap();
+                std::printf("job %s [%s] on %s progressValid=%d progress=%.2f cancelable=%d\n",
+                            qPrintable(m.value(QStringLiteral("operation")).toString()), qPrintable(m.value(QStringLiteral("label")).toString()),
+                            qPrintable(m.value(QStringLiteral("targets")).toStringList().join(QLatin1Char(','))),
+                            int(m.value(QStringLiteral("progressValid")).toBool()), m.value(QStringLiteral("progress")).toDouble(),
+                            int(m.value(QStringLiteral("cancelable")).toBool()));
+            }
+            if (jobs.isEmpty())
+                std::printf("no jobs\n");
+            std::fflush(stdout);
+        });
+        QTimer::singleShot(int(arg(2).toDouble() * 1000), &app, &QCoreApplication::quit);
+        app.exec();
+        return 0;
+    }
     if (action == QLatin1String("refusal")) {
         const QString refusal = client.destructiveRefusal(path);
         std::printf("%s\n", QJsonDocument(QJsonObject{{QStringLiteral("refusal"), refusal}}).toJson(QJsonDocument::Compact).constData());

@@ -568,7 +568,7 @@ NxPage {
                 color: deleteFiles.checked ? Theme.danger : Theme.textMuted
                 font.pixelSize: Theme.fontSizeSmall
                 text: deleteFiles.checked ? qsTr("All files of this person are deleted permanently.")
-                                          : qsTr("The files stay in the home folder and belong to nobody until an administrator deals with them.")
+                                          : qsTr("The files stay in the home folder. An account created later can receive the same numeric ID and would then own them, so move or delete them soon.")
             }
             Label {
                 Layout.fillWidth: true

@@ -58,6 +58,7 @@ class EditorDocument : public QObject
     Q_PROPERTY(int matchCount READ matchCount NOTIFY matchesChanged)
     Q_PROPERTY(QString searchError READ searchError NOTIFY matchesChanged)
     Q_PROPERTY(int layoutRevision READ layoutRevision NOTIFY layoutRevisionChanged)
+    Q_PROPERTY(int insertMilliseconds READ insertMilliseconds NOTIFY loaded)
 
 public:
     explicit EditorDocument(QObject *parent = nullptr);
@@ -91,6 +92,8 @@ public:
     int matchCount() const { return int(m_matches.size()); }
     QString searchError() const { return m_searchError; }
     int layoutRevision() const { return m_layoutRevision; }
+    // How long putting the text of the last load into the document took (diagnostics).
+    int insertMilliseconds() const { return m_insertMs; }
 
     // ---- files -------------------------------------------------------------
     // Asynchronous; ends with loaded() or loadFailed(message). An empty
@@ -188,6 +191,7 @@ private:
     QString m_notice;
     int m_loadSerial = 0;
     int m_layoutRevision = 0;
+    int m_insertMs = 0;
 
     QFileSystemWatcher m_watcher;
     QTimer m_diskTimer;

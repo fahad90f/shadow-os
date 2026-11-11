@@ -8,6 +8,7 @@
 #include <KSyntaxHighlighting/Theme>
 
 #include <QAbstractTextDocumentLayout>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -378,12 +379,15 @@ void EditorDocument::load(const QString &path, const QString &encoding)
         }
         // The definition is in place before the text goes in, so every line
         // is highlighted exactly once — and a huge file never is.
+        QElapsedTimer timer;
+        timer.start();
         d->setUndoRedoEnabled(false);
         d->clear();
         applyDefinition(decoded.text.size());
         d->setPlainText(decoded.text);
         d->setUndoRedoEnabled(true);
         d->setModified(false);
+        m_insertMs = int(timer.elapsed());
 
         m_encoding = decoded.encoding;
         m_bom = decoded.bom;
