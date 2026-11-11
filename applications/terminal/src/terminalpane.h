@@ -126,6 +126,7 @@ Q_SIGNALS:
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private:
     void createTerminal();
@@ -137,6 +138,7 @@ private:
     void showNotice(const QString &text, bool offerRestart);
     void hideNotice();
     void updateFrame();
+    void updateDim();
     void applyFont();
     void pasteText(const QString &text);
     void handleDrop(QDropEvent *event);
@@ -148,6 +150,7 @@ private:
     QTermWidget *m_term = nullptr;
     QPointer<QWidget> m_display;            // QTermWidget's terminal display (its focus proxy)
 
+    QWidget *m_dim = nullptr;               // faint scrim over an inactive split pane
     QWidget *m_notice = nullptr;
     QLabel *m_noticeLabel = nullptr;
     QPushButton *m_restartButton = nullptr;

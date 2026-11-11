@@ -1,3 +1,12 @@
+# SHADOW Terminal colour scheme — "SHADOW Obsidian" (dark).
+#
+# Rendered from the design tokens by scripts/gen-tokens.py; nothing here is a
+# literal colour. A striking neon-on-obsidian look: a near-black ground, a
+# cool-tinted foreground and a vivid-but-legible ANSI palette built from the
+# Shadow brand accents (cyan / blue / violet) and the semantic status colours.
+# The "Intense" slots (bold / bright text) are lifted toward the foreground so
+# they glow against the dark ground; the "Faint" slots sink back into it.
+
 [Background]
 Color=@{bgBase}
 
@@ -5,13 +14,13 @@ Color=@{bgBase}
 Color=@{bgRaised}
 
 [BackgroundFaint]
-Color=@{bgBase}
+Color=@{mix:bgBase:shadow:0.35}
 
 [Foreground]
 Color=@{textPrimary}
 
 [ForegroundIntense]
-Color=@{textPrimary}
+Color=@{mix:textPrimary:accent.cyan:0.08}
 
 [ForegroundFaint]
 Color=@{textSecondary}
@@ -29,58 +38,58 @@ Color=@{bgRaised}
 Color=@{danger}
 
 [Color1Intense]
-Color=@{mix:danger:textPrimary:0.28}
+Color=@{mix:danger:textPrimary:0.40}
 
 [Color1Faint]
-Color=@{mix:danger:bgBase:0.40}
+Color=@{mix:danger:bgBase:0.45}
 
 [Color2]
 Color=@{success}
 
 [Color2Intense]
-Color=@{mix:success:textPrimary:0.35}
+Color=@{mix:success:textPrimary:0.45}
 
 [Color2Faint]
-Color=@{mix:success:bgBase:0.40}
+Color=@{mix:success:bgBase:0.45}
 
 [Color3]
 Color=@{warning}
 
 [Color3Intense]
-Color=@{mix:warning:textPrimary:0.35}
+Color=@{mix:warning:textPrimary:0.45}
 
 [Color3Faint]
-Color=@{mix:warning:bgBase:0.40}
+Color=@{mix:warning:bgBase:0.45}
 
 [Color4]
 Color=@{accent.blue}
 
 [Color4Intense]
-Color=@{mix:accent.blue:textPrimary:0.30}
+Color=@{mix:accent.blue:textPrimary:0.42}
 
 [Color4Faint]
-Color=@{mix:accent.blue:bgBase:0.40}
+Color=@{mix:accent.blue:bgBase:0.45}
 
 [Color5]
 Color=@{accent.violet}
 
 [Color5Intense]
-Color=@{mix:accent.violet:textPrimary:0.30}
+Color=@{mix:accent.violet:textPrimary:0.42}
 
 [Color5Faint]
-Color=@{mix:accent.violet:bgBase:0.40}
+Color=@{mix:accent.violet:bgBase:0.45}
 
 [Color6]
 Color=@{accent.cyan}
 
 [Color6Intense]
-Color=@{mix:accent.cyan:textPrimary:0.40}
+Color=@{mix:accent.cyan:textPrimary:0.50}
 
 [Color6Faint]
-Color=@{mix:accent.cyan:bgBase:0.40}
+Color=@{mix:accent.cyan:bgBase:0.45}
 
 [Color7]
-Color=@{mix:textSecondary:textPrimary:0.35}
+Color=@{mix:textSecondary:textPrimary:0.55}
 
 [Color7Intense]
 Color=@{textPrimary}

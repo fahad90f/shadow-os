@@ -25,6 +25,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QResizeEvent>
 #include <QScrollBar>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -113,6 +114,16 @@ TerminalPane::TerminalPane(const PaneSpec &spec, QWidget *parent)
     connect(m_restartButton, &QPushButton::clicked, this, &TerminalPane::restart);
     connect(m_closeButton, &QPushButton::clicked, this, [this] { Q_EMIT closeRequested(this); });
 
+    // A faint scrim laid over the terminal while this pane is the inactive one
+    // of a split, so the focused pane reads as the live one. Transparent to the
+    // mouse (a click still reaches the terminal and focuses the pane) and kept
+    // above the terminal display. Its colour comes from the style sheet.
+    m_dim = new QWidget(this);
+    m_dim->setObjectName(QStringLiteral("PaneDim"));
+    m_dim->setAttribute(Qt::WA_StyledBackground, true);
+    m_dim->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    m_dim->hide();
+
     createTerminal();
     updateFrame();
 
@@ -139,7 +150,10 @@ void TerminalPane::createTerminal()
     m_term = new QTermWidget(0, this);
     // The size is shown in the status bar instead of a pop-up on every resize.
     m_term->setTerminalSizeHint(false);
-    m_term->setMargin(Tokens::SpaceXs + Tokens::SpaceXxs);
+    m_term->setMargin(Tokens::SpaceSm);
+    // Bold text uses the scheme's "Intense" colours — the neon lift of the
+    // SHADOW schemes — rather than only a heavier weight.
+    m_term->setBoldIntense(true);
     m_term->setContextMenuPolicy(Qt::CustomContextMenu);
     m_term->setMotionAfterPasting(2);                   // scroll to the end
     m_term->setTrimPastedTrailingNewlines(false);
@@ -207,6 +221,12 @@ void TerminalPane::createTerminal()
     m_appliedScrollback = INT_MIN;
     applyProfile();
     applySettings();
+
+    // Keep the dim scrim above the freshly created terminal display.
+    if (m_dim) {
+        m_dim->raise();
+        updateDim();
+    }
 }
 
 bool TerminalPane::start()
@@ -329,12 +349,14 @@ void TerminalPane::showNotice(const QString &text, bool offerRestart)
     m_restartButton->setVisible(offerRestart);
     m_closeButton->show();
     m_notice->show();
+    updateDim();
 }
 
 void TerminalPane::hideNotice()
 {
     m_suspendedHint = false;
     m_notice->hide();
+    updateDim();
 }
 
 void TerminalPane::onKeyPressed(const QKeyEvent *event)
@@ -574,6 +596,7 @@ void TerminalPane::setActive(bool active)
     if (m_active == active)
         return;
     m_active = active;
+    updateDim();
     update();
 }
 
@@ -590,7 +613,31 @@ void TerminalPane::updateFrame()
     // A lone pane fills the tab; panes of a split tab are outlined.
     const int border = m_single ? 0 : Tokens::BorderWidth;
     m_layout->setContentsMargins(border, border, border, border);
+    updateDim();
     update();
+}
+
+void TerminalPane::updateDim()
+{
+    if (!m_dim)
+        return;
+    // Only an inactive pane of a split tab is dimmed.
+    const bool dim = !m_active && !m_single;
+    if (dim) {
+        const int border = Tokens::BorderWidth;
+        QRect area = rect().adjusted(border, border, -border, -border);
+        if (m_notice && m_notice->isVisible())
+            area.setBottom(area.bottom() - m_notice->height());
+        m_dim->setGeometry(area);
+        m_dim->raise();
+    }
+    m_dim->setVisible(dim);
+}
+
+void TerminalPane::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateDim();
 }
 
 void TerminalPane::paintEvent(QPaintEvent *)

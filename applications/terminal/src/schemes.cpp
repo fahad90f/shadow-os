@@ -41,9 +41,24 @@ QString findDirectory()
     return QString::fromLatin1(kEmbedded);
 }
 
+// Every scheme SHADOW ships of its own (the generated Obsidian/Daylight pair
+// and the standalone built-ins) has a "Shadow" file-name prefix; they are
+// grouped ahead of the stock QTermWidget schemes and shown by their
+// Description.
 bool isShadow(const QString &name)
 {
-    return name == QLatin1String(kDark) || name == QLatin1String(kLight);
+    return name.startsWith(QLatin1String("Shadow"));
+}
+
+// Sort rank: Obsidian first, Daylight second, the other SHADOW schemes next
+// (alphabetically), then everything QTermWidget ships.
+int rank(const QString &name)
+{
+    if (name == QLatin1String(kDark))
+        return 0;
+    if (name == QLatin1String(kLight))
+        return 1;
+    return isShadow(name) ? 2 : 3;
 }
 
 } // namespace
@@ -66,11 +81,9 @@ QStringList available()
     QStringList names = QTermWidget::availableColorSchemes();
     names.removeDuplicates();
     std::sort(names.begin(), names.end(), [](const QString &a, const QString &b) {
-        const bool na = isShadow(a), nb = isShadow(b);
-        if (na != nb)
-            return na;
-        if (na && nb)
-            return a == QLatin1String(kDark);      // Obsidian before Daylight
+        const int ra = rank(a), rb = rank(b);
+        if (ra != rb)
+            return ra < rb;
         return a.compare(b, Qt::CaseInsensitive) < 0;
     });
     return names;

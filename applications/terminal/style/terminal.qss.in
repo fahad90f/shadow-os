@@ -39,8 +39,8 @@ QDialog {
 }
 
 #SearchBar {
-    background-color: @{bgOverlay};
-    border: @{size.borderWidth}px solid @{border};
+    background-color: @{mix:bgOverlay:accent:0.06};
+    border: @{size.borderWidth}px solid @{mix:border:accent:0.35};
     border-radius: @{radius.md}px;
 }
 
@@ -260,8 +260,11 @@ QTabBar::tab {
     background-color: transparent;
     color: @{textSecondary};
     border: none;
-    border-radius: @{radius.sm}px;
-    margin: @{space.xs}px @{space.xxs}px;
+    /* A flat bottom edge carries the neon indicator of the active tab. */
+    border-top-left-radius: @{radius.sm}px;
+    border-top-right-radius: @{radius.sm}px;
+    border-bottom: @{size.focusRing}px solid transparent;
+    margin: @{space.xs}px @{space.xxs}px 0 @{space.xxs}px;
     padding: 0 @{space.xs}px 0 @{space.sm}px;
     font-weight: @{fontWeight.medium};
 }
@@ -269,11 +272,13 @@ QTabBar::tab {
 QTabBar::tab:hover {
     background-color: @{rgba:textPrimary:0.06};
     color: @{textPrimary};
+    border-bottom-color: @{rgba:accent:0.35};
 }
 
 QTabBar::tab:selected {
-    background-color: @{rgba:accent:0.16};
+    background-color: @{mix:bgBase:accent:0.14};
     color: @{textPrimary};
+    border-bottom-color: @{accent};
 }
 
 QTabBar::tear {
@@ -713,18 +718,18 @@ QScrollBar {
 }
 
 QScrollBar:vertical {
-    width: @{radius.md}px;
+    width: @{space.sm}px;
     margin: 0;
 }
 
 QScrollBar:horizontal {
-    height: @{radius.md}px;
+    height: @{space.sm}px;
     margin: 0;
 }
 
 QScrollBar::handle {
-    background-color: @{rgba:textMuted:0.55};
-    border-radius: @{radius.xs}px;
+    background-color: @{rgba:textMuted:0.50};
+    border-radius: @{space.xs}px;
 }
 
 QScrollBar::handle:vertical {
@@ -738,11 +743,11 @@ QScrollBar::handle:horizontal {
 }
 
 QScrollBar::handle:hover {
-    background-color: @{rgba:textMuted:0.9};
+    background-color: @{rgba:accent:0.75};
 }
 
 QScrollBar::handle:pressed {
-    background-color: @{textSecondary};
+    background-color: @{accent};
 }
 
 /* Nothing to scroll (set by the terminal pane): no handle at all. */
@@ -773,6 +778,14 @@ QSplitter::handle:hover {
 
 QSplitter::handle:pressed {
     background-color: @{accent};
+}
+
+/* The faint scrim over the inactive pane of a split: a translucent wash of the
+   base ground, so the focused pane reads as the live one without hiding the
+   dimmed pane's contents. */
+#PaneDim {
+    background-color: @{rgba:bgBase:0.55};
+    border: none;
 }
 
 #PaneNotice {

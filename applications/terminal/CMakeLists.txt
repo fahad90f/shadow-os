@@ -131,6 +131,24 @@ terminal_render(style/ShadowObsidian.colorscheme.in
 terminal_render(style/ShadowDaylight.colorscheme.in
     "${TERMINAL_BUILD_DATA_DIR}/color-schemes/ShadowDaylight.colorscheme" light ${TERMINAL_ACCENT_DEFAULT})
 
+# Additional built-in schemes. Unlike Obsidian/Daylight these are original,
+# standalone palettes (not derived from the appearance tokens): they are copied
+# verbatim into the data directory next to the generated pair. QTermWidget
+# discovers every ".colorscheme" in that directory, so no extra registration is
+# needed; a copy is embedded in the binary as the same fallback as the others.
+set(TERMINAL_EXTRA_SCHEMES ShadowNeon ShadowMatrix ShadowCyberpit ShadowMonoGhost)
+foreach(_scheme IN LISTS TERMINAL_EXTRA_SCHEMES)
+    set(_src "${CMAKE_CURRENT_SOURCE_DIR}/style/${_scheme}.colorscheme")
+    set(_dst "${TERMINAL_BUILD_DATA_DIR}/color-schemes/${_scheme}.colorscheme")
+    add_custom_command(
+        OUTPUT "${_dst}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "${_dst}"
+        DEPENDS "${_src}"
+        COMMENT "Installing colour scheme ${_scheme}"
+        VERBATIM)
+    list(APPEND TERMINAL_SCHEME_FILES "${_dst}")
+endforeach()
+
 # ---- executable ----------------------------------------------------------------------
 file(GLOB TERMINAL_SOURCES CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" src/*.cpp src/*.h)
 file(GLOB TERMINAL_ICONS CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" icons/*.svg)

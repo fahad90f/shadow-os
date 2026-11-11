@@ -30,11 +30,11 @@ struct Profile
     QString workingDir;
 
     QString fontFamily;                                     // monospace family
-    int fontSize = 11;                                      // points
+    int fontSize = 12;                                      // points
     QString colorScheme = QStringLiteral("auto");           // "auto" follows the system appearance
     QString cursorShape = QStringLiteral("block");          // block | underline | ibeam
     bool cursorBlink = true;
-    int scrollbackLines = 10000;                            // -1 unlimited, 0 none
+    int scrollbackLines = 20000;                            // -1 unlimited, 0 none
     QString bell = QStringLiteral("visual");                // none | visual | sound
     int opacity = 100;                                      // percent, 30–100
     bool holdOnExit = false;                                // keep the pane when the shell exits

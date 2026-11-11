@@ -24,7 +24,7 @@ terminal view is [QTermWidget](https://github.com/lxqt/qtermwidget) (a
 | Clipboard | `Ctrl+Shift+C/V`, `Shift+Ins` and middle click for the primary selection, optional copy on select, context menu. Pasted text is sanitised and multi-line pastes are confirmed (see *Security*). |
 | Profiles | Name, command, working directory rule, font family (fixed-width only) and size, colour scheme, cursor shape/blink, scrollback (0 … 1 000 000 lines or unlimited), bell (none/visual/sound), opacity, "keep the pane open". Create, duplicate, delete, choose the default. |
 | Zoom | `Ctrl++`, `Ctrl+-`, `Ctrl+0`, `Ctrl`+wheel — per pane, on top of the profile's size. |
-| Colour schemes | "SHADOW Obsidian" and "SHADOW Daylight" (generated from the design tokens) plus every scheme QTermWidget ships. *Automatic* follows the system appearance. |
+| Colour schemes | "SHADOW Obsidian" (dark) and "SHADOW Daylight" (light), generated from the design tokens, plus four original built-ins — "SHADOW Neon", "SHADOW Matrix", "SHADOW Cyberpit" and "SHADOW Mono Ghost" — and every scheme QTermWidget ships. The SHADOW schemes are listed first. *Automatic* follows the system appearance (Obsidian/Daylight). |
 | Shortcuts | Preferences → Shortcuts lists every command with two editable bindings; conflicts and keys that would be taken away from the terminal are refused. |
 | Directory | New tabs and splits start in the directory of the active terminal (`QTermWidget::workingDirectory()`); `--workdir`; "Open File Manager Here" starts `shadow-files <dir>`. |
 | Processes | Foreground process (name, PID) in the status bar and the tab tool tip; Terminal → Send Signal (INT, TERM, KILL with confirmation, STOP, CONT) to the foreground process group; closing asks when something other than an idle shell would be ended. |
@@ -84,10 +84,20 @@ produces, for every appearance mode × accent in
   variant's colours, because Qt loads SVG from a style sheet only with the
   optional `qt6-svg-plugins`,
 * `src/tokens.h.in` → sizes, radii, fonts as C++ constants,
-* `style/Shadow{Obsidian,Daylight}.colorscheme.in` → the two terminal colour
-  schemes, installed to `/usr/share/shadow/terminal/color-schemes` and
-  registered with `QTermWidget::addCustomColorSchemeDir()` (a copy is embedded
-  in the binary as a fallback).
+* `style/Shadow{Obsidian,Daylight}.colorscheme.in` → the two token-driven
+  terminal colour schemes, installed to
+  `/usr/share/shadow/terminal/color-schemes` and registered with
+  `QTermWidget::addCustomColorSchemeDir()` (a copy is embedded in the binary as
+  a fallback).
+
+The four extra built-ins (`style/Shadow{Neon,Matrix,Cyberpit,MonoGhost}.colorscheme`)
+are original standalone palettes — hand-authored literal colours, *not* derived
+from the appearance tokens — copied verbatim into the same `color-schemes`
+directory next to the generated pair. QTermWidget discovers every
+`.colorscheme` in that directory, so they need no extra registration; they are
+embedded in the binary as the same fallback. `Schemes` (src/schemes.cpp) groups
+every `Shadow*` scheme ahead of QTermWidget's stock schemes and shows each by
+its `Description`.
 
 `Theme` (src/theme.cpp) installs palette, font and style sheet and switches
 them when `Shadow::Appearance` changes; terminals on the *Automatic* scheme
@@ -164,17 +174,33 @@ Run on 2026-11-11 in the build chroot:
 
 * `SHADOW_JOBS=2 scripts/dev.sh build --dir terminal --only terminal`: builds.
 * `tests/desktop/smoke.sh --dir terminal terminal`: 2 passed, 0 failed
-  (`shadow-terminal`; `shadow-terminal --workdir /tmp -e /bin/sh`).
-* Nested KWin session (`scripts/dev.sh nested --dir terminal ...`), screenshots
-  in `build/work/shots/`:
-  * `terminal-n1-type.png`: started with `--no-restore --workdir /usr/share`;
-    typed `pwd; echo HELLO-$((6*7))` and it printed `/usr/share` and `HELLO-42`.
-  * `terminal-n2-newtab.png`: `Ctrl+Shift+T` opened a second tab in the same directory.
-  * `terminal-n3-split.png`: `Ctrl+Shift+R` split right; the new pane started in `/usr/share`.
-  * `terminal-n4-confirm.png`: `sleep 300` running, `Ctrl+Shift+W` shows
-    "Close this tab? sleep (PID …) is still running", with Cancel and Close.
-  * `terminal-n5-e.png`: `shadow-terminal -e /bin/sh -c "echo …; sleep 4"` ran
-    the command. After it ended, the window was gone (checked with `pgrep`).
+  (`shadow-terminal`; `shadow-terminal --workdir /tmp -e /bin/sh`), no style
+  sheet parse errors.
+* `shadow-terminal --dump schemes`: all six SHADOW schemes present and listed
+  first (Obsidian, Daylight, then Cyberpit, Matrix, Mono Ghost, Neon), each with
+  its display label; `automatic` resolves dark→Obsidian, light→Daylight.
 
-Not tested: SSH connections, preferences dialog, session restore, search,
-paste confirmation, signals menu, light theme.
+Nested KWin session (`scripts/dev.sh nested --dir terminal ...`), screenshots in
+`build/work/shots/` (viewed and iterated on):
+
+* `terminal-fx-obsidian.png`: default Obsidian. A colour-test script
+  (`sh colortest.sh`) exercising the 16 ANSI colours, the full 256-colour cube,
+  a 24-bit truecolor gradient and bold/italic/underline — all render correctly,
+  so `TERM=xterm-256color`/`COLORTERM=truecolor` are verified end to end.
+* `terminal-fx-neon.png`, `terminal-fx-matrix.png`, `terminal-fx-cyberpit.png`,
+  `terminal-fx-ghost.png`: the same colour test under each new built-in scheme
+  (selected through a `--profile`); the status bar confirms the active profile.
+* `terminal-fx-tabs.png`: three tabs, the active one carrying the neon
+  underline indicator.
+* `terminal-fx-split.png`: `Ctrl+Shift+R` split; the inactive (left) pane is
+  dimmed by the faint scrim while the active (right) pane keeps its accent
+  outline and full brightness.
+* `terminal-fx-search.png`: `Ctrl+Shift+F` search bar over the split; typing
+  `root` selects the match in the scrollback.
+* `terminal-fx-daylight.png`: started with `--light` and the default
+  (`auto`) profile — the chrome and terminal both switch to the light
+  ShadowDaylight scheme, confirming the terminal follows
+  `~/.config/shadow/appearance.conf`.
+
+Not tested: SSH connections, preferences dialog, session restore, paste
+confirmation, signals menu.
