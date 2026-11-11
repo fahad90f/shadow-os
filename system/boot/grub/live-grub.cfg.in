@@ -12,7 +12,7 @@ if [ "$grub_platform" = "pc" ]; then
     insmod all_video
 fi
 
-set gfxmode=auto
+set gfxmode=1280x800,1280x720,1024x768,auto
 set gfxpayload=keep
 if loadfont $prefix/fonts/unicode.pf2 ; then
     insmod gfxterm

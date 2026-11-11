@@ -12,16 +12,16 @@ terminal-height: "80%"
 terminal-border: "0"
 
 + image {
-    left = 50%-48
-    top = 12%
-    width = 96
-    height = 96
+    left = 50%-32
+    top = 6%
+    width = 64
+    height = 64
     file = "logo.png"
 }
 
 + label {
     left = 0
-    top = 12%+112
+    top = 6%+72
     width = 100%
     align = "center"
     text = "NEXUS OS"
@@ -30,10 +30,10 @@ terminal-border: "0"
 }
 
 + boot_menu {
-    left = 22%
-    top = 38%
-    width = 56%
-    height = 40%
+    left = 15%
+    top = 30%
+    width = 70%
+    height = 48%
     item_font = "NEXUS Sans Regular 16"
     item_color = "#94A3B8"
     selected_item_color = "#FFFFFF"
@@ -49,9 +49,9 @@ terminal-border: "0"
 
 + progress_bar {
     id = "__timeout__"
-    left = 22%
+    left = 15%
     top = 82%
-    width = 56%
+    width = 70%
     height = 18
     font = "NEXUS Sans Regular 16"
     text_color = "#94A3B8"
