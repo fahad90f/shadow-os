@@ -7,9 +7,10 @@ Original artwork, authored as geometry in this script so every variant
 (symbol, wordmark, lockups, monochrome) stays consistent:
 
   * Symbol: a hexagon — the shape of a shield and of a network cell — holding
-    the letter N drawn as a path between two nodes: a connection, a shadow.
+    the letter S drawn as a single flowing stroke between two nodes: a
+    connection that slips through, a shadow.
   * Wordmark: SHADOW in a constructed, single-weight geometric alphabet with
-    wide tracking; the E is three open bars, the X a plain crossing.
+    wide tracking.
 
 Colours come from the design tokens (brand gradient cyan → blue → violet).
 Output: assets/logos/*.svg
@@ -57,11 +58,14 @@ def symbol(size=256, *, mono=None, plate=False, glow=True):
         parts.append(f'<path d="{hexd}" fill="none" stroke="url(#nx-g)" stroke-width="14" stroke-linejoin="round" '
                      'opacity="0.55" filter="url(#nx-glow)"/>')
     parts.append(f'<path d="{hexd}" fill="none" stroke="{paint}" stroke-width="13" stroke-linejoin="round"/>')
-    # The N: up the left stem, across the diagonal, up the right stem.
-    parts.append(f'<path d="M92 170V88L164 168V86" fill="none" stroke="{n_paint}" stroke-width="15" '
+    # The S: a single flowing stroke from the upper node to the lower node.
+    s_path = ("M160 104 C160 90 146 84 128 84 C108 84 96 95 96 110 "
+              "C96 124 110 130 128 133 C146 136 160 142 160 156 "
+              "C160 171 146 176 128 176")
+    parts.append(f'<path d="{s_path}" fill="none" stroke="{n_paint}" stroke-width="16" '
                  'stroke-linecap="round" stroke-linejoin="round"/>')
     # Nodes where the connection starts and ends.
-    for (x, y, col) in ((92, 88, C1), (164, 168, C3)):
+    for (x, y, col) in ((160, 104, C1), (128, 176, C3)):
         parts.append(f'<circle cx="{x}" cy="{y}" r="13.5" fill="{mono or col}"/>')
         parts.append(f'<circle cx="{x}" cy="{y}" r="5.5" fill="{OBS if not mono else "none"}"/>' if not mono else "")
     parts.append("</svg>")
@@ -77,6 +81,10 @@ GLYPHS = {
     "U": (76, "M0 0V62A38 38 0 0 0 76 62V0"),
     "S": (70, "M68 12C56 2 40 0 30 0 12 0 2 12 2 25 2 40 14 46 35 50 56 54 68 60 68 75 68 88 58 100 40 100 26 100 12 96 0 86"),
     "O": (86, "M43 0A43 50 0 1 0 43 100 43 50 0 1 0 43 0Z"),
+    "H": (72, "M0 0V100M72 0V100M0 50H72"),
+    "A": (72, "M0 100L36 0L72 100M14 64H58"),
+    "D": (76, "M0 100V0H28A48 50 0 0 1 28 100Z"),
+    "W": (92, "M0 0L20 100L46 34L72 100L92 0"),
 }
 
 

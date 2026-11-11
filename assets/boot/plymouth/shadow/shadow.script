@@ -1,80 +1,114 @@
 # Shadow OS boot splash (Plymouth "script" module).
 #
-# Shows the logo with a progress bar; asks for the disk-encryption passphrase
-# and shows messages from the boot process. Pressing Escape switches to the
-# text log as usual — the splash never hides diagnostics that were asked for.
+# A glowing logo over a pulsing cyan halo, a cyan spinner ring and a slower
+# violet inner arc, and a progress bar with a soft glow. It also asks for the
+# disk-encryption passphrase and shows boot messages. Escape switches to the
+# text log as usual; the splash never hides diagnostics that were asked for.
 
-Window.SetBackgroundTopColor(0.020, 0.027, 0.051);
-Window.SetBackgroundBottomColor(0.020, 0.027, 0.051);
+Window.SetBackgroundTopColor(0.016, 0.022, 0.043);
+Window.SetBackgroundBottomColor(0.008, 0.012, 0.025);
 
-screen_w = Window.GetWidth();
-screen_h = Window.GetHeight();
-center_x = Window.GetX() + screen_w / 2;
-center_y = Window.GetY() + screen_h / 2;
+cx = Window.GetX() + Window.GetWidth() / 2;
+cy = Window.GetY() + Window.GetHeight() / 2;
 
-# ---- logo ---------------------------------------------------------------------
-logo.image = Image("logo.png");
-logo.sprite = Sprite(logo.image);
-logo.sprite.SetX(center_x - logo.image.GetWidth() / 2);
-logo.sprite.SetY(center_y - logo.image.GetHeight() / 2 - 60);
-logo.sprite.SetZ(10);
+fun centered(image, z) {
+    s = Sprite(image);
+    s.SetX(cx - image.GetWidth() / 2);
+    s.SetY(cy - image.GetHeight() / 2 - 40);
+    s.SetZ(z);
+    return s;
+}
+
+# ---- halo, rings, logo --------------------------------------------------------
+glow.image  = Image("glow.png");
+glow.sprite = centered(glow.image, 5);
+
+ring.image  = Image("ring.png");
+ring.sprite = centered(ring.image, 8);
+
+ring2.image  = Image("ring2.png");
+ring2.sprite = centered(ring2.image, 9);
+
+logo.image  = Image("logo.png");
+logo.sprite = centered(logo.image, 12);
 
 # ---- progress -----------------------------------------------------------------
 track.image = Image("track.png");
+track.x = cx - track.image.GetWidth() / 2;
+track.y = cy + 92;
 track.sprite = Sprite(track.image);
-track.x = center_x - track.image.GetWidth() / 2;
-track.y = center_y + 70;
 track.sprite.SetPosition(track.x, track.y, 10);
 
-bar.original = Image("bar.png");
+bar.full  = Image("bar.png");
+glowbar.full = Image("barglow.png");
 bar.sprite = Sprite();
-bar.sprite.SetPosition(track.x, track.y, 11);
+glowbar.sprite = Sprite();
 
 fun set_progress(fraction) {
-    if (fraction < 0.02) fraction = 0.02;
+    if (fraction < 0.015) fraction = 0.015;
     if (fraction > 1) fraction = 1;
-    width = Math.Int(bar.original.GetWidth() * fraction);
-    if (width < 1) width = 1;
-    bar.sprite.SetImage(bar.original.Crop(0, 0, width, bar.original.GetHeight()));
+    w = Math.Int(bar.full.GetWidth() * fraction);
+    if (w < 1) w = 1;
+    bar.sprite.SetImage(bar.full.Crop(0, 0, w, bar.full.GetHeight()));
+    bar.sprite.SetPosition(track.x, track.y, 11);
+    gw = Math.Int(glowbar.full.GetWidth() * fraction);
+    if (gw < 1) gw = 1;
+    glowbar.sprite.SetImage(glowbar.full.Crop(0, 0, gw, glowbar.full.GetHeight()));
+    glowbar.sprite.SetPosition(track.x, track.y - 1, 10);
 }
 set_progress(0);
 
-fun boot_progress_callback(duration, progress) {
-    if (Plymouth.GetMode() == "boot")
-        set_progress(progress);
+fun boot_progress_cb(duration, progress) {
+    if (Plymouth.GetMode() == "boot") set_progress(progress);
 }
-Plymouth.SetBootProgressFunction(boot_progress_callback);
+Plymouth.SetBootProgressFunction(boot_progress_cb);
 
-# Shutdown and reboot have no meaningful progress: gently pulse the logo.
+# ---- wordmark -----------------------------------------------------------------
+title.image = Image.Text("SHADOW OS", 0.90, 0.95, 1.0, 1, "Sans 14");
+title.sprite = Sprite(title.image);
+title.sprite.SetPosition(cx - title.image.GetWidth() / 2, cy + 46, 12);
+
+# ---- animation ----------------------------------------------------------------
 tick = 0;
-fun refresh_callback() {
+fun refresh_cb() {
     tick++;
+    # Spin the rings in opposite directions (radians).
+    ring.sprite.SetImage(ring.image.Rotate(tick * 0.06));
+    ring.sprite.SetX(cx - ring.image.GetWidth() / 2);
+    ring.sprite.SetY(cy - ring.image.GetHeight() / 2 - 40);
+    ring2.sprite.SetImage(ring2.image.Rotate(-tick * 0.035));
+    ring2.sprite.SetX(cx - ring2.image.GetWidth() / 2);
+    ring2.sprite.SetY(cy - ring2.image.GetHeight() / 2 - 40);
+    # Pulse the halo.
+    glow.sprite.SetOpacity(0.55 + 0.30 * Math.Sin(tick / 16));
+
     if (Plymouth.GetMode() != "boot") {
+        # Shutdown / reboot: no progress, gently breathe the logo.
         track.sprite.SetOpacity(0);
         bar.sprite.SetOpacity(0);
-        logo.sprite.SetOpacity(0.65 + 0.35 * Math.Sin(tick / 25));
+        glowbar.sprite.SetOpacity(0);
+        logo.sprite.SetOpacity(0.7 + 0.3 * Math.Sin(tick / 18));
     }
 }
-Plymouth.SetRefreshFunction(refresh_callback);
+Plymouth.SetRefreshFunction(refresh_cb);
 
-# ---- messages -----------------------------------------------------------------
+# ---- boot messages ------------------------------------------------------------
 message.sprite = Sprite();
 fun show_message(text) {
-    message.image = Image.Text(text, 0.58, 0.64, 0.72, 1, "Sans 11");
+    message.image = Image.Text(text, 0.58, 0.64, 0.72, 1, "Sans 10");
     message.sprite.SetImage(message.image);
-    message.sprite.SetPosition(center_x - message.image.GetWidth() / 2, track.y + 150, 10);
+    message.sprite.SetPosition(cx - message.image.GetWidth() / 2, track.y + 150, 10);
 }
-fun display_message_callback(text) { show_message(text); }
-fun hide_message_callback(text) { message.sprite.SetImage(Image.Text("", 0, 0, 0)); }
-Plymouth.SetDisplayMessageFunction(display_message_callback);
-Plymouth.SetHideMessageFunction(hide_message_callback);
-Plymouth.SetMessageFunction(display_message_callback);
+fun clear_message() { message.sprite.SetImage(Image.Text("", 0, 0, 0)); }
+Plymouth.SetDisplayMessageFunction(fun (t) { show_message(t); });
+Plymouth.SetHideMessageFunction(fun (t) { clear_message(); });
+Plymouth.SetMessageFunction(fun (t) { show_message(t); });
 
 # ---- passphrase prompt --------------------------------------------------------
 entry.image = Image("entry.png");
 entry.sprite = Sprite(entry.image);
-entry.x = center_x - entry.image.GetWidth() / 2;
-entry.y = track.y + 40;
+entry.x = cx - entry.image.GetWidth() / 2;
+entry.y = track.y + 44;
 entry.sprite.SetPosition(entry.x, entry.y, 20);
 entry.sprite.SetOpacity(0);
 prompt.sprite = Sprite();
@@ -85,20 +119,18 @@ bullet_count = 0;
 fun hide_prompt() {
     entry.sprite.SetOpacity(0);
     prompt.sprite.SetOpacity(0);
-    for (i = 0; i < bullet_count; i++)
-        bullets[i].SetOpacity(0);
+    for (i = 0; i < bullet_count; i++) bullets[i].SetOpacity(0);
 }
 
-fun display_password_callback(text, count) {
+fun display_password_cb(prompt_text, count) {
     track.sprite.SetOpacity(0);
     bar.sprite.SetOpacity(0);
+    glowbar.sprite.SetOpacity(0);
     entry.sprite.SetOpacity(1);
-    prompt.image = Image.Text(text, 0.90, 0.91, 0.92, 1, "Sans 12");
+    prompt.image = Image.Text(prompt_text, 0.90, 0.91, 0.92, 1, "Sans 11");
     prompt.sprite.SetImage(prompt.image);
-    prompt.sprite.SetPosition(center_x - prompt.image.GetWidth() / 2, entry.y - 32, 20);
+    prompt.sprite.SetPosition(cx - prompt.image.GetWidth() / 2, entry.y - 30, 20);
     prompt.sprite.SetOpacity(1);
-    # At most as many bullets as fit into the box; the count itself is not a secret
-    # the box needs to reveal beyond that.
     max = Math.Int((entry.image.GetWidth() - 28) / 18);
     shown = count;
     if (shown > max) shown = max;
@@ -112,23 +144,19 @@ fun display_password_callback(text, count) {
         else bullets[i].SetOpacity(0);
     }
 }
-Plymouth.SetDisplayPasswordFunction(display_password_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_cb);
 
-fun display_normal_callback() {
+fun display_normal_cb() {
     hide_prompt();
     if (Plymouth.GetMode() == "boot") {
         track.sprite.SetOpacity(1);
         bar.sprite.SetOpacity(1);
+        glowbar.sprite.SetOpacity(1);
     }
 }
-Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayNormalFunction(display_normal_cb);
 
-fun display_question_callback(text, entry_text) {
-    show_message(text + " " + entry_text);
-}
-Plymouth.SetDisplayQuestionFunction(display_question_callback);
-
-fun quit_callback() {
-    logo.sprite.SetOpacity(1);
-}
-Plymouth.SetQuitFunction(quit_callback);
+Plymouth.SetDisplayQuestionFunction(fun (prompt_text, entry_text) {
+    show_message(prompt_text + " " + entry_text);
+});
+Plymouth.SetQuitFunction(fun () { logo.sprite.SetOpacity(1); });
