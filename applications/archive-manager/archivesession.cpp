@@ -302,7 +302,10 @@ bool ArchiveSession::passwordProblem(const QByteArray &out, const QByteArray &er
         *wrong = !m_password.isEmpty();
         return true;
     }
-    if (asked && m_password.isEmpty()) {
+    // With its normal output switched off (-bso0) the prompt is not visible;
+    // what remains is 7z giving up when it cannot read an answer.
+    const bool gaveUp = m_encrypted && all.contains("Break signaled");
+    if ((asked || gaveUp) && m_password.isEmpty()) {
         *wrong = false;
         return true;
     }
