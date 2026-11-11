@@ -1,0 +1,59 @@
+# NEXUS HORIZON desktop: the Debian packages behind the session. NEXUS's own
+# packages (shell, applications, themes) are listed in the variant file.
+
+# Display manager and session plumbing
+sddm
+dbus-user-session
+libpam-systemd
+polkitd
+pkexec
+rtkit
+xdg-user-dirs
+xdg-utils
+xdg-desktop-portal
+xdg-desktop-portal-kde
+xdg-desktop-portal-gtk
+
+# Compositor (pulled in by nexus-horizon as well; listed for clarity)
+kwin-wayland
+xwayland
+plasma-desktoptheme
+
+# Graphics: Mesa for Intel, AMD, Nouveau, virtual GPUs and software rendering
+libgl1-mesa-dri
+libegl-mesa0
+libgbm1
+mesa-vulkan-drivers
+mesa-va-drivers
+libglx-mesa0
+
+# Audio
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber
+alsa-utils
+
+# Networking, Bluetooth, power, storage services used by the desktop
+network-manager
+wpasupplicant
+wireless-regdb
+iw
+bluez
+upower
+power-profiles-daemon
+udisks2
+accountsservice
+packagekit
+appstream
+fwupd
+
+# Fonts
+fonts-inter-variable
+fonts-jetbrains-mono
+fonts-noto-core
+fonts-noto-color-emoji
+fonts-noto-mono
+
+# Everyday applications that are not NEXUS's own
+firefox-esr

@@ -348,8 +348,9 @@ def scenario_manual(args):
     vm = boot_installed(args, "installed", [(target, "virtio")], vars_file, None)
     try:
         verify_installed(vm, args, separate_home=True, swap="partition")
-        _, out = vm.run("cat /home/keep.txt; ls /old-system-file 2>&1 | tail -n1")
-        ok = "my existing home data" in out and "No such file" in out
+        # Locale-independent: the installed system may not speak English.
+        _, out = vm.run("cat /home/keep.txt; if [ -e /old-system-file ]; then echo STALE-PRESENT; else echo STALE-GONE; fi")
+        ok = "my existing home data" in out and "STALE-GONE" in out
         report("kept /home data survived; root was really reformatted", ok, out.strip().replace("\n", " | "))
         if not ok:
             raise TestFailure("manual mode did not keep /home or did not format /")
