@@ -20,6 +20,6 @@ apt-get install -y --no-install-recommends \
     reprepro gnupg git python3 ca-certificates curl
 if [ "$TEST_TOOLS" -eq 1 ]; then
     apt-get install -y --no-install-recommends \
-        qemu-system-x86 qemu-utils ovmf python3-pil imagemagick
+        qemu-system-x86 qemu-utils ovmf ipxe-qemu python3-pil imagemagick
 fi
 echo "host tools installed"

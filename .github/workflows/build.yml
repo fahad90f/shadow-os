@@ -149,7 +149,7 @@ jobs:
       - name: Test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf python3-pil imagemagick
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf ipxe-qemu python3-pil imagemagick
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
@@ -173,12 +173,18 @@ jobs:
           if-no-files-found: ignore
 
   kernel:
-    runs-on: ubuntu-24.04
+    # Each architecture is built on a native runner: Debian ships the kernel
+    # configuration of an architecture only in that architecture's package.
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - name: Free disk space
@@ -213,7 +219,7 @@ jobs:
       - name: Host tools
         run: |
           sudo scripts/host-setup.sh --no-test-tools
-          sudo apt-get install -y --no-install-recommends qemu-system-arm qemu-efi-aarch64 qemu-utils
+          sudo apt-get install -y --no-install-recommends qemu-system-arm qemu-efi-aarch64 qemu-utils ipxe-qemu
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules

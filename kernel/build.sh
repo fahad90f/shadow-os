@@ -46,7 +46,15 @@ while [ $# -gt 0 ]; do
 done
 need_root
 need_cmd mmdebstrap
-[ "$(host_arch)" = "amd64" ] || die "kernel builds run on an amd64 host (arm64 is cross-compiled)"
+# Native builds on either architecture; an arm64 kernel can also be
+# cross-compiled on amd64. Debian ships an architecture's kernel
+# configuration only in that architecture's linux-config package, so a cross
+# build fetches the target's package as well.
+HOST_ARCH="$(host_arch)"
+case "$HOST_ARCH:$ARCH" in
+    amd64:amd64|arm64:arm64|amd64:arm64) ;;
+    *) die "cannot build an $ARCH kernel on an $HOST_ARCH host" ;;
+esac
 KARCH="$(arch_info "$ARCH" kernel)"
 : "${NEXUS_KERNEL_DEBUGINFO:=btf}"
 case "$NEXUS_KERNEL_DEBUGINFO" in btf|none) ;; *) die "NEXUS_KERNEL_DEBUGINFO must be 'btf' or 'none'" ;; esac
@@ -58,7 +66,7 @@ mkdir -p "$NEXUS_OUT/packages" "$NEXUS_OUT/kernel"
 
 # ---- 1. build chroot ------------------------------------------------------------
 DEPS="build-essential,bc,bison,flex,libssl-dev,libelf-dev,libdw-dev,dwarves,cpio,kmod,rsync,python3,debhelper,zstd,xz-utils,quilt,ca-certificates,sbsigntool,linux-source-$SERIES,linux-config-$SERIES"
-[ "$ARCH" = "arm64" ] && DEPS="$DEPS,gcc-aarch64-linux-gnu,libc6-dev-arm64-cross"
+[ "$ARCH" != "$HOST_ARCH" ] && DEPS="$DEPS,gcc-aarch64-linux-gnu,libc6-dev-arm64-cross"
 if [ ! -e "$CHROOT/.nexus-bootstrap-complete" ]; then
     [ -d "$CHROOT" ] && safe_rmtree "$CHROOT"
     log "bootstrapping kernel build chroot"
@@ -84,8 +92,9 @@ in_chroot "$CHROOT" --bind "$NEXUS_ROOT/kernel:/nexus-kernel:ro" "${SB_BINDS[@]}
 ARCH="$1"; KARCH="$2"; SERIES="$3"; FLAVOUR="$4"; JOBS="$5"; DEBUGINFO="$6"; CONFIGURE_ONLY="$7"; NEXUS_VERSION="$8"
 say() { printf "\033[1;36m[nexus-kernel]\033[0m %s\n" "$*" >&2; }
 
+HOST_ARCH="$9"
 CROSS=""
-[ "$ARCH" = "arm64" ] && CROSS="aarch64-linux-gnu-"
+[ "$ARCH" != "$HOST_ARCH" ] && CROSS="aarch64-linux-gnu-"
 MAKE=(make ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS})
 
 BUILD="/build/kernel-$ARCH"
@@ -113,6 +122,15 @@ case "$ARCH" in
     amd64) DEBCFG="/usr/src/linux-config-$SERIES/config.amd64_none_amd64.xz"; ARCHFRAG=/nexus-kernel/x86_64/nexus.config ;;
     arm64) DEBCFG="/usr/src/linux-config-$SERIES/config.arm64_none_arm64.xz"; ARCHFRAG=/nexus-kernel/aarch64/nexus.config ;;
 esac
+if [ ! -f "$DEBCFG" ] && [ "$ARCH" != "$HOST_ARCH" ]; then
+    say "fetching the $ARCH kernel configuration package"
+    tmp="$(mktemp -d)"
+    (cd "$tmp" && apt-get download "linux-config-$SERIES:$ARCH" 2>/dev/null) || {
+        dpkg --add-architecture "$ARCH" && apt-get -q update >/dev/null
+        (cd "$tmp" && apt-get download "linux-config-$SERIES:$ARCH"); }
+    dpkg-deb -x "$tmp"/linux-config-*.deb "$tmp/x"
+    cp "$tmp/x$DEBCFG" "$DEBCFG"
+fi
 [ -f "$DEBCFG" ] || { echo "missing Debian configuration $DEBCFG" >&2; ls /usr/src/linux-config-$SERIES >&2; exit 1; }
 xzcat "$DEBCFG" > .config
 cp .config "$BUILD/config.debian"
@@ -218,7 +236,7 @@ printf "The NEXUS kernel is built from Debian linux-source-%s. See /usr/share/do
 dpkg-deb --root-owner-group -Zxz -b "$meta" "$BUILD/linux-image-nexus-${ARCH}_${PKGVER}_${ARCH}.deb" >/dev/null
 rm -rf "$meta"
 say "done: $(ls "$BUILD"/*.deb | wc -l) packages, Secure Boot state: $(cat "$BUILD/secure-boot-state")"
-' kernel-build "$ARCH" "$KARCH" "$SERIES" "$FLAVOUR" "$JOBS" "$NEXUS_KERNEL_DEBUGINFO" "$CONFIGURE_ONLY" "$NEXUS_VERSION"
+' kernel-build "$ARCH" "$KARCH" "$SERIES" "$FLAVOUR" "$JOBS" "$NEXUS_KERNEL_DEBUGINFO" "$CONFIGURE_ONLY" "$NEXUS_VERSION" "$HOST_ARCH"
 
 BUILD="$CHROOT/build/kernel-$ARCH"
 cp "$BUILD/config.nexus" "$NEXUS_OUT/kernel/config-$ARCH"
