@@ -37,6 +37,27 @@ class AssistantConfig : public QObject
     Q_PROPERTY(QString autonomy READ autonomy WRITE setAutonomy NOTIFY changed)
     Q_PROPERTY(QStringList enabledTools READ enabledTools NOTIFY changed)
 
+    // --- Voice (hands-free "Shadow") -------------------------------------
+    // Always-listening wake word is opt-in (off by default); the mic can be
+    // muted for privacy; replies may be spoken. Everything here is persisted
+    // to the [voice] section of the same conf file.
+    Q_PROPERTY(bool wakeEnabled READ wakeEnabled WRITE setWakeEnabled NOTIFY changed)
+    Q_PROPERTY(QString wakePhrase READ wakePhrase NOTIFY changed)
+    Q_PROPERTY(double wakeThreshold READ wakeThreshold NOTIFY changed)
+    Q_PROPERTY(bool micMuted READ micMuted WRITE setMicMuted NOTIFY changed)
+    Q_PROPERTY(bool speakReplies READ speakReplies WRITE setSpeakReplies NOTIFY changed)
+    // "auto" | "piper" | "speechd" | "espeak"
+    Q_PROPERTY(QString ttsEngine READ ttsEngine WRITE setTtsEngine NOTIFY changed)
+    Q_PROPERTY(QString ttsVoice READ ttsVoice NOTIFY changed)
+    Q_PROPERTY(QString piperBin READ piperBin NOTIFY changed)
+    Q_PROPERTY(QString piperModel READ piperModel NOTIFY changed)
+    // "auto" | "nvidia" | "pocketsphinx"
+    Q_PROPERTY(QString sttMode READ sttMode WRITE setSttMode NOTIFY changed)
+    Q_PROPERTY(QString captureTool READ captureTool NOTIFY changed)
+    Q_PROPERTY(QString inputDevice READ inputDevice NOTIFY changed)
+    Q_PROPERTY(int maxUtteranceSecs READ maxUtteranceSecs NOTIFY changed)
+    Q_PROPERTY(QString pocketsphinxModel READ pocketsphinxModel NOTIFY changed)
+
 public:
     explicit AssistantConfig(QObject *parent = nullptr);
 
@@ -63,6 +84,27 @@ public:
     Q_INVOKABLE bool toolEnabled(const QString &name) const;
     Q_INVOKABLE void setToolEnabled(const QString &name, bool enabled);
 
+    // --- Voice accessors ---
+    bool wakeEnabled() const { return m_wakeEnabled; }
+    void setWakeEnabled(bool v);
+    QString wakePhrase() const { return m_wakePhrase; }
+    double wakeThreshold() const { return m_wakeThreshold; }
+    bool micMuted() const { return m_micMuted; }
+    void setMicMuted(bool v);
+    bool speakReplies() const { return m_speakReplies; }
+    void setSpeakReplies(bool v);
+    QString ttsEngine() const { return m_ttsEngine; }
+    void setTtsEngine(const QString &v);
+    QString ttsVoice() const { return m_ttsVoice; }
+    QString piperBin() const { return m_piperBin; }
+    QString piperModel() const { return m_piperModel; }
+    QString sttMode() const { return m_sttMode; }
+    void setSttMode(const QString &v);
+    QString captureTool() const { return m_captureTool; }
+    QString inputDevice() const { return m_inputDevice; }
+    int maxUtteranceSecs() const { return m_maxUtteranceSecs; }
+    QString pocketsphinxModel() const { return m_pocketsphinxModel; }
+
     // Re-read everything from disk / environment.
     Q_INVOKABLE void reload();
     // Diagnostic snapshot (never contains the key itself).
@@ -83,4 +125,20 @@ private:
     QStringList m_enabledTools;
     bool m_toolsKeySet = false; // whether [tools] disabled=... was present
     QStringList m_disabledTools;
+
+    // Voice
+    bool m_wakeEnabled = false;
+    QString m_wakePhrase;
+    double m_wakeThreshold = 1e-20;
+    bool m_micMuted = false;
+    bool m_speakReplies = true;
+    QString m_ttsEngine;
+    QString m_ttsVoice;
+    QString m_piperBin;
+    QString m_piperModel;
+    QString m_sttMode;
+    QString m_captureTool;
+    QString m_inputDevice;
+    int m_maxUtteranceSecs = 12;
+    QString m_pocketsphinxModel;
 };

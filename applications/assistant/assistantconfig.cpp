@@ -25,6 +25,12 @@ const QStringList kAllTools = {
     QStringLiteral("run_shell_command"), QStringLiteral("read_file"),
     QStringLiteral("write_file"),        QStringLiteral("search_files"),
     QStringLiteral("open_application"),  QStringLiteral("get_system_info"),
+    // Expanded capabilities for the voice assistant.
+    QStringLiteral("open_url"),          QStringLiteral("web_search"),
+    QStringLiteral("make_directory"),    QStringLiteral("move_path"),
+    QStringLiteral("copy_path"),         QStringLiteral("delete_path"),
+    QStringLiteral("write_code"),        QStringLiteral("run_in_terminal"),
+    QStringLiteral("type_text"),         QStringLiteral("take_screenshot"),
 };
 
 } // namespace
@@ -102,6 +108,35 @@ void AssistantConfig::reload()
         if (!m_disabledTools.contains(t))
             m_enabledTools << t;
 
+    // --- voice ---
+    m_wakeEnabled = ini.value(QStringLiteral("voice/wake_word_enabled"), false).toBool();
+    m_wakePhrase = ini.value(QStringLiteral("voice/wake_phrase"), QStringLiteral("shadow")).toString().trimmed().toLower();
+    if (m_wakePhrase.isEmpty())
+        m_wakePhrase = QStringLiteral("shadow");
+    bool okT = false;
+    m_wakeThreshold = ini.value(QStringLiteral("voice/wake_threshold"), QStringLiteral("1e-20")).toString().toDouble(&okT);
+    if (!okT || m_wakeThreshold <= 0.0)
+        m_wakeThreshold = 1e-20;
+    m_micMuted = ini.value(QStringLiteral("voice/muted"), false).toBool();
+    m_speakReplies = ini.value(QStringLiteral("voice/speak_replies"), true).toBool();
+    m_ttsEngine = ini.value(QStringLiteral("voice/tts_engine"), QStringLiteral("auto")).toString().trimmed().toLower();
+    if (!QStringList({QStringLiteral("auto"), QStringLiteral("piper"), QStringLiteral("speechd"), QStringLiteral("espeak")}).contains(m_ttsEngine))
+        m_ttsEngine = QStringLiteral("auto");
+    m_ttsVoice = ini.value(QStringLiteral("voice/tts_voice")).toString().trimmed();
+    m_piperBin = ini.value(QStringLiteral("voice/piper_bin"), QStringLiteral("piper")).toString().trimmed();
+    if (m_piperBin.isEmpty())
+        m_piperBin = QStringLiteral("piper");
+    m_piperModel = ini.value(QStringLiteral("voice/piper_model")).toString().trimmed();
+    m_sttMode = ini.value(QStringLiteral("voice/stt_mode"), QStringLiteral("auto")).toString().trimmed().toLower();
+    if (!QStringList({QStringLiteral("auto"), QStringLiteral("nvidia"), QStringLiteral("pocketsphinx")}).contains(m_sttMode))
+        m_sttMode = QStringLiteral("auto");
+    m_captureTool = ini.value(QStringLiteral("voice/capture_tool"), QStringLiteral("auto")).toString().trimmed().toLower();
+    m_inputDevice = ini.value(QStringLiteral("voice/input_device")).toString().trimmed();
+    m_maxUtteranceSecs = ini.value(QStringLiteral("voice/max_utterance_secs"), 12).toInt();
+    if (m_maxUtteranceSecs < 2 || m_maxUtteranceSecs > 60)
+        m_maxUtteranceSecs = 12;
+    m_pocketsphinxModel = ini.value(QStringLiteral("voice/pocketsphinx_model")).toString().trimmed();
+
     Q_EMIT changed();
 }
 
@@ -110,6 +145,12 @@ void AssistantConfig::save()
     QSettings ini(iniPath(), QSettings::IniFormat);
     ini.setValue(QStringLiteral("behaviour/autonomy"), m_autonomy);
     ini.setValue(QStringLiteral("tools/disabled"), m_disabledTools);
+    // Voice toggles/engine the UI can change (paths/voices stay file-edited).
+    ini.setValue(QStringLiteral("voice/wake_word_enabled"), m_wakeEnabled);
+    ini.setValue(QStringLiteral("voice/muted"), m_micMuted);
+    ini.setValue(QStringLiteral("voice/speak_replies"), m_speakReplies);
+    ini.setValue(QStringLiteral("voice/tts_engine"), m_ttsEngine);
+    ini.setValue(QStringLiteral("voice/stt_mode"), m_sttMode);
     // We deliberately never write api/key.
     ini.sync();
 }
@@ -156,6 +197,52 @@ void AssistantConfig::setToolEnabled(const QString &name, bool enabled)
     Q_EMIT changed();
 }
 
+void AssistantConfig::setWakeEnabled(bool v)
+{
+    if (v == m_wakeEnabled) return;
+    m_wakeEnabled = v;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setMicMuted(bool v)
+{
+    if (v == m_micMuted) return;
+    m_micMuted = v;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setSpeakReplies(bool v)
+{
+    if (v == m_speakReplies) return;
+    m_speakReplies = v;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setTtsEngine(const QString &v)
+{
+    const QString n = v.trimmed().toLower();
+    if (!QStringList({QStringLiteral("auto"), QStringLiteral("piper"), QStringLiteral("speechd"), QStringLiteral("espeak")}).contains(n))
+        return;
+    if (n == m_ttsEngine) return;
+    m_ttsEngine = n;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setSttMode(const QString &v)
+{
+    const QString n = v.trimmed().toLower();
+    if (!QStringList({QStringLiteral("auto"), QStringLiteral("nvidia"), QStringLiteral("pocketsphinx")}).contains(n))
+        return;
+    if (n == m_sttMode) return;
+    m_sttMode = n;
+    save();
+    Q_EMIT changed();
+}
+
 QString AssistantConfig::configTemplate() const
 {
     // Shown verbatim in the setup state so the user can create the file.
@@ -182,7 +269,24 @@ QString AssistantConfig::configTemplate() const
         "\n"
         "[tools]\n"
         "# disabled = comma-separated tool names to turn off, e.g. run_shell_command\n"
-        "disabled=\n");
+        "disabled=\n"
+        "\n"
+        "[voice]\n"
+        "# Hands-free voice assistant \"Shadow\". Always-listening is OPT-IN.\n"
+        "wake_word_enabled=false       # listen continuously for the wake word\n"
+        "wake_phrase=shadow            # keyphrase that wakes the assistant\n"
+        "wake_threshold=1e-20          # pocketsphinx kws threshold (smaller = stricter)\n"
+        "muted=false                   # privacy mic mute (nothing is captured when true)\n"
+        "speak_replies=true            # speak answers aloud\n"
+        "tts_engine=auto               # auto | piper | speechd | espeak\n"
+        "tts_voice=                    # speechd/espeak voice name (e.g. en-us)\n"
+        "piper_bin=piper               # piper executable (neural TTS, if installed)\n"
+        "piper_model=                  # path to a piper .onnx voice model (required for piper)\n"
+        "stt_mode=auto                 # auto | nvidia (omni ASR) | pocketsphinx (offline)\n"
+        "capture_tool=auto             # auto | parecord | pw-record | arecord\n"
+        "input_device=                 # optional capture device (PulseAudio/PipeWire source)\n"
+        "max_utterance_secs=12         # stop capturing a command after this long\n"
+        "pocketsphinx_model=           # optional path to an acoustic model directory\n");
 }
 
 QJsonObject AssistantConfig::toJson() const
@@ -202,5 +306,21 @@ QJsonObject AssistantConfig::toJson() const
         {QStringLiteral("autonomy"), m_autonomy},
         {QStringLiteral("enabledTools"), QJsonArray::fromStringList(m_enabledTools)},
         {QStringLiteral("disabledTools"), QJsonArray::fromStringList(m_disabledTools)},
+        {QStringLiteral("voice"), QJsonObject{
+            {QStringLiteral("wakeEnabled"), m_wakeEnabled},
+            {QStringLiteral("wakePhrase"), m_wakePhrase},
+            {QStringLiteral("wakeThreshold"), m_wakeThreshold},
+            {QStringLiteral("micMuted"), m_micMuted},
+            {QStringLiteral("speakReplies"), m_speakReplies},
+            {QStringLiteral("ttsEngine"), m_ttsEngine},
+            {QStringLiteral("ttsVoice"), m_ttsVoice},
+            {QStringLiteral("piperBin"), m_piperBin},
+            {QStringLiteral("piperModel"), m_piperModel},
+            {QStringLiteral("sttMode"), m_sttMode},
+            {QStringLiteral("captureTool"), m_captureTool},
+            {QStringLiteral("inputDevice"), m_inputDevice},
+            {QStringLiteral("maxUtteranceSecs"), m_maxUtteranceSecs},
+            {QStringLiteral("pocketsphinxModel"), m_pocketsphinxModel},
+        }},
     };
 }

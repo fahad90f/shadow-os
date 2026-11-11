@@ -77,6 +77,11 @@ Q_SIGNALS:
     void thinkHardChanged();
     void toolLogChanged();
     void errorMessage(const QString &text);
+    // Voice integration: a final assistant answer is ready to be spoken.
+    void assistantReplyReady(const QString &text);
+    // A tool call is awaiting confirmation (for hands-free spoken approval); the
+    // clickable Run/Deny card is shown regardless.
+    void confirmationNeeded(const QString &summary, const QString &preview, const QString &callId);
 
 private:
     void setPhase(const QString &p);
