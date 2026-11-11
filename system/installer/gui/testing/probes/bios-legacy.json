@@ -1,0 +1,139 @@
+{
+  "architecture": "amd64",
+  "firmware": {
+    "type": "bios",
+    "bits": null,
+    "secure_boot": null,
+    "efivars_writable": false
+  },
+  "memory_bytes": 3221225472,
+  "live_medium": {
+    "squashfs": "/run/live/medium/live/filesystem.squashfs",
+    "mount": "/run/live/medium",
+    "device": "/dev/sr0",
+    "disk": "/dev/sr0",
+    "installed_size": 6400000000
+  },
+  "disks": [
+    {
+      "path": "/dev/sda",
+      "name": "sda",
+      "size": 120034123776,
+      "model": "KINGSTON SA400S37120G",
+      "vendor": "ATA",
+      "serial": "50026B77824F1234",
+      "transport": "sata",
+      "removable": false,
+      "read_only": false,
+      "rotational": false,
+      "sector_size": 512,
+      "partition_table": "dos",
+      "partitions": [
+        {
+          "path": "/dev/sda1",
+          "name": "sda1",
+          "size": 107374182400,
+          "start": 1048576,
+          "fstype": "ext4",
+          "label": "rootfs",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0x83",
+          "parttype_name": "Linux",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        },
+        {
+          "path": "/dev/sda2",
+          "name": "sda2",
+          "size": 8589934592,
+          "start": 107375230976,
+          "fstype": "swap",
+          "label": null,
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0x82",
+          "parttype_name": "Linux swap / Solaris",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        }
+      ],
+      "mountpoints": [],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": false,
+      "whole_disk_fstype": null,
+      "free_regions": [
+        {
+          "start": 115965165568,
+          "end": 120034123775,
+          "size": 4068958208
+        }
+      ],
+      "largest_free": 4068958208,
+      "usable": true,
+      "unusable_reason": null
+    }
+  ],
+  "volume_groups": [],
+  "mapper_names": [],
+  "power": {
+    "on_ac": null,
+    "battery_percent": null
+  },
+  "network_online": false,
+  "other_systems": [
+    {
+      "device": "/dev/sda1",
+      "name": "Debian GNU/Linux 12 (bookworm)",
+      "label": "Debian",
+      "type": "linux"
+    }
+  ],
+  "min_disk_bytes": 21474836480,
+  "checks": [
+    {
+      "id": "arch",
+      "status": "pass",
+      "title": "Architecture: amd64",
+      "detail": ""
+    },
+    {
+      "id": "firmware",
+      "status": "warn",
+      "title": "Legacy BIOS boot",
+      "detail": "Supported. If this computer offers UEFI mode, booting the installer in UEFI mode is preferable."
+    },
+    {
+      "id": "memory",
+      "status": "warn",
+      "title": "3.0 GiB of memory",
+      "detail": "4 GiB or more is recommended for the desktop."
+    },
+    {
+      "id": "disk",
+      "status": "pass",
+      "title": "1 suitable disk(s)",
+      "detail": "Largest: 112 GiB"
+    },
+    {
+      "id": "medium",
+      "status": "pass",
+      "title": "System image found",
+      "detail": ""
+    },
+    {
+      "id": "network",
+      "status": "warn",
+      "title": "No network connection",
+      "detail": "Installation works offline; security updates and optional tool profiles need a connection later."
+    }
+  ],
+  "can_install": true
+}

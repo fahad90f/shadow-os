@@ -12,3 +12,7 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/logos/nexus-symbol.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/pixmaps RENAME nexus-os.svg)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/logos/nexus-symbol.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps RENAME nexus-os-logo.svg)
+
+# Boot branding: GRUB menu theme and Plymouth splash.
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/boot/grub/nexus DESTINATION ${CMAKE_INSTALL_DATADIR}/grub/themes)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/boot/plymouth/nexus DESTINATION ${CMAKE_INSTALL_DATADIR}/plymouth/themes)

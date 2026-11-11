@@ -1,0 +1,213 @@
+{
+  "architecture": "amd64",
+  "firmware": {
+    "type": "uefi",
+    "bits": 64,
+    "secure_boot": false,
+    "efivars_writable": true
+  },
+  "memory_bytes": 1610612736,
+  "live_medium": {
+    "squashfs": "/run/live/medium/live/filesystem.squashfs",
+    "mount": "/run/live/medium",
+    "device": "/dev/sda1",
+    "disk": "/dev/sda",
+    "installed_size": 6400000000
+  },
+  "disks": [
+    {
+      "path": "/dev/mmcblk0",
+      "name": "mmcblk0",
+      "size": 15634268160,
+      "model": "DF4016",
+      "vendor": null,
+      "serial": null,
+      "transport": "mmc",
+      "removable": false,
+      "read_only": false,
+      "rotational": false,
+      "sector_size": 512,
+      "partition_table": "gpt",
+      "partitions": [
+        {
+          "path": "/dev/mmcblk0p1",
+          "name": "mmcblk0p1",
+          "size": 104857600,
+          "start": 1048576,
+          "fstype": "vfat",
+          "label": null,
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+          "parttype_name": "EFI System",
+          "is_esp": true,
+          "is_bios_grub": false,
+          "mountpoints": []
+        },
+        {
+          "path": "/dev/mmcblk0p2",
+          "name": "mmcblk0p2",
+          "size": 15032385536,
+          "start": 105906176,
+          "fstype": "ntfs",
+          "label": "Windows",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7",
+          "parttype_name": "Microsoft basic data",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        }
+      ],
+      "mountpoints": [],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": false,
+      "whole_disk_fstype": null,
+      "free_regions": [
+        {
+          "start": 15138291712,
+          "end": 15633219583,
+          "size": 494927872
+        }
+      ],
+      "largest_free": 494927872,
+      "usable": false,
+      "unusable_reason": "Smaller than the 20 GiB minimum."
+    },
+    {
+      "path": "/dev/sda",
+      "name": "sda",
+      "size": 30752636928,
+      "model": "Ultra Fit",
+      "vendor": "SanDisk",
+      "serial": "4C530001230521",
+      "transport": "usb",
+      "removable": true,
+      "read_only": false,
+      "rotational": false,
+      "sector_size": 512,
+      "partition_table": "dos",
+      "partitions": [
+        {
+          "path": "/dev/sda1",
+          "name": "sda1",
+          "size": 3250585600,
+          "start": 0,
+          "fstype": "iso9660",
+          "label": "NEXUS_OS_0_1_0",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0x0",
+          "parttype_name": "Empty",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": [
+            "/run/live/medium"
+          ]
+        },
+        {
+          "path": "/dev/sda2",
+          "name": "sda2",
+          "size": 10485760,
+          "start": 3250585600,
+          "fstype": "vfat",
+          "label": "NEXUS-EFI",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0xef",
+          "parttype_name": null,
+          "is_esp": true,
+          "is_bios_grub": false,
+          "mountpoints": []
+        }
+      ],
+      "mountpoints": [
+        "/run/live/medium"
+      ],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": true,
+      "whole_disk_fstype": null,
+      "free_regions": [
+        {
+          "start": 3261071360,
+          "end": 30752636927,
+          "size": 27491565568
+        }
+      ],
+      "largest_free": 27491565568,
+      "usable": false,
+      "unusable_reason": "This is the installation medium."
+    }
+  ],
+  "volume_groups": [],
+  "mapper_names": [],
+  "power": {
+    "on_ac": false,
+    "battery_percent": 12
+  },
+  "network_online": true,
+  "other_systems": [],
+  "min_disk_bytes": 21474836480,
+  "checks": [
+    {
+      "id": "arch",
+      "status": "pass",
+      "title": "Architecture: amd64",
+      "detail": ""
+    },
+    {
+      "id": "firmware",
+      "status": "pass",
+      "title": "UEFI firmware",
+      "detail": ""
+    },
+    {
+      "id": "secureboot",
+      "status": "warn",
+      "title": "Secure Boot is disabled",
+      "detail": "Installation works either way. Enabling Secure Boot in the firmware setup protects the boot chain."
+    },
+    {
+      "id": "memory",
+      "status": "fail",
+      "title": "Only 1.5 GiB of memory",
+      "detail": "At least 2 GiB is required."
+    },
+    {
+      "id": "disk",
+      "status": "fail",
+      "title": "No suitable disk found",
+      "detail": "A disk of at least 20 GiB that is not the installation medium is required."
+    },
+    {
+      "id": "medium",
+      "status": "pass",
+      "title": "System image found",
+      "detail": ""
+    },
+    {
+      "id": "power",
+      "status": "fail",
+      "title": "Running on battery (12%)",
+      "detail": "Connect the charger: losing power during installation leaves the disk in an unusable state."
+    },
+    {
+      "id": "network",
+      "status": "pass",
+      "title": "Network connection available",
+      "detail": ""
+    }
+  ],
+  "can_install": false
+}

@@ -1,6 +1,10 @@
 # NEXUS HORIZON desktop: the Debian packages behind the session. NEXUS's own
 # packages (shell, applications, themes) are listed in the variant file.
 
+# Boot splash (also asks for the disk-encryption passphrase)
+plymouth
+plymouth-label
+
 # Display manager and session plumbing
 sddm
 dbus-user-session

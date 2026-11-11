@@ -1,0 +1,287 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Stand-in for nexus-installer-engine, for testing the graphical installer.
+
+NOT part of the product and never installed. It speaks the same command-line
+and JSON protocol as the real engine but cannot touch a disk:
+
+  probe    prints a synthetic probe report read from a file
+  plan     runs the engine's real answer validation and real planner
+           (nexus_installer.answers / nexus_installer.plan — both pure
+           functions) on that synthetic report
+  install  SIMULATES an installation: the engine's real Executor.execute()
+           driver produces the event stream, but every step is replaced by a
+           timer and there is no command runner at all (runner=None), so no
+           program is ever started
+
+The synthetic report comes from --probe-file (an extension the real engine
+does not have) or $NEXUS_TEST_ENGINE_PROBE_FILE.
+
+Behaviour switches (environment):
+  NEXUS_TEST_ENGINE_SCENARIO   what "install" does:  success (default) |
+        fail-early | fail-partition | fail-copy | internal | plan-changed |
+        garbage | no-done | crash | silent-exit | warn-profiles | hold-copy
+     and for the other verbs:  probe-garbage | probe-fail | probe-slow |
+        plan-garbage | plan-fail | plan-slow
+  NEXUS_TEST_ENGINE_STEP_SECONDS   duration of a simulated step (default 0.5)
+  NEXUS_INSTALLER_ENGINE_LIB       directory containing the nexus_installer
+        package (default: ../../engine next to this file, then
+        /usr/lib/nexus-installer)
+"""
+import argparse
+import json
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+_here = Path(__file__).resolve().parent
+for _candidate in (os.environ.get("NEXUS_INSTALLER_ENGINE_LIB"), str(_here.parents[1] / "engine"),
+                   "/usr/lib/nexus-installer"):
+    if _candidate and (Path(_candidate) / "nexus_installer" / "plan.py").is_file():
+        sys.path.insert(0, _candidate)
+        break
+else:
+    sys.stderr.write("test-engine: the nexus_installer package was not found "
+                     "(set NEXUS_INSTALLER_ENGINE_LIB)\n")
+    sys.exit(2)
+
+from nexus_installer import answers as answers_mod, plan as plan_mod  # noqa: E402
+from nexus_installer.executor import Executor  # noqa: E402
+from nexus_installer.util import InstallError, Reporter  # noqa: E402
+
+EXIT_OK, EXIT_FAILED, EXIT_USAGE, EXIT_PLAN_CHANGED = 0, 1, 2, 3
+SCENARIO = os.environ.get("NEXUS_TEST_ENGINE_SCENARIO", "success")
+STEP_SECONDS = float(os.environ.get("NEXUS_TEST_ENGINE_STEP_SECONDS", "0.5"))
+FAKE_LOG = "/var/log/nexus-installer/install-TEST-ENGINE.log"
+
+
+def load_probe(args) -> dict:
+    path = args.probe_file or os.environ.get("NEXUS_TEST_ENGINE_PROBE_FILE")
+    if not path:
+        raise InstallError("test-engine: no synthetic probe report given.",
+                           "Pass --probe-file <json> or set NEXUS_TEST_ENGINE_PROBE_FILE.")
+    try:
+        report = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise InstallError(f"test-engine: cannot read the probe file: {exc}")
+    return report
+
+
+def load_answers(path: str) -> dict:
+    try:
+        text = sys.stdin.read() if path == "-" else open(path, encoding="utf-8").read()
+        data = json.loads(text)
+    except OSError as exc:
+        raise InstallError(f"Cannot read the answer file: {exc}")
+    except json.JSONDecodeError as exc:
+        raise InstallError(f"The answer file is not valid JSON: {exc}")
+    if not isinstance(data, dict):
+        raise InstallError("The answer file must contain a JSON object.")
+    return data
+
+
+def cmd_probe(args) -> int:
+    if SCENARIO == "probe-slow":
+        time.sleep(float(os.environ.get("NEXUS_TEST_ENGINE_SLOW_SECONDS", "6")))
+    if SCENARIO == "probe-garbage":
+        sys.stdout.write("lsblk: unexpected output\n{\"architecture\": \"amd64\", \"disks\": [\n")
+        return EXIT_OK
+    if SCENARIO == "probe-fail":
+        sys.stderr.write("Traceback (most recent call last):\n  File \"probe.py\", line 1, in <module>\n"
+                         "RuntimeError: simulated probe crash\n")
+        return EXIT_FAILED
+    report = load_probe(args)
+    if not args.other_systems:
+        report["other_systems"] = None
+    elif report.get("other_systems") is None:
+        report["other_systems"] = []
+    json.dump(report, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return EXIT_OK
+
+
+def cmd_plan(args) -> int:
+    if SCENARIO == "plan-slow":
+        time.sleep(float(os.environ.get("NEXUS_TEST_ENGINE_SLOW_SECONDS", "6")))
+    if SCENARIO == "plan-garbage":
+        sys.stdout.write("{\"plan_version\": 1, \"steps\": [")
+        return EXIT_OK
+    if SCENARIO == "plan-fail":
+        sys.stderr.write("Traceback (most recent call last):\nRuntimeError: simulated planner crash\n")
+        return EXIT_FAILED
+    parsed = answers_mod.parse(load_answers(args.answers))
+    plan = plan_mod.build(parsed, load_probe(args))
+    if args.text:
+        sys.stdout.write(plan_mod.render_text(plan))
+    else:
+        json.dump(plan, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    return EXIT_OK
+
+
+class SimulatedExecutor(Executor):
+    """The real driver (execute(), progress arithmetic, event format) with
+    every step replaced by a delay. There is no Runner: any attempt to start
+    a program would raise AttributeError on None."""
+
+    def __init__(self, answers, plan, report, reporter):
+        super().__init__(answers, plan, report, reporter, runner=None, target="/nonexistent/test-engine-target")
+        self.started: list[str] = []
+
+    def _simulate(self, sid: str, ticks: int = 4, message: str | None = None):
+        self.started.append(sid)
+        if SCENARIO == f"fail-{sid}":
+            time.sleep(STEP_SECONDS / 2)
+            tool = {"partition": "sgdisk", "copy": "unsquashfs", "format": "mkfs.ext4"}.get(sid, "tool")
+            raise InstallError(f"{tool} failed (exit status 1).\nsimulated failure in step '{sid}'\n"
+                               "(this text stands in for the last lines of the tool's output)")
+        if SCENARIO == "internal" and sid == "configure":
+            raise RuntimeError("simulated bug in the installer engine")
+        for i in range(1, ticks + 1):
+            time.sleep(STEP_SECONDS / ticks)
+            if SCENARIO == "crash" and sid == "copy" and i == 2:
+                sys.stdout.flush()
+                os.kill(os.getpid(), signal.SIGKILL)
+            if SCENARIO == "hold-copy" and sid == "copy" and i == 2:
+                time.sleep(3600)
+            if SCENARIO == "garbage" and sid == "format" and i == 1:
+                sys.stdout.write("this line is not JSON\n{\"event\": \"progress\", \"percent\": \n[1, 2, 3]\n")
+                sys.stdout.flush()
+            self._progress(i / ticks, message.format(pct=round(100 * i / ticks)) if message else None)
+
+    def step_partition(self):
+        self._simulate("partition")
+
+    def step_encrypt(self):
+        self.rep.info("Creating the encrypted volume (key derivation takes a few seconds)…")
+        self._simulate("encrypt", ticks=2)
+
+    def step_format(self):
+        self._simulate("format")
+
+    def step_keep(self):
+        pass
+
+    def step_mount(self):
+        self._simulate("mount", ticks=1)
+
+    def step_copy(self):
+        self._simulate("copy", ticks=20, message="Copying files ({pct}%)")
+
+    def step_configure(self):
+        self._simulate("configure", ticks=2)
+
+    def step_user(self):
+        self._simulate("user", ticks=1)
+
+    def step_cleanup(self):
+        self.rep.info("Removing live-session packages: live-boot, live-config, nexus-live, nexus-installer")
+        self._simulate("cleanup", ticks=2)
+
+    def step_initramfs(self):
+        self._simulate("initramfs", ticks=2)
+
+    def step_bootloader(self):
+        self._simulate("bootloader", ticks=2)
+
+    def step_profiles(self):
+        if SCENARIO == "warn-profiles":
+            time.sleep(STEP_SECONDS)
+            self.rep.warning("The selected tool profiles could not be installed now: apt-get failed (exit status "
+                             "100). They can be installed after the first start from NEXUS Arsenal.")
+            return
+        self._simulate("profiles", ticks=6)
+
+    def step_finish(self):
+        self._simulate("finish", ticks=1)
+
+    def teardown(self, strict: bool):
+        pass
+
+    def abort_cleanup(self):
+        if self.plan["mode"] == "free-space" and "partition" in self.started:
+            self.rep.info("The partitions created by this attempt were removed again; existing "
+                          "partitions were not modified.")
+
+
+def _assert_no_real_steps():
+    real = {name for name in dir(Executor) if name.startswith("step_")}
+    simulated = {name for name in vars(SimulatedExecutor) if name.startswith("step_")}
+    missing = real - simulated
+    if missing:
+        sys.stderr.write(f"test-engine: the engine has steps this simulation does not replace: {sorted(missing)}\n")
+        sys.exit(EXIT_USAGE)
+
+
+def cmd_install(args) -> int:
+    _assert_no_real_steps()
+    if SCENARIO == "silent-exit":
+        return EXIT_FAILED
+    reporter = Reporter(sys.stdout, None)
+    executor = None
+    try:
+        parsed = answers_mod.parse(load_answers(args.answers))
+        report = load_probe(args)
+        plan = plan_mod.build(parsed, report)
+        if plan["hash"] != args.confirm or SCENARIO == "plan-changed":
+            reporter.event("error", code="plan-changed",
+                           message="The installation plan differs from the one that was confirmed.",
+                           hint="The disks changed since the plan was shown (a device was plugged in or "
+                                "removed, or a partition was mounted). Review the plan again.",
+                           expected=args.confirm,
+                           actual=plan["hash"] if plan["hash"] != args.confirm else "0" * 64, log=FAKE_LOG)
+            return EXIT_PLAN_CHANGED
+        if SCENARIO == "fail-early":
+            raise InstallError("The system image is no longer available.", "Was the installation medium removed?")
+        executor = SimulatedExecutor(parsed, plan, report, reporter)
+        if SCENARIO == "no-done":
+            executor.rep.event("step", id="partition", index=1, total=9, title="Simulated step without an end")
+            return EXIT_OK
+        executor.execute()
+        return EXIT_OK
+    except InstallError as exc:
+        reporter.event("error", code="failed", message=str(exc), hint=exc.hint, log=FAKE_LOG)
+    except Exception as exc:  # noqa: BLE001 — same contract as the real engine
+        reporter.event("error", code="internal", message=f"Unexpected installer error: {exc!r}",
+                       hint="This is a bug in the installer. Please report it with the log file.", log=FAKE_LOG)
+    if executor is not None:
+        executor.abort_cleanup()
+    return EXIT_FAILED
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="test-engine", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("probe")
+    p.add_argument("--other-systems", action="store_true")
+    p.add_argument("--probe-file")
+    p.set_defaults(func=cmd_probe)
+
+    p = sub.add_parser("plan")
+    p.add_argument("--answers", required=True)
+    p.add_argument("--text", action="store_true")
+    p.add_argument("--probe-file")
+    p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("install")
+    p.add_argument("--answers", required=True)
+    p.add_argument("--confirm", required=True, metavar="PLAN-HASH")
+    p.add_argument("--probe-file")
+    p.set_defaults(func=cmd_install)
+
+    args = ap.parse_args()
+    try:
+        return args.func(args)
+    except InstallError as exc:
+        sys.stdout.write(json.dumps({"event": "error", "code": "invalid", "message": str(exc), "hint": exc.hint}) + "\n")
+        sys.stderr.write(f"test-engine: {exc}\n" + (f"  {exc.hint}\n" if exc.hint else ""))
+        return EXIT_USAGE
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,295 @@
+{
+  "architecture": "amd64",
+  "firmware": {
+    "type": "uefi",
+    "bits": 64,
+    "secure_boot": true,
+    "efivars_writable": true
+  },
+  "memory_bytes": 17179869184,
+  "live_medium": {
+    "squashfs": "/run/live/medium/live/filesystem.squashfs",
+    "mount": "/run/live/medium",
+    "device": "/dev/sdb1",
+    "disk": "/dev/sdb",
+    "installed_size": 6400000000
+  },
+  "disks": [
+    {
+      "path": "/dev/nvme0n1",
+      "name": "nvme0n1",
+      "size": 512110190592,
+      "model": "Samsung SSD 980 PRO 500GB",
+      "vendor": null,
+      "serial": "S5GXNX0T123456A",
+      "transport": "nvme",
+      "removable": false,
+      "read_only": false,
+      "rotational": false,
+      "sector_size": 512,
+      "partition_table": "gpt",
+      "partitions": [
+        {
+          "path": "/dev/nvme0n1p1",
+          "name": "nvme0n1p1",
+          "size": 272629760,
+          "start": 1048576,
+          "fstype": "vfat",
+          "label": "SYSTEM",
+          "partlabel": "EFI system partition",
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+          "parttype_name": "EFI System",
+          "is_esp": true,
+          "is_bios_grub": false,
+          "mountpoints": []
+        },
+        {
+          "path": "/dev/nvme0n1p2",
+          "name": "nvme0n1p2",
+          "size": 16777216,
+          "start": 273678336,
+          "fstype": null,
+          "label": null,
+          "partlabel": "Microsoft reserved partition",
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "e3c9e316-0b5c-4db8-817d-f92df00215ae",
+          "parttype_name": "Microsoft reserved",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        },
+        {
+          "path": "/dev/nvme0n1p3",
+          "name": "nvme0n1p3",
+          "size": 322122547200,
+          "start": 290455552,
+          "fstype": "ntfs",
+          "label": "Windows",
+          "partlabel": "Basic data partition",
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7",
+          "parttype_name": "Microsoft basic data",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        },
+        {
+          "path": "/dev/nvme0n1p4",
+          "name": "nvme0n1p4",
+          "size": 1073741824,
+          "start": 511035047936,
+          "fstype": "ntfs",
+          "label": "Recovery",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "de94bba4-06d1-4d40-a16a-bfd50179d6ac",
+          "parttype_name": "Windows recovery environment",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        }
+      ],
+      "mountpoints": [],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": false,
+      "whole_disk_fstype": null,
+      "free_regions": [
+        {
+          "start": 322413002752,
+          "end": 511035047935,
+          "size": 188622045184
+        }
+      ],
+      "largest_free": 188622045184,
+      "usable": true,
+      "unusable_reason": null
+    },
+    {
+      "path": "/dev/sda",
+      "name": "sda",
+      "size": 2000398934016,
+      "model": "WDC WD20EZAZ-00GGJB0",
+      "vendor": "ATA",
+      "serial": "WD-WXK2A80L1234",
+      "transport": "sata",
+      "removable": false,
+      "read_only": false,
+      "rotational": true,
+      "sector_size": 512,
+      "partition_table": "gpt",
+      "partitions": [
+        {
+          "path": "/dev/sda1",
+          "name": "sda1",
+          "size": 2000396746752,
+          "start": 1048576,
+          "fstype": "ext4",
+          "label": "backup",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0fc63daf-8483-4772-8e79-3d69d8477de4",
+          "parttype_name": "Linux filesystem",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        }
+      ],
+      "mountpoints": [],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": false,
+      "whole_disk_fstype": null,
+      "free_regions": [],
+      "largest_free": 0,
+      "usable": true,
+      "unusable_reason": null
+    },
+    {
+      "path": "/dev/sdb",
+      "name": "sdb",
+      "size": 30752636928,
+      "model": "Ultra Fit",
+      "vendor": "SanDisk",
+      "serial": "4C530001230521",
+      "transport": "usb",
+      "removable": true,
+      "read_only": false,
+      "rotational": false,
+      "sector_size": 512,
+      "partition_table": "dos",
+      "partitions": [
+        {
+          "path": "/dev/sdb1",
+          "name": "sdb1",
+          "size": 3250585600,
+          "start": 0,
+          "fstype": "iso9660",
+          "label": "NEXUS_OS_0_1_0",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0x0",
+          "parttype_name": "Empty",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": [
+            "/run/live/medium"
+          ]
+        },
+        {
+          "path": "/dev/sdb2",
+          "name": "sdb2",
+          "size": 10485760,
+          "start": 3250585600,
+          "fstype": "vfat",
+          "label": "NEXUS-EFI",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0xef",
+          "parttype_name": null,
+          "is_esp": true,
+          "is_bios_grub": false,
+          "mountpoints": []
+        }
+      ],
+      "mountpoints": [
+        "/run/live/medium"
+      ],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": true,
+      "whole_disk_fstype": null,
+      "free_regions": [
+        {
+          "start": 3261071360,
+          "end": 30752636927,
+          "size": 27491565568
+        }
+      ],
+      "largest_free": 27491565568,
+      "usable": false,
+      "unusable_reason": "This is the installation medium."
+    }
+  ],
+  "volume_groups": [],
+  "mapper_names": [],
+  "power": {
+    "on_ac": true,
+    "battery_percent": 87
+  },
+  "network_online": true,
+  "other_systems": [
+    {
+      "device": "/dev/nvme0n1p1",
+      "name": "Windows Boot Manager",
+      "label": "Windows",
+      "type": "efi"
+    }
+  ],
+  "min_disk_bytes": 21474836480,
+  "checks": [
+    {
+      "id": "arch",
+      "status": "pass",
+      "title": "Architecture: amd64",
+      "detail": ""
+    },
+    {
+      "id": "firmware",
+      "status": "pass",
+      "title": "UEFI firmware",
+      "detail": ""
+    },
+    {
+      "id": "secureboot",
+      "status": "pass",
+      "title": "Secure Boot is enabled",
+      "detail": "The system will be installed with the Microsoft-signed shim and Debian-signed GRUB and kernel."
+    },
+    {
+      "id": "memory",
+      "status": "pass",
+      "title": "16.0 GiB of memory",
+      "detail": ""
+    },
+    {
+      "id": "disk",
+      "status": "pass",
+      "title": "2 suitable disk(s)",
+      "detail": "Largest: 1863 GiB"
+    },
+    {
+      "id": "medium",
+      "status": "pass",
+      "title": "System image found",
+      "detail": ""
+    },
+    {
+      "id": "power",
+      "status": "pass",
+      "title": "Connected to mains power",
+      "detail": ""
+    },
+    {
+      "id": "network",
+      "status": "pass",
+      "title": "Network connection available",
+      "detail": ""
+    }
+  ],
+  "can_install": true
+}

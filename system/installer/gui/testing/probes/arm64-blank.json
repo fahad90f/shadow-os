@@ -1,0 +1,168 @@
+{
+  "architecture": "arm64",
+  "firmware": {
+    "type": "uefi",
+    "bits": 64,
+    "secure_boot": null,
+    "efivars_writable": false
+  },
+  "memory_bytes": 4294967296,
+  "live_medium": {
+    "squashfs": "/run/live/medium/live/filesystem.squashfs",
+    "mount": "/run/live/medium",
+    "device": "/dev/sda1",
+    "disk": "/dev/sda",
+    "installed_size": 6400000000
+  },
+  "disks": [
+    {
+      "path": "/dev/mmcblk0",
+      "name": "mmcblk0",
+      "size": 62537072640,
+      "model": "BJTD4R",
+      "vendor": null,
+      "serial": null,
+      "transport": "mmc",
+      "removable": false,
+      "read_only": false,
+      "rotational": false,
+      "sector_size": 512,
+      "partition_table": null,
+      "partitions": [],
+      "mountpoints": [],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": false,
+      "whole_disk_fstype": null,
+      "free_regions": [],
+      "largest_free": 0,
+      "usable": true,
+      "unusable_reason": null
+    },
+    {
+      "path": "/dev/sda",
+      "name": "sda",
+      "size": 30752636928,
+      "model": "Ultra Fit",
+      "vendor": "SanDisk",
+      "serial": "4C530001230521",
+      "transport": "usb",
+      "removable": true,
+      "read_only": false,
+      "rotational": false,
+      "sector_size": 512,
+      "partition_table": "dos",
+      "partitions": [
+        {
+          "path": "/dev/sda1",
+          "name": "sda1",
+          "size": 3250585600,
+          "start": 0,
+          "fstype": "iso9660",
+          "label": "NEXUS_OS_0_1_0",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0x0",
+          "parttype_name": "Empty",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": [
+            "/run/live/medium"
+          ]
+        },
+        {
+          "path": "/dev/sda2",
+          "name": "sda2",
+          "size": 10485760,
+          "start": 3250585600,
+          "fstype": "vfat",
+          "label": "NEXUS-EFI",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0xef",
+          "parttype_name": null,
+          "is_esp": true,
+          "is_bios_grub": false,
+          "mountpoints": []
+        }
+      ],
+      "mountpoints": [
+        "/run/live/medium"
+      ],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": true,
+      "whole_disk_fstype": null,
+      "free_regions": [
+        {
+          "start": 3261071360,
+          "end": 30752636927,
+          "size": 27491565568
+        }
+      ],
+      "largest_free": 27491565568,
+      "usable": false,
+      "unusable_reason": "This is the installation medium."
+    }
+  ],
+  "volume_groups": [],
+  "mapper_names": [],
+  "power": {
+    "on_ac": null,
+    "battery_percent": null
+  },
+  "network_online": true,
+  "other_systems": [],
+  "min_disk_bytes": 21474836480,
+  "checks": [
+    {
+      "id": "arch",
+      "status": "pass",
+      "title": "Architecture: arm64",
+      "detail": ""
+    },
+    {
+      "id": "firmware",
+      "status": "pass",
+      "title": "UEFI firmware",
+      "detail": ""
+    },
+    {
+      "id": "efivars",
+      "status": "warn",
+      "title": "UEFI variables are not writable",
+      "detail": "A boot entry cannot be registered; the removable-media boot path will be used instead."
+    },
+    {
+      "id": "memory",
+      "status": "pass",
+      "title": "4.0 GiB of memory",
+      "detail": ""
+    },
+    {
+      "id": "disk",
+      "status": "pass",
+      "title": "1 suitable disk(s)",
+      "detail": "Largest: 58 GiB"
+    },
+    {
+      "id": "medium",
+      "status": "pass",
+      "title": "System image found",
+      "detail": ""
+    },
+    {
+      "id": "network",
+      "status": "pass",
+      "title": "Network connection available",
+      "detail": ""
+    }
+  ],
+  "can_install": true
+}

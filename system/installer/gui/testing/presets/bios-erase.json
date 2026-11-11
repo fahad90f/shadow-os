@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "locale": "en_US.UTF-8",
+  "keyboard": {"layout": "us"},
+  "timezone": "America/New_York",
+  "hostname": "workstation",
+  "user": {"fullname": "", "username": "kim", "password": "Nexus-Test-1"},
+  "storage": {"mode": "erase-disk", "disk": "/dev/sda", "swap": "none"}
+}

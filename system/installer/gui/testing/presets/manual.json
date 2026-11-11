@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "locale": "fr_FR.UTF-8",
+  "keyboard": {"layout": "fr", "variant": "oss"},
+  "timezone": "Europe/Paris",
+  "hostname": "atelier",
+  "user": {"fullname": "Sophie Germain", "username": "sophie", "password": "Nexus-Test-1"},
+  "storage": {"mode": "manual", "swap": "none", "mounts": [
+      {"device": "/dev/vda2", "mountpoint": "/", "format": true},
+      {"device": "/dev/vda1", "mountpoint": "/boot/efi"},
+      {"device": "/dev/vda3", "mountpoint": "/home"},
+      {"device": "/dev/vda4", "use": "swap"}]}
+}

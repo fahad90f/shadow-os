@@ -41,9 +41,9 @@ sed -e "s|@NEXUS_NAME@|$NEXUS_NAME|g" \
     -e "s|@ARCH@|$ARCH|g" \
     -e "s|@KERNEL_VERSION@|$(cat "$STAGING/live/kernel-version")|g" \
     "$GRUB_SRC/live-grub.cfg.in" > "$STAGING/boot/grub/grub.cfg"
-if [ -d "$GRUB_SRC/theme/build" ]; then
+if [ -f "$NEXUS_ROOT/assets/boot/grub/nexus/theme.txt" ]; then
     mkdir -p "$STAGING/boot/grub/themes/nexus"
-    cp -r "$GRUB_SRC/theme/build/." "$STAGING/boot/grub/themes/nexus/"
+    cp -r "$NEXUS_ROOT/assets/boot/grub/nexus/." "$STAGING/boot/grub/themes/nexus/"
 fi
 
 # ---- EFI System Partition image ----------------------------------------------

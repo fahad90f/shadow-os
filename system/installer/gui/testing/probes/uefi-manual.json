@@ -1,0 +1,230 @@
+{
+  "architecture": "amd64",
+  "firmware": {
+    "type": "uefi",
+    "bits": 64,
+    "secure_boot": false,
+    "efivars_writable": true
+  },
+  "memory_bytes": 8589934592,
+  "live_medium": {
+    "squashfs": "/run/live/medium/live/filesystem.squashfs",
+    "mount": "/run/live/medium",
+    "device": "/dev/sr0",
+    "disk": "/dev/sr0",
+    "installed_size": 6400000000
+  },
+  "disks": [
+    {
+      "path": "/dev/vda",
+      "name": "vda",
+      "size": 68719476736,
+      "model": null,
+      "vendor": "0x1af4",
+      "serial": null,
+      "transport": "virtio",
+      "removable": false,
+      "read_only": false,
+      "rotational": false,
+      "sector_size": 512,
+      "partition_table": "gpt",
+      "partitions": [
+        {
+          "path": "/dev/vda1",
+          "name": "vda1",
+          "size": 536870912,
+          "start": 1048576,
+          "fstype": "vfat",
+          "label": null,
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+          "parttype_name": "EFI System",
+          "is_esp": true,
+          "is_bios_grub": false,
+          "mountpoints": []
+        },
+        {
+          "path": "/dev/vda2",
+          "name": "vda2",
+          "size": 32212254720,
+          "start": 537919488,
+          "fstype": "ext4",
+          "label": "old-root",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0fc63daf-8483-4772-8e79-3d69d8477de4",
+          "parttype_name": "Linux filesystem",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        },
+        {
+          "path": "/dev/vda3",
+          "name": "vda3",
+          "size": 21474836480,
+          "start": 32750174208,
+          "fstype": "ext4",
+          "label": "home",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "933ac7e1-2eb4-4f13-b844-0e14e2aef915",
+          "parttype_name": "Linux home",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        },
+        {
+          "path": "/dev/vda4",
+          "name": "vda4",
+          "size": 4294967296,
+          "start": 54225010688,
+          "fstype": "swap",
+          "label": null,
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0657fd6d-a4ab-43c4-84e5-0933c84b4f4f",
+          "parttype_name": "Linux swap",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": []
+        }
+      ],
+      "mountpoints": [],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": false,
+      "whole_disk_fstype": null,
+      "free_regions": [
+        {
+          "start": 58519977984,
+          "end": 68718428159,
+          "size": 10198450176
+        }
+      ],
+      "largest_free": 10198450176,
+      "usable": true,
+      "unusable_reason": null
+    },
+    {
+      "path": "/dev/vdb",
+      "name": "vdb",
+      "size": 42949672960,
+      "model": null,
+      "vendor": "0x1af4",
+      "serial": null,
+      "transport": "virtio",
+      "removable": false,
+      "read_only": false,
+      "rotational": false,
+      "sector_size": 512,
+      "partition_table": "gpt",
+      "partitions": [
+        {
+          "path": "/dev/vdb1",
+          "name": "vdb1",
+          "size": 41875931136,
+          "start": 1048576,
+          "fstype": "ext4",
+          "label": "data",
+          "partlabel": null,
+          "uuid": null,
+          "partuuid": null,
+          "parttype": "0fc63daf-8483-4772-8e79-3d69d8477de4",
+          "parttype_name": "Linux filesystem",
+          "is_esp": false,
+          "is_bios_grub": false,
+          "mountpoints": [
+            "/mnt/data"
+          ]
+        }
+      ],
+      "mountpoints": [
+        "/mnt/data"
+      ],
+      "has_luks": false,
+      "has_lvm": false,
+      "has_raid": false,
+      "active_mappings": [],
+      "is_live_medium": false,
+      "whole_disk_fstype": null,
+      "free_regions": [
+        {
+          "start": 41876979712,
+          "end": 42948624383,
+          "size": 1071644672
+        }
+      ],
+      "largest_free": 1071644672,
+      "usable": true,
+      "unusable_reason": null
+    }
+  ],
+  "volume_groups": [],
+  "mapper_names": [],
+  "power": {
+    "on_ac": null,
+    "battery_percent": null
+  },
+  "network_online": true,
+  "other_systems": [
+    {
+      "device": "/dev/vda2",
+      "name": "Ubuntu 24.04.1 LTS (24.04)",
+      "label": "Ubuntu",
+      "type": "linux"
+    }
+  ],
+  "min_disk_bytes": 21474836480,
+  "checks": [
+    {
+      "id": "arch",
+      "status": "pass",
+      "title": "Architecture: amd64",
+      "detail": ""
+    },
+    {
+      "id": "firmware",
+      "status": "pass",
+      "title": "UEFI firmware",
+      "detail": ""
+    },
+    {
+      "id": "secureboot",
+      "status": "warn",
+      "title": "Secure Boot is disabled",
+      "detail": "Installation works either way. Enabling Secure Boot in the firmware setup protects the boot chain."
+    },
+    {
+      "id": "memory",
+      "status": "pass",
+      "title": "8.0 GiB of memory",
+      "detail": ""
+    },
+    {
+      "id": "disk",
+      "status": "pass",
+      "title": "2 suitable disk(s)",
+      "detail": "Largest: 64 GiB"
+    },
+    {
+      "id": "medium",
+      "status": "pass",
+      "title": "System image found",
+      "detail": ""
+    },
+    {
+      "id": "network",
+      "status": "pass",
+      "title": "Network connection available",
+      "detail": ""
+    }
+  ],
+  "can_install": true
+}

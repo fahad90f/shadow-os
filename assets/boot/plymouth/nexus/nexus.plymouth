@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=NEXUS OS
+Description=NEXUS OS boot splash: logo, progress and disk-unlock prompt
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/nexus
+ScriptFile=/usr/share/plymouth/themes/nexus/nexus.script
