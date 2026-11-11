@@ -50,7 +50,14 @@ mkdir -p "$CHROOT$SRC"
 ls_flags="-c"
 [ -n "${NEXUS_EXPORT_UNTRACKED:-}" ] && ls_flags="-co --exclude-standard"
 # shellcheck disable=SC2086
-(cd "$NEXUS_ROOT" && git ls-files $ls_flags -z) \
+# Committed work in progress is left out too (build/packages/wip.exclude).
+excludes=()
+while IFS= read -r line; do
+    case "$line" in ''|'#'*) continue ;; esac
+    excludes+=(":(exclude,glob)$line" ":(exclude,glob)$line/**")
+done < "$NEXUS_ROOT/build/packages/wip.exclude"
+# shellcheck disable=SC2086
+(cd "$NEXUS_ROOT" && git ls-files $ls_flags -z -- . "${excludes[@]}") \
     | (cd "$NEXUS_ROOT" && while IFS= read -r -d "" f; do [ -e "$f" ] && printf '%s\0' "$f"; done) \
     | rsync -a --from0 --files-from=- "$NEXUS_ROOT/" "$CHROOT$SRC/"
 

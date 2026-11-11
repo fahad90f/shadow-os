@@ -1,0 +1,37 @@
+# Paths (git pathspecs, one per line) that are committed but not yet part of
+# package builds: work in progress that has not been reviewed and integrated.
+# build/packages/build.sh leaves them out of the exported source tree.
+# Remove a line when the component is integrated (debian/control stanza added,
+# tests passed).
+applications/files
+applications/terminal
+applications/editor
+applications/archive-manager
+applications/disk-manager
+applications/screenshot
+applications/security-center
+system/recovery
+desktop/horizon-shell/modules/power
+applications/control-center/pages/AppearancePage.qml
+applications/control-center/pages/AccessibilityPage.qml
+applications/control-center/pages/StartupPage.qml
+applications/control-center/pages/LanguagePage.qml
+applications/control-center/pages/DateTimePage.qml
+applications/control-center/pages/StoragePage.qml
+applications/control-center/pages/UsersPage.qml
+applications/control-center/pages/PrivacyPage.qml
+applications/control-center/pages/FirewallPage.qml
+applications/control-center/pages/SecurityPage.qml
+applications/control-center/pages/UpdatesPage.qml
+applications/control-center/backends/appearance*
+applications/control-center/backends/accessibility*
+applications/control-center/backends/startup*
+applications/control-center/backends/language*
+applications/control-center/backends/datetime*
+applications/control-center/backends/storage*
+applications/control-center/backends/users*
+applications/control-center/backends/privacy*
+applications/control-center/backends/firewall*
+applications/control-center/backends/security*
+applications/control-center/backends/updates*
+applications/control-center/helpers

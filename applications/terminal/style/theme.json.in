@@ -1,0 +1,23 @@
+{
+  "mode": "@{mode}",
+  "bgBase": "@{bgBase}",
+  "bgSurface": "@{bgSurface}",
+  "bgRaised": "@{bgRaised}",
+  "bgOverlay": "@{bgOverlay}",
+  "bgInput": "@{bgInput}",
+  "bgHover": "@{bgHover}",
+  "bgPressed": "@{bgPressed}",
+  "borderSubtle": "@{borderSubtle}",
+  "border": "@{border}",
+  "borderStrong": "@{borderStrong}",
+  "textPrimary": "@{textPrimary}",
+  "textSecondary": "@{textSecondary}",
+  "textMuted": "@{textMuted}",
+  "textDisabled": "@{textDisabled}",
+  "textOnAccent": "@{textOnAccent}",
+  "success": "@{success}",
+  "warning": "@{warning}",
+  "danger": "@{danger}",
+  "shadow": "@{shadow}",
+  "accent": "@{accent}"
+}

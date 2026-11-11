@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+     Hardware description for Solid's "fake" backend (SOLID_FAKEHW), used by
+     tests/ui/devices.sh: a USB stick, an internal data partition and an
+     optical disc. Test fixture only; the application never reads it. -->
+<machine>
+  <device udi="/org/kde/solid/fakehw/computer">
+    <property key="name">Computer</property>
+    <property key="vendor">NEXUS test</property>
+  </device>
+
+  <device udi="/org/kde/solid/fakehw/storage_usb">
+    <property key="name">Flash Drive</property>
+    <property key="vendor">Test</property>
+    <property key="interfaces">StorageDrive,Block</property>
+    <property key="parent">/org/kde/solid/fakehw/computer</property>
+    <property key="minor">16</property>
+    <property key="major">8</property>
+    <property key="device">/dev/sdb</property>
+    <property key="bus">usb</property>
+    <property key="driveType">disk</property>
+    <property key="isRemovable">true</property>
+    <property key="isHotpluggable">true</property>
+  </device>
+  <device udi="/org/kde/solid/fakehw/volume_usb_1">
+    <property key="name">STICK</property>
+    <property key="interfaces">Block,StorageVolume,StorageAccess</property>
+    <property key="parent">/org/kde/solid/fakehw/storage_usb</property>
+    <property key="minor">17</property>
+    <property key="major">8</property>
+    <property key="device">/dev/sdb1</property>
+    <property key="isIgnored">false</property>
+    <property key="isMounted">false</property>
+    <property key="mountPoint">/tmp/files-test-devices/usb</property>
+    <property key="usage">filesystem</property>
+    <property key="fsType">vfat</property>
+    <property key="label">STICK</property>
+    <property key="uuid">1234-ABCD</property>
+    <property key="size">8011120640</property>
+  </device>
+
+  <device udi="/org/kde/solid/fakehw/storage_internal">
+    <property key="name">Internal Disk</property>
+    <property key="vendor">Test</property>
+    <property key="interfaces">StorageDrive,Block</property>
+    <property key="parent">/org/kde/solid/fakehw/computer</property>
+    <property key="minor">0</property>
+    <property key="major">8</property>
+    <property key="device">/dev/sda</property>
+    <property key="bus">sata</property>
+    <property key="driveType">disk</property>
+    <property key="isRemovable">false</property>
+    <property key="isHotpluggable">false</property>
+  </device>
+  <device udi="/org/kde/solid/fakehw/volume_internal_2">
+    <property key="name">Data</property>
+    <property key="interfaces">Block,StorageVolume,StorageAccess</property>
+    <property key="parent">/org/kde/solid/fakehw/storage_internal</property>
+    <property key="minor">2</property>
+    <property key="major">8</property>
+    <property key="device">/dev/sda2</property>
+    <property key="isIgnored">false</property>
+    <property key="isMounted">true</property>
+    <property key="mountPoint">/tmp/files-test-devices/data</property>
+    <property key="usage">filesystem</property>
+    <property key="fsType">ext4</property>
+    <property key="label">Data</property>
+    <property key="uuid">c0ffee00-0000-4000-8000-000000000002</property>
+    <property key="size">500107862016</property>
+  </device>
+
+  <device udi="/org/kde/solid/fakehw/storage_dvd">
+    <property key="name">DVD Writer</property>
+    <property key="vendor">Test</property>
+    <property key="interfaces">StorageDrive,Block,OpticalDrive</property>
+    <property key="parent">/org/kde/solid/fakehw/computer</property>
+    <property key="minor">0</property>
+    <property key="major">11</property>
+    <property key="device">/dev/sr0</property>
+    <property key="bus">ide</property>
+    <property key="driveType">cdrom</property>
+    <property key="isRemovable">true</property>
+    <property key="isHotpluggable">false</property>
+    <property key="supportedMedia">cdr,cdrw,dvd,dvdr,dvdrw</property>
+    <property key="readSpeed">4234</property>
+    <property key="writeSpeed">4234</property>
+    <property key="writeSpeeds">4234,2822,2117,1411,706</property>
+  </device>
+  <device udi="/org/kde/solid/fakehw/volume_dvd_disc">
+    <property key="name">BACKUP_2026</property>
+    <property key="interfaces">Block,StorageVolume,OpticalDisc,StorageAccess</property>
+    <property key="parent">/org/kde/solid/fakehw/storage_dvd</property>
+    <property key="minor">0</property>
+    <property key="major">11</property>
+    <property key="device">/dev/sr0</property>
+    <property key="isIgnored">false</property>
+    <property key="isMounted">false</property>
+    <property key="mountPoint">/tmp/files-test-devices/disc</property>
+    <property key="usage">filesystem</property>
+    <property key="fsType">iso9660</property>
+    <property key="label">BACKUP_2026</property>
+    <property key="uuid">2026-11-11-00-00-00-00</property>
+    <property key="size">4700372992</property>
+    <property key="availableContent">data</property>
+    <property key="discType">dvd_rom</property>
+    <property key="isAppendable">false</property>
+    <property key="isBlank">false</property>
+    <property key="isRewritable">false</property>
+    <property key="capacity">4700372992</property>
+  </device>
+</machine>

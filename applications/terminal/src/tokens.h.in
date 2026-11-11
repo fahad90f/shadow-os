@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Rendered at build time by scripts/gen-tokens.py from
+// desktop/themes/tokens/nexus-tokens.json (template: src/tokens.h.in).
+// The design-token values NEXUS Terminal needs as C++ constants; colours are
+// not here — they depend on the appearance mode and come from Theme.
+#pragma once
+
+namespace Tokens {
+
+inline constexpr char FontUi[] = "@{font.ui}";
+inline constexpr char FontUiFallback[] = "@{font.uiFallback}";
+inline constexpr char FontMono[] = "@{font.mono}";
+inline constexpr char FontMonoFallback[] = "@{font.monoFallback}";
+inline constexpr char AccentDefault[] = "@{accentDefault}";
+
+inline constexpr int FontSizeCaption = @{fontSize.caption};
+inline constexpr int FontSizeSmall = @{fontSize.small};
+inline constexpr int FontSizeBody = @{fontSize.body};
+inline constexpr int FontSizeBodyLarge = @{fontSize.bodyLarge};
+inline constexpr int FontSizeTitle = @{fontSize.title};
+inline constexpr int FontSizeHeading = @{fontSize.heading};
+
+inline constexpr int WeightRegular = @{fontWeight.regular};
+inline constexpr int WeightMedium = @{fontWeight.medium};
+inline constexpr int WeightSemibold = @{fontWeight.semibold};
+
+inline constexpr int SpaceXxs = @{space.xxs};
+inline constexpr int SpaceXs = @{space.xs};
+inline constexpr int SpaceSm = @{space.sm};
+inline constexpr int SpaceMd = @{space.md};
+inline constexpr int SpaceLg = @{space.lg};
+inline constexpr int SpaceXl = @{space.xl};
+inline constexpr int SpaceXxl = @{space.xxl};
+inline constexpr int SpaceXxxl = @{space.xxxl};
+
+inline constexpr int RadiusXs = @{radius.xs};
+inline constexpr int RadiusSm = @{radius.sm};
+inline constexpr int RadiusMd = @{radius.md};
+inline constexpr int RadiusLg = @{radius.lg};
+
+inline constexpr int IconSmall = @{size.iconSmall};
+inline constexpr int Icon = @{size.icon};
+inline constexpr int IconLarge = @{size.iconLarge};
+inline constexpr int ControlHeight = @{size.controlHeight};
+inline constexpr int RowHeight = @{size.rowHeight};
+inline constexpr int HeaderHeight = @{size.headerHeight};
+inline constexpr int PanelHeight = @{size.panelHeight};
+inline constexpr int SidebarWidth = @{size.sidebarWidth};
+inline constexpr int BorderWidth = @{size.borderWidth};
+inline constexpr int FocusRing = @{size.focusRing};
+inline constexpr int WindowDefaultWidth = @{size.windowDefaultWidth};
+inline constexpr int WindowDefaultHeight = @{size.windowDefaultHeight};
+inline constexpr int WindowMinWidth = @{size.windowMinWidth};
+inline constexpr int WindowMinHeight = @{size.windowMinHeight};
+
+inline constexpr int MotionFast = @{motion.fast};
+inline constexpr int MotionNormal = @{motion.normal};
+inline constexpr int MotionSlow = @{motion.slow};
+
+inline constexpr double OpacityDisabled = @{opacity.disabled};
+inline constexpr double OpacityHover = @{opacity.hoverOverlay};
+inline constexpr double OpacityPressed = @{opacity.pressedOverlay};
+inline constexpr double OpacitySelectedFill = @{opacity.selectedFill};
+
+} // namespace Tokens
