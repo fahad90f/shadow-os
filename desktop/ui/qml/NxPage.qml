@@ -25,6 +25,10 @@ Item {
     // Left edge and width shared by the header and the content column.
     readonly property real bodyWidth: Math.max(0, Math.min(maxContentWidth, width - Theme.spaceXl * 2))
     readonly property real bodyX: Math.max(Theme.spaceXl, (width - bodyWidth) / 2)
+    // Space kept free under the header, so scrolled content does not touch the
+    // subtitle; the content column starts that much higher inside the
+    // scrolling area, which leaves the unscrolled page exactly as it was.
+    readonly property real headerGap: hasHeader ? Theme.spaceMd : 0
 
     // ---- fixed header ---------------------------------------------------------
     Item {
@@ -33,7 +37,7 @@ Item {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: visible ? headerRow.implicitHeight + Theme.spaceXl : 0
+        height: visible ? headerRow.implicitHeight + Theme.spaceXl + root.headerGap : 0
         z: 1
 
         RowLayout {
@@ -90,7 +94,7 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         contentWidth: width
-        contentHeight: column.implicitHeight + Theme.spaceXl * 2
+        contentHeight: column.implicitHeight + Theme.spaceXl * 2 - root.headerGap
         boundsBehavior: Flickable.StopAtBounds
         clip: true
         ScrollBar.vertical: ScrollBar { }
@@ -98,7 +102,7 @@ Item {
         ColumnLayout {
             id: column
             x: root.bodyX
-            y: Theme.spaceXl
+            y: Theme.spaceXl - root.headerGap
             width: root.bodyWidth
             spacing: root.contentSpacing
         }
