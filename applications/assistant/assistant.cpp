@@ -38,6 +38,8 @@ Assistant::Assistant(QObject *parent)
 
         if (toolCalls.isEmpty()) {
             setPhase(QStringLiteral("idle"));
+            if (!content.trimmed().isEmpty())
+                Q_EMIT assistantReplyReady(content);
             return;
         }
         // Decide per call: confirm in the UI, or auto-run (read-only tools
@@ -53,6 +55,8 @@ Assistant::Assistant(QObject *parent)
             e.summary = cm.value(QStringLiteral("summary")).toString();
             e.preview = cm.value(QStringLiteral("preview")).toString();
             if (needsConfirmation(e.name)) {
+                if (!anyPending) // announce the first pending call for spoken approval
+                    Q_EMIT confirmationNeeded(e.summary, e.preview, e.id);
                 anyPending = true; // stays pending; UI shows a confirmation card
             } else {
                 executeCall(row, e);
