@@ -18,6 +18,7 @@ import QtQuick
 // reports as a failure. Without --selftest nothing runs.
 QtObject {
     id: checks
+    objectName: "caseChecks"        // main.cpp looks the object up to see whether the checks finished
 
     property string name: ""
     property var steps: []

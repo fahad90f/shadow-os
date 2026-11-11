@@ -794,3 +794,15 @@ Description: NEXUS Disk Manager
  unlock, formatting, partition tables, resizing, checking and disk images.
  Destructive actions name the device, list what will be lost, require the
  device name to be typed and are refused for the disk the system runs from.
+
+Package: nexus-recovery
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nexus-ui (= ${binary:Version}),
+ python3, util-linux, e2fsprogs, dosfstools, cryptsetup-bin, lvm2, pkexec, polkitd
+Recommends: nexus-terminal, efibootmgr
+Description: NEXUS Recovery
+ Repairs a NEXUS OS installation that no longer starts or updates, from the
+ installation medium or the system itself: finds installed systems, unlocks
+ encrypted ones, re-installs the boot loader and initramfs, completes
+ interrupted package operations, checks file systems, resets a password and
+ collects logs. Every step explains what it changes before it runs.

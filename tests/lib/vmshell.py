@@ -155,7 +155,7 @@ def main():
     p = sub.add_parser("key"); p.add_argument("keys", nargs="+")
     p = sub.add_parser("type"); p.add_argument("text")
     p = sub.add_parser("mouse"); p.add_argument("x", type=int); p.add_argument("y", type=int)
-    p.add_argument("button", nargs="?", choices=["left", "right", "middle"])
+    p.add_argument("button", nargs="?", choices=["left", "right", "middle", "wheel-up", "wheel-down"])
     p.add_argument("--screen", default="1280x800")
     p = sub.add_parser("tail"); p.add_argument("--chars", type=int, default=3000)
     sub.add_parser("stop")

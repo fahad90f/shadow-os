@@ -27,10 +27,11 @@ NxWindow {
         Repeater {
             model: 6
             NxSection {
+                id: section
                 required property int index
                 title: "Section " + (index + 1)
                 NxRow { title: "Host"; TextField { width: 220; placeholderText: "proxy.example.org" } }
-                NxRow { title: "Port"; SpinBox { from: 1; to: 65535; value: 3128 + parent.parent.parent.parent.parent.index } }
+                NxRow { title: "Port"; SpinBox { from: 1; to: 65535; value: 3128 + section.index } }
                 NxRow { title: "Use for all protocols"; Switch { } }
             }
         }

@@ -200,6 +200,23 @@ out="$(engine repair-packages --target "$ROOT_UUID" --dry-run)"; check "repair o
 out="$(engine umount --target "$ROOT_UUID")"; check "umount after read-only" "$(result "$out" ok)" true
 out="$(engine fsck --target "$ROOT_UUID")"; check "file systems clean after all of this" "$(result "$out" ok)" true
 
+# ---- other root file systems (scan only) ---------------------------------------------
+note "-- scan of btrfs and xfs roots (read-only, no log replay)"
+for kind in btrfs xfs; do
+    command -v "mkfs.$kind" > /dev/null && grep -qw "$kind" /proc/filesystems || { note "      (no mkfs.$kind or no kernel support: not exercised)"; continue; }
+    truncate -s 320M "$WORK/$kind.img"
+    extra="$(attach "$WORK/$kind.img")"; guard "$extra"
+    if [ "$kind" = btrfs ]; then mkfs.btrfs -q -f "$extra"; else mkfs.xfs -q -f "$extra"; fi
+    mkdir -p "$WORK/extra"; mount "$extra" "$WORK/extra"
+    mkdir -p "$WORK/extra/etc/nexus" "$WORK/extra/usr/lib"
+    printf 'PRETTY_NAME="NEXUS OS on %s"\nID=nexus\n' "$kind" > "$WORK/extra/usr/lib/os-release"; ln -s ../usr/lib/os-release "$WORK/extra/etc/os-release"
+    umount "$WORK/extra"; sync
+    before="$(md5sum < "$WORK/$kind.img")"
+    out="$(NEXUS_RECOVERY_TEST_DEVICES="$extra" engine scan)"
+    check "scan: $kind root found" "$(result "$out" installations.0.name)/$(result "$out" installations.0.root.fstype)" "NEXUS OS on $kind/$kind"
+    check "scan: wrote nothing to the $kind image" "$(md5sum < "$WORK/$kind.img")" "$before"
+done
+
 # Kept for inspection: the engine's own log and the first scan result.
 mkdir -p /shots/nested-logs/recovery 2>/dev/null && cp "$WORK"/log/*.log /shots/nested-logs/recovery/engine-test-recovery.log 2>/dev/null
 cp "$WORK/scan.json" /shots/nested-logs/recovery/engine-test-scan.json 2>/dev/null

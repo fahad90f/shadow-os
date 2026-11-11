@@ -2,8 +2,10 @@
 # The Control Center (Power, Privacy) writes the user's values to
 # ~/.config/kscreenlockerrc.
 [Daemon]
-# Lock automatically after 10 minutes without input, and when suspending.
-Autolock=true
+# Locking after a period without input is done by the shell's power module
+# from the user's power settings (~/.config/nexus/power.conf), so the
+# locker's own timer is off; it still locks when the system suspends.
+Autolock=false
 Timeout=10
 LockOnResume=true
 # Seconds during which a just-locked screen can be dismissed without the password.

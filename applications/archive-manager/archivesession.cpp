@@ -4,7 +4,6 @@
 #include <command.h>
 
 #include <QCollator>
-#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -922,11 +921,31 @@ void ArchiveSession::finishExtract(const ExtractRequest &request, const QStringL
                 return;
             }
             QFile::setPermissions(file, QFileDevice::ReadOwner);
-            if (!QDesktopServices::openUrl(QUrl::fromLocalFile(file))) {
-                finish(kind, false, tr("No application could be started to open “%1” (%2).").arg(request.previewName, mime.name()), details);
+            // QDesktopServices reports success even when nothing can open the
+            // file, so the launcher is run here and its exit status checked.
+            QString launcher;
+            QStringList arguments;
+            if (Nexus::Command::available(QStringLiteral("xdg-open"))) {
+                launcher = QStringLiteral("xdg-open");
+                arguments = {file};
+            } else if (Nexus::Command::available(QStringLiteral("gio"))) {
+                launcher = QStringLiteral("gio");
+                arguments = {QStringLiteral("open"), file};
+            } else {
+                finish(kind, false, tr("“%1” was extracted to a temporary folder, but no program that opens files with their "
+                                       "default application (xdg-open) is installed.").arg(request.previewName), details);
                 return;
             }
-            finish(kind, true, tr("Opened a temporary, read-only copy of “%1”.").arg(request.previewName), details);
+            const QString name = request.previewName;
+            const QString mimeName = mime.name();
+            setProgress(-1, tr("Opening…"));
+            Nexus::Command::run(this, launcher, arguments, [this, kind, name, mimeName, details](const Nexus::CommandResult &result) {
+                if (result.ok())
+                    finish(kind, true, tr("Opened a temporary, read-only copy of “%1”.").arg(name), details);
+                else
+                    finish(kind, false, tr("No application is set up to open “%1” (%2).").arg(name, mimeName),
+                           details + QStringList{result.errText().trimmed()});
+            }, 20000);
             return;
         }
         QString message = tr("%n item(s) extracted to “%1”", "", report.files + report.links + report.directories).arg(request.destination);

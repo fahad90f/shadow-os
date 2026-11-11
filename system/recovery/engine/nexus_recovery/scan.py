@@ -18,7 +18,7 @@ ROOT_FSTYPES = ("ext4", "ext3", "ext2", "btrfs", "xfs", "f2fs")
 MOUNTABLE_FSTYPES = ROOT_FSTYPES + ("vfat",)
 # Read-only AND without replaying the journal / log: scanning must not write.
 PROBE_OPTIONS = {"ext4": "ro,noload", "ext3": "ro,noload", "ext2": "ro", "xfs": "ro,norecovery",
-                 "btrfs": "ro", "f2fs": "ro"}
+                 "btrfs": "ro,rescue=nologreplay", "f2fs": "ro,norecovery"}
 USER_NAME = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 
 

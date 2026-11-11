@@ -20,7 +20,8 @@ NxWindow {
         // Deterministic pseudo-load: every gauge moves on every tick.
         return 0.5 + 0.45 * Math.sin(tick * 1.7 + i * 0.9)
     }
-    Timer { interval: 1000; running: true; repeat: true; onTriggered: window.tick++ }
+    // The scripted checks change the values themselves.
+    Timer { interval: 1000; running: !checks.active; repeat: true; onTriggered: window.tick++ }
 
     ColumnLayout {
         anchors.fill: parent
@@ -91,6 +92,7 @@ NxWindow {
     }
 
     CaseChecks {
+        id: checks
         name: "motion"
         interval: 300
         property real before: 0

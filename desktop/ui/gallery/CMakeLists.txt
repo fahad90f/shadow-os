@@ -21,3 +21,5 @@ qt_add_qml_module(nexus-ui-gallery
         CaseFolderdialog.qml
 )
 target_link_libraries(nexus-ui-gallery PRIVATE Nexus::App)
+qt_add_resources(nexus-ui-gallery selexp PREFIX /qt-project.org/imports/QtQuick/Dialogs/quickimpl/qml BASE sel-exp
+    FILES "sel-exp/+org.nexus.style/FileDialog.qml" "sel-exp/+style/FileDialog.qml" "sel-exp/+nexus/FileDialog.qml" "sel-exp/+Basic/FileDialog.qml")

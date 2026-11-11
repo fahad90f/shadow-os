@@ -49,5 +49,21 @@ int main(int argc, char **argv)
         }
         type = QStringLiteral("Case") + name.at(0).toUpper() + name.mid(1);
     }
-    return app.run(QStringLiteral("org.nexus.gallery"), type);
+    const bool selfTest = app.parser().isSet(selfTestOption);
+    // Under the smoke-test hook the application exits after a delay; give the
+    // scripted checks (a few seconds at most) time to finish first.
+    if (selfTest && qEnvironmentVariableIsEmpty("NEXUS_SCREENSHOT_DELAY"))
+        qputenv("NEXUS_SCREENSHOT_DELAY", "6000");
+    const int rc = app.run(QStringLiteral("org.nexus.gallery"), type);
+    if (selfTest && rc == 0) {
+        // A run that ended before the checks did must not count as a pass.
+        const auto roots = app.engine().rootObjects();
+        const QObject *checks = roots.isEmpty() ? nullptr
+            : roots.first()->findChild<QObject *>(QStringLiteral("caseChecks"));
+        if (!checks || !checks->property("done").toBool()) {
+            fprintf(stderr, "NEXUS-CASE-FAILED %s: the scripted checks did not finish\n", qPrintable(type));
+            return 4;
+        }
+    }
+    return rc;
 }

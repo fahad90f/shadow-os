@@ -397,7 +397,7 @@ NxWindow {
                                 font.weight: Theme.weightSemibold
                             }
                         }
-                        HeaderCell { role: "modified"; label: qsTr("Modified"); Layout.preferredWidth: 150 }
+                        HeaderCell { role: "modified"; label: qsTr("Modified"); Layout.preferredWidth: 150; Layout.leftMargin: Theme.spaceMd }
                     }
                 }
 
@@ -519,6 +519,7 @@ NxWindow {
                             }
                             Label {
                                 Layout.preferredWidth: 150
+                                Layout.leftMargin: Theme.spaceMd
                                 text: rowItem.modelData.modified !== "" ? rowItem.modelData.modified : "—"
                                 color: Theme.textMuted
                                 font.pixelSize: Theme.fontSizeSmall
@@ -1110,7 +1111,12 @@ NxWindow {
                         if (createDialog.format.store) levels.unshift({ key: "store", label: qsTr("None — store only") })
                         return levels
                     }
-                    onModelChanged: currentIndex = Math.max(0, indexOfValue(prefs.createLevel) >= 0 ? indexOfValue(prefs.createLevel) : indexOfValue("normal"))
+                    // The stored preference where this format offers it, else "normal".
+                    onModelChanged: {
+                        let wanted = model.findIndex((level) => level.key === prefs.createLevel)
+                        if (wanted < 0) wanted = model.findIndex((level) => level.key === "normal")
+                        currentIndex = Math.max(0, wanted)
+                    }
                 }
                 Label { text: qsTr("Password"); color: Theme.textSecondary; visible: createDialog.format.encrypt === true }
                 NxPasswordField {

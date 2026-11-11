@@ -65,7 +65,9 @@ NxWindow {
         views = list
         if (currentTab >= list.length) currentTab = Math.max(0, list.length - 1)
     }
+    property int tabBeforeNew: 0
     function newTab() {
+        tabBeforeNew = currentTab
         tabs.append({ tabId: nextTabId++ })
         refreshViews()
         currentTab = tabs.count - 1
@@ -476,8 +478,11 @@ NxWindow {
                         errorDialog.message = message
                         errorDialog.open()
                         // A tab created only for a file that could not be opened is of no use.
-                        if (document.filePath === "" && editor.length === 0 && !document.modified && tabs.count > 1)
+                        if (document.filePath === "" && editor.length === 0 && !document.modified && tabs.count > 1) {
+                            const back = window.tabBeforeNew
                             window.closeTab(index)
+                            window.currentTab = Math.min(back, tabs.count - 1)
+                        }
                     }
                 }
             }
@@ -540,7 +545,7 @@ NxWindow {
                     id: indentButton
                     text: prefs.useSpaces ? qsTr("Spaces: %1").arg(prefs.indentWidth) : qsTr("Tabs: %1").arg(prefs.indentWidth)
                     ToolTip.text: qsTr("Indentation")
-                    onClicked: indentMenu.popup(indentButton, 0, -indentMenu.height)
+                    onClicked: indentMenu.popup(indentButton, 0, -indentMenu.implicitHeight)
                 }
                 StatusButton {
                     text: window.currentDocument
@@ -553,7 +558,7 @@ NxWindow {
                     text: window.currentDocument
                         ? window.currentDocument.lineEnding + (window.currentDocument.mixedLineEndings ? qsTr(" (mixed)") : "") : ""
                     ToolTip.text: qsTr("Line endings")
-                    onClicked: eolMenu.popup(eolButton, 0, -eolMenu.height)
+                    onClicked: eolMenu.popup(eolButton, 0, -eolMenu.implicitHeight)
                 }
                 StatusButton {
                     text: !window.currentDocument ? ""
@@ -622,9 +627,9 @@ NxWindow {
         id: eolMenu
         Repeater {
             model: [
-                { key: "LF", label: qsTr("LF — Unix, Linux, macOS") },
-                { key: "CRLF", label: qsTr("CRLF — Windows") },
-                { key: "CR", label: qsTr("CR — classic Mac OS") },
+                { key: "LF", label: qsTr("LF (Unix, Linux)") },
+                { key: "CRLF", label: qsTr("CRLF (Windows)") },
+                { key: "CR", label: qsTr("CR (classic Mac)") },
             ]
             MenuItem {
                 required property var modelData

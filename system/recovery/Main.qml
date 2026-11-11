@@ -38,7 +38,10 @@ NxWindow {
         return parts.join("  ·  ")
     }
     function userNames() {
-        return hasTarget && target.users ? target.users.map(u => u.name) : []
+        // people first, root last: the first entry is the dialog's default
+        if (!hasTarget || !target.users)
+            return []
+        return target.users.filter(u => u.uid !== 0).concat(target.users.filter(u => u.uid === 0)).map(u => u.name)
     }
 
     NxPage {
