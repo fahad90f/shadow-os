@@ -1,3 +1,13 @@
+shadow-os (0.2.0) obsidian; urgency=medium
+
+  * Security hardening layer: kernel sysctl set, module blacklist, auditd
+    rules, AppArmor profile for shadow-anon and the shadow-harden tool.
+  * Hide Me anonymity panel and Control Center OS integrity section.
+  * Arsenal: pentest profile brought in line with the shared tool entries.
+  * Keep squashfs loadable; the live medium's root filesystem depends on it.
+
+ -- Shadow OS Developers <shadow-os@users.noreply.github.com>  Thu, 12 Nov 2026 20:00:00 +0000
+
 shadow-os (0.1.0) obsidian; urgency=medium
 
   * First development release of the Shadow OS distribution components:
