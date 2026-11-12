@@ -395,11 +395,23 @@ class VM:
 
     # ---- shell helpers (need a logged-in shell on the serial console) -------------
     def login(self, user: str, password: str, timeout: float = 600):
-        self.expect(r"login: ", timeout, fail=PANIC)
-        time.sleep(1)
-        self.sendline(user)
-        # The prompt is localised on an installed system ("Passwort:", "Mot de passe :" …).
-        self.expect(r"(?i)(pass|contrase|parol|senha|wachtwoord|has[lł]o)[^\n:]*: ?$", 60)
+        # A getty can print "login:" early in boot and then be restarted (or have
+        # its input swallowed by console output), so a user name typed at the
+        # first prompt may never reach login(1). Retry until the password prompt
+        # actually appears.
+        deadline = time.time() + timeout
+        while True:
+            self.expect(r"login: ", max(1.0, deadline - time.time()), fail=PANIC)
+            time.sleep(1)
+            self.sendline(user)
+            try:
+                # The prompt is localised on an installed system ("Passwort:", "Mot de passe :" …).
+                self.expect(r"(?i)(pass|contrase|parol|senha|wachtwoord|has[lł]o)[^\n:]*: ?$", 30)
+                break
+            except TestFailure:
+                if time.time() >= deadline:
+                    raise
+                self.sendline("")   # provoke a fresh login prompt and try again
         time.sleep(0.5)
         self.sendline(password)
         self.expect(r"[$#] ", 120)
