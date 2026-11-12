@@ -14,9 +14,9 @@ namespace {
 // template (with a comment) as editable defaults rather than compiled-in
 // constants used behind the user's back.
 const QString kDefaultBrain = QStringLiteral("nvidia/nemotron-3.5-super-vl-120b-a12b");
-const QString kDefaultPlanner = QStringLiteral("nvidia/nemotron-3-ultra-550b");
-const QString kDefaultFast = QStringLiteral("nvidia/nemotron-3.5-lightning-30b");
-const QString kDefaultOmni = QStringLiteral("nvidia/nemotron-3-nano-omni-30b");
+const QString kDefaultPlanner = QStringLiteral("nvidia/nemotron-3-ultra-550b-a55b");
+const QString kDefaultFast = QStringLiteral("nvidia/nemotron-3.5-lightning-30b-a3b");
+const QString kDefaultOmni = QStringLiteral("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
 const QString kDefaultBaseUrl = QStringLiteral("https://integrate.api.nvidia.com/v1");
 
 // Canonical set of tool names the registry exposes. Kept in step with

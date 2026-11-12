@@ -28,9 +28,9 @@ key=nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 [models]
 brain=nvidia/nemotron-3.5-super-vl-120b-a12b
-planner=nvidia/nemotron-3-ultra-550b
-fast=nvidia/nemotron-3.5-lightning-30b
-omni=nvidia/nemotron-3-nano-omni-30b
+planner=nvidia/nemotron-3-ultra-550b-a55b
+fast=nvidia/nemotron-3.5-lightning-30b-a3b
+omni=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
 
 [behaviour]
 autonomy=ask_every        # ask_every | ask_risky
