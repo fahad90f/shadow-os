@@ -31,6 +31,11 @@ const QStringList kAllTools = {
     QStringLiteral("copy_path"),         QStringLiteral("delete_path"),
     QStringLiteral("write_code"),        QStringLiteral("run_in_terminal"),
     QStringLiteral("type_text"),         QStringLiteral("take_screenshot"),
+    // Pentest-specific tools (active only when role == "pentest").
+    QStringLiteral("pentest_scan"),      QStringLiteral("web_enum"),
+    QStringLiteral("search_exploits"),   QStringLiteral("run_sqlmap"),
+    QStringLiteral("crack_hash"),        QStringLiteral("brute_service"),
+    QStringLiteral("start_capture"),
 };
 
 } // namespace
@@ -100,6 +105,11 @@ void AssistantConfig::reload()
     if (m_autonomy != QLatin1String("ask_risky") && m_autonomy != QLatin1String("autopilot"))
         m_autonomy = QStringLiteral("ask_every");
 
+    // --- role ---
+    m_role = ini.value(QStringLiteral("behaviour/role"), QStringLiteral("general")).toString().trimmed();
+    if (m_role != QLatin1String("pentest"))
+        m_role = QStringLiteral("general");
+
     // --- disabled tools ---
     m_disabledTools = ini.value(QStringLiteral("tools/disabled")).toStringList();
     m_disabledTools.removeAll(QString());
@@ -144,6 +154,7 @@ void AssistantConfig::save()
 {
     QSettings ini(iniPath(), QSettings::IniFormat);
     ini.setValue(QStringLiteral("behaviour/autonomy"), m_autonomy);
+    ini.setValue(QStringLiteral("behaviour/role"), m_role);
     ini.setValue(QStringLiteral("tools/disabled"), m_disabledTools);
     // Voice toggles/engine the UI can change (paths/voices stay file-edited).
     ini.setValue(QStringLiteral("voice/wake_word_enabled"), m_wakeEnabled);
@@ -170,6 +181,16 @@ void AssistantConfig::setAutonomy(const QString &value)
     if (v == m_autonomy)
         return;
     m_autonomy = v;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setRole(const QString &value)
+{
+    const QString v = (value == QLatin1String("pentest")) ? value : QStringLiteral("general");
+    if (v == m_role)
+        return;
+    m_role = v;
     save();
     Q_EMIT changed();
 }

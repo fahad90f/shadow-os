@@ -33,8 +33,10 @@ class AssistantConfig : public QObject
     Q_PROPERTY(QString plannerModel READ plannerModel NOTIFY changed)
     Q_PROPERTY(QString fastModel READ fastModel NOTIFY changed)
     Q_PROPERTY(QString omniModel READ omniModel NOTIFY changed)
-    // "ask_every" | "ask_risky"
+    // "ask_every" | "ask_risky" | "autopilot"
     Q_PROPERTY(QString autonomy READ autonomy WRITE setAutonomy NOTIFY changed)
+    // "general" | "pentest"  — changes the system prompt and available tools
+    Q_PROPERTY(QString role READ role WRITE setRole NOTIFY changed)
     Q_PROPERTY(QStringList enabledTools READ enabledTools NOTIFY changed)
 
     // --- Voice (hands-free "Shadow") -------------------------------------
@@ -79,6 +81,8 @@ public:
 
     QString autonomy() const { return m_autonomy; }
     void setAutonomy(const QString &value);
+    QString role() const { return m_role; }
+    void setRole(const QString &value);
 
     QStringList enabledTools() const { return m_enabledTools; }
     Q_INVOKABLE bool toolEnabled(const QString &name) const;
@@ -122,6 +126,7 @@ private:
     bool m_baseUrlOverridden = false;
     QString m_brain, m_planner, m_fast, m_omni;
     QString m_autonomy;
+    QString m_role;
     QStringList m_enabledTools;
     bool m_toolsKeySet = false; // whether [tools] disabled=... was present
     QStringList m_disabledTools;

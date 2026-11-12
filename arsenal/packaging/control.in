@@ -528,7 +528,7 @@ Description: SHADOW Arsenal profile - Complete Arsenal
  most users are better served installing the specific profiles they need. The
  tools are referenced from the other profiles, not duplicated here.
  .
- This metapackage depends on the metapackages of the profiles it combines (237
+ This metapackage depends on the metapackages of the profiles it combines (255
  tools in total).
  .
  These tools are for authorised security testing, research, defence and
@@ -543,61 +543,106 @@ Depends:
  ${misc:Depends},
  shadow-arsenal-data (>= ${source:Version}),
  aircrack-ng,
+ android-tools-adb,
+ apktool,
  arp-scan,
  assetfinder,
+ autopsy,
  bettercap,
+ binwalk,
  bully,
  cewl,
+ chkrootkit,
+ chntpw,
+ commix,
  crunch,
  dirb,
  dirsearch,
  dnsenum,
  dnsmap,
  dnsrecon,
+ enum4linux,
  ettercap-graphical,
+ exploitdb,
+ fcrackzip,
  ffuf,
  fierce,
+ foremost,
+ gdb,
  gobuster,
  hashcat,
  hashid,
+ hexedit,
+ hping3,
  hydra,
+ impacket-scripts,
  john,
+ kismet,
+ ltrace,
  masscan,
  mdk3,
  mdk4,
  medusa,
+ mitmproxy,
  nbtscan,
  ncrack,
+ netcat-openbsd,
  netdiscover,
+ netexec,
+ nikto,
  nmap,
+ onesixtyone,
+ ophcrack,
  patator,
  proxychains4,
+ python3-pwntools,
+ python3-scapy,
+ radare2,
  reaver,
  recon-ng,
+ rkhunter,
+ seclists,
  smbclient,
  smbmap,
+ snmp,
+ socat,
  sqlmap,
  sshuttle,
+ sslscan,
+ strace,
  sublist3r,
+ tcpdump,
+ testdisk,
+ theharvester,
  tor,
+ torsocks,
+ tshark,
  wafw00f,
+ weevely,
  wfuzz,
  whatweb,
  wifite,
+ wireshark,
+ wordlists,
+ zaproxy,
  zmap
 Suggests: shadow-arsenal
 Description: SHADOW Arsenal profile - Penetration Testing
- A ready-to-go selection of the most-used offensive tools for authorized
- penetration testing: host and service discovery, DNS and SMB enumeration, web
- application testing, password attacks, wireless attacks and traffic
- interception. Every tool here is also part of a category profile; this
- profile groups them under one name for convenience. Proprietary suites (Burp
- Suite Pro, Metasploit Pro, Cobalt Strike) and tools not packaged in Debian
- are listed in the Arsenal with their official sources. Use only on systems
- you own or are contracted in writing to test.
+ A comprehensive, Kali-class selection of offensive tools for authorized
+ professional penetration testing: host and service discovery, DNS and SMB
+ enumeration, web application testing (including automated scanners and
+ injection testers), network analysis and traffic interception, password
+ attacks, wireless attacks, reverse engineering, forensics, post-exploitation
+ and pivoting, mobile app testing, and OSINT. Tools that are proprietary or
+ not in Debian are listed with vendor install instructions. Use only on
+ systems you own or are contracted in writing to test.
  .
- This metapackage depends on the 43 tools of the profile, all from Debian
+ This metapackage depends on the 84 tools of the profile, all from Debian
  main; APT installs every one of them with it.
+ .
+ Not included, because they are not in Debian main: Metasploit Framework,
+ Ghidra, Burp Suite Pro, WPScan, Nuclei, Evil-WinRM, Responder, BloodHound CE,
+ Nessus. The Arsenal manager lists where their vendors publish them.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written

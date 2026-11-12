@@ -62,6 +62,31 @@ NxPage {
     }
 
     NxSection {
+        title: qsTr("Mode")
+        description: qsTr("Switch the assistant's persona and available tools.")
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spaceMd
+            NxSegmented {
+                model: [qsTr("General"), qsTr("Pentest")]
+                currentIndex: settings.config && settings.config.role === "pentest" ? 1 : 0
+                onActivated: (index) => settings.config.role = index === 1 ? "pentest" : "general"
+            }
+            Item { Layout.fillWidth: true }
+        }
+        Text {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            text: settings.config && settings.config.role === "pentest"
+                  ? qsTr("Penetration Testing mode. Activates the offensive security system prompt and seven pentest tools (nmap profiles, web enumeration, exploit search, SQLi, hash cracking, service brute-force, packet capture). Use only on systems you own or are contracted in writing to test.")
+                  : qsTr("Standard assistant with full productivity tools.")
+            color: settings.config && settings.config.role === "pentest" ? Theme.warning : Theme.textMuted
+            font.family: Theme.fontUi
+            font.pixelSize: Theme.fontSizeSmall
+        }
+    }
+
+    NxSection {
         title: qsTr("Autonomy")
         description: qsTr("How much the assistant asks before acting.")
         RowLayout {
