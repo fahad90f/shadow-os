@@ -191,7 +191,7 @@ the same firmware; and these checks run inside the installed system:
 * swap is a file, a partition or absent, as answered;
 * UEFI: a firmware boot entry "Shadow OS" exists and the Secure Boot state
   is as configured; BIOS: booted through legacy BIOS;
-* `/etc/shadow/boot.conf` exists and `shadow-grub-install --verbose` succeeds
+* `/etc/shadow-os/boot.conf` exists and `shadow-grub-install --verbose` succeeds
   (the update path);
 * the installation log is on the installed system and contains neither the
   password nor the passphrase;

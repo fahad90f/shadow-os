@@ -15,7 +15,7 @@
 #   * by a dpkg trigger of the shadow-boot package whenever the signed GRUB,
 #     shim or GRUB module packages change.
 #
-# How the system boots is recorded in /etc/shadow/boot.conf:
+# How the system boots is recorded in /etc/shadow-os/boot.conf:
 #
 #   FIRMWARE=uefi|bios          how the installed system is started
 #   ESP_MOUNT=/boot/efi         mount point of the EFI System Partition
@@ -31,7 +31,7 @@
 # "debian"; only the firmware menu label says "Shadow OS".
 set -eu
 
-CONF=/etc/shadow/boot.conf
+CONF=/etc/shadow-os/boot.conf
 LABEL="Shadow OS"
 VERBOSE=0
 [ "${1:-}" = "--verbose" ] && VERBOSE=1

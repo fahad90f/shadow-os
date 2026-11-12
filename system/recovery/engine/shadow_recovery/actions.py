@@ -57,7 +57,7 @@ def repair_boot(out: Output, target_id: str, dry_run: bool) -> dict:
     installation = tgt.installation
     boot = installation["boot"]
     if boot is None:
-        raise RecoveryError("The installed system has no /etc/shadow/boot.conf, the record of how it boots.",
+        raise RecoveryError("The installed system has no /etc/shadow-os/boot.conf, the record of how it boots.",
                             "It was not installed by the Shadow OS installer; its boot loader cannot be "
                             "re-installed automatically.", code="no-boot-conf")
     _need_programs(tgt, {"update-initramfs": "initramfs-tools", "shadow-grub-install": "shadow-boot",
@@ -197,7 +197,7 @@ def reset_password(out: Output, target_id: str, user: str) -> dict:
 
 # ---- logs ----------------------------------------------------------------------------
 
-LOG_FILES = ("etc/os-release", "etc/fstab", "etc/crypttab", "etc/shadow/boot.conf", "etc/default/grub",
+LOG_FILES = ("etc/os-release", "etc/fstab", "etc/crypttab", "etc/shadow-os/boot.conf", "etc/default/grub",
              "boot/grub/grub.cfg", "var/log/boot.log", "var/log/dpkg.log", "var/log/apt/history.log",
              "var/log/apt/term.log", "var/log/syslog", "var/log/kern.log")
 LOG_DIRECTORIES = ("var/log/installer", "var/log/shadow-installer", "var/log/shadow-recovery")

@@ -469,7 +469,7 @@ class Executor:
             # The disk carries a BIOS boot partition: install the legacy loader as
             # well, so the disk still starts if the firmware is switched to CSM.
             conf.append(f"BIOS_DISK_OPTIONAL={self._stable_disk_path(self.plan['target_disk'])}")
-        self._write("/etc/shadow/boot.conf", "\n".join(conf) + "\n")
+        self._write("/etc/shadow-os/boot.conf", "\n".join(conf) + "\n")
 
         extra = []
         if s["extra_kernel_cmdline"]:

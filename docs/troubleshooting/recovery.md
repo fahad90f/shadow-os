@@ -169,7 +169,7 @@ update-initramfs -u -k all
 **Re-install the boot loader and regenerate the menu:**
 
 ```sh
-cat /etc/shadow/boot.conf          # how this system boots; see below
+cat /etc/shadow-os/boot.conf          # how this system boots; see below
 shadow-grub-install --verbose
 update-grub
 ```
@@ -185,7 +185,7 @@ run `grub-install` by hand with other options: the boot-loader id must be
 GRUB update would re-install from `boot.conf` anyway.
 
 Running `shadow-grub-install` in the live session itself, outside the
-chroot, does nothing: the live system has no `/etc/shadow/boot.conf`.
+chroot, does nothing: the live system has no `/etc/shadow-os/boot.conf`.
 
 **Reset a forgotten user password:**
 
@@ -223,12 +223,12 @@ Firmware updates, a CMOS reset or another operating system's installer can
 delete boot entries. Do the chroot procedure in UEFI mode and run
 `shadow-grub-install --verbose`; it creates the entry again. If the firmware
 refuses to store entries, set the removable path: in
-`/etc/shadow/boot.conf` change `ESP_REMOVABLE=no` to `ESP_REMOVABLE=yes`
+`/etc/shadow-os/boot.conf` change `ESP_REMOVABLE=no` to `ESP_REMOVABLE=yes`
 and run `shadow-grub-install --verbose` again — but only if no other
 operating system uses `EFI/BOOT` on that ESP, because it will be
 overwritten.
 
-### `/etc/shadow/boot.conf` is missing or wrong
+### `/etc/shadow-os/boot.conf` is missing or wrong
 
 Write it by hand. For a UEFI installation with its own ESP:
 

@@ -197,7 +197,7 @@ On the target system the engine:
 | User | your account with a home directory, member of `sudo` and the usual desktop groups; the root account is locked; `/etc/sddm.conf.d/20-autologin.conf` if you chose automatic login |
 | Clean-up | removes the live-session packages (`live-boot`, `live-config`, `live-tools`, `user-setup`, `shadow-live`, `shadow-installer`, `shadow-installer-gui`) and their leftovers |
 | Initramfs | a new initramfs for every installed kernel |
-| Boot loader | `/etc/shadow/boot.conf`, `/etc/default/grub.d/60-shadow-installer.cfg`, GRUB on the ESP or in the boot sector (`shadow-grub-install`), the firmware boot entry, `/boot/grub/grub.cfg` |
+| Boot loader | `/etc/shadow-os/boot.conf`, `/etc/default/grub.d/60-shadow-installer.cfg`, GRUB on the ESP or in the boot sector (`shadow-grub-install`), the firmware boot entry, `/boot/grub/grub.cfg` |
 | Profiles | only if selected with "install now": see the note below |
 | Finish | `/var/log/installer/install.log` and `plan.json`; everything is unmounted |
 

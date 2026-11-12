@@ -12,7 +12,7 @@
 // the same document through "pkexec shadow-security-status --section firewall"
 // (polkit action org.shadow.security.read-status: no password for an active
 // local session). If neither works, the opened ports are read from the
-// world-readable record /etc/shadow/firewall.json and the live state is
+// world-readable record /etc/shadow-os/firewall.json and the live state is
 // reported as unknown.
 //
 // Changing: "pkexec shadow-firewall enable|disable|allow|remove|reload|reset"

@@ -78,7 +78,7 @@ How it keeps to its limits (`engine/shadow_recovery/`):
   read-only *without journal/log replay* (`ro,noload`, `ro,norecovery`,
   `ro,rescue=nologreplay`) on a private directory, read and unmounted. An
   installation is a file system with `/etc/os-release` and `/usr`; it counts
-  as Shadow OS with `ID=shadow` or `/etc/shadow/boot.conf`. Reported per
+  as Shadow OS with `ID=shadow` or `/etc/shadow-os/boot.conf`. Reported per
   installation: root device, `fstab` file systems resolved to devices,
   `crypttab`, `boot.conf`, login accounts, what is missing. Symbolic links
   inside an installation are resolved inside it, never into the running system.

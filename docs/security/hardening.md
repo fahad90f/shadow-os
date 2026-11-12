@@ -23,7 +23,7 @@ table says how to change the one setting concerned.
 | Kernel settings (sysctl) | `/usr/lib/sysctl.d/60-shadow-hardening.conf` | `security/hardening/sysctl.d/` |
 | Kernel command line | `/etc/default/grub.d/20-shadow-hardening.cfg` | `security/hardening/grub.d/` |
 | Module auto-loading | `/usr/lib/modprobe.d/shadow-hardening.conf` | `security/hardening/modprobe.d/` |
-| Firewall | `/etc/nftables.conf`, `/usr/sbin/shadow-firewall`, `/etc/shadow/firewall.json`, `/etc/nftables.d/` | `security/firewall/` |
+| Firewall | `/etc/nftables.conf`, `/usr/sbin/shadow-firewall`, `/etc/shadow-os/firewall.json`, `/etc/nftables.d/` | `security/firewall/` |
 | Audit rules | `/etc/audit/rules.d/50-shadow.rules` | `security/audit/` |
 | Journal | `/usr/lib/systemd/journald.conf.d/shadow.conf` | `security/hardening/journald.conf.d/` |
 | sudo | `/etc/sudoers.d/shadow-hardening` | `security/hardening/sudoers.d/` |
@@ -228,7 +228,7 @@ sudo shadow-firewall remove 22/tcp
 
 How it works:
 
-* The opened ports are recorded in `/etc/shadow/firewall.json`. From it the
+* The opened ports are recorded in `/etc/shadow-os/firewall.json`. From it the
   tool generates `/etc/nftables.d/50-shadow-allowed.nft`, which fills the
   sets `allowed_tcp` and `allowed_udp`.
 * Every change is validated against the complete ruleset
@@ -270,7 +270,7 @@ is what an investigation needs first.
 | `audit-config` | `/etc/audit/` |
 | `modules` | the system calls `init_module`, `finit_module`, `delete_module` by logged-in users; `/etc/modprobe.d/` |
 | `time-change` | `adjtimex`, `settimeofday`, `clock_settime` by logged-in users |
-| `boot` | `/boot/grub/grub.cfg`, `/etc/default/grub`, `/etc/default/grub.d/`, `/etc/shadow/boot.conf` |
+| `boot` | `/boot/grub/grub.cfg`, `/etc/default/grub`, `/etc/default/grub.d/`, `/etc/shadow-os/boot.conf` |
 | `apt-sources` | `/etc/apt/sources.list.d/`, `/etc/apt/trusted.gpg.d/` |
 
 * The rules start with `-i`: a watched path that does not exist (no SSH

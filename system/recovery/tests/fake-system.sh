@@ -120,7 +120,7 @@ echo "recovery-test-host" > "$R/etc/hostname.real"
 ln -s /etc/hostname.real "$R/etc/hostname"                 # an absolute link: must resolve INSIDE the target
 printf 'UUID=%s / ext4 errors=remount-ro 0 1\nUUID=%s /boot/efi %s defaults 0 2\nUUID=00000000-0000-0000-0000-00000000dead /var xfs defaults 0 2\nUUID=%s /data vfat defaults 0 2\n/swapfile none swap sw 0 0\n' \
     "$ROOT_UUID" "$ESP_UUID" "$ESP_FS" "$FAT_UUID" > "$R/etc/fstab"
-printf 'FIRMWARE=uefi\nESP_MOUNT=/boot/efi\nESP_REMOVABLE=yes\nESP_NVRAM=no\n' > "$R/etc/shadow/boot.conf"
+printf 'FIRMWARE=uefi\nESP_MOUNT=/boot/efi\nESP_REMOVABLE=yes\nESP_NVRAM=no\n' > "$R/etc/shadow-os/boot.conf"
 printf 'root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\nalice:x:1000:1000:Alice Example,,,:/home/alice:/bin/bash\nsvc:x:1001:1001::/nonexistent:/usr/sbin/nologin\n' > "$R/etc/passwd"
 printf 'root:!:19000:0:99999:7:::\ndaemon:*:19000:0:99999:7:::\nalice:$6$oldsalt$oldhasholdhasholdhash:19000:0:99999:7:::\nsvc:!:19000::::::\n' > "$R/etc/shadow"
 chmod 600 "$R/etc/shadow"

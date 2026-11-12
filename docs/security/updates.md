@@ -102,7 +102,7 @@ would refuse to start.
 * it has a dpkg trigger on `/usr/lib/grub` and `/usr/lib/shim`;
 * when an update changes files there, `shadow-grub-install` runs
   automatically and re-installs the boot loader exactly the way the system
-  was installed (`/etc/shadow/boot.conf`): signed binaries to the ESP, the
+  was installed (`/etc/shadow-os/boot.conf`): signed binaries to the ESP, the
   "Shadow OS" firmware entry, the legacy boot sector where applicable.
 
 If the refresh fails, the update itself is not failed. Instead a marker is

@@ -101,7 +101,7 @@ def inspect_root(root: str) -> dict | None:
     if release_text is None or resolve_in_root(root, "usr") is None:
         return None
     release = parse_key_values(release_text)
-    boot_conf_text = read_in_root(root, "etc/shadow/boot.conf")
+    boot_conf_text = read_in_root(root, "etc/shadow-os/boot.conf")
     fstab = [{"spec": f[0], "mountpoint": f[1].replace("\\040", " "), "fstype": f[2],
               "options": f[3] if len(f) > 3 else "defaults"}
              for f in parse_table(read_in_root(root, "etc/fstab") or "", 3)]

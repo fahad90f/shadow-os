@@ -5,7 +5,7 @@
 #
 #   * a new network namespace  → its own, empty nftables ruleset
 #   * a new mount namespace with a private copy of /etc bound over /etc
-#     → /etc/shadow/firewall.json, /etc/nftables.d/ and the "systemctl enable"
+#     → /etc/shadow-os/firewall.json, /etc/nftables.d/ and the "systemctl enable"
 #       symlink are written to the copy (on a tmpfs), which is discarded afterwards
 #
 #   tests/isolated.sh <command> [args...]          (as root, e.g. in the build chroot)
@@ -30,7 +30,7 @@ mount --bind "$copy" /etc
 if [ -f /src/security/firewall/nftables.conf ] && ! grep -q shadow_filter /etc/nftables.conf 2>/dev/null; then
     cp /src/security/firewall/nftables.conf /etc/nftables.conf
 fi
-mkdir -p /etc/shadow /etc/nftables.d
+mkdir -p /etc/shadow-os /etc/nftables.d
 rc=0
 "$@" &
 child=$!

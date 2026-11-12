@@ -36,7 +36,7 @@ Details worth knowing:
   For an ordinary user the page reads the same document through
   `pkexec shadow-security-status --section firewall` (no prompt for an active
   local session). If that fails, the opened ports are read from the
-  world-readable `/etc/shadow/firewall.json` and the live state is shown as
+  world-readable `/etc/shadow-os/firewall.json` and the live state is shown as
   unknown, with the reason. Port and description are validated with the
   tool's own grammar before `pkexec` is started.
 * **Privacy → Network identity** merges NetworkManager's files in its order:

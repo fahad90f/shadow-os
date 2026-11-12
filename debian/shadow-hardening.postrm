@@ -10,7 +10,7 @@ case "$1" in
         ;;
 esac
 if [ "$1" = "purge" ]; then
-    rm -f /etc/nftables.d/50-shadow-allowed.nft /etc/shadow/firewall.json
+    rm -f /etc/nftables.d/50-shadow-allowed.nft /etc/shadow-os/firewall.json
     rmdir --ignore-fail-on-non-empty /etc/nftables.d /etc/shadow 2>/dev/null || true
 fi
 

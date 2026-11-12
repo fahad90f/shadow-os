@@ -146,8 +146,8 @@ NxPage {
     NxSection {
         visible: firewall.installed
         title: qsTr("Open ports")
-        description: firewall.statusKnown ? qsTr("Other computers can connect to these ports. Recorded in /etc/shadow/firewall.json.")
-                                          : qsTr("As recorded in /etc/shadow/firewall.json.")
+        description: firewall.statusKnown ? qsTr("Other computers can connect to these ports. Recorded in /etc/shadow-os/firewall.json.")
+                                          : qsTr("As recorded in /etc/shadow-os/firewall.json.")
         headerActions: [
             NxButton {
                 text: qsTr("Reload")

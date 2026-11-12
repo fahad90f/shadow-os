@@ -82,7 +82,7 @@ by the installer: extra kernel parameters, `GRUB_DISABLE_OS_PROBER`). Put
 your own settings in a new file there, for example `90-local.cfg`, then run
 `sudo update-grub`.
 
-### `/etc/shadow/boot.conf`
+### `/etc/shadow-os/boot.conf`
 
 The installer records how the system boots; `shadow-grub-install` reads it.
 

@@ -26,7 +26,7 @@ SHADOW_CC_DUMP("firewall", [] {
 })
 
 namespace {
-const QString kRecord = QStringLiteral("/etc/shadow/firewall.json");
+const QString kRecord = QStringLiteral("/etc/shadow-os/firewall.json");
 
 QString statusTool()
 {

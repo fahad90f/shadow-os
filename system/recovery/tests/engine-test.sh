@@ -132,10 +132,10 @@ check "repair-boot: a failing step stops the sequence" "$(result "$out" failed_s
 check "repair-boot: the step after the failure did not run" "$(grep -c update-grub "$MP/var/log/stub-calls.log")" 0
 rm "$MP/etc/stub-fail-shadow-grub-install"
 out="$(engine repair-packages --target "$ROOT_UUID")"; check "repair-packages (stand-in tools): ok" "$(result "$out" ok)" true
-mv "$MP/etc/shadow/boot.conf" "$MP/etc/shadow/boot.conf.off"
+mv "$MP/etc/shadow-os/boot.conf" "$MP/etc/shadow-os/boot.conf.off"
 # (is_shadow stays true through os-release)
 out="$(engine repair-boot --target "$ROOT_UUID" --dry-run)"; check "repair-boot without boot.conf is refused" "$(result "$out" error.code)" no-boot-conf
-mv "$MP/etc/shadow/boot.conf.off" "$MP/etc/shadow/boot.conf"
+mv "$MP/etc/shadow-os/boot.conf.off" "$MP/etc/shadow-os/boot.conf"
 umount "$MP/boot/efi"
 out="$(engine repair-boot --target "$ROOT_UUID" --dry-run)"; check "repair-boot with the ESP not mounted is refused" "$(result "$out" error.code)" not-mounted
 guard "$ESP_DEV"; mount -t "$ESP_FS" "$ESP_DEV" "$MP/boot/efi"
@@ -161,7 +161,7 @@ note "-- logs"
 out="$(engine logs --target "$ROOT_UUID" --output "$WORK/logs.tar.gz")"
 check "logs: ok" "$(result "$out" ok)" true
 members="$(tar -tzf "$WORK/logs.tar.gz" | tr '\n' ' ')"
-for member in target/etc/fstab target/etc/shadow/boot.conf target/var/log/installer/install-20260101.log target/var/log/apt/history.log recovery/installation.json recovery/lsblk.txt recovery/not-included.txt; do
+for member in target/etc/fstab target/etc/shadow-os/boot.conf target/var/log/installer/install-20260101.log target/var/log/apt/history.log recovery/installation.json recovery/lsblk.txt recovery/not-included.txt; do
     contains "logs: contains $member" "$members" "$member"
 done
 check "logs: the target's os-release, not this system's" "$(tar -xzOf "$WORK/logs.tar.gz" target/etc/os-release | grep -c 'Shadow OS 1.0 (test)')" 1

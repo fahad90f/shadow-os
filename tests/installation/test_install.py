@@ -189,7 +189,7 @@ def verify_installed(vm: VM, args, *, encrypted=False, separate_home=False, swap
         _, out = vm.run("test -d /sys/firmware/efi && echo EFI || echo BIOS")
         check("booted through legacy BIOS", out.strip() == "BIOS")
 
-    _, out = vm.run("cat /etc/shadow/boot.conf | tr '\\n' ' '")
+    _, out = vm.run("cat /etc/shadow-os/boot.conf | tr '\\n' ' '")
     check("boot loader record present", "FIRMWARE=" in out, out.strip())
     rc, out = vm.sudo("shadow-grub-install --verbose 2>&1 | tail -n 3", check=False)
     check("boot loader can be re-installed (update path)", rc == 0, out.strip().replace("\n", " | ")[-200:])

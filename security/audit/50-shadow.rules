@@ -43,7 +43,7 @@
 -w /boot/grub/grub.cfg -p wa -k boot
 -w /etc/default/grub -p wa -k boot
 -w /etc/default/grub.d/ -p wa -k boot
--w /etc/shadow/boot.conf -p wa -k boot
+-w /etc/shadow-os/boot.conf -p wa -k boot
 
 # Package sources
 -w /etc/apt/sources.list.d/ -p wa -k apt-sources

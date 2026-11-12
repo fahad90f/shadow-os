@@ -5,9 +5,9 @@ STATE_DIR=/var/lib/shadow
 FAILED_FLAG="$STATE_DIR/boot-loader-refresh-failed"
 
 refresh() {
-    # Only installed systems carry /etc/shadow/boot.conf; in the live session
+    # Only installed systems carry /etc/shadow-os/boot.conf; in the live session
     # and in build chroots this is a no-op.
-    [ -f /etc/shadow/boot.conf ] || return 0
+    [ -f /etc/shadow-os/boot.conf ] || return 0
     mkdir -p "$STATE_DIR"
     if shadow-grub-install; then
         rm -f "$FAILED_FLAG"
