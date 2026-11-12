@@ -1,0 +1,19 @@
+[Unit]
+Description=Shadow OS live session account setup
+# Create and unlock the live user before any login prompt. live-config does
+# not reliably create it on this image, so do it ourselves. Ordered after
+# live-config (in case it did) and before every login path.
+After=live-config.service systemd-sysusers.service
+Before=display-manager.service getty.target serial-getty@ttyS0.service getty@tty1.service
+ConditionKernelCommandLine=boot=live
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/shadow/shadow-live-login
+# Make the marker visible on the serial console (used by the boot test).
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
