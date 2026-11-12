@@ -1,2 +1,3 @@
 system/live/shadow.conf etc/live/config.conf.d
 system/live/2000-shadow-session usr/lib/live/config
+system/live/10-shadow-live.conf etc/sddm.conf.d
