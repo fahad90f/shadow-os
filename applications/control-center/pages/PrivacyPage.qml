@@ -93,7 +93,7 @@ NxPage {
 
     PrivacyBackend {
         id: privacy
-        Component.onCompleted: { scan(); refreshAnon() }
+        Component.onCompleted: { scan(); refreshAnon(); refreshHarden() }
         onFailed: (message) => {
             page.revision++
             page.ApplicationWindow.window.toaster.show(message, "danger")
@@ -300,6 +300,111 @@ NxPage {
         }
     }
 
+    // ---- OS Integrity & Kernel Lockdown -------------------------------------------------
+    NxSection {
+        title: qsTr("OS Integrity & Kernel Lockdown")
+        description: qsTr("AIDE file integrity monitoring, AppArmor MAC enforcement, kernel audit daemon, and boot-level lockdown with 24 hardening parameters.")
+
+        // AIDE file integrity monitor
+        NxRow {
+            icon: privacy.aideChanges > 0 ? "alert-triangle" : privacy.aideInitialized ? "shield-check" : "shield-off"
+            iconColor: privacy.aideChanges > 0 ? Theme.danger
+                     : privacy.aideInitialized ? Theme.success : Theme.textMuted
+            title: qsTr("File Integrity Monitor (AIDE)")
+            subtitle: privacy.aideInitialized
+                ? (privacy.aideChanges > 0
+                   ? qsTr("⚠ %1 change(s) detected since last check — run a check for details.").arg(privacy.aideChanges)
+                   : privacy.aideLastCheck !== ""
+                     ? qsTr("Clean · Last checked: %1").arg(privacy.aideLastCheck)
+                     : qsTr("Database ready. Run a check to verify system integrity."))
+                : qsTr("Not initialized. Build a baseline database to detect future tampering (~5 min).")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: privacy.aideInitialized ? qsTr("Run Check") : qsTr("Init Database")
+                busy: privacy.hardenBusy
+                onClicked: privacy.aideInitialized ? privacy.aideCheck() : privacy.aideInit()
+            }
+        }
+
+        // AppArmor MAC enforcement
+        NxRow {
+            icon: "shield"
+            title: qsTr("AppArmor MAC")
+            subtitle: qsTr("Mandatory Access Control. Confines every process to its declared capabilities — an exploit that lands cannot escape its profile.")
+            NxBadge {
+                anchors.verticalCenter: parent.verticalCenter
+                text: privacy.appArmorEnforcing ? qsTr("Enforcing") : qsTr("Permissive / Off")
+                kind: privacy.appArmorEnforcing ? "success" : "warning"
+            }
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !privacy.appArmorEnforcing
+                text: qsTr("Enforce All")
+                busy: privacy.hardenBusy
+                onClicked: privacy.enforceAppArmor()
+            }
+        }
+
+        // Audit daemon
+        NxRow {
+            icon: "activity"
+            title: qsTr("Audit Daemon")
+            subtitle: qsTr("Logs all setuid executions, /etc/shadow access, kernel module loads and privilege escalations. Output in /var/log/audit/.")
+            NxBadge {
+                anchors.verticalCenter: parent.verticalCenter
+                text: privacy.auditdRunning ? qsTr("Running") : qsTr("Stopped")
+                kind: privacy.auditdRunning ? "success" : "neutral"
+            }
+        }
+
+        // Boot-level kernel lockdown
+        NxRow {
+            icon: "lock"
+            title: qsTr("Boot-Level Kernel Lockdown")
+            subtitle: privacy.bootHardened
+                ? qsTr("Active — 24 params: lockdown=confidentiality, IOMMU, slab_nomerge, PTI, Spectre/MDS/TSX mitigations, vsyscall=none, oops=panic.")
+                : qsTr("Write 24 kernel boot params: lockdown mode, IOMMU, memory zeroing, slab protection, all CPU side-channel mitigations. Takes effect on next reboot.")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !privacy.bootHardened
+                text: qsTr("Apply…")
+                busy: privacy.hardenBusy
+                onClicked: bootHardenDialog.open()
+            }
+            NxBadge {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: privacy.bootHardened
+                text: qsTr("Active")
+                kind: "success"
+            }
+        }
+
+        // Filesystem hardening
+        NxRow {
+            icon: "hard-drive"
+            title: qsTr("Filesystem Hardening")
+            subtitle: qsTr("Mount /proc with hidepid=2 (hides other users' processes), /tmp and /dev/shm with noexec+nosuid+nodev. Written to /etc/fstab for persistence.")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Apply")
+                busy: privacy.hardenBusy
+                onClicked: privacy.hardenFilesystems()
+            }
+        }
+
+        // Hardening output log
+        Text {
+            Layout.fillWidth: true
+            visible: privacy.hardenOutput !== ""
+            text: privacy.hardenOutput
+            font.family: "monospace"
+            font.pixelSize: Theme.fontSizeSmall - 1
+            color: Theme.textMuted
+            wrapMode: Text.Wrap
+            topPadding: Theme.spaceSm
+        }
+    }
+
     // ---- screen lock --------------------------------------------------------------------
     NxSection {
         title: qsTr("Screen lock")
@@ -501,5 +606,13 @@ NxPage {
         confirmText: qsTr("NUKE")
         destructive: true
         onConfirmed: privacy.nukeIdentity()
+    }
+    NxConfirmDialog {
+        id: bootHardenDialog
+        title: qsTr("Apply boot-level kernel hardening?")
+        message: qsTr("Writes 24 parameters to /etc/default/grub.d/90-shadow-hardening.cfg and runs update-grub. Requires a reboot to activate. Includes lockdown=confidentiality (may prevent loading unsigned kernel modules), oops=panic (crashes on kernel errors), IOMMU force-on, and all CPU side-channel mitigations (Spectre, Meltdown, MDS, TSX). Cannot be reversed without editing the GRUB config manually.")
+        confirmText: qsTr("Apply (reboot to activate)")
+        destructive: false
+        onConfirmed: privacy.applyBootHardening()
     }
 }

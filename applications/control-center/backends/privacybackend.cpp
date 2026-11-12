@@ -200,6 +200,7 @@ void PrivacyBackend::refresh()
     loadHistory();
     loadNetwork();
     refreshAnon();
+    refreshHarden();
 }
 
 // ---- screen lock ------------------------------------------------------------------------
@@ -558,6 +559,95 @@ void PrivacyBackend::startAutoRotate(int intervalSeconds)
     runShadowAnon({QStringLiteral("start"),
                    QStringLiteral("--interval"), QString::number(qMax(5, intervalSeconds))});
 }
+
+// ---- OS Integrity (shadow-harden) ------------------------------------------
+
+void PrivacyBackend::refreshHarden()
+{
+    const std::shared_ptr<bool> alive = m_alive;
+    QThread *thread = QThread::create([this, alive] {
+        bool aideInit = false, appArmor = false, auditd = false, bootH = false;
+        QString aideLastCheck;
+        int aideChanges = 0;
+
+        QFile stateFile(QStringLiteral("/run/shadow-harden-state.json"));
+        if (stateFile.open(QIODevice::ReadOnly)) {
+            const QJsonObject s = QJsonDocument::fromJson(stateFile.readAll()).object();
+            aideInit      = s.value(QStringLiteral("aide_initialized")).toBool();
+            aideLastCheck = s.value(QStringLiteral("aide_last_check")).toString();
+            aideChanges   = s.value(QStringLiteral("aide_changes")).toInt();
+            appArmor      = s.value(QStringLiteral("apparmor_enforcing")).toBool();
+            bootH         = s.value(QStringLiteral("boot_hardened")).toBool();
+        }
+        // Cross-check on-disk evidence (survives reboots that clear /run)
+        aideInit = aideInit || QFile::exists(QStringLiteral("/var/lib/aide/aide.db"));
+        bootH    = bootH    || QFile::exists(QStringLiteral("/etc/default/grub.d/90-shadow-hardening.cfg"));
+
+        // AppArmor status
+        if (!appArmor) {
+            QProcess p;
+            p.start(QStringLiteral("aa-status"), {QStringLiteral("--enabled")});
+            p.waitForFinished(2000);
+            appArmor = (p.exitCode() == 0);
+        }
+        // Auditd
+        { QProcess p; p.start(QStringLiteral("systemctl"), {QStringLiteral("is-active"), QStringLiteral("--quiet"), QStringLiteral("auditd")});
+          p.waitForFinished(2000); auditd = (p.exitCode() == 0); }
+
+        QMetaObject::invokeMethod(qApp, [=, this, alive] {
+            if (!*alive) return;
+            m_aideInitialized   = aideInit;
+            m_aideLastCheck     = aideLastCheck;
+            m_aideChanges       = aideChanges;
+            m_appArmorEnforcing = appArmor;
+            m_auditdRunning     = auditd;
+            m_bootHardened      = bootH;
+            Q_EMIT hardenChanged();
+        }, Qt::QueuedConnection);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+}
+
+void PrivacyBackend::runShadowHarden(const QStringList &args)
+{
+    if (m_hardenBusy)
+        return;
+    m_hardenOutput.clear();
+    m_hardenBusy = true;
+    Q_EMIT hardenChanged();
+
+    auto *proc = new QProcess(this);
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this, proc] {
+        m_hardenOutput += QString::fromUtf8(proc->readAllStandardOutput());
+        Q_EMIT hardenChanged();
+    });
+    connect(proc, &QProcess::readyReadStandardError, this, [this, proc] {
+        m_hardenOutput += QString::fromUtf8(proc->readAllStandardError());
+        Q_EMIT hardenChanged();
+    });
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, proc](int code, QProcess::ExitStatus) {
+        m_hardenBusy = false;
+        proc->deleteLater();
+        refreshHarden();
+        if (code == 0)
+            Q_EMIT succeeded(tr("Hardening applied."));
+        else if (code != 1)
+            Q_EMIT failed(tr("shadow-harden exited with code %1.").arg(code));
+        Q_EMIT hardenChanged();
+    });
+
+    QStringList fullArgs = {QStringLiteral("/usr/bin/shadow-harden")};
+    fullArgs += args;
+    proc->start(QStringLiteral("pkexec"), fullArgs);
+}
+
+void PrivacyBackend::aideInit()           { runShadowHarden({QStringLiteral("aide-init")}); }
+void PrivacyBackend::aideCheck()          { runShadowHarden({QStringLiteral("aide-check")}); }
+void PrivacyBackend::enforceAppArmor()    { runShadowHarden({QStringLiteral("enforce-apparmor")}); }
+void PrivacyBackend::applyBootHardening() { runShadowHarden({QStringLiteral("boot-harden")}); }
+void PrivacyBackend::hardenFilesystems()  { runShadowHarden({QStringLiteral("fs-harden")}); }
 
 QJsonObject PrivacyBackend::toJson() const
 {

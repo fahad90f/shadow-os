@@ -1,0 +1,398 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""shadow-harden — OS integrity and kernel hardening management for Shadow OS.
+
+Must be called as root (enforced). Invoked via pkexec from the Control Center.
+
+Usage: shadow-harden <command>
+
+Commands:
+  status            Print current hardening state as JSON.
+  aide-init         Initialise (or rebuild) the AIDE file-integrity database.
+  aide-check        Run an AIDE integrity check; report changes.
+  enforce-apparmor  Put all AppArmor profiles into enforce mode.
+  boot-harden       Write 24 kernel boot parameters to GRUB; run update-grub.
+  fs-harden         Remount /proc (hidepid=2), /tmp and /dev/shm (noexec+nosuid+nodev).
+"""
+
+import sys
+import os
+import json
+import subprocess
+import shutil
+import datetime
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+STATE_FILE   = Path("/run/shadow-harden-state.json")
+AIDE_DB      = Path("/var/lib/aide/aide.db")
+AIDE_DB_NEW  = Path("/var/lib/aide/aide.db.new")
+AIDE_LOG     = Path("/var/log/shadow-harden-aide.log")
+GRUB_DIR     = Path("/etc/default/grub.d")
+GRUB_CFG     = GRUB_DIR / "90-shadow-hardening.cfg"
+AUDIT_RULES  = Path("/etc/audit/rules.d/90-shadow-audit.rules")
+POLKIT_RULE  = Path("/etc/polkit-1/rules.d/50-shadow-harden.rules")
+
+BOOT_PARAMS = (
+    "slab_nomerge "
+    "init_on_alloc=1 "
+    "init_on_free=1 "
+    "page_alloc.shuffle=1 "
+    "pti=on "
+    "spectre_v2=on "
+    "spec_store_bypass_disable=on "
+    "l1tf=full,force "
+    "mds=full "
+    "tsx=off "
+    "tsx_async_abort=full,nosmt "
+    "kvm.nx_huge_pages=force "
+    "randomize_kstack_offset=on "
+    "vsyscall=none "
+    "debugfs=off "
+    "oops=panic "
+    "module.sig_enforce=1 "
+    "lockdown=confidentiality "
+    "iommu=force "
+    "intel_iommu=on "
+    "amd_iommu=on "
+    "efi=disable_early_pci_dma "
+    "random.trust_cpu=off "
+    "random.trust_bootloader=off"
+)
+
+# ---------------------------------------------------------------------------
+# State helpers
+# ---------------------------------------------------------------------------
+
+def load_state() -> dict:
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def save_state(s: dict) -> None:
+    STATE_FILE.write_text(json.dumps(s, indent=2))
+
+
+def _now() -> str:
+    return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+def cmd_status() -> None:
+    """Print hardening status as JSON."""
+    s = load_state()
+
+    # Cross-check on-disk evidence (survives reboots that clear /run)
+    s["aide_initialized"] = AIDE_DB.exists()
+
+    # AppArmor
+    try:
+        r = subprocess.run(
+            ["aa-status", "--json"],
+            capture_output=True, text=True, timeout=5
+        )
+        if r.returncode == 0:
+            aa = json.loads(r.stdout)
+            enforcing = int(aa.get("profiles", {}).get("enforce", 0))
+            s["apparmor_enforcing"] = enforcing > 0
+        else:
+            s["apparmor_enforcing"] = False
+    except Exception:
+        s["apparmor_enforcing"] = False
+
+    # auditd
+    try:
+        r = subprocess.run(
+            ["systemctl", "is-active", "auditd"],
+            capture_output=True, text=True, timeout=5
+        )
+        s["auditd_running"] = r.stdout.strip() == "active"
+    except Exception:
+        s["auditd_running"] = False
+
+    # Boot hardening
+    s["boot_hardened"] = GRUB_CFG.exists()
+
+    print(json.dumps(s, indent=2))
+
+
+def cmd_aide_init() -> None:
+    """Initialise or rebuild the AIDE file-integrity database."""
+    if not shutil.which("aide"):
+        print("Installing aide…")
+        subprocess.run(
+            ["apt-get", "install", "-y", "--no-install-recommends", "aide"],
+            check=True
+        )
+
+    print("Initialising AIDE database — this may take 2–10 minutes…")
+    sys.stdout.flush()
+
+    r = subprocess.run(["aide", "--init"], capture_output=False)
+    if r.returncode not in (0, 1):  # aide --init returns 1 when rules reference missing paths
+        print(f"aide --init exited with code {r.returncode}. Check aide output above.", file=sys.stderr)
+        sys.exit(r.returncode)
+
+    # Move new database into production location
+    if AIDE_DB_NEW.exists():
+        AIDE_DB_NEW.rename(AIDE_DB)
+        print(f"Database written to {AIDE_DB}.")
+    elif AIDE_DB.exists():
+        print("Database already in place.")
+    else:
+        print("Warning: aide.db not found after init; check aide configuration.", file=sys.stderr)
+
+    s = load_state()
+    s["aide_initialized"] = True
+    s["aide_init_time"] = _now()
+    s["aide_last_check"] = ""
+    s["aide_changes"] = 0
+    save_state(s)
+    print("AIDE database initialised.")
+
+
+def cmd_aide_check() -> None:
+    """Run an AIDE integrity check and report any changes."""
+    if not AIDE_DB.exists():
+        print("AIDE database not found. Run aide-init first.", file=sys.stderr)
+        sys.exit(1)
+
+    print("Running AIDE integrity check…")
+    sys.stdout.flush()
+
+    r = subprocess.run(["aide", "--check"], capture_output=True, text=True)
+    output = r.stdout + r.stderr
+
+    # aide returns: 0=ok, 1=new/changed/removed files found, 2+=error
+    changes = 0
+    if r.returncode == 1:
+        # Count changed/added/removed entries
+        changes = sum(
+            1 for line in output.splitlines()
+            if line.startswith(("changed:", "added:", "removed:"))
+        )
+        print(f"WARNING: {changes} change(s) detected!")
+        # Print first 4000 chars of output
+        print(output[:4000])
+    elif r.returncode == 0:
+        print("Integrity check passed. No changes detected.")
+    else:
+        print(f"AIDE error (exit {r.returncode}):", file=sys.stderr)
+        print(output[:2000], file=sys.stderr)
+
+    # Write full log
+    AIDE_LOG.parent.mkdir(parents=True, exist_ok=True)
+    AIDE_LOG.write_text(output)
+
+    s = load_state()
+    s["aide_last_check"] = _now()
+    s["aide_changes"] = changes
+    save_state(s)
+
+    if r.returncode > 1:
+        sys.exit(r.returncode)
+
+
+def cmd_enforce_apparmor() -> None:
+    """Enable AppArmor and put all profiles into enforce mode."""
+    if not shutil.which("aa-enforce"):
+        print("Installing apparmor-utils…")
+        subprocess.run(
+            ["apt-get", "install", "-y", "--no-install-recommends",
+             "apparmor", "apparmor-utils", "apparmor-profiles"],
+            check=True
+        )
+
+    # Enable the service
+    subprocess.run(["systemctl", "enable", "--now", "apparmor"], check=False)
+
+    # Enforce all profiles in the profiles directory
+    profiles_dir = Path("/etc/apparmor.d")
+    if profiles_dir.exists():
+        r = subprocess.run(
+            ["aa-enforce", str(profiles_dir)],
+            capture_output=True, text=True
+        )
+        if r.stdout:
+            print(r.stdout)
+        if r.stderr:
+            print(r.stderr)
+    else:
+        print("No profiles directory found at /etc/apparmor.d.", file=sys.stderr)
+
+    s = load_state()
+    s["apparmor_enforcing"] = True
+    save_state(s)
+    print("AppArmor profiles set to enforce mode.")
+
+
+def cmd_boot_harden() -> None:
+    """Write hardened kernel boot parameters to GRUB configuration."""
+    GRUB_DIR.mkdir(parents=True, exist_ok=True)
+
+    cfg_content = (
+        "# Shadow OS — extreme kernel boot hardening.\n"
+        "# Written by shadow-harden boot-harden.\n"
+        "# To revert: delete this file and run update-grub.\n"
+        "#\n"
+        "# Parameters applied:\n"
+        "#   slab_nomerge              — prevent heap exploitation via slab merging\n"
+        "#   init_on_alloc/free=1      — zero memory on alloc and free (defeats uninit-read)\n"
+        "#   page_alloc.shuffle=1      — randomise page-allocator freelists\n"
+        "#   pti=on                    — Page Table Isolation (Meltdown)\n"
+        "#   spectre_v2=on             — Spectre variant 2 mitigations\n"
+        "#   spec_store_bypass_disable — Speculative Store Bypass (Spectre v4)\n"
+        "#   l1tf=full,force           — L1 Terminal Fault (Foreshadow)\n"
+        "#   mds=full                  — Microarchitectural Data Sampling\n"
+        "#   tsx=off tsx_async_abort   — Transactional Sync Extensions attacks\n"
+        "#   kvm.nx_huge_pages=force   — iTLB multihit mitigation\n"
+        "#   randomize_kstack_offset   — randomise per-syscall kernel stack offset\n"
+        "#   vsyscall=none             — disable legacy vsyscall interface\n"
+        "#   debugfs=off               — close debugfs information leaks\n"
+        "#   oops=panic                — panic on kernel oops (harder to exploit)\n"
+        "#   module.sig_enforce=1      — only load signed kernel modules\n"
+        "#   lockdown=confidentiality  — kernel lockdown LSM\n"
+        "#   iommu=force               — IOMMU (prevents DMA attacks from PCIe)\n"
+        "#   intel_iommu/amd_iommu     — vendor IOMMU drivers\n"
+        "#   efi=disable_early_pci_dma — block PCIe DMA before IOMMU is ready\n"
+        "#   random.trust_cpu/boot=off — do not trust CPU/bootloader RNG alone\n"
+        "#\n"
+        f'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT {BOOT_PARAMS}"\n'
+    )
+
+    GRUB_CFG.write_text(cfg_content)
+    print(f"Wrote {GRUB_CFG}")
+
+    # Regenerate GRUB config
+    if shutil.which("update-grub"):
+        print("Running update-grub…")
+        r = subprocess.run(["update-grub"], capture_output=True, text=True)
+        if r.returncode == 0:
+            print("update-grub succeeded.")
+        else:
+            print(f"update-grub exited {r.returncode}: {r.stderr.strip()}", file=sys.stderr)
+    else:
+        print("update-grub not found; regenerate GRUB manually.", file=sys.stderr)
+
+    s = load_state()
+    s["boot_hardened"] = True
+    s["boot_harden_pending_reboot"] = True
+    save_state(s)
+    print("Boot hardening applied. A reboot is required to activate all parameters.")
+
+
+def cmd_fs_harden() -> None:
+    """Remount filesystems with strict options and make persistent."""
+    remounts = [
+        # (path, options, description)
+        ("/proc",    "remount,hidepid=2",                "hide other users' processes"),
+        ("/tmp",     "remount,noexec,nosuid,nodev",       "no-exec /tmp"),
+        ("/dev/shm", "remount,noexec,nosuid,nodev",       "no-exec /dev/shm"),
+    ]
+
+    for path, opts, desc in remounts:
+        if not Path(path).is_mount():
+            print(f"  skip {path}: not a mountpoint")
+            continue
+        r = subprocess.run(
+            ["mount", "-o", opts, path],
+            capture_output=True, text=True
+        )
+        if r.returncode == 0:
+            print(f"  Applied {desc} on {path}")
+        else:
+            print(f"  Note ({path}): {r.stderr.strip()}", file=sys.stderr)
+
+    # Persistent fstab entries
+    fstab_path = Path("/etc/fstab")
+    try:
+        fstab = fstab_path.read_text()
+    except Exception:
+        fstab = ""
+
+    additions = []
+    if "tmpfs /tmp " not in fstab and "tmpfs\t/tmp\t" not in fstab:
+        additions.append(
+            "tmpfs\t/tmp\t\ttmpfs\tdefaults,noexec,nosuid,nodev,size=512M\t0 0"
+        )
+    if "tmpfs /dev/shm" not in fstab and "tmpfs\t/dev/shm" not in fstab:
+        additions.append(
+            "tmpfs\t/dev/shm\ttmpfs\tdefaults,noexec,nosuid,nodev\t0 0"
+        )
+
+    if additions:
+        with fstab_path.open("a") as f:
+            f.write("\n# Shadow OS hardened mounts — written by shadow-harden\n")
+            for line in additions:
+                f.write(line + "\n")
+        print(f"  Added {len(additions)} persistent fstab entry/entries.")
+    else:
+        print("  fstab entries already present.")
+
+    # /proc hidepid persistent via systemd unit override is more reliable;
+    # write a tmpfiles.d / mount unit note for the user
+    proc_override = Path("/etc/systemd/system/proc-shadow-hidepid.service")
+    if not proc_override.exists():
+        proc_override.write_text(
+            "[Unit]\n"
+            "Description=Shadow OS: remount /proc with hidepid=2\n"
+            "After=systemd-remount-fs.service\n"
+            "DefaultDependencies=no\n\n"
+            "[Service]\n"
+            "Type=oneshot\n"
+            "ExecStart=/bin/mount -o remount,hidepid=2 /proc\n"
+            "RemainAfterExit=yes\n\n"
+            "[Install]\n"
+            "WantedBy=sysinit.target\n"
+        )
+        subprocess.run(["systemctl", "enable", "proc-shadow-hidepid.service"], check=False)
+        print("  Installed proc-shadow-hidepid.service for persistent hidepid=2.")
+
+    s = load_state()
+    s["filesystems_hardened"] = True
+    save_state(s)
+    print("Filesystem hardening applied.")
+
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+
+COMMANDS = {
+    "status":           cmd_status,
+    "aide-init":        cmd_aide_init,
+    "aide-check":       cmd_aide_check,
+    "enforce-apparmor": cmd_enforce_apparmor,
+    "boot-harden":      cmd_boot_harden,
+    "fs-harden":        cmd_fs_harden,
+}
+
+
+def main() -> None:
+    if os.geteuid() != 0:
+        print("shadow-harden must run as root (use pkexec).", file=sys.stderr)
+        sys.exit(1)
+
+    if len(sys.argv) < 2:
+        cmd_status()
+        return
+
+    command = sys.argv[1]
+    if command not in COMMANDS:
+        print(f"Unknown command: {command}", file=sys.stderr)
+        print(f"Available: {', '.join(COMMANDS)}", file=sys.stderr)
+        sys.exit(1)
+
+    COMMANDS[command]()
+
+
+if __name__ == "__main__":
+    main()

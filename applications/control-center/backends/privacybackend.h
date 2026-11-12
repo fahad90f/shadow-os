@@ -69,6 +69,15 @@ class PrivacyBackend : public QObject
     Q_PROPERTY(bool autoRotateActive READ autoRotateActive NOTIFY anonChanged)
     Q_PROPERTY(bool anonBusy READ anonBusy NOTIFY anonChanged)
     Q_PROPERTY(QString anonOutput READ anonOutput NOTIFY anonChanged)
+    // ---- OS Integrity (shadow-harden)
+    Q_PROPERTY(bool aideInitialized READ aideInitialized NOTIFY hardenChanged)
+    Q_PROPERTY(QString aideLastCheck READ aideLastCheck NOTIFY hardenChanged)
+    Q_PROPERTY(int aideChanges READ aideChanges NOTIFY hardenChanged)
+    Q_PROPERTY(bool appArmorEnforcing READ appArmorEnforcing NOTIFY hardenChanged)
+    Q_PROPERTY(bool auditdRunning READ auditdRunning NOTIFY hardenChanged)
+    Q_PROPERTY(bool bootHardened READ bootHardened NOTIFY hardenChanged)
+    Q_PROPERTY(bool hardenBusy READ hardenBusy NOTIFY hardenChanged)
+    Q_PROPERTY(QString hardenOutput READ hardenOutput NOTIFY hardenChanged)
 
 public:
     explicit PrivacyBackend(QObject *parent = nullptr);
@@ -107,6 +116,15 @@ public:
     bool anonBusy() const { return m_anonBusy; }
     QString anonOutput() const { return m_anonOutput; }
 
+    bool aideInitialized() const { return m_aideInitialized; }
+    QString aideLastCheck() const { return m_aideLastCheck; }
+    int aideChanges() const { return m_aideChanges; }
+    bool appArmorEnforcing() const { return m_appArmorEnforcing; }
+    bool auditdRunning() const { return m_auditdRunning; }
+    bool bootHardened() const { return m_bootHardened; }
+    bool hardenBusy() const { return m_hardenBusy; }
+    QString hardenOutput() const { return m_hardenOutput; }
+
     Q_INVOKABLE void setAutolock(bool on);
     Q_INVOKABLE void setLockTimeoutMinutes(int minutes);
     Q_INVOKABLE void setLockOnResume(bool on);
@@ -137,6 +155,14 @@ public:
     Q_INVOKABLE void startAutoRotate(int intervalSeconds);
     Q_INVOKABLE void stopAutoRotate();
 
+    // OS Integrity actions (all require root; called via pkexec)
+    Q_INVOKABLE void refreshHarden();
+    Q_INVOKABLE void aideInit();
+    Q_INVOKABLE void aideCheck();
+    Q_INVOKABLE void enforceAppArmor();
+    Q_INVOKABLE void applyBootHardening();
+    Q_INVOKABLE void hardenFilesystems();
+
     QJsonObject toJson() const;
 
 Q_SIGNALS:
@@ -145,6 +171,7 @@ Q_SIGNALS:
     void cleanupChanged();
     void networkChanged();
     void anonChanged();
+    void hardenChanged();
     void failed(const QString &message);
     void succeeded(const QString &message);
 
@@ -155,6 +182,7 @@ private:
     void loadNetwork();
     void startWorker(const QString &cleanId);
     void runShadowAnon(const QStringList &args);
+    void runShadowHarden(const QStringList &args);
 
     bool m_lockerRunning = false;
     bool m_autolock = true;
@@ -181,5 +209,14 @@ private:
     bool m_autoRotateActive = false;
     bool m_anonBusy = false;
     QString m_anonOutput;
+    // OS Integrity state
+    bool m_aideInitialized = false;
+    QString m_aideLastCheck;
+    int m_aideChanges = 0;
+    bool m_appArmorEnforcing = false;
+    bool m_auditdRunning = false;
+    bool m_bootHardened = false;
+    bool m_hardenBusy = false;
+    QString m_hardenOutput;
     std::shared_ptr<bool> m_alive;
 };
