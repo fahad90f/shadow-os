@@ -11,7 +11,10 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocale>
+#include <QProcess>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QThread>
@@ -196,6 +199,7 @@ void PrivacyBackend::refresh()
     loadLock();
     loadHistory();
     loadNetwork();
+    refreshAnon();
 }
 
 // ---- screen lock ------------------------------------------------------------------------
@@ -427,6 +431,132 @@ void PrivacyBackend::loadNetwork()
         m_macSettings.append(entry);
     }
     Q_EMIT networkChanged();
+}
+
+// ---- Hide Me (shadow-anon) --------------------------------------------------
+
+void PrivacyBackend::refreshAnon()
+{
+    const std::shared_ptr<bool> alive = m_alive;
+    QThread *thread = QThread::create([this, alive] {
+        bool ghostMode = false, transparentProxy = false, dnsProtected = false;
+        bool btKilled = false, usbKilled = false, kernelHardened = false;
+        bool torRunning = false, autoRotate = false;
+        QString threatModel = QStringLiteral("basic");
+
+        QFile stateFile(QStringLiteral("/run/shadow-anon-state.json"));
+        if (stateFile.open(QIODevice::ReadOnly)) {
+            const QJsonObject s = QJsonDocument::fromJson(stateFile.readAll()).object();
+            ghostMode       = s.value(QStringLiteral("ghost_mode")).toBool();
+            threatModel     = s.value(QStringLiteral("threat_model")).toString(QStringLiteral("basic"));
+            transparentProxy= s.value(QStringLiteral("transparent_proxy")).toBool();
+            dnsProtected    = s.value(QStringLiteral("dns_protected")).toBool();
+            btKilled        = s.value(QStringLiteral("bt_killed")).toBool();
+            usbKilled       = s.value(QStringLiteral("usb_killed")).toBool();
+            kernelHardened  = s.value(QStringLiteral("kernel_hardened")).toBool();
+        }
+        // Cross-check on-disk evidence (survives reboots that clear /run)
+        kernelHardened  = kernelHardened || QFile::exists(QStringLiteral("/etc/sysctl.d/90-shadow-anon.conf"));
+        usbKilled       = usbKilled     || QFile::exists(QStringLiteral("/etc/udev/rules.d/90-shadow-nousb.rules"));
+        dnsProtected    = dnsProtected  || QFile::exists(QStringLiteral("/etc/NetworkManager/conf.d/90-shadow-dns.conf"));
+
+        // Tor service
+        { QProcess p; p.start(QStringLiteral("systemctl"), {QStringLiteral("is-active"), QStringLiteral("--quiet"), QStringLiteral("tor")});
+          p.waitForFinished(2000); torRunning = (p.exitCode() == 0); }
+        // Auto-rotate timer
+        { QProcess p; p.start(QStringLiteral("systemctl"), {QStringLiteral("is-active"), QStringLiteral("--quiet"), QStringLiteral("shadow-anon-rotate.timer")});
+          p.waitForFinished(2000); autoRotate = (p.exitCode() == 0); }
+
+        QMetaObject::invokeMethod(qApp, [=, this, alive] {
+            if (!*alive) return;
+            m_ghostMode        = ghostMode;
+            m_threatModel      = threatModel;
+            m_torRunning       = torRunning;
+            m_transparentProxy = transparentProxy;
+            m_dnsProtected     = dnsProtected;
+            m_btKilled         = btKilled;
+            m_usbKilled        = usbKilled;
+            m_kernelHardened   = kernelHardened;
+            m_autoRotateActive = autoRotate;
+            Q_EMIT anonChanged();
+        }, Qt::QueuedConnection);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+}
+
+void PrivacyBackend::runShadowAnon(const QStringList &args)
+{
+    if (m_anonBusy)
+        return;
+    m_anonOutput.clear();
+    m_anonBusy = true;
+    Q_EMIT anonChanged();
+
+    auto *proc = new QProcess(this);
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this, proc] {
+        m_anonOutput += QString::fromUtf8(proc->readAllStandardOutput());
+        Q_EMIT anonChanged();
+    });
+    connect(proc, &QProcess::readyReadStandardError, this, [this, proc] {
+        m_anonOutput += QString::fromUtf8(proc->readAllStandardError());
+        Q_EMIT anonChanged();
+    });
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, proc](int code, QProcess::ExitStatus) {
+        m_anonBusy = false;
+        proc->deleteLater();
+        refreshAnon();
+        if (code == 0)
+            Q_EMIT succeeded(tr("Identity update complete."));
+        else if (code != 1) // code 1 = pkexec cancelled by user
+            Q_EMIT failed(tr("shadow-anon exited with code %1.").arg(code));
+        Q_EMIT anonChanged();
+    });
+
+    QStringList fullArgs = {QStringLiteral("/usr/bin/shadow-anon")};
+    fullArgs += args;
+    proc->start(QStringLiteral("pkexec"), fullArgs);
+}
+
+void PrivacyBackend::rotateIdentity()          { runShadowAnon({QStringLiteral("rotate")}); }
+void PrivacyBackend::enableGhostMode()         { runShadowAnon({QStringLiteral("ghost-on")}); }
+void PrivacyBackend::disableGhostMode()        { runShadowAnon({QStringLiteral("ghost-off")}); }
+void PrivacyBackend::nukeIdentity()            { runShadowAnon({QStringLiteral("nuke")}); }
+void PrivacyBackend::runLeakTest()             { runShadowAnon({QStringLiteral("leak-test")}); }
+void PrivacyBackend::wipeLogsNow()             { runShadowAnon({QStringLiteral("wipe-logs")}); }
+void PrivacyBackend::hardenKernelNow()         { runShadowAnon({QStringLiteral("harden-kernel")}); }
+void PrivacyBackend::stopAutoRotate()          { runShadowAnon({QStringLiteral("stop")}); }
+
+void PrivacyBackend::setThreatModel(const QString &model)
+{
+    runShadowAnon({QStringLiteral("threat"), model});
+}
+
+void PrivacyBackend::killBluetooth(bool kill)
+{
+    runShadowAnon({kill ? QStringLiteral("kill-bluetooth") : QStringLiteral("restore-bluetooth")});
+}
+
+void PrivacyBackend::killUsbStorage(bool kill)
+{
+    runShadowAnon({kill ? QStringLiteral("kill-usb") : QStringLiteral("restore-usb")});
+}
+
+void PrivacyBackend::enableTransparentProxy(bool enable)
+{
+    runShadowAnon({enable ? QStringLiteral("transparent-proxy-on") : QStringLiteral("transparent-proxy-off")});
+}
+
+void PrivacyBackend::enableDnsProtect(bool enable)
+{
+    runShadowAnon({enable ? QStringLiteral("dns-protect-on") : QStringLiteral("dns-protect-off")});
+}
+
+void PrivacyBackend::startAutoRotate(int intervalSeconds)
+{
+    runShadowAnon({QStringLiteral("start"),
+                   QStringLiteral("--interval"), QString::number(qMax(5, intervalSeconds))});
 }
 
 QJsonObject PrivacyBackend::toJson() const

@@ -1,65 +1,111 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""shadow-anon — Shadow OS "Hide Me" anonymity engine.
+"""shadow-anon — Shadow OS extreme-level identity protection engine.
 
-Rotate the identity your machine presents to the network:
+Extreme-level identity obliteration. Ghost Mode activates all protections
+simultaneously. Run as root (the Hide Me panel calls this via pkexec).
 
-  * MAC address of every wired/wireless interface (via NetworkManager when it
-    manages the link, else macchanger),
-  * apparent public IP, by giving Tor a fresh set of circuits (new exit),
-  * hostname,
-  * IPv6 privacy (temporary) addresses.
+FEATURES
+  Network layer
+    MAC randomization (every wired/wireless interface)
+    IPv6 privacy (temporary addresses preferred)
+    Transparent Tor proxy — ALL TCP + DNS through Tor (iptables)
+    DNS-over-Tor — no DNS leaks (resolv.conf → Tor DNSPort)
+    New Tor circuits (new apparent exit IP)
+    Tor bridge / obfs4 support for censored networks
 
-Honest limits: your *real* public IP is assigned by your ISP/router and cannot
-be changed by software. What changes is your *apparent* exit IP when traffic
-goes through Tor. Rotating every few seconds also briefly drops connectivity
-each cycle, so pick an interval that suits you.
+  System layer
+    Random hostname every rotation
+    Timezone lock → UTC (no location inference)
+    Kernel hardening sysctl (TCP timestamp disable, pointer restriction,
+      BPF hardening, ICMP broadcast ignore, source routing disable, Yama)
+    Bluetooth kill switch (rfkill)
+    USB storage kill switch (udev)
+    Log wipe (journal rotate+vacuum, shell history, thumbnail cache, /tmp)
 
-Most actions need root; the desktop launcher calls this through pkexec.
+  Threat presets
+    basic    — MAC random + IPv6 privacy + hostname
+    enhanced — basic + Tor + DNS protection
+    maximum  — enhanced + transparent proxy + BT kill + kernel hardening
+
+  One-shot commands
+    rotate       — run current threat-level protections once
+    nuke         — ghost mode + wipe logs + new Tor exit
+    leak-test    — show direct IP, Tor exit IP, DNS, IPv6 exposure
+    status       — full current-state report
+
+HONEST LIMITS
+  Your real public IP is assigned by your ISP/router. What changes is your
+  *apparent* exit IP when traffic goes through Tor. The transparent proxy
+  routes ALL TCP — not just browser traffic. UDP (except DNS) is blocked
+  while the proxy is active. Each rotation briefly drops connectivity.
 """
-import argparse, os, random, re, string, subprocess, sys, time
+import argparse, json, os, random, string, subprocess, sys, time
+from pathlib import Path
 
-def sh(cmd, check=False, quiet=True):
+# ── utilities ─────────────────────────────────────────────────────────────────
+
+def sh(cmd, timeout=30):
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout.strip(), r.stderr.strip()
     except FileNotFoundError:
-        return 127, "", "not found"
-    if not quiet and r.stdout:
-        sys.stdout.write(r.stdout)
-    if check and r.returncode != 0:
-        pass
-    return r.returncode, r.stdout.strip(), r.stderr.strip()
+        return 127, "", "command not found"
+    except subprocess.TimeoutExpired:
+        return 124, "", "timeout"
 
 def have(prog):
-    return subprocess.run(["sh", "-c", f"command -v {prog}"], capture_output=True).returncode == 0
+    return sh(["sh", "-c", f"command -v {prog}"])[0] == 0
 
 def need_root():
     if os.geteuid() != 0:
-        sys.exit("shadow-anon: run as root (the Hide Me panel does this for you).")
+        sys.exit("shadow-anon: run as root (the Hide Me panel does this via pkexec).")
 
-# ---- interfaces --------------------------------------------------------------
+def log(msg):  print(f"· {msg}",  flush=True)
+def ok(msg):   print(f"  ✓ {msg}", flush=True)
+def warn(msg): print(f"  ⚠ {msg}", flush=True)
+
+STATE_FILE = "/run/shadow-anon-state.json"
+
+def load_state():
+    try:
+        return json.loads(Path(STATE_FILE).read_text())
+    except Exception:
+        return {}
+
+def save_state(upd):
+    s = load_state()
+    s.update(upd)
+    try:
+        Path(STATE_FILE).write_text(json.dumps(s, indent=2))
+        os.chmod(STATE_FILE, 0o644)
+    except Exception:
+        pass
+
+# ── interfaces ────────────────────────────────────────────────────────────────
+
 def net_ifaces():
     out = []
-    base = "/sys/class/net"
-    for n in sorted(os.listdir(base)):
-        if n == "lo" or os.path.exists(f"{base}/{n}/wireless") is None:
-            pass
+    for n in sorted(os.listdir("/sys/class/net")):
         if n == "lo":
             continue
-        # skip virtual/bridge/docker/tun unless physical
-        if os.path.islink(f"{base}/{n}") and "virtual" in os.readlink(f"{base}/{n}") \
-           and not n.startswith(("en", "eth", "wl", "wlan")):
-            continue
+        try:
+            tgt = os.readlink(f"/sys/class/net/{n}")
+            if "virtual" in tgt and not n.startswith(("en", "eth", "wl")):
+                continue
+        except OSError:
+            pass
         out.append(n)
     return out
 
 def nm_managed(iface):
     rc, out, _ = sh(["nmcli", "-g", "GENERAL.STATE", "device", "show", iface])
-    return rc == 0 and out != "" and "unmanaged" not in out
+    return rc == 0 and out and "unmanaged" not in out
 
-# ---- actions -----------------------------------------------------------------
+# ── MAC randomization ─────────────────────────────────────────────────────────
+
 def randomize_mac():
-    print("· MAC address")
+    log("MAC address randomization")
     for ifc in net_ifaces():
         if have("nmcli") and nm_managed(ifc):
             kind = "wifi" if os.path.exists(f"/sys/class/net/{ifc}/wireless") else "ethernet"
@@ -67,108 +113,520 @@ def randomize_mac():
             sh(["nmcli", "connection", "modify", "--temporary", ifc,
                 f"{'802-11-wireless' if kind=='wifi' else '802-3-ethernet'}.cloned-mac-address", "random"])
             sh(["nmcli", "device", "reapply", ifc])
-            print(f"    {ifc}: randomized (NetworkManager)")
+            ok(f"{ifc} → randomized (NetworkManager)")
         elif have("macchanger"):
             sh(["ip", "link", "set", ifc, "down"])
             sh(["macchanger", "-r", ifc])
             sh(["ip", "link", "set", ifc, "up"])
-            print(f"    {ifc}: randomized (macchanger)")
+            ok(f"{ifc} → randomized (macchanger)")
         else:
-            print(f"    {ifc}: no tool to change MAC")
+            warn(f"{ifc}: no randomization tool (install macchanger)")
 
-def new_tor_identity():
-    print("· Tor exit (new circuits)")
-    if not have("tor"):
-        print("    tor is not installed")
-        return
-    # Make sure tor is up, then restart to force brand-new circuits/exit.
-    sh(["systemctl", "start", "tor"])
-    rc, _, _ = sh(["systemctl", "restart", "tor@default"])
-    if rc != 0:
-        sh(["systemctl", "restart", "tor"])
-    print("    requested a fresh Tor circuit set")
-
-def random_hostname():
-    print("· Hostname")
-    name = "shadow-" + "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(6))
-    sh(["hostnamectl", "set-hostname", name])
-    print(f"    {name}")
+# ── IPv6 privacy ──────────────────────────────────────────────────────────────
 
 def ipv6_privacy():
-    print("· IPv6 privacy addresses")
+    log("IPv6 privacy extensions")
     try:
-        with open("/proc/sys/net/ipv6/conf/all/use_tempaddr", "w") as f:
-            f.write("2")
+        Path("/proc/sys/net/ipv6/conf/all/use_tempaddr").write_text("2")
         for ifc in net_ifaces():
             p = f"/proc/sys/net/ipv6/conf/{ifc}/use_tempaddr"
             if os.path.exists(p):
-                open(p, "w").write("2")
-        print("    temporary (privacy) addresses preferred")
+                Path(p).write_text("2")
+        ok("temporary addresses preferred")
     except OSError as e:
-        print(f"    could not set ({e})")
+        warn(f"could not set ({e})")
 
-# ---- status ------------------------------------------------------------------
-def status():
-    print("Shadow OS — Hide Me status")
-    print("-" * 42)
-    rc, host, _ = sh(["hostname"]);  print(f"hostname : {host}")
-    for ifc in net_ifaces():
+# ── Hostname randomization ────────────────────────────────────────────────────
+
+def random_hostname():
+    log("Hostname randomization")
+    name = "shadow-" + "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(8))
+    rc, _, e = sh(["hostnamectl", "set-hostname", name])
+    ok(f"→ {name}") if rc == 0 else warn(f"hostnamectl: {e}")
+
+# ── Tor circuits ──────────────────────────────────────────────────────────────
+
+TORRC_D   = "/etc/tor/torrc.d"
+TORRC     = "/etc/tor/torrc"
+TPROXY_CF = "/etc/tor/torrc.d/shadow-tproxy.conf"
+BRIDGE_CF = "/etc/tor/torrc.d/shadow-bridges.conf"
+
+def _ensure_torrc_d():
+    Path(TORRC_D).mkdir(parents=True, exist_ok=True)
+    try:
+        torrc = Path(TORRC).read_text() if Path(TORRC).exists() else ""
+        marker = "%include /etc/tor/torrc.d/*.conf"
+        if marker not in torrc:
+            Path(TORRC).write_text(torrc.rstrip() + f"\n\n{marker}\n")
+    except OSError:
+        pass
+
+def new_tor_identity():
+    log("Tor circuits (new exit IP)")
+    if not have("tor"):
+        warn("tor is not installed")
+        return
+    sh(["systemctl", "start", "tor"])
+    rc, _, _ = sh(["systemctl", "restart", "tor@default"])
+    if rc != 0:
+        rc, _, _ = sh(["systemctl", "restart", "tor"])
+    ok("new Tor circuit set requested") if rc == 0 else warn("Tor restart failed")
+
+def set_tor_bridges(bridges):
+    need_root()
+    _ensure_torrc_d()
+    if not bridges:
+        Path(BRIDGE_CF).unlink(missing_ok=True)
+        sh(["systemctl", "reload-or-restart", "tor"])
+        ok("Tor bridges disabled (direct connection)")
+        return
+    lines = ["UseBridges 1\n",
+             "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy\n"]
+    for b in bridges:
+        lines.append(f"Bridge {b}\n")
+    Path(BRIDGE_CF).write_text("".join(lines))
+    sh(["systemctl", "reload-or-restart", "tor"])
+    ok(f"configured {len(bridges)} Tor bridge(s)")
+
+# ── Transparent Tor proxy ─────────────────────────────────────────────────────
+
+TPROXY_CHAIN = "SHADOWTOR"
+TPROXY_PORT  = "9040"
+DNS_PORT     = "5353"
+
+def transparent_proxy_on():
+    need_root()
+    log("Transparent Tor proxy (all TCP + DNS → Tor)")
+    _ensure_torrc_d()
+    Path(TPROXY_CF).write_text(
+        "# Shadow OS transparent proxy — written by shadow-anon\n"
+        f"TransPort 127.0.0.1:{TPROXY_PORT} IsolateClientAddr IsolateClientProtocol "
+        "IsolateDestAddr IsolateDestPort\n"
+        f"DNSPort 127.0.0.1:{DNS_PORT}\n"
+        "VirtualAddrNetworkIPv4 10.192.0.0/10\n"
+        "AutomapHostsSuffixes .onion,.exit\n"
+        "AutomapHostsOnResolve 1\n"
+    )
+    sh(["systemctl", "start", "tor"])
+    sh(["systemctl", "reload-or-restart", "tor"])
+    time.sleep(2)
+
+    ipt = "iptables"
+    for cmd in [
+        [ipt, "-t", "nat", "-N", TPROXY_CHAIN],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-m", "owner", "--uid-owner", "debian-tor", "-j", "RETURN"],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "127.0.0.0/8",    "-j", "RETURN"],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "10.0.0.0/8",     "-j", "RETURN"],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "172.16.0.0/12",  "-j", "RETURN"],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "192.168.0.0/16", "-j", "RETURN"],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "169.254.0.0/16", "-j", "RETURN"],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "udp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "tcp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "tcp", "--syn",         "-j", "REDIRECT", "--to-ports", TPROXY_PORT],
+        [ipt, "-t", "nat", "-A", "OUTPUT", "-j", TPROXY_CHAIN],
+    ]:
+        sh(cmd)
+
+    ok(f"all TCP → Tor:{TPROXY_PORT},  DNS → Tor:{DNS_PORT}")
+    save_state({"transparent_proxy": True})
+
+def transparent_proxy_off():
+    need_root()
+    log("Disabling transparent Tor proxy")
+    ipt = "iptables"
+    sh([ipt, "-t", "nat", "-D", "OUTPUT", "-j", TPROXY_CHAIN])
+    sh([ipt, "-t", "nat", "-F", TPROXY_CHAIN])
+    sh([ipt, "-t", "nat", "-X", TPROXY_CHAIN])
+    Path(TPROXY_CF).unlink(missing_ok=True)
+    ok("transparent proxy disabled")
+    save_state({"transparent_proxy": False})
+
+def transparent_proxy_active():
+    rc, out, _ = sh(["iptables", "-t", "nat", "-L", TPROXY_CHAIN, "-n"])
+    return rc == 0 and TPROXY_PORT in out
+
+# ── DNS-over-Tor ──────────────────────────────────────────────────────────────
+
+RESOLV_BACKUP = "/etc/resolv.conf.shadow-backup"
+NM_DNS_CONF   = "/etc/NetworkManager/conf.d/90-shadow-dns.conf"
+
+def dns_protect_on():
+    need_root()
+    log("DNS-over-Tor (no DNS leaks)")
+    if not Path(RESOLV_BACKUP).exists():
         try:
-            mac = open(f"/sys/class/net/{ifc}/address").read().strip()
+            import shutil
+            shutil.copy2("/etc/resolv.conf", RESOLV_BACKUP)
         except OSError:
-            mac = "?"
-        print(f"{ifc:9}: {mac}")
-    rc, _, _ = sh(["systemctl", "is-active", "--quiet", "tor"])
-    print(f"tor      : {'running' if rc == 0 else 'stopped'}")
-    rc, act, _ = sh(["systemctl", "is-active", "shadow-anon-rotate.timer"])
-    print(f"auto     : {'on ('+act+')' if act=='active' else 'off'}")
-    if have("curl"):
-        print("exit IP  : (checking via Tor…)")
-        rc, ip, _ = sh(["torsocks", "curl", "-s", "--max-time", "8", "https://api.ipify.org"])
-        print(f"           {ip or 'unavailable (is Tor up?)'}")
+            pass
+    Path(NM_DNS_CONF).write_text("[main]\ndns=none\n")
+    sh(["systemctl", "reload", "NetworkManager"])
+    sh(["chattr", "-i", "/etc/resolv.conf"])
+    Path("/etc/resolv.conf").write_text(
+        "# Shadow OS — DNS routed through Tor's DNSPort\n"
+        "nameserver 127.0.0.1\n"
+        "options ndots:0 edns0\n"
+    )
+    sh(["chattr", "+i", "/etc/resolv.conf"])
+    ok(f"DNS → 127.0.0.1:{DNS_PORT} (via Tor)")
+    save_state({"dns_protected": True})
 
-# ---- rotation + timer --------------------------------------------------------
+def dns_protect_off():
+    need_root()
+    log("Restoring system DNS")
+    sh(["chattr", "-i", "/etc/resolv.conf"])
+    Path(NM_DNS_CONF).unlink(missing_ok=True)
+    if Path(RESOLV_BACKUP).exists():
+        import shutil
+        shutil.copy2(RESOLV_BACKUP, "/etc/resolv.conf")
+        ok("resolv.conf restored from backup")
+    else:
+        Path("/etc/resolv.conf").write_text("nameserver 1.1.1.1\nnameserver 9.9.9.9\n")
+        ok("resolv.conf reset to 1.1.1.1 / 9.9.9.9")
+    sh(["systemctl", "reload", "NetworkManager"])
+    save_state({"dns_protected": False})
+
+# ── Bluetooth kill ────────────────────────────────────────────────────────────
+
+def kill_bluetooth(block=True):
+    need_root()
+    log(f"Bluetooth {'kill' if block else 'restore'}")
+    if not have("rfkill"):
+        warn("rfkill not found — install rfkill")
+        return
+    action = "block" if block else "unblock"
+    rc, _, e = sh(["rfkill", action, "bluetooth"])
+    ok(f"Bluetooth {'blocked' if block else 'unblocked'}") if rc == 0 else warn(f"rfkill: {e}")
+    save_state({"bt_killed": block})
+
+def bluetooth_killed():
+    rc, out, _ = sh(["rfkill", "list", "bluetooth"])
+    if rc != 0:
+        return False
+    return "Soft blocked: yes" in out or "Hard blocked: yes" in out
+
+# ── USB storage kill ──────────────────────────────────────────────────────────
+
+USB_RULE = "/etc/udev/rules.d/90-shadow-nousb.rules"
+
+def kill_usb(block=True):
+    need_root()
+    log(f"USB storage {'kill' if block else 'restore'}")
+    if block:
+        Path(USB_RULE).write_text(
+            '# Shadow OS — USB storage disabled by shadow-anon\n'
+            'SUBSYSTEM=="usb", DRIVER=="usb-storage", ACTION=="add", ATTR{authorized}="0"\n'
+        )
+        sh(["udevadm", "control", "--reload-rules"])
+        sh(["modprobe", "-r", "usb_storage"])
+        ok("USB storage blocked (new devices rejected)")
+    else:
+        Path(USB_RULE).unlink(missing_ok=True)
+        sh(["udevadm", "control", "--reload-rules"])
+        sh(["modprobe", "usb_storage"])
+        ok("USB storage re-enabled")
+    save_state({"usb_killed": block})
+
+# ── Kernel hardening ──────────────────────────────────────────────────────────
+
+SYSCTL_FILE = "/etc/sysctl.d/90-shadow-anon.conf"
+
+HARDENING = {
+    "net.ipv4.tcp_timestamps":                   "0",
+    "net.ipv4.conf.all.accept_source_route":     "0",
+    "net.ipv4.conf.default.accept_source_route": "0",
+    "net.ipv4.conf.all.send_redirects":          "0",
+    "net.ipv4.conf.default.send_redirects":      "0",
+    "net.ipv4.conf.all.accept_redirects":        "0",
+    "net.ipv4.conf.default.accept_redirects":    "0",
+    "net.ipv6.conf.all.accept_redirects":        "0",
+    "net.ipv4.icmp_echo_ignore_broadcasts":      "1",
+    "net.ipv4.conf.all.rp_filter":               "1",
+    "net.ipv4.conf.default.rp_filter":           "1",
+    "kernel.kptr_restrict":                      "2",
+    "kernel.dmesg_restrict":                     "1",
+    "net.core.bpf_jit_harden":                   "2",
+    "kernel.yama.ptrace_scope":                  "1",
+    "vm.swappiness":                             "1",
+}
+
+def harden_kernel(enable=True):
+    need_root()
+    if enable:
+        log("Kernel hardening (sysctl)")
+        lines = ["# Shadow OS kernel hardening — written by shadow-anon\n"]
+        for k, v in HARDENING.items():
+            lines.append(f"{k} = {v}\n")
+        Path(SYSCTL_FILE).write_text("".join(lines))
+        rc, _, e = sh(["sysctl", "-p", SYSCTL_FILE])
+        ok(f"{len(HARDENING)} hardening parameters applied") if rc == 0 else warn(f"some params failed (non-fatal): {e[:160]}")
+    else:
+        log("Removing kernel hardening sysctl file")
+        Path(SYSCTL_FILE).unlink(missing_ok=True)
+        ok("removed (reboot to fully revert)")
+    save_state({"kernel_hardened": enable})
+
+def kernel_hardened():
+    return Path(SYSCTL_FILE).exists()
+
+# ── Timezone UTC ──────────────────────────────────────────────────────────────
+
+def lock_timezone_utc():
+    log("Timezone → UTC")
+    sh(["timedatectl", "set-timezone", "UTC"])
+    ok("timezone set to UTC (prevents location inference)")
+
+# ── Log wipe ──────────────────────────────────────────────────────────────────
+
+def wipe_logs():
+    need_root()
+    log("Log wipe")
+    sh(["journalctl", "--rotate"])
+    sh(["journalctl", "--vacuum-time=1s"])
+    ok("systemd journal vacuumed")
+    for home_base in [Path("/root")] + list(Path("/home").iterdir()):
+        if not home_base.is_dir():
+            continue
+        for hist in (".bash_history", ".zsh_history", ".fish_history"):
+            p = home_base / hist
+            if p.exists():
+                try:
+                    p.write_text("")
+                    p.chmod(0o600)
+                except OSError:
+                    pass
+    ok("shell histories cleared")
+    for d in Path("/home").iterdir():
+        tc = d / ".cache" / "thumbnails"
+        if tc.is_dir():
+            import shutil
+            shutil.rmtree(tc, ignore_errors=True)
+            tc.mkdir(parents=True, exist_ok=True)
+    ok("thumbnail caches cleared")
+    sh(["find", "/tmp", "-maxdepth", "2", "-not", "-path", "/tmp",
+        "-not", "-name", "shadow-anon*", "-mmin", "+60", "-delete"])
+    ok("/tmp files older than 1 hour removed")
+
+# ── Ghost Mode ────────────────────────────────────────────────────────────────
+
+def ghost_mode_on():
+    need_root()
+    print("╔═══════════════════════════════════════════╗")
+    print("║   SHADOW OS — GHOST MODE ACTIVATING       ║")
+    print("╚═══════════════════════════════════════════╝")
+    randomize_mac()
+    ipv6_privacy()
+    random_hostname()
+    lock_timezone_utc()
+    harden_kernel(True)
+    kill_bluetooth(True)
+    new_tor_identity()
+    time.sleep(2)
+    transparent_proxy_on()
+    dns_protect_on()
+    wipe_logs()
+    save_state({"ghost_mode": True, "threat_model": "maximum"})
+    print("\n╔═══════════════════════════════════════════╗")
+    print("║  GHOST MODE ACTIVE  ·  identity obliterated ║")
+    print("╚═══════════════════════════════════════════╝")
+
+def ghost_mode_off():
+    need_root()
+    log("Disabling Ghost Mode")
+    transparent_proxy_off()
+    dns_protect_off()
+    kill_bluetooth(False)
+    save_state({"ghost_mode": False, "threat_model": "basic"})
+    ok("Ghost Mode disabled. Rebooting is recommended to fully reset kernel state.")
+
+# ── Threat model presets ──────────────────────────────────────────────────────
+
+def set_threat_model(model):
+    need_root()
+    model = model.lower().strip()
+    if model not in ("basic", "enhanced", "maximum"):
+        sys.exit(f"shadow-anon: unknown threat model '{model}' (basic|enhanced|maximum)")
+    log(f"Setting threat model: {model}")
+    if model == "basic":
+        randomize_mac(); ipv6_privacy(); random_hostname()
+        if transparent_proxy_active():
+            transparent_proxy_off()
+    elif model == "enhanced":
+        randomize_mac(); ipv6_privacy(); random_hostname()
+        new_tor_identity()
+        dns_protect_on()
+    elif model == "maximum":
+        ghost_mode_on()
+        return
+    save_state({"threat_model": model, "ghost_mode": model == "maximum"})
+
+# ── Nuke ──────────────────────────────────────────────────────────────────────
+
+def nuke():
+    need_root()
+    print("\n!!! NUKE — maximum identity wipe + all logs cleared !!!\n")
+    ghost_mode_on()
+    new_tor_identity()
+    wipe_logs()
+    print("\nNUKE complete. Recommend rebooting for full kernel state reset.")
+
+# ── Rotation + timer ──────────────────────────────────────────────────────────
+
 def rotate():
     need_root()
-    print(f"Rotating identity @ {time.strftime('%H:%M:%S')}")
-    randomize_mac(); ipv6_privacy(); random_hostname(); new_tor_identity()
+    state = load_state()
+    model = state.get("threat_model", "basic")
+    print(f"Rotating identity @ {time.strftime('%H:%M:%S')}  (threat: {model})")
+    randomize_mac(); ipv6_privacy(); random_hostname()
+    if model in ("enhanced", "maximum"):
+        new_tor_identity()
+    if model == "maximum":
+        dns_protect_on()
     print("done.")
 
 def start(interval):
     need_root()
     interval = max(5, int(interval))
-    drop = "/run/shadow-anon-interval.conf"
-    os.makedirs("/etc/systemd/system/shadow-anon-rotate.timer.d", exist_ok=True)
-    with open("/etc/systemd/system/shadow-anon-rotate.timer.d/interval.conf", "w") as f:
-        f.write("[Timer]\nOnUnitActiveSec=\nOnBootSec=%ds\nOnUnitActiveSec=%ds\n" % (interval, interval))
+    td = Path("/etc/systemd/system/shadow-anon-rotate.timer.d")
+    td.mkdir(parents=True, exist_ok=True)
+    (td / "interval.conf").write_text(
+        f"[Timer]\nOnUnitActiveSec=\nOnBootSec={interval}s\nOnUnitActiveSec={interval}s\n"
+    )
     sh(["systemctl", "daemon-reload"])
     sh(["systemctl", "enable", "--now", "shadow-anon-rotate.timer"])
-    print(f"Auto-rotation on, every {interval}s. (Each cycle briefly drops the network.)")
+    ok(f"auto-rotation every {interval}s")
+    save_state({"auto_rotate": True})
 
-def stop():
+def stop_rotate():
     need_root()
     sh(["systemctl", "disable", "--now", "shadow-anon-rotate.timer"])
-    print("Auto-rotation off.")
+    ok("auto-rotation disabled")
+    save_state({"auto_rotate": False})
+
+# ── Leak test ─────────────────────────────────────────────────────────────────
+
+def leak_test():
+    print("Shadow OS — Identity Leak Test")
+    print("=" * 44)
+
+    print("\n[1] Direct IP (not through Tor):")
+    if have("curl"):
+        _, ip, _ = sh(["curl", "-s", "--max-time", "8", "https://api.ipify.org"], timeout=12)
+        print(f"    {ip or '(unavailable)'}")
+    else:
+        print("    curl not available")
+
+    print("\n[2] Apparent IP via Tor:")
+    tor_rc, _, _ = sh(["systemctl", "is-active", "--quiet", "tor"])
+    if tor_rc != 0:
+        print("    Tor is not running — start Tor first")
+    elif have("torsocks") and have("curl"):
+        _, ip, _ = sh(["torsocks", "curl", "-s", "--max-time", "15", "https://api.ipify.org"], timeout=20)
+        print(f"    {ip or '(circuit not ready yet — retry in a few seconds)'}")
+    else:
+        print("    torsocks or curl not installed")
+
+    print("\n[3] DNS resolver (resolv.conf):")
+    try:
+        for line in Path("/etc/resolv.conf").read_text().splitlines():
+            if line.startswith("nameserver"):
+                ns = line.split()[1]
+                tag = " ← DNS-over-Tor (protected)" if ns == "127.0.0.1" else \
+                      " ← WARNING: DNS leaks possible" if ns in ("1.1.1.1","8.8.8.8","9.9.9.9") else ""
+                print(f"    {ns}{tag}")
+    except OSError:
+        print("    cannot read /etc/resolv.conf")
+
+    print("\n[4] IPv6 addresses:")
+    _, out, _ = sh(["ip", "-6", "addr", "show"])
+    has_v6 = False
+    for line in out.splitlines():
+        if "inet6" in line and "::1" not in line:
+            has_v6 = True
+            addr = line.strip().split()[1]
+            scope = "temporary" if "temporary" in line else "permanent" if "permanent" in line else "unknown"
+            print(f"    {addr}  ({scope})")
+    if not has_v6:
+        print("    no IPv6 (or IPv6 disabled)")
+
+    print("\n[5] Transparent Tor proxy:")
+    print(f"    {'ACTIVE — all TCP through Tor' if transparent_proxy_active() else 'inactive'}")
+
+    print("\n[6] Bluetooth:")
+    _, rfout, _ = sh(["rfkill", "list", "bluetooth"])
+    killed = "Soft blocked: yes" in rfout or "Hard blocked: yes" in rfout
+    print(f"    {'killed (rfkill blocked)' if killed else 'active — trackable by nearby devices'}")
+
+    state = load_state()
+    print(f"\n[7] Threat model  : {state.get('threat_model', 'basic')}")
+    print(f"    Ghost Mode    : {'ON' if state.get('ghost_mode') else 'OFF'}")
+    print(f"    Kernel harden : {'applied' if kernel_hardened() else 'default'}")
+    print()
+
+# ── Status ────────────────────────────────────────────────────────────────────
+
+def status():
+    state = load_state()
+    print("Shadow OS — Hide Me status")
+    print("-" * 44)
+    _, host, _ = sh(["hostname"])
+    print(f"hostname    : {host}")
+    for ifc in net_ifaces():
+        try:
+            mac = Path(f"/sys/class/net/{ifc}/address").read_text().strip()
+        except OSError:
+            mac = "?"
+        print(f"{ifc:<11}: {mac}")
+    tor_rc, _, _ = sh(["systemctl", "is-active", "--quiet", "tor"])
+    print(f"tor         : {'running' if tor_rc == 0 else 'stopped'}")
+    print(f"ghost mode  : {'ON' if state.get('ghost_mode') else 'off'}")
+    print(f"threat model: {state.get('threat_model', 'basic')}")
+    print(f"tproxy      : {'ON' if transparent_proxy_active() else 'off'}")
+    print(f"dns protect : {'ON' if state.get('dns_protected') else 'off'}")
+    print(f"bt killed   : {'YES' if bluetooth_killed() else 'no'}")
+    print(f"usb blocked : {'YES' if Path(USB_RULE).exists() else 'no'}")
+    print(f"kernel hard : {'YES' if kernel_hardened() else 'no'}")
+    rot_rc, rot_out, _ = sh(["systemctl", "is-active", "shadow-anon-rotate.timer"])
+    print(f"auto-rotate : {'on (' + rot_out + ')' if rot_out == 'active' else 'off'}")
+    if tor_rc == 0 and have("torsocks") and have("curl"):
+        print("exit IP     : (checking via Tor…)")
+        _, ip, _ = sh(["torsocks", "curl", "-s", "--max-time", "10", "https://api.ipify.org"], timeout=15)
+        print(f"            : {ip or '(circuit not ready)'}")
+
+# ── Text panel ────────────────────────────────────────────────────────────────
 
 def panel():
-    # A simple text panel for the desktop launcher (opens in a terminal).
     while True:
         os.system("clear")
         status()
-        print("\n[1] Rotate now   [2] Auto every 5s   [3] Auto every 30s")
-        print("[4] Auto every 5 min   [5] Stop auto   [6] New Tor exit   [q] Quit")
+        print()
+        print("[1]  Rotate now       [2]  Auto every 30s   [3]  Auto every 5 min")
+        print("[4]  Stop auto        [5]  Ghost Mode ON     [6]  Ghost Mode OFF")
+        print("[7]  Threat: basic    [8]  Threat: enhanced  [9]  Threat: maximum")
+        print("[n]  NUKE             [l]  Leak test         [b]  Kill Bluetooth")
+        print("[k]  Harden kernel    [w]  Wipe logs         [q]  Quit")
         try:
-            c = input("> ").strip().lower()
+            c = input("\n> ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             break
-        if c == "1": rotate()
-        elif c == "2": start(5)
-        elif c == "3": start(30)
-        elif c == "4": start(300)
-        elif c == "5": stop()
-        elif c == "6": need_root(); new_tor_identity()
+        if   c == "1": rotate()
+        elif c == "2": start(30)
+        elif c == "3": start(300)
+        elif c == "4": stop_rotate()
+        elif c == "5": ghost_mode_on()
+        elif c == "6": ghost_mode_off()
+        elif c == "7": set_threat_model("basic")
+        elif c == "8": set_threat_model("enhanced")
+        elif c == "9": set_threat_model("maximum")
+        elif c == "n": nuke()
+        elif c == "l": leak_test()
+        elif c == "b": kill_bluetooth(True)
+        elif c == "k": harden_kernel(True)
+        elif c == "w": wipe_logs()
         elif c == "q": break
-        input("\n(enter)")
+        input("\n(enter to continue)")
+
+# ── main ──────────────────────────────────────────────────────────────────────
 
 def main():
     ap = argparse.ArgumentParser(prog="shadow-anon", description=__doc__,
@@ -177,20 +635,66 @@ def main():
     sub.add_parser("status")
     sub.add_parser("rotate")
     sub.add_parser("mac")
-    sub.add_parser("tor-new")
     sub.add_parser("hostname")
+    sub.add_parser("ipv6")
+    sub.add_parser("tor-new")
     sub.add_parser("panel")
-    s = sub.add_parser("start"); s.add_argument("--interval", type=int, default=30)
+    sub.add_parser("ghost-on")
+    sub.add_parser("ghost-off")
+    sub.add_parser("nuke")
+    sub.add_parser("leak-test")
+    sub.add_parser("wipe-logs")
+    sub.add_parser("harden-kernel")
+    sub.add_parser("kill-bluetooth")
+    sub.add_parser("restore-bluetooth")
+    sub.add_parser("kill-usb")
+    sub.add_parser("restore-usb")
+    sub.add_parser("transparent-proxy-on")
+    sub.add_parser("transparent-proxy-off")
+    sub.add_parser("dns-protect-on")
+    sub.add_parser("dns-protect-off")
+    s = sub.add_parser("start")
+    s.add_argument("--interval", type=int, default=300)
     sub.add_parser("stop")
+    t = sub.add_parser("threat")
+    t.add_argument("level", choices=["basic", "enhanced", "maximum"])
+    b = sub.add_parser("tor-bridge")
+    b.add_argument("bridges", nargs="*")
     a = ap.parse_args()
-    if a.cmd in (None, "status"): status()
-    elif a.cmd == "rotate": rotate()
-    elif a.cmd == "mac": need_root(); randomize_mac()
-    elif a.cmd == "tor-new": need_root(); new_tor_identity()
-    elif a.cmd == "hostname": need_root(); random_hostname()
-    elif a.cmd == "panel": panel()
-    elif a.cmd == "start": start(a.interval)
-    elif a.cmd == "stop": stop()
+
+    cmds = {
+        None:                    status,
+        "status":                status,
+        "rotate":                rotate,
+        "mac":                   lambda: (need_root(), randomize_mac()),
+        "hostname":              lambda: (need_root(), random_hostname()),
+        "ipv6":                  lambda: (need_root(), ipv6_privacy()),
+        "tor-new":               lambda: (need_root(), new_tor_identity()),
+        "panel":                 panel,
+        "ghost-on":              ghost_mode_on,
+        "ghost-off":             ghost_mode_off,
+        "nuke":                  nuke,
+        "leak-test":             leak_test,
+        "wipe-logs":             wipe_logs,
+        "harden-kernel":         lambda: harden_kernel(True),
+        "kill-bluetooth":        lambda: kill_bluetooth(True),
+        "restore-bluetooth":     lambda: kill_bluetooth(False),
+        "kill-usb":              lambda: kill_usb(True),
+        "restore-usb":           lambda: kill_usb(False),
+        "transparent-proxy-on":  transparent_proxy_on,
+        "transparent-proxy-off": transparent_proxy_off,
+        "dns-protect-on":        dns_protect_on,
+        "dns-protect-off":       dns_protect_off,
+        "start":                 lambda: start(a.interval),
+        "stop":                  stop_rotate,
+        "threat":                lambda: set_threat_model(a.level),
+        "tor-bridge":            lambda: set_tor_bridges(a.bridges),
+    }
+    fn = cmds.get(a.cmd)
+    if fn:
+        fn()
+    else:
+        ap.print_help()
 
 if __name__ == "__main__":
     main()

@@ -93,12 +93,211 @@ NxPage {
 
     PrivacyBackend {
         id: privacy
-        Component.onCompleted: scan()
+        Component.onCompleted: { scan(); refreshAnon() }
         onFailed: (message) => {
             page.revision++
             page.ApplicationWindow.window.toaster.show(message, "danger")
         }
         onSucceeded: (message) => page.ApplicationWindow.window.toaster.show(message, "success")
+    }
+
+    // ---- Hide Me -----------------------------------------------------------------------
+    NxSection {
+        title: qsTr("Hide Me")
+        description: privacy.ghostMode
+            ? qsTr("GHOST MODE ACTIVE — All identity protections are enabled.")
+            : qsTr("Full identity obliteration. Ghost Mode activates every protection at once.")
+
+        // Ghost Mode master control
+        NxRow {
+            icon: "eye-off"
+            title: qsTr("Ghost Mode")
+            subtitle: qsTr("MAC random · transparent Tor proxy · DNS-over-Tor · Bluetooth kill · kernel hardening · log wipe")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: privacy.ghostMode ? qsTr("Disable Ghost Mode") : qsTr("Enable Ghost Mode")
+                busy: privacy.anonBusy
+                onClicked: privacy.ghostMode ? privacy.disableGhostMode() : privacy.enableGhostMode()
+            }
+        }
+
+        // Threat Level
+        NxRow {
+            icon: "shield"
+            title: qsTr("Threat Level")
+            subtitle: privacy.threatModel === "maximum" ? qsTr("Maximum: all protections active")
+                     : privacy.threatModel === "enhanced" ? qsTr("Enhanced: MAC + Tor routing + DNS-over-Tor")
+                     : qsTr("Basic: MAC randomization + hostname rotation")
+            NxSegmented {
+                anchors.verticalCenter: parent.verticalCenter
+                model: [qsTr("Basic"), qsTr("Enhanced"), qsTr("Maximum")]
+                currentIndex: privacy.threatModel === "maximum" ? 2 : privacy.threatModel === "enhanced" ? 1 : 0
+                enabled: !privacy.anonBusy
+                onActivated: (i) => privacy.setThreatModel(["basic","enhanced","maximum"][i])
+            }
+        }
+
+        // Rotate now
+        NxRow {
+            icon: "rotate-cw"
+            title: qsTr("Rotate Identity")
+            subtitle: qsTr("New MAC address · new hostname · new Tor exit (uses current threat level)")
+            value: privacy.torRunning ? qsTr("Tor: running") : qsTr("Tor: stopped")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Rotate Now")
+                busy: privacy.anonBusy
+                onClicked: privacy.rotateIdentity()
+            }
+        }
+
+        // Transparent Tor proxy
+        NxRow {
+            icon: "shield"
+            title: qsTr("Transparent Tor Proxy")
+            subtitle: qsTr("Routes ALL TCP connections and DNS queries through Tor — not just your browser. UDP is blocked while active.")
+            value: privacy.transparentProxy ? qsTr("ACTIVE") : qsTr("off")
+            Switch {
+                anchors.verticalCenter: parent.verticalCenter
+                checked: privacy.transparentProxy
+                enabled: !privacy.anonBusy
+                Accessible.name: qsTr("Transparent Tor Proxy")
+                onToggled: {
+                    const v = checked
+                    checked = Qt.binding(() => privacy.transparentProxy)
+                    privacy.enableTransparentProxy(v)
+                }
+            }
+        }
+
+        // DNS-over-Tor
+        NxRow {
+            icon: "lock"
+            title: qsTr("DNS-over-Tor")
+            subtitle: qsTr("Routes all DNS queries through Tor. Prevents DNS leaks that expose which hostnames you visit.")
+            value: privacy.dnsProtected ? qsTr("ACTIVE") : qsTr("off")
+            Switch {
+                anchors.verticalCenter: parent.verticalCenter
+                checked: privacy.dnsProtected
+                enabled: !privacy.anonBusy
+                Accessible.name: qsTr("DNS-over-Tor")
+                onToggled: {
+                    const v = checked
+                    checked = Qt.binding(() => privacy.dnsProtected)
+                    privacy.enableDnsProtect(v)
+                }
+            }
+        }
+
+        // Bluetooth kill
+        NxRow {
+            icon: "bluetooth-off"
+            title: qsTr("Bluetooth Kill Switch")
+            subtitle: qsTr("Blocks Bluetooth via rfkill. Nearby devices cannot detect or track this machine while killed.")
+            value: privacy.bluetoothKilled ? qsTr("BLOCKED") : qsTr("active")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: privacy.bluetoothKilled ? qsTr("Restore") : qsTr("Kill")
+                busy: privacy.anonBusy
+                onClicked: privacy.killBluetooth(!privacy.bluetoothKilled)
+            }
+        }
+
+        // USB storage kill
+        NxRow {
+            icon: "hard-drive"
+            title: qsTr("USB Storage Kill Switch")
+            subtitle: qsTr("Blocks USB storage devices via udev. Prevents data exfiltration and BadUSB attacks.")
+            value: privacy.usbStorageKilled ? qsTr("BLOCKED") : qsTr("allowed")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: privacy.usbStorageKilled ? qsTr("Restore") : qsTr("Block")
+                busy: privacy.anonBusy
+                onClicked: privacy.killUsbStorage(!privacy.usbStorageKilled)
+            }
+        }
+
+        // Kernel hardening
+        NxRow {
+            icon: "cpu"
+            title: qsTr("Kernel Hardening")
+            subtitle: qsTr("Applies sysctl: disables TCP timestamps, hides kernel pointers, hardens BPF JIT, enables reverse-path filtering.")
+            value: privacy.kernelHardened ? qsTr("applied") : qsTr("system default")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Apply")
+                busy: privacy.anonBusy
+                enabled: !privacy.kernelHardened && !privacy.anonBusy
+                onClicked: privacy.hardenKernelNow()
+            }
+        }
+
+        // Auto-rotate
+        NxRow {
+            icon: "clock"
+            title: qsTr("Auto-rotate")
+            subtitle: privacy.autoRotateActive
+                ? qsTr("Identity rotates automatically. Each cycle briefly drops network connectivity.")
+                : qsTr("Rotate MAC address, hostname and Tor exit on a timer.")
+            value: privacy.autoRotateActive ? qsTr("active") : qsTr("off")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: privacy.autoRotateActive ? qsTr("Stop") : qsTr("Every 5 min")
+                busy: privacy.anonBusy
+                onClicked: privacy.autoRotateActive ? privacy.stopAutoRotate() : privacy.startAutoRotate(300)
+            }
+        }
+
+        // Log wipe
+        NxRow {
+            icon: "trash-2"
+            title: qsTr("Wipe Logs")
+            subtitle: qsTr("Clears systemd journal, all shell histories, thumbnail cache and old /tmp files.")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Wipe…")
+                busy: privacy.anonBusy
+                onClicked: wipeLogsDialog.open()
+            }
+        }
+
+        // Leak test
+        NxRow {
+            icon: "search"
+            title: qsTr("Identity Leak Test")
+            subtitle: qsTr("Checks direct IP, Tor exit IP, DNS resolver and IPv6 exposure. Results appear below.")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Run Test")
+                busy: privacy.anonBusy
+                onClicked: privacy.runLeakTest()
+            }
+        }
+
+        // Output log
+        Text {
+            Layout.fillWidth: true
+            visible: privacy.anonOutput !== ""
+            text: privacy.anonOutput
+            font.family: "monospace"
+            font.pixelSize: Theme.fontSizeSmall - 1
+            color: Theme.textMuted
+            wrapMode: Text.Wrap
+            topPadding: Theme.spaceSm
+        }
+
+        // NUKE — the big red button
+        NxRow {
+            icon: "zap"
+            title: qsTr("NUKE Identity")
+            subtitle: qsTr("Ghost Mode + wipe all logs instantly. The most aggressive single action.")
+            NxButton {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("NUKE…")
+                busy: privacy.anonBusy
+                onClicked: nukeDialog.open()
+            }
+        }
     }
 
     // ---- screen lock --------------------------------------------------------------------
@@ -286,5 +485,21 @@ NxPage {
         confirmText: page.cleanId === "trash" ? qsTr("Empty trash") : qsTr("Delete")
         destructive: true
         onConfirmed: privacy.clean(page.cleanId)
+    }
+    NxConfirmDialog {
+        id: wipeLogsDialog
+        title: qsTr("Wipe logs?")
+        message: qsTr("This permanently deletes the systemd journal, all shell histories (.bash_history, .zsh_history), thumbnail caches and /tmp files older than 1 hour. The files themselves are not affected.")
+        confirmText: qsTr("Wipe logs")
+        destructive: true
+        onConfirmed: privacy.wipeLogsNow()
+    }
+    NxConfirmDialog {
+        id: nukeDialog
+        title: qsTr("NUKE identity?")
+        message: qsTr("This runs Ghost Mode (new MAC, new hostname, transparent Tor proxy, DNS-over-Tor, Bluetooth kill, kernel hardening) and immediately wipes all logs. This is the most aggressive action available. Use only when you need instant, complete identity obliteration.")
+        confirmText: qsTr("NUKE")
+        destructive: true
+        onConfirmed: privacy.nukeIdentity()
     }
 }

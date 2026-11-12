@@ -57,6 +57,18 @@ class PrivacyBackend : public QObject
     Q_PROPERTY(bool networkManagerInstalled READ networkManagerInstalled CONSTANT)
     Q_PROPERTY(QVariantList macSettings READ macSettings NOTIFY networkChanged)   // [{key, value, source}]
     Q_PROPERTY(QString shadowPrivacyFile READ shadowPrivacyFile NOTIFY networkChanged)
+    // ---- Hide Me (shadow-anon)
+    Q_PROPERTY(bool ghostMode READ ghostMode NOTIFY anonChanged)
+    Q_PROPERTY(QString threatModel READ threatModel NOTIFY anonChanged) // "basic"|"enhanced"|"maximum"
+    Q_PROPERTY(bool torRunning READ torRunning NOTIFY anonChanged)
+    Q_PROPERTY(bool transparentProxy READ transparentProxy NOTIFY anonChanged)
+    Q_PROPERTY(bool dnsProtected READ dnsProtected NOTIFY anonChanged)
+    Q_PROPERTY(bool bluetoothKilled READ bluetoothKilled NOTIFY anonChanged)
+    Q_PROPERTY(bool usbStorageKilled READ usbStorageKilled NOTIFY anonChanged)
+    Q_PROPERTY(bool kernelHardened READ kernelHardened NOTIFY anonChanged)
+    Q_PROPERTY(bool autoRotateActive READ autoRotateActive NOTIFY anonChanged)
+    Q_PROPERTY(bool anonBusy READ anonBusy NOTIFY anonChanged)
+    Q_PROPERTY(QString anonOutput READ anonOutput NOTIFY anonChanged)
 
 public:
     explicit PrivacyBackend(QObject *parent = nullptr);
@@ -83,6 +95,18 @@ public:
     QVariantList macSettings() const { return m_macSettings; }
     QString shadowPrivacyFile() const { return m_shadowPrivacyFile; }
 
+    bool ghostMode() const { return m_ghostMode; }
+    QString threatModel() const { return m_threatModel; }
+    bool torRunning() const { return m_torRunning; }
+    bool transparentProxy() const { return m_transparentProxy; }
+    bool dnsProtected() const { return m_dnsProtected; }
+    bool bluetoothKilled() const { return m_btKilled; }
+    bool usbStorageKilled() const { return m_usbKilled; }
+    bool kernelHardened() const { return m_kernelHardened; }
+    bool autoRotateActive() const { return m_autoRotateActive; }
+    bool anonBusy() const { return m_anonBusy; }
+    QString anonOutput() const { return m_anonOutput; }
+
     Q_INVOKABLE void setAutolock(bool on);
     Q_INVOKABLE void setLockTimeoutMinutes(int minutes);
     Q_INVOKABLE void setLockOnResume(bool on);
@@ -95,6 +119,24 @@ public:
     Q_INVOKABLE void clean(const QString &id);
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void refreshAnon();
+
+    // Hide Me actions (all require root; called via pkexec)
+    Q_INVOKABLE void rotateIdentity();
+    Q_INVOKABLE void enableGhostMode();
+    Q_INVOKABLE void disableGhostMode();
+    Q_INVOKABLE void setThreatModel(const QString &model);
+    Q_INVOKABLE void nukeIdentity();
+    Q_INVOKABLE void runLeakTest();
+    Q_INVOKABLE void wipeLogsNow();
+    Q_INVOKABLE void hardenKernelNow();
+    Q_INVOKABLE void killBluetooth(bool kill);
+    Q_INVOKABLE void killUsbStorage(bool kill);
+    Q_INVOKABLE void enableTransparentProxy(bool enable);
+    Q_INVOKABLE void enableDnsProtect(bool enable);
+    Q_INVOKABLE void startAutoRotate(int intervalSeconds);
+    Q_INVOKABLE void stopAutoRotate();
+
     QJsonObject toJson() const;
 
 Q_SIGNALS:
@@ -102,6 +144,7 @@ Q_SIGNALS:
     void historyChanged();
     void cleanupChanged();
     void networkChanged();
+    void anonChanged();
     void failed(const QString &message);
     void succeeded(const QString &message);
 
@@ -111,6 +154,7 @@ private:
     void loadHistory();
     void loadNetwork();
     void startWorker(const QString &cleanId);
+    void runShadowAnon(const QStringList &args);
 
     bool m_lockerRunning = false;
     bool m_autolock = true;
@@ -125,5 +169,17 @@ private:
     QString m_cleaning;
     QVariantList m_macSettings;
     QString m_shadowPrivacyFile;
+    // Hide Me state
+    bool m_ghostMode = false;
+    QString m_threatModel = QStringLiteral("basic");
+    bool m_torRunning = false;
+    bool m_transparentProxy = false;
+    bool m_dnsProtected = false;
+    bool m_btKilled = false;
+    bool m_usbKilled = false;
+    bool m_kernelHardened = false;
+    bool m_autoRotateActive = false;
+    bool m_anonBusy = false;
+    QString m_anonOutput;
     std::shared_ptr<bool> m_alive;
 };
