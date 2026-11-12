@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# AppArmor profile for /usr/bin/shadow-anon
+# Shadow OS identity and anonymity engine.
+# Runs as root via pkexec; this profile constrains it to known paths.
+
+#include <tunables/global>
+
+/usr/bin/shadow-anon {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+  #include <abstractions/python>
+
+  # ---- Capabilities -------------------------------------------------------
+  # Required for: network config, iptables, MAC changing, rfkill, sysctl,
+  # file attribute manipulation (chattr), process management.
+  capability net_admin,
+  capability net_raw,
+  capability sys_admin,
+  capability dac_override,
+  capability dac_read_search,
+  capability chown,
+  capability fowner,
+  capability kill,
+  capability sys_ptrace,
+  capability setuid,
+  capability setgid,
+
+  # ---- Own binary and Python runtime -------------------------------------
+  /usr/bin/shadow-anon r,
+  /usr/bin/python3*    ix,
+  /usr/lib/python3*/   r,
+  /usr/lib/python3*/** r,
+  /usr/local/lib/python3*/** r,
+
+  # ---- Proc and sys (read only) ------------------------------------------
+  /proc/               r,
+  /proc/**             r,
+  /sys/                r,
+  /sys/**              r,
+
+  # ---- State file --------------------------------------------------------
+  /run/shadow-anon-state.json rw,
+
+  # ---- Tor configuration -------------------------------------------------
+  /etc/tor/            rw,
+  /etc/tor/**          rw,
+  /var/lib/tor/        r,
+  /var/lib/tor/**      r,
+  /run/tor/            rw,
+  /run/tor/**          rw,
+
+  # ---- NetworkManager ----------------------------------------------------
+  /etc/NetworkManager/conf.d/   rw,
+  /etc/NetworkManager/conf.d/** rw,
+
+  # ---- Sysctl / kernel config --------------------------------------------
+  /etc/sysctl.d/       rw,
+  /etc/sysctl.d/**     rw,
+
+  # ---- udev rules --------------------------------------------------------
+  /etc/udev/rules.d/   rw,
+  /etc/udev/rules.d/** rw,
+
+  # ---- DNS ---------------------------------------------------------------
+  /etc/resolv.conf     rw,
+  /etc/resolv.conf.shadow-backup rw,
+
+  # ---- Logs (wipe command) -----------------------------------------------
+  /var/log/            r,
+  /var/log/**          rw,
+  /home/*/.bash_history rw,
+  /home/*/.zsh_history  rw,
+  /root/.bash_history   rw,
+  /root/.zsh_history    rw,
+
+  # ---- Temporary files ---------------------------------------------------
+  /tmp/shadow-*        rw,
+  /tmp/shadow-*/       rw,
+  /tmp/shadow-*/**     rw,
+
+  # ---- Executables called by shadow-anon ---------------------------------
+  /sbin/iptables                   ix,
+  /sbin/iptables-restore           ix,
+  /sbin/iptables-save              ix,
+  /sbin/ip6tables                  ix,
+  /sbin/ip6tables-restore          ix,
+  /usr/sbin/iptables               ix,
+  /usr/sbin/iptables-restore       ix,
+  /usr/sbin/ip6tables              ix,
+  /bin/ip                          ix,
+  /sbin/ip                         ix,
+  /usr/sbin/ip                     ix,
+  /sbin/sysctl                     ix,
+  /usr/sbin/sysctl                 ix,
+  /usr/sbin/rfkill                 ix,
+  /usr/sbin/macchanger             ix,
+  /bin/hostname                    ix,
+  /usr/bin/hostname                ix,
+  /usr/bin/timedatectl             ix,
+  /bin/timedatectl                 ix,
+  /usr/bin/find                    ix,
+  /bin/find                        ix,
+  /bin/rm                          ix,
+  /usr/bin/rm                      ix,
+  /usr/bin/journalctl              ix,
+  /bin/truncate                    ix,
+  /usr/bin/truncate                ix,
+  /usr/bin/tor                     Cx -> tor_child,
+  /bin/systemctl                   ix,
+  /usr/bin/systemctl               ix,
+  /sbin/udevadm                    ix,
+  /usr/sbin/udevadm                ix,
+  /usr/bin/chattr                  ix,
+  /usr/bin/torsocks                ix,
+  /usr/bin/curl                    ix,
+  /usr/bin/wget                    ix,
+  /bin/bash                        ix,
+  /bin/sh                          ix,
+  /usr/bin/bash                    ix,
+  /usr/bin/sh                      ix,
+
+  # ---- dbus (systemctl calls) --------------------------------------------
+  /run/dbus/system_bus_socket      rw,
+  /run/systemd/private/            r,
+  /run/systemd/private/**          r,
+
+  # ---- tor sub-profile ---------------------------------------------------
+  profile tor_child {
+    #include <abstractions/base>
+    /usr/bin/tor             r,
+    /etc/tor/**              r,
+    /var/lib/tor/**          rw,
+    /run/tor/**              rw,
+    /proc/sys/net/core/somaxconn r,
+    network inet  stream,
+    network inet6 stream,
+    network inet  dgram,
+    network inet6 dgram,
+    capability net_bind_service,
+    capability setuid,
+    capability setgid,
+  }
+}
