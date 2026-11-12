@@ -172,9 +172,14 @@ void ChatClient::emitHttpError(QNetworkReply *reply)
     QString code, message;
     switch (status) {
     case 401:
-    case 403:
         code = QStringLiteral("auth");
-        message = tr("The NVIDIA API rejected the key (HTTP %1). Check the key in your assistant.conf.").arg(status);
+        message = tr("The NVIDIA API rejected the key (HTTP 401). Check the key in your assistant.conf.");
+        break;
+    case 403:
+        // A valid key that may not use the requested model also gets 403.
+        code = QStringLiteral("auth");
+        message = tr("The NVIDIA API refused this request (HTTP 403). The key may be invalid, or your account may "
+                     "not have access to the selected model. Check the model IDs in Settings and the key in assistant.conf.");
         break;
     case 404:
         code = QStringLiteral("not_found");
