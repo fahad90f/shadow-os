@@ -57,19 +57,32 @@ EOF
         ulimit -n 1048576 2>/dev/null || ulimit -n 65536 2>/dev/null || true
         echo "space/inodes before SHADOW install:"; df -h / || true; df -i / || true
         opts="-q -y --no-install-recommends -o Dpkg::Options::=--force-confnew -o Dpkg::Use-Pty=0"
+        log=/tmp/shadow-apt.log
         ok=
         for a in 1 2 3; do
             echo "=== SHADOW package install: attempt $a ==="
-            if apt-get $opts install "$@"; then ok=1; break; fi
+            if apt-get $opts install "$@" 2>&1 | tee "$log"; then ok=1; break; fi
             echo "=== attempt $a left packages unconfigured; recovering ==="
-            dpkg --configure -a || true
-            apt-get $opts --fix-broken install || true
+            dpkg --configure -a 2>&1 | tee -a "$log" || true
+            apt-get $opts --fix-broken install 2>&1 | tee -a "$log" || true
         done
         if [ -z "${ok:-}" ]; then
             echo "=== SHADOW install FAILED after retries ==="
             echo "open-file limit now: $(ulimit -n)"
             echo "space/inodes now:"; df -h / || true; df -i / || true
             echo "packages still in a bad state:"; dpkg --audit || true
+            echo "=== first failing postinst, in context (from the apt log) ==="
+            first_line=$(grep -nE "error processing package|useradd: |adduser: |chfn: |usermod: |cannot open" "$log" | head -1 | cut -d: -f1)
+            if [ -n "${first_line:-}" ]; then
+                start=$(( first_line > 30 ? first_line - 30 : 1 ))
+                sed -n "${start},$(( first_line + 3 ))p" "$log"
+            fi
+            echo "=== re-running the first broken package postinst with tracing ==="
+            bad=$(dpkg --audit 2>/dev/null | awk "/^ [a-z0-9]/{print \$1; exit}")
+            if [ -n "${bad:-}" ]; then
+                echo "tracing: dpkg --configure $bad"
+                sh -x /var/lib/dpkg/info/"$bad".postinst configure 2>&1 | tail -40 || true
+            fi
             exit 1
         fi
     ' shadow-install $SHADOW_PKGS
