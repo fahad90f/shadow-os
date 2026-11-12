@@ -55,9 +55,15 @@ Config ()
 	# rejects. Documented default: username "shadow", password "live".
 	# Removed from the installed system (the installer deletes shadow-live and
 	# the user sets their own password).
-	if [ -n "${LIVE_USERNAME}" ]
+	# Fall back to the known live username if live-config did not export
+	# LIVE_USERNAME into this component's environment (an empty username would
+	# make chpasswd a no-op and leave the account unusable at the greeter).
+	_live_user="${LIVE_USERNAME:-shadow}"
+	if id "${_live_user}" >/dev/null 2>&1
 	then
-		echo "${LIVE_USERNAME}:${SHADOW_LIVE_PASSWORD:-live}" | chpasswd 2>/dev/null || true
+		echo "${_live_user}:${SHADOW_LIVE_PASSWORD:-live}" | chpasswd 2>/dev/null \
+			|| printf '%s\n%s\n' "${SHADOW_LIVE_PASSWORD:-live}" "${SHADOW_LIVE_PASSWORD:-live}" \
+			   | passwd "${_live_user}" >/dev/null 2>&1 || true
 	fi
 
 	if [ -e /usr/share/wayland-sessions/shadow-horizon.desktop ] && \

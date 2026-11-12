@@ -123,6 +123,16 @@ jobs:
           sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware bios --media cdrom
           sudo -E python3 -u tests/boot/test_live_boot.py --iso "$iso" --firmware bios --media usb
 
+      - name: Upload boot logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-os-amd64-bootlogs
+          path: |
+            build/work/tests/**/*.serial.log
+            build/work/tests/**/*.qemu.log
+          if-no-files-found: ignore
+
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
