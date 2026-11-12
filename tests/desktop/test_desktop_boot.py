@@ -38,6 +38,21 @@ def run(args):
             workdir=args.workdir, memory_mb=args.memory, graphics=True)
     vm.add_cdrom(args.iso)
     t0 = time.time()
+    try:
+        _run_body(vm, args, shots, t0)
+    except BaseException:
+        # The serial log artifact host is not always reachable, so dump the
+        # whole guest boot sequence to stdout (the CI job log) for diagnosis.
+        try:
+            print("=== full guest serial log ===", flush=True)
+            print(vm.serial_log.read_text(errors="replace"), flush=True)
+            print("=== end guest serial log ===", flush=True)
+        except Exception:
+            pass
+        raise
+
+
+def _run_body(vm, args, shots, t0):
     with vm:
         print(f"# accel={vm.accel} firmware={args.firmware} log={vm.serial_log}", flush=True)
         vm.expect(r"Linux version \S+", args.timeout, fail=PANIC)

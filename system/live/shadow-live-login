@@ -1,0 +1,28 @@
+#!/bin/sh
+# Make sure the live user can always log in.
+#
+# Run as an ExecStartPost of live-config.service on the live medium, so it
+# executes right after live-config has created the live user and before the
+# getty / display-manager login prompts (which are ordered after
+# live-config.service). Autologin normally means the password is never needed,
+# but if the graphical session fails to start and SDDM drops to the greeter —
+# or on the serial console used by the automated boot test — the account must
+# have a known, unlocked password.
+#
+# Shipped only on the live medium by shadow-live; the installer removes it and
+# the installed system uses the password the user chose.
+set -eu
+
+USER_NAME="shadow"
+PASSWORD="${SHADOW_LIVE_PASSWORD:-live}"
+
+# The user is created by live-config; if it is somehow not there yet, do
+# nothing rather than fail the service.
+id "$USER_NAME" >/dev/null 2>&1 || exit 0
+
+if ! printf '%s:%s\n' "$USER_NAME" "$PASSWORD" | chpasswd 2>/dev/null; then
+    printf '%s\n%s\n' "$PASSWORD" "$PASSWORD" | passwd "$USER_NAME" >/dev/null 2>&1 || true
+fi
+# Ensure the account is not left in a locked state ("!"/"*" in /etc/shadow).
+passwd -u "$USER_NAME" >/dev/null 2>&1 || true
+exit 0

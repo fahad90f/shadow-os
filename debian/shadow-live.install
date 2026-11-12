@@ -3,3 +3,5 @@ system/live/2000-shadow-session usr/lib/live/config
 system/live/10-shadow-live.conf etc/sddm.conf.d
 system/live/10-wait-live-config.conf etc/systemd/system/serial-getty@ttyS0.service.d
 system/live/10-wait-live-config.conf etc/systemd/system/getty@tty1.service.d
+system/live/shadow-live-login usr/lib/shadow
+system/live/20-shadow-login.conf etc/systemd/system/live-config.service.d
