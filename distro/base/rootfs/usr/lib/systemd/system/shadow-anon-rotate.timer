@@ -1,0 +1,8 @@
+[Unit]
+Description=Shadow OS Hide Me — periodic identity rotation
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=1s
+[Install]
+WantedBy=timers.target

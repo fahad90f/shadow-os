@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Hide Me
+GenericName=Anonymity Control
+Comment=Rotate your MAC, Tor exit IP, hostname and IPv6 identity
+Exec=shadow-terminal -e pkexec shadow-anon panel
+Icon=org.shadow.hideme
+Terminal=false
+Categories=System;Security;Network;
+Keywords=anonymity;privacy;tor;mac;vpn;hide;identity;

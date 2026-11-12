@@ -1,0 +1,196 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""shadow-anon — Shadow OS "Hide Me" anonymity engine.
+
+Rotate the identity your machine presents to the network:
+
+  * MAC address of every wired/wireless interface (via NetworkManager when it
+    manages the link, else macchanger),
+  * apparent public IP, by giving Tor a fresh set of circuits (new exit),
+  * hostname,
+  * IPv6 privacy (temporary) addresses.
+
+Honest limits: your *real* public IP is assigned by your ISP/router and cannot
+be changed by software. What changes is your *apparent* exit IP when traffic
+goes through Tor. Rotating every few seconds also briefly drops connectivity
+each cycle, so pick an interval that suits you.
+
+Most actions need root; the desktop launcher calls this through pkexec.
+"""
+import argparse, os, random, re, string, subprocess, sys, time
+
+def sh(cmd, check=False, quiet=True):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        return 127, "", "not found"
+    if not quiet and r.stdout:
+        sys.stdout.write(r.stdout)
+    if check and r.returncode != 0:
+        pass
+    return r.returncode, r.stdout.strip(), r.stderr.strip()
+
+def have(prog):
+    return subprocess.run(["sh", "-c", f"command -v {prog}"], capture_output=True).returncode == 0
+
+def need_root():
+    if os.geteuid() != 0:
+        sys.exit("shadow-anon: run as root (the Hide Me panel does this for you).")
+
+# ---- interfaces --------------------------------------------------------------
+def net_ifaces():
+    out = []
+    base = "/sys/class/net"
+    for n in sorted(os.listdir(base)):
+        if n == "lo" or os.path.exists(f"{base}/{n}/wireless") is None:
+            pass
+        if n == "lo":
+            continue
+        # skip virtual/bridge/docker/tun unless physical
+        if os.path.islink(f"{base}/{n}") and "virtual" in os.readlink(f"{base}/{n}") \
+           and not n.startswith(("en", "eth", "wl", "wlan")):
+            continue
+        out.append(n)
+    return out
+
+def nm_managed(iface):
+    rc, out, _ = sh(["nmcli", "-g", "GENERAL.STATE", "device", "show", iface])
+    return rc == 0 and out != "" and "unmanaged" not in out
+
+# ---- actions -----------------------------------------------------------------
+def randomize_mac():
+    print("· MAC address")
+    for ifc in net_ifaces():
+        if have("nmcli") and nm_managed(ifc):
+            kind = "wifi" if os.path.exists(f"/sys/class/net/{ifc}/wireless") else "ethernet"
+            sh(["nmcli", "device", "set", ifc, "managed", "yes"])
+            sh(["nmcli", "connection", "modify", "--temporary", ifc,
+                f"{'802-11-wireless' if kind=='wifi' else '802-3-ethernet'}.cloned-mac-address", "random"])
+            sh(["nmcli", "device", "reapply", ifc])
+            print(f"    {ifc}: randomized (NetworkManager)")
+        elif have("macchanger"):
+            sh(["ip", "link", "set", ifc, "down"])
+            sh(["macchanger", "-r", ifc])
+            sh(["ip", "link", "set", ifc, "up"])
+            print(f"    {ifc}: randomized (macchanger)")
+        else:
+            print(f"    {ifc}: no tool to change MAC")
+
+def new_tor_identity():
+    print("· Tor exit (new circuits)")
+    if not have("tor"):
+        print("    tor is not installed")
+        return
+    # Make sure tor is up, then restart to force brand-new circuits/exit.
+    sh(["systemctl", "start", "tor"])
+    rc, _, _ = sh(["systemctl", "restart", "tor@default"])
+    if rc != 0:
+        sh(["systemctl", "restart", "tor"])
+    print("    requested a fresh Tor circuit set")
+
+def random_hostname():
+    print("· Hostname")
+    name = "shadow-" + "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(6))
+    sh(["hostnamectl", "set-hostname", name])
+    print(f"    {name}")
+
+def ipv6_privacy():
+    print("· IPv6 privacy addresses")
+    try:
+        with open("/proc/sys/net/ipv6/conf/all/use_tempaddr", "w") as f:
+            f.write("2")
+        for ifc in net_ifaces():
+            p = f"/proc/sys/net/ipv6/conf/{ifc}/use_tempaddr"
+            if os.path.exists(p):
+                open(p, "w").write("2")
+        print("    temporary (privacy) addresses preferred")
+    except OSError as e:
+        print(f"    could not set ({e})")
+
+# ---- status ------------------------------------------------------------------
+def status():
+    print("Shadow OS — Hide Me status")
+    print("-" * 42)
+    rc, host, _ = sh(["hostname"]);  print(f"hostname : {host}")
+    for ifc in net_ifaces():
+        try:
+            mac = open(f"/sys/class/net/{ifc}/address").read().strip()
+        except OSError:
+            mac = "?"
+        print(f"{ifc:9}: {mac}")
+    rc, _, _ = sh(["systemctl", "is-active", "--quiet", "tor"])
+    print(f"tor      : {'running' if rc == 0 else 'stopped'}")
+    rc, act, _ = sh(["systemctl", "is-active", "shadow-anon-rotate.timer"])
+    print(f"auto     : {'on ('+act+')' if act=='active' else 'off'}")
+    if have("curl"):
+        print("exit IP  : (checking via Tor…)")
+        rc, ip, _ = sh(["torsocks", "curl", "-s", "--max-time", "8", "https://api.ipify.org"])
+        print(f"           {ip or 'unavailable (is Tor up?)'}")
+
+# ---- rotation + timer --------------------------------------------------------
+def rotate():
+    need_root()
+    print(f"Rotating identity @ {time.strftime('%H:%M:%S')}")
+    randomize_mac(); ipv6_privacy(); random_hostname(); new_tor_identity()
+    print("done.")
+
+def start(interval):
+    need_root()
+    interval = max(5, int(interval))
+    drop = "/run/shadow-anon-interval.conf"
+    os.makedirs("/etc/systemd/system/shadow-anon-rotate.timer.d", exist_ok=True)
+    with open("/etc/systemd/system/shadow-anon-rotate.timer.d/interval.conf", "w") as f:
+        f.write("[Timer]\nOnUnitActiveSec=\nOnBootSec=%ds\nOnUnitActiveSec=%ds\n" % (interval, interval))
+    sh(["systemctl", "daemon-reload"])
+    sh(["systemctl", "enable", "--now", "shadow-anon-rotate.timer"])
+    print(f"Auto-rotation on, every {interval}s. (Each cycle briefly drops the network.)")
+
+def stop():
+    need_root()
+    sh(["systemctl", "disable", "--now", "shadow-anon-rotate.timer"])
+    print("Auto-rotation off.")
+
+def panel():
+    # A simple text panel for the desktop launcher (opens in a terminal).
+    while True:
+        os.system("clear")
+        status()
+        print("\n[1] Rotate now   [2] Auto every 5s   [3] Auto every 30s")
+        print("[4] Auto every 5 min   [5] Stop auto   [6] New Tor exit   [q] Quit")
+        try:
+            c = input("> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if c == "1": rotate()
+        elif c == "2": start(5)
+        elif c == "3": start(30)
+        elif c == "4": start(300)
+        elif c == "5": stop()
+        elif c == "6": need_root(); new_tor_identity()
+        elif c == "q": break
+        input("\n(enter)")
+
+def main():
+    ap = argparse.ArgumentParser(prog="shadow-anon", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd")
+    sub.add_parser("status")
+    sub.add_parser("rotate")
+    sub.add_parser("mac")
+    sub.add_parser("tor-new")
+    sub.add_parser("hostname")
+    sub.add_parser("panel")
+    s = sub.add_parser("start"); s.add_argument("--interval", type=int, default=30)
+    sub.add_parser("stop")
+    a = ap.parse_args()
+    if a.cmd in (None, "status"): status()
+    elif a.cmd == "rotate": rotate()
+    elif a.cmd == "mac": need_root(); randomize_mac()
+    elif a.cmd == "tor-new": need_root(); new_tor_identity()
+    elif a.cmd == "hostname": need_root(); random_hostname()
+    elif a.cmd == "panel": panel()
+    elif a.cmd == "start": start(a.interval)
+    elif a.cmd == "stop": stop()
+
+if __name__ == "__main__":
+    main()

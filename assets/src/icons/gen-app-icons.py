@@ -62,6 +62,7 @@ APPS = {
     "org.shadow.networkcenter":    ("globe",          "network"),
     "org.shadow.gallery":          ("layers",         "development"),
     "org.shadow.assistant":        ("zap",            "assistant"),
+    "org.shadow.hideme":           ("eye-off",        "security"),
 }
 
 CATEGORIES = {

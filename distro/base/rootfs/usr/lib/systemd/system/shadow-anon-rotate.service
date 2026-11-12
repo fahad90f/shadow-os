@@ -1,0 +1,6 @@
+[Unit]
+Description=Shadow OS Hide Me — rotate network identity
+After=network.target tor.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/shadow-anon rotate
