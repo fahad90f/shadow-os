@@ -68,6 +68,13 @@ fi
 if [ "$software" = "1" ]; then
     export KWIN_COMPOSE="Q"
     export QT_QUICK_BACKEND="software"
+    # Belt and braces for virtual machines: force the whole GL stack onto the
+    # CPU (llvmpipe) and KWin's OpenGL path off, so a missing/buggy virtual GPU
+    # driver cannot crash the compositor and drop the session to the greeter.
+    export LIBGL_ALWAYS_SOFTWARE="1"
+    export GALLIUM_DRIVER="llvmpipe"
+    export KWIN_OPENGL_INTERFACE="egl"
+    export __GLX_VENDOR_LIBRARY_NAME="mesa"
 fi
 
 # Third-party Qt/KDE and GTK applications follow the saved SHADOW appearance.

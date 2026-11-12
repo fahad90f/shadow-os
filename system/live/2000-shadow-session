@@ -47,6 +47,19 @@ Config ()
 	# Marks the running system as a live session for the shell and the apps.
 	: > /run/shadow/live-session
 
+	# Give the live user a known password. The live session normally logs in
+	# automatically, but if that session fails to start (e.g. the compositor
+	# crashes on a VM's software GL and SDDM drops to the greeter) the user
+	# must still be able to log in by hand and to use sudo. live-config
+	# otherwise leaves the account with a locked/empty password that PAM
+	# rejects. Documented default: username "shadow", password "shadow".
+	# Removed from the installed system (the installer deletes shadow-live and
+	# the user sets their own password).
+	if [ -n "${LIVE_USERNAME}" ]
+	then
+		echo "${LIVE_USERNAME}:${SHADOW_LIVE_PASSWORD:-shadow}" | chpasswd 2>/dev/null || true
+	fi
+
 	if [ -e /usr/share/wayland-sessions/shadow-horizon.desktop ] && \
 	   [ -n "${LIVE_USERNAME}" ] && [ "${SHADOW_NOAUTOLOGIN}" != "true" ]
 	then
