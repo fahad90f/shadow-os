@@ -815,7 +815,8 @@ Depends:
  shadow-arsenal-blueteam (>= ${source:Version}),
  shadow-arsenal-forensics (>= ${source:Version}),
  shadow-arsenal-reversing (>= ${source:Version}),
- shadow-arsenal-developer (>= ${source:Version})
+ shadow-arsenal-developer (>= ${source:Version}),
+ shadow-arsenal-pentest (>= ${source:Version})
 Suggests: shadow-arsenal
 Description: SHADOW Arsenal profile - Complete Arsenal
  The union of all SHADOW Arsenal profiles. Installing it brings in every tool
@@ -826,6 +827,74 @@ Description: SHADOW Arsenal profile - Complete Arsenal
  .
  This metapackage depends on the metapackages of the profiles it combines (237
  tools in total).
+ .
+ These tools are for authorised security testing, research, defence and
+ education only: use them on systems you own or have explicit written
+ permission to test, and follow the law that applies to you. They come with no
+ warranty.
+
+Package: shadow-arsenal-pentest
+Architecture: all
+Section: metapackages
+Depends:
+ ${misc:Depends},
+ shadow-arsenal-data (>= ${source:Version}),
+ aircrack-ng,
+ arp-scan,
+ assetfinder,
+ bettercap,
+ bully,
+ cewl,
+ crunch,
+ dirb,
+ dirsearch,
+ dnsenum,
+ dnsmap,
+ dnsrecon,
+ ettercap-graphical,
+ ffuf,
+ fierce,
+ gobuster,
+ hashcat,
+ hashid,
+ hydra,
+ john,
+ masscan,
+ mdk3,
+ mdk4,
+ medusa,
+ nbtscan,
+ ncrack,
+ netdiscover,
+ nmap,
+ patator,
+ proxychains4,
+ reaver,
+ recon-ng,
+ smbclient,
+ smbmap,
+ sqlmap,
+ sshuttle,
+ sublist3r,
+ tor,
+ wafw00f,
+ wfuzz,
+ whatweb,
+ wifite,
+ zmap
+Suggests: shadow-arsenal
+Description: SHADOW Arsenal profile - Penetration Testing
+ A ready-to-go selection of the most-used offensive tools for authorized
+ penetration testing: host and service discovery, DNS and SMB enumeration, web
+ application testing, password attacks, wireless attacks and traffic
+ interception. Every tool here is also part of a category profile; this
+ profile groups them under one name for convenience. Proprietary suites (Burp
+ Suite Pro, Metasploit Pro, Cobalt Strike) and tools not packaged in Debian
+ are listed in the Arsenal with their official sources. Use only on systems
+ you own or are contracted in writing to test.
+ .
+ This metapackage depends on the 43 tools of the profile, all from Debian
+ main; APT installs every one of them with it.
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written

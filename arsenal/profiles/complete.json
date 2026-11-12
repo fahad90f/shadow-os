@@ -6,7 +6,17 @@
   "description": "The union of all SHADOW Arsenal profiles. Installing it brings in every tool from Core Security, Web Application, Network Security, Red Team, Blue Team, Forensics, Reverse Engineering and Developer. It is a large installation; most users are better served installing the specific profiles they need. The tools are referenced from the other profiles, not duplicated here.",
   "icon": "org.shadow.arsenal",
   "metapackage": "shadow-arsenal-complete",
-  "includes": ["core", "web", "network", "redteam", "blueteam", "forensics", "reversing", "developer"],
+  "includes": [
+    "core",
+    "web",
+    "network",
+    "redteam",
+    "blueteam",
+    "forensics",
+    "reversing",
+    "developer",
+    "pentest"
+  ],
   "tools": [],
   "external": []
 }
