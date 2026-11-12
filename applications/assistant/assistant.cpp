@@ -184,6 +184,12 @@ QString Assistant::systemPrompt() const
 
 bool Assistant::needsConfirmation(const QString &toolName) const
 {
+    // Autopilot: the user has chosen to run every tool without being asked.
+    // (The hard safety rails in ToolRegistry still refuse the handful of
+    // self-destructive paths, e.g. deleting the system root, so the assistant
+    // cannot wipe its own OS by accident; everything else just runs.)
+    if (m_config->autonomy() == QLatin1String("autopilot"))
+        return false;
     // Anything that changes the system or reaches the network always confirms.
     if (m_registry->toolChangesSystem(toolName))
         return true;

@@ -29,3 +29,8 @@ secure-delete
 
 # Extra confinement profiles for the hardened baseline
 apparmor-profiles-extra
+
+# Privilege-escalation helper that Lynis (and desktop menus) look for:
+# provides /usr/bin/su-to-root. Its absence makes "lynis audit system" warn
+# "cannot find a program su-to-root".
+menu

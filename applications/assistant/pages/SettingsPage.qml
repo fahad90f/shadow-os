@@ -63,24 +63,30 @@ NxPage {
 
     NxSection {
         title: qsTr("Autonomy")
-        description: qsTr("Actions that change the system or reach the network are always confirmed, whatever this is set to.")
+        description: qsTr("How much the assistant asks before acting.")
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.spaceMd
             NxSegmented {
-                model: [qsTr("Ask every time"), qsTr("Ask for risky only")]
-                currentIndex: settings.config && settings.config.autonomy === "ask_risky" ? 1 : 0
-                onActivated: (index) => settings.config.autonomy = index === 1 ? "ask_risky" : "ask_every"
+                model: [qsTr("Ask every time"), qsTr("Ask for risky only"), qsTr("Autopilot")]
+                currentIndex: !settings.config ? 0
+                              : settings.config.autonomy === "autopilot" ? 2
+                              : settings.config.autonomy === "ask_risky" ? 1 : 0
+                onActivated: (index) => settings.config.autonomy =
+                    index === 2 ? "autopilot" : index === 1 ? "ask_risky" : "ask_every"
             }
             Item { Layout.fillWidth: true }
         }
         Text {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            text: settings.config && settings.config.autonomy === "ask_risky"
+            text: !settings.config ? ""
+                  : settings.config.autonomy === "autopilot"
+                  ? qsTr("Runs every command and action with no confirmation, however risky. Only a few hard safety rails remain (it will not delete the system root). Use with care.")
+                  : settings.config.autonomy === "ask_risky"
                   ? qsTr("Read-only tools (read a file, search, system info) run automatically; anything that changes the system still asks.")
                   : qsTr("Every tool call waits for your explicit approval.")
-            color: Theme.textMuted
+            color: settings.config && settings.config.autonomy === "autopilot" ? Theme.danger : Theme.textMuted
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontSizeSmall
         }
