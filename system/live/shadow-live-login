@@ -21,13 +21,17 @@ if touch /etc/.sll-wtest 2>/dev/null; then rm -f /etc/.sll-wtest; log "/etc is w
 if id "$U" >/dev/null 2>&1; then
     log "user already exists"
 else
-    # Create without --create-home first (home creation is the step that most
-    # often fails and rolls the whole thing back), then set the home up by hand.
-    if useradd --no-create-home --shell /bin/bash --comment "Shadow Live Session" "$U"; then
+    # Give the account an existing primary group ("users"): the username
+    # "shadow" collides with the system "shadow" group (which owns
+    # /etc/shadow), so useradd/adduser refuse to auto-create a same-named
+    # group. --no-create-home avoids the home-creation step rolling the whole
+    # thing back; the home is set up by hand below.
+    if useradd --no-create-home --gid users --shell /bin/bash --comment "Shadow Live Session" "$U"; then
         log "useradd ok"
     else
         log "useradd failed (rc=$?); trying adduser"
-        adduser --disabled-password --no-create-home --gecos "Shadow Live Session" "$U" || log "adduser failed (rc=$?)"
+        adduser --disabled-password --no-create-home --ingroup users --gecos "Shadow Live Session" "$U" \
+            || log "adduser failed (rc=$?)"
     fi
 fi
 
