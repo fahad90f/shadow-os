@@ -1,28 +1,41 @@
 #!/bin/sh
-# Make sure the live user can always log in.
+# Make sure the live user exists and can log in.
 #
-# Run as an ExecStartPost of live-config.service on the live medium, so it
-# executes right after live-config has created the live user and before the
-# getty / display-manager login prompts (which are ordered after
-# live-config.service). Autologin normally means the password is never needed,
-# but if the graphical session fails to start and SDDM drops to the greeter —
-# or on the serial console used by the automated boot test — the account must
-# have a known, unlocked password.
+# Run as an ExecStartPost of live-config.service on the live medium. live-config
+# is supposed to create the live user from its components, but that does not
+# reliably happen on this image, so create the account here (idempotently) with
+# a known, unlocked password and the groups a desktop live user needs. Autologin
+# normally means the password is never typed, but it must work at the greeter
+# and on the serial console the automated boot test uses.
 #
 # Shipped only on the live medium by shadow-live; the installer removes it and
-# the installed system uses the password the user chose.
-set -eu
+# the installed system uses the account the user creates in the installer.
+set -u
 
 USER_NAME="shadow"
 PASSWORD="${SHADOW_LIVE_PASSWORD:-live}"
+FULLNAME="Shadow Live Session"
 
-# The user is created by live-config; if it is somehow not there yet, do
-# nothing rather than fail the service.
-id "$USER_NAME" >/dev/null 2>&1 || exit 0
+echo "shadow-live-login: ensuring live user '${USER_NAME}'" >&2
 
+if ! id "$USER_NAME" >/dev/null 2>&1; then
+    useradd --create-home --shell /bin/bash --comment "$FULLNAME" "$USER_NAME" 2>/dev/null \
+        || adduser --disabled-password --gecos "$FULLNAME" "$USER_NAME" >/dev/null 2>&1 \
+        || true
+fi
+
+# Add to the groups a desktop user needs — but only to groups that exist.
+for g in sudo audio video cdrom plugdev netdev bluetooth lpadmin scanner dialout kvm render input; do
+    if getent group "$g" >/dev/null 2>&1; then
+        usermod -aG "$g" "$USER_NAME" 2>/dev/null || true
+    fi
+done
+
+# Set and unlock the password.
 if ! printf '%s:%s\n' "$USER_NAME" "$PASSWORD" | chpasswd 2>/dev/null; then
     printf '%s\n%s\n' "$PASSWORD" "$PASSWORD" | passwd "$USER_NAME" >/dev/null 2>&1 || true
 fi
-# Ensure the account is not left in a locked state ("!"/"*" in /etc/shadow).
 passwd -u "$USER_NAME" >/dev/null 2>&1 || true
+
+echo "shadow-live-login: done: $(id "$USER_NAME" 2>&1)" >&2
 exit 0
