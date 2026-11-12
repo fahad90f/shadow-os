@@ -46,42 +46,56 @@ deb [signed-by=/etc/apt/keyrings/shadow-image-build.gpg] file:///run/shadow-repo
 EOF
     run --bind "$REPO_DIR:/run/shadow-repo:ro" -- apt-get -q update
     # Install resiliently. The full arsenal configures hundreds of packages in
-    # one transaction; a maintainer script that creates a system user can fail
-    # transiently ("useradd: cannot open /etc/shadow") under that load, leaving
-    # a few packages unconfigured. A clean "dpkg --configure -a" pass then
-    # completes them, so we retry and only give up (failing the build) if a
-    # package is still broken afterwards. The open-file limit is raised for the
-    # big transaction and inode/space usage is logged for diagnosis.
+    # one transaction and creates dozens of system users. On the CI runner's
+    # overlay this leaves /etc/shadow (and the other account databases) in a
+    # state the shadow suite can no longer open for writing, so later
+    # useradd/passwd fail with "cannot open /etc/shadow" and the failure
+    # persists across a plain "dpkg --configure -a". Replacing each account
+    # file with a freshly created copy (born in the overlay's upper layer,
+    # which sidesteps the broken copy-up) and clearing stale lock files
+    # restores write access, so we repair before each reconfigure pass. The
+    # same repair runs again before the configuration hooks (which call
+    # passwd). The open-file limit is raised and disk usage logged for
+    # diagnosis. NOTE: apt-get is redirected (not piped) so its real exit
+    # status is tested, not tee's.
     # shellcheck disable=SC2086
     run --bind "$REPO_DIR:/run/shadow-repo:ro" -- bash -eu -c '
         ulimit -n 1048576 2>/dev/null || ulimit -n 65536 2>/dev/null || true
         echo "space/inodes before SHADOW install:"; df -h / || true; df -i / || true
         opts="-q -y --no-install-recommends -o Dpkg::Options::=--force-confnew -o Dpkg::Use-Pty=0"
         log=/tmp/shadow-apt.log
+        repair_account_dbs() {
+            for f in passwd shadow group gshadow subuid subgid; do
+                [ -e "/etc/$f" ] || continue
+                if cp -a "/etc/$f" "/etc/.$f.rep" 2>/dev/null; then
+                    mv -f "/etc/.$f.rep" "/etc/$f"
+                fi
+            done
+            rm -f /etc/.pwd.lock /etc/passwd.lock /etc/group.lock \
+                  /etc/shadow.lock /etc/gshadow.lock 2>/dev/null || true
+        }
         ok=
         for a in 1 2 3; do
             echo "=== SHADOW package install: attempt $a ==="
-            if apt-get $opts install "$@" 2>&1 | tee "$log"; then ok=1; break; fi
-            echo "=== attempt $a left packages unconfigured; recovering ==="
-            dpkg --configure -a 2>&1 | tee -a "$log" || true
-            apt-get $opts --fix-broken install 2>&1 | tee -a "$log" || true
+            if apt-get $opts install "$@" >"$log" 2>&1; then ok=1; tail -n 15 "$log"; break; fi
+            echo "=== attempt $a failed; tail of apt log: ==="; tail -n 25 "$log"
+            echo "=== repairing account databases, then reconfiguring ==="
+            repair_account_dbs
+            dpkg --configure -a >>"$log" 2>&1 || true
+            apt-get $opts --fix-broken install >>"$log" 2>&1 || true
         done
         if [ -z "${ok:-}" ]; then
             echo "=== SHADOW install FAILED after retries ==="
             echo "open-file limit now: $(ulimit -n)"
             echo "space/inodes now:"; df -h / || true; df -i / || true
+            echo "account-file state:"; ls -la /etc/shadow* /etc/passwd* /etc/.pwd.lock 2>&1 || true
+            lsattr /etc/shadow 2>&1 || true
             echo "packages still in a bad state:"; dpkg --audit || true
             echo "=== first failing postinst, in context (from the apt log) ==="
-            first_line=$(grep -nE "error processing package|useradd: |adduser: |chfn: |usermod: |cannot open" "$log" | head -1 | cut -d: -f1)
+            first_line=$(grep -nE "error processing package|useradd: |adduser: |chfn: |usermod: |passwd: |cannot open" "$log" | head -1 | cut -d: -f1)
             if [ -n "${first_line:-}" ]; then
                 start=$(( first_line > 30 ? first_line - 30 : 1 ))
                 sed -n "${start},$(( first_line + 3 ))p" "$log"
-            fi
-            echo "=== re-running the first broken package postinst with tracing ==="
-            bad=$(dpkg --audit 2>/dev/null | awk "/^ [a-z0-9]/{print \$1; exit}")
-            if [ -n "${bad:-}" ]; then
-                echo "tracing: dpkg --configure $bad"
-                sh -x /var/lib/dpkg/info/"$bad".postinst configure 2>&1 | tail -40 || true
             fi
             exit 1
         fi
@@ -119,6 +133,16 @@ if [ -d "$SHADOW_ROOT/distro/base/rootfs" ]; then
 fi
 
 # ---- configuration hooks -----------------------------------------------------
+# A large SHADOW/arsenal install can leave the overlay's account databases
+# unopenable for writing (see the install block above); the hooks below call
+# passwd, so repair the databases first — harmless when they are already fine.
+run -- bash -eu -c '
+    for f in passwd shadow group gshadow subuid subgid; do
+        [ -e "/etc/$f" ] || continue
+        if cp -a "/etc/$f" "/etc/.$f.rep" 2>/dev/null; then mv -f "/etc/.$f.rep" "/etc/$f"; fi
+    done
+    rm -f /etc/.pwd.lock /etc/passwd.lock /etc/group.lock /etc/shadow.lock /etc/gshadow.lock 2>/dev/null || true
+'
 for hook in "$SHADOW_ROOT"/distro/base/hooks/[0-9]*.sh; do
     [ -f "$hook" ] || continue
     log "hook $(basename "$hook")"
