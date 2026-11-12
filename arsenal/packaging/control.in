@@ -55,11 +55,13 @@ Depends:
  openssh-client,
  openssl,
  openvpn,
+ outguess,
  proxychains4,
  secure-delete,
  socat,
  sslscan,
  steghide,
+ stegsnow,
  tcpdump,
  tor,
  traceroute,
@@ -76,7 +78,7 @@ Description: SHADOW Arsenal profile - Core Security
  profiles build on. Like every profile it is installed on demand; start here,
  the specialised profiles add to it.
  .
- This metapackage depends on the 27 tools of the profile, all from Debian
+ This metapackage depends on the 29 tools of the profile, all from Debian
  main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Metasploit Framework,
@@ -145,7 +147,9 @@ Depends:
  bettercap,
  bind9-dnsutils,
  dnsenum,
+ dnsmap,
  dnsrecon,
+ dsniff,
  ettercap-graphical,
  fierce,
  fping,
@@ -169,6 +173,7 @@ Depends:
  smbclient,
  smbmap,
  snmp,
+ sublist3r,
  tcpdump,
  tcpflow,
  termshark,
@@ -184,7 +189,7 @@ Description: SHADOW Arsenal profile - Network Security
  Sniffing and Spoofing tools and underpins both the Red Team and Blue Team
  profiles.
  .
- This metapackage depends on the 36 tools of the profile, all from Debian
+ This metapackage depends on the 39 tools of the profile, all from Debian
  main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Amass, subfinder, httpx
@@ -219,6 +224,8 @@ Depends:
  iw,
  john,
  krb5-user,
+ mdk3,
+ mdk4,
  medusa,
  ncrack,
  ophcrack,
@@ -246,7 +253,7 @@ Description: SHADOW Arsenal profile - Red Team
  Responder, NetExec, BloodHound, Sliver) are not in Debian main and are listed
  as external tools with vendor install instructions rather than bundled.
  .
- This metapackage depends on the 35 tools of the profile, all from Debian
+ This metapackage depends on the 37 tools of the profile, all from Debian
  main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Metasploit Framework,
@@ -520,7 +527,7 @@ Description: SHADOW Arsenal profile - Complete Arsenal
  most users are better served installing the specific profiles they need. The
  tools are referenced from the other profiles, not duplicated here.
  .
- This metapackage depends on the metapackages of the profiles it combines (230
+ This metapackage depends on the metapackages of the profiles it combines (237
  tools in total).
  .
  These tools are for authorised security testing, research, defence and

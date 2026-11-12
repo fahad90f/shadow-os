@@ -8,33 +8,6 @@
   "metapackage": "shadow-arsenal-network",
   "tools": [
     {
-      "package": "nmap",
-      "name": "Nmap",
-      "summary": "Network exploration tool and security/port scanner",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "nmap",
-      "homepage": "https://nmap.org"
-    },
-    {
-      "package": "masscan",
-      "name": "MASSCAN",
-      "summary": "Asynchronous TCP port scanner for large address ranges",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "masscan",
-      "homepage": "https://github.com/robertdavidgraham/masscan"
-    },
-    {
-      "package": "zmap",
-      "name": "ZMap",
-      "summary": "Single-packet network scanner for Internet-wide surveys",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "zmap",
-      "homepage": "https://zmap.io"
-    },
-    {
       "package": "arp-scan",
       "name": "arp-scan",
       "summary": "Discover and fingerprint IP hosts on the local network with ARP",
@@ -44,13 +17,58 @@
       "homepage": "https://github.com/royhills/arp-scan"
     },
     {
-      "package": "netdiscover",
-      "name": "netdiscover",
-      "summary": "Active and passive ARP reconnaissance of local networks",
+      "package": "assetfinder",
+      "name": "assetfinder",
+      "summary": "Find domains and subdomains related to a given domain",
       "category": "information-gathering",
       "interface": "cli",
-      "command": "netdiscover",
-      "homepage": "https://github.com/netdiscover-scanner/netdiscover"
+      "command": "assetfinder",
+      "homepage": "https://github.com/tomnomnom/assetfinder"
+    },
+    {
+      "package": "bind9-dnsutils",
+      "name": "DNS lookup utilities",
+      "summary": "dig, delv and nslookup DNS query clients from BIND 9",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "dig",
+      "homepage": "https://www.isc.org/bind/"
+    },
+    {
+      "package": "dnsenum",
+      "name": "dnsenum",
+      "summary": "Enumerate DNS information and attempt zone transfers",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "dnsenum",
+      "homepage": "https://github.com/fwaeytens/dnsenum"
+    },
+    {
+      "package": "dnsmap",
+      "name": "dnsmap",
+      "summary": "Brute-force subdomains to map a target's DNS",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "dnsmap",
+      "homepage": "https://github.com/makefu/dnsmap"
+    },
+    {
+      "package": "dnsrecon",
+      "name": "DNSRecon",
+      "summary": "Enumerate DNS records, zones and subdomains of a domain",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "dnsrecon",
+      "homepage": "https://github.com/darkoperator/dnsrecon"
+    },
+    {
+      "package": "fierce",
+      "name": "fierce",
+      "summary": "Locate non-contiguous IP space and hostnames for a domain",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "fierce",
+      "homepage": "https://github.com/mschwager/fierce"
     },
     {
       "package": "fping",
@@ -71,58 +89,22 @@
       "homepage": "http://www.hping.org"
     },
     {
-      "package": "dnsrecon",
-      "name": "DNSRecon",
-      "summary": "Enumerate DNS records, zones and subdomains of a domain",
+      "package": "ldap-utils",
+      "name": "LDAP utilities",
+      "summary": "OpenLDAP clients for querying directory services (ldapsearch)",
       "category": "information-gathering",
       "interface": "cli",
-      "command": "dnsrecon",
-      "homepage": "https://github.com/darkoperator/dnsrecon"
+      "command": "ldapsearch",
+      "homepage": "https://www.openldap.org"
     },
     {
-      "package": "dnsenum",
-      "name": "dnsenum",
-      "summary": "Enumerate DNS information and attempt zone transfers",
+      "package": "masscan",
+      "name": "MASSCAN",
+      "summary": "Asynchronous TCP port scanner for large address ranges",
       "category": "information-gathering",
       "interface": "cli",
-      "command": "dnsenum",
-      "homepage": "https://github.com/fwaeytens/dnsenum"
-    },
-    {
-      "package": "fierce",
-      "name": "fierce",
-      "summary": "Locate non-contiguous IP space and hostnames for a domain",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "fierce",
-      "homepage": "https://github.com/mschwager/fierce"
-    },
-    {
-      "package": "bind9-dnsutils",
-      "name": "DNS lookup utilities",
-      "summary": "dig, delv and nslookup DNS query clients from BIND 9",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "dig",
-      "homepage": "https://www.isc.org/bind/"
-    },
-    {
-      "package": "smbmap",
-      "name": "smbmap",
-      "summary": "Enumerate SMB shares and permissions across a network",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "smbmap",
-      "homepage": "https://github.com/ShawnDEvans/smbmap"
-    },
-    {
-      "package": "smbclient",
-      "name": "smbclient",
-      "summary": "Command-line client for SMB/CIFS file and print shares",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "smbclient",
-      "homepage": "https://www.samba.org"
+      "command": "masscan",
+      "homepage": "https://github.com/robertdavidgraham/masscan"
     },
     {
       "package": "nbtscan",
@@ -134,6 +116,24 @@
       "homepage": "https://github.com/resurrecting-open-source-projects/nbtscan"
     },
     {
+      "package": "netdiscover",
+      "name": "netdiscover",
+      "summary": "Active and passive ARP reconnaissance of local networks",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "netdiscover",
+      "homepage": "https://github.com/netdiscover-scanner/netdiscover"
+    },
+    {
+      "package": "nmap",
+      "name": "Nmap",
+      "summary": "Network exploration tool and security/port scanner",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "nmap",
+      "homepage": "https://nmap.org"
+    },
+    {
       "package": "onesixtyone",
       "name": "onesixtyone",
       "summary": "Fast SNMP scanner that brute-forces community strings",
@@ -143,171 +143,14 @@
       "homepage": "https://github.com/trailofbits/onesixtyone"
     },
     {
-      "package": "snmp",
-      "name": "SNMP utilities",
-      "summary": "Net-SNMP command-line tools such as snmpwalk and snmpget",
+      "package": "python3-shodan",
+      "name": "Shodan CLI",
+      "summary": "Command-line client and library for the Shodan search engine",
       "category": "information-gathering",
       "interface": "cli",
-      "command": "snmpwalk",
-      "homepage": "http://www.net-snmp.org"
-    },
-    {
-      "package": "ldap-utils",
-      "name": "LDAP utilities",
-      "summary": "OpenLDAP clients for querying directory services (ldapsearch)",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "ldapsearch",
-      "homepage": "https://www.openldap.org"
-    },
-    {
-      "package": "wireshark",
-      "name": "Wireshark",
-      "summary": "Graphical network protocol analyser",
-      "category": "sniffing-spoofing",
-      "interface": "both",
-      "command": "wireshark",
-      "desktop-id": "org.wireshark.Wireshark",
-      "homepage": "https://www.wireshark.org",
-      "notes": "Capturing needs permission to the interface; Debian's dpkg-reconfigure wireshark-common sets up the 'wireshark' group so you need not run it as root."
-    },
-    {
-      "package": "tshark",
-      "name": "TShark",
-      "summary": "Command-line version of the Wireshark protocol analyser",
-      "category": "sniffing-spoofing",
-      "interface": "cli",
-      "command": "tshark",
-      "homepage": "https://www.wireshark.org"
-    },
-    {
-      "package": "tcpdump",
-      "name": "tcpdump",
-      "summary": "Command-line network packet capture and inspection",
-      "category": "sniffing-spoofing",
-      "interface": "cli",
-      "command": "tcpdump",
-      "homepage": "https://www.tcpdump.org"
-    },
-    {
-      "package": "termshark",
-      "name": "termshark",
-      "summary": "Terminal user interface for tshark, in the style of Wireshark",
-      "category": "sniffing-spoofing",
-      "interface": "cli",
-      "command": "termshark",
-      "homepage": "https://termshark.io"
-    },
-    {
-      "package": "ngrep",
-      "name": "ngrep",
-      "summary": "Grep-like matching across live or captured network traffic",
-      "category": "sniffing-spoofing",
-      "interface": "cli",
-      "command": "ngrep",
-      "homepage": "https://github.com/jpr5/ngrep"
-    },
-    {
-      "package": "netsniff-ng",
-      "name": "netsniff-ng",
-      "summary": "High-performance packet capture and networking toolkit",
-      "category": "sniffing-spoofing",
-      "interface": "cli",
-      "command": "netsniff-ng",
-      "homepage": "http://netsniff-ng.org"
-    },
-    {
-      "package": "iperf3",
-      "name": "iPerf3",
-      "summary": "Measure achievable bandwidth on IP networks",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "iperf3",
-      "homepage": "https://iperf.fr"
-    },
-    {
-      "package": "iftop",
-      "name": "iftop",
-      "summary": "Show bandwidth usage per connection on an interface",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "iftop",
-      "homepage": "https://pdw.ex-parrot.com/iftop/"
-    },
-    {
-      "package": "mtr",
-      "name": "mtr",
-      "summary": "Combined traceroute and ping network diagnostic",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "mtr",
-      "homepage": "https://www.bitwizard.nl/mtr/"
-    },
-    {
-      "package": "traceroute",
-      "name": "traceroute",
-      "summary": "Trace the route IPv4/IPv6 packets take to a host",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "traceroute",
-      "homepage": "https://traceroute.sourceforge.net"
-    },
-    {
-      "package": "assetfinder",
-      "name": "assetfinder",
-      "summary": "Find domains and subdomains related to a given domain",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "assetfinder",
-      "homepage": "https://github.com/tomnomnom/assetfinder"
-    },
-    {
-      "package": "bettercap",
-      "name": "bettercap",
-      "summary": "Modular network attack and monitoring (MITM) framework",
-      "category": "sniffing-spoofing",
-      "interface": "cli",
-      "command": "bettercap",
-      "homepage": "https://www.bettercap.org",
-      "notes": "Many modules need root and a capable interface; run only on networks you are authorized to test."
-    },
-    {
-      "package": "ettercap-graphical",
-      "name": "Ettercap (GUI)",
-      "summary": "Sniffer, interceptor and logger for switched LANs",
-      "category": "sniffing-spoofing",
-      "interface": "both",
-      "command": "ettercap",
-      "desktop-id": "ettercap",
-      "homepage": "https://www.ettercap-project.org",
-      "notes": "Active interception (ARP poisoning) needs root and authorization; the command is the same binary as the console build."
-    },
-    {
-      "package": "python3-scapy",
-      "name": "Scapy",
-      "summary": "Interactive packet manipulation, crafting and sniffing in Python",
-      "category": "sniffing-spoofing",
-      "interface": "cli",
-      "command": "scapy",
-      "homepage": "https://scapy.net"
-    },
-    {
-      "package": "ncat",
-      "name": "Ncat",
-      "summary": "Nmap's netcat with SSL, proxy and broker support",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "ncat",
-      "homepage": "https://nmap.org/ncat"
-    },
-    {
-      "package": "tcpflow",
-      "name": "tcpflow",
-      "summary": "Capture and reconstruct the data streams of TCP connections",
-      "category": "sniffing-spoofing",
-      "interface": "cli",
-      "command": "tcpflow",
-      "homepage": "https://github.com/simsong/tcpflow"
+      "command": "shodan",
+      "homepage": "https://github.com/achillean/shodan-python",
+      "notes": "Needs a Shodan API key (shodan init <key>); queries use your own account's credits."
     },
     {
       "package": "recon-ng",
@@ -328,14 +171,198 @@
       "homepage": "https://github.com/sherlock-project/sherlock"
     },
     {
-      "package": "python3-shodan",
-      "name": "Shodan CLI",
-      "summary": "Command-line client and library for the Shodan search engine",
+      "package": "smbclient",
+      "name": "smbclient",
+      "summary": "Command-line client for SMB/CIFS file and print shares",
       "category": "information-gathering",
       "interface": "cli",
-      "command": "shodan",
-      "homepage": "https://github.com/achillean/shodan-python",
-      "notes": "Needs a Shodan API key (shodan init <key>); queries use your own account's credits."
+      "command": "smbclient",
+      "homepage": "https://www.samba.org"
+    },
+    {
+      "package": "smbmap",
+      "name": "smbmap",
+      "summary": "Enumerate SMB shares and permissions across a network",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "smbmap",
+      "homepage": "https://github.com/ShawnDEvans/smbmap"
+    },
+    {
+      "package": "snmp",
+      "name": "SNMP utilities",
+      "summary": "Net-SNMP command-line tools such as snmpwalk and snmpget",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "snmpwalk",
+      "homepage": "http://www.net-snmp.org"
+    },
+    {
+      "package": "sublist3r",
+      "name": "Sublist3r",
+      "summary": "Enumerate subdomains using many public sources",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "sublist3r",
+      "homepage": "https://github.com/aboul3la/Sublist3r"
+    },
+    {
+      "package": "traceroute",
+      "name": "traceroute",
+      "summary": "Trace the route IPv4/IPv6 packets take to a host",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "traceroute",
+      "homepage": "https://traceroute.sourceforge.net"
+    },
+    {
+      "package": "zmap",
+      "name": "ZMap",
+      "summary": "Single-packet network scanner for Internet-wide surveys",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "zmap",
+      "homepage": "https://zmap.io"
+    },
+    {
+      "package": "bettercap",
+      "name": "bettercap",
+      "summary": "Modular network attack and monitoring (MITM) framework",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "bettercap",
+      "homepage": "https://www.bettercap.org",
+      "notes": "Many modules need root and a capable interface; run only on networks you are authorized to test."
+    },
+    {
+      "package": "dsniff",
+      "name": "dsniff",
+      "summary": "Classic network sniffing and man-in-the-middle tools",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "dsniff",
+      "homepage": "https://www.monkey.org/~dugsong/dsniff/"
+    },
+    {
+      "package": "ettercap-graphical",
+      "name": "Ettercap (GUI)",
+      "summary": "Sniffer, interceptor and logger for switched LANs",
+      "category": "sniffing-spoofing",
+      "interface": "both",
+      "command": "ettercap",
+      "desktop-id": "ettercap",
+      "homepage": "https://www.ettercap-project.org",
+      "notes": "Active interception (ARP poisoning) needs root and authorization; the command is the same binary as the console build."
+    },
+    {
+      "package": "netsniff-ng",
+      "name": "netsniff-ng",
+      "summary": "High-performance packet capture and networking toolkit",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "netsniff-ng",
+      "homepage": "http://netsniff-ng.org"
+    },
+    {
+      "package": "ngrep",
+      "name": "ngrep",
+      "summary": "Grep-like matching across live or captured network traffic",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "ngrep",
+      "homepage": "https://github.com/jpr5/ngrep"
+    },
+    {
+      "package": "python3-scapy",
+      "name": "Scapy",
+      "summary": "Interactive packet manipulation, crafting and sniffing in Python",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "scapy",
+      "homepage": "https://scapy.net"
+    },
+    {
+      "package": "tcpdump",
+      "name": "tcpdump",
+      "summary": "Command-line network packet capture and inspection",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "tcpdump",
+      "homepage": "https://www.tcpdump.org"
+    },
+    {
+      "package": "tcpflow",
+      "name": "tcpflow",
+      "summary": "Capture and reconstruct the data streams of TCP connections",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "tcpflow",
+      "homepage": "https://github.com/simsong/tcpflow"
+    },
+    {
+      "package": "termshark",
+      "name": "termshark",
+      "summary": "Terminal user interface for tshark, in the style of Wireshark",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "termshark",
+      "homepage": "https://termshark.io"
+    },
+    {
+      "package": "tshark",
+      "name": "TShark",
+      "summary": "Command-line version of the Wireshark protocol analyser",
+      "category": "sniffing-spoofing",
+      "interface": "cli",
+      "command": "tshark",
+      "homepage": "https://www.wireshark.org"
+    },
+    {
+      "package": "wireshark",
+      "name": "Wireshark",
+      "summary": "Graphical network protocol analyser",
+      "category": "sniffing-spoofing",
+      "interface": "both",
+      "command": "wireshark",
+      "desktop-id": "org.wireshark.Wireshark",
+      "homepage": "https://www.wireshark.org",
+      "notes": "Capturing needs permission to the interface; Debian's dpkg-reconfigure wireshark-common sets up the 'wireshark' group so you need not run it as root."
+    },
+    {
+      "package": "iftop",
+      "name": "iftop",
+      "summary": "Show bandwidth usage per connection on an interface",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "iftop",
+      "homepage": "https://pdw.ex-parrot.com/iftop/"
+    },
+    {
+      "package": "iperf3",
+      "name": "iPerf3",
+      "summary": "Measure achievable bandwidth on IP networks",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "iperf3",
+      "homepage": "https://iperf.fr"
+    },
+    {
+      "package": "mtr",
+      "name": "mtr",
+      "summary": "Combined traceroute and ping network diagnostic",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "mtr",
+      "homepage": "https://www.bitwizard.nl/mtr/"
+    },
+    {
+      "package": "ncat",
+      "name": "Ncat",
+      "summary": "Nmap's netcat with SSL, proxy and broker support",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "ncat",
+      "homepage": "https://nmap.org/ncat"
     }
   ],
   "external": [

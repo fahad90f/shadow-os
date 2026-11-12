@@ -8,6 +8,71 @@
   "metapackage": "shadow-arsenal-redteam",
   "tools": [
     {
+      "package": "thc-ipv6",
+      "name": "THC-IPv6",
+      "summary": "Toolkit for attacking and testing IPv6 and ICMPv6",
+      "category": "exploitation",
+      "interface": "cli",
+      "command": "atk6-alive6",
+      "homepage": "https://github.com/vanhauser-thc/thc-ipv6",
+      "notes": "Ships many separate programs named atk6-* (e.g. atk6-alive6, atk6-parasite6); see the package's file list for the full set."
+    },
+    {
+      "package": "weevely",
+      "name": "Weevely",
+      "summary": "Generate and manage a stealthy PHP web shell",
+      "category": "exploitation",
+      "interface": "cli",
+      "command": "weevely",
+      "homepage": "https://github.com/epinna/weevely3"
+    },
+    {
+      "package": "cewl",
+      "name": "CeWL",
+      "summary": "Build a target-specific wordlist by spidering a website",
+      "category": "password",
+      "interface": "cli",
+      "command": "cewl",
+      "homepage": "https://github.com/digininja/CeWL"
+    },
+    {
+      "package": "crunch",
+      "name": "crunch",
+      "summary": "Generate wordlists from a character set and pattern",
+      "category": "password",
+      "interface": "cli",
+      "command": "crunch",
+      "homepage": "https://github.com/crunchsec/crunch"
+    },
+    {
+      "package": "cupp",
+      "name": "CUPP",
+      "summary": "Build targeted password dictionaries from personal data",
+      "category": "password",
+      "interface": "cli",
+      "command": "cupp",
+      "homepage": "https://github.com/Mebus/cupp"
+    },
+    {
+      "package": "hashcat",
+      "name": "hashcat",
+      "summary": "GPU-accelerated password recovery for a wide range of hashes",
+      "category": "password",
+      "interface": "cli",
+      "command": "hashcat",
+      "homepage": "https://hashcat.net/hashcat/",
+      "notes": "GPU acceleration needs the appropriate OpenCL driver for your hardware; without it hashcat falls back to the CPU."
+    },
+    {
+      "package": "hashid",
+      "name": "hashID",
+      "summary": "Identify the type of a given password hash",
+      "category": "password",
+      "interface": "cli",
+      "command": "hashid",
+      "homepage": "https://github.com/psypanda/hashID"
+    },
+    {
       "package": "hydra",
       "name": "THC Hydra",
       "summary": "Parallelised network login brute-forcer for many protocols",
@@ -18,6 +83,15 @@
         "-h"
       ],
       "homepage": "https://github.com/vanhauser-thc/thc-hydra"
+    },
+    {
+      "package": "john",
+      "name": "John the Ripper",
+      "summary": "Offline password hash cracker with many formats",
+      "category": "password",
+      "interface": "cli",
+      "command": "john",
+      "homepage": "https://www.openwall.com/john/"
     },
     {
       "package": "medusa",
@@ -41,6 +115,16 @@
       "homepage": "https://nmap.org/ncrack"
     },
     {
+      "package": "ophcrack",
+      "name": "Ophcrack",
+      "summary": "Crack Windows LM/NTLM passwords using rainbow tables",
+      "category": "password",
+      "interface": "gui",
+      "desktop-id": "ophcrack",
+      "homepage": "https://ophcrack.sourceforge.io",
+      "notes": "Rainbow tables are downloaded separately; the package ships the cracker, not the tables."
+    },
+    {
       "package": "patator",
       "name": "Patator",
       "summary": "Multi-purpose brute-forcer with fine-grained control",
@@ -50,50 +134,49 @@
       "homepage": "https://github.com/lanjelot/patator"
     },
     {
-      "package": "john",
-      "name": "John the Ripper",
-      "summary": "Offline password hash cracker with many formats",
-      "category": "password",
+      "package": "freerdp3-x11",
+      "name": "FreeRDP",
+      "summary": "Remote Desktop Protocol client for reaching Windows hosts",
+      "category": "post-exploitation",
       "interface": "cli",
-      "command": "john",
-      "homepage": "https://www.openwall.com/john/"
+      "command": "xfreerdp3",
+      "homepage": "https://www.freerdp.com"
     },
     {
-      "package": "hashcat",
-      "name": "hashcat",
-      "summary": "GPU-accelerated password recovery for a wide range of hashes",
-      "category": "password",
+      "package": "iodine",
+      "name": "iodine",
+      "summary": "Tunnel IPv4 traffic through a DNS server to bypass filtering",
+      "category": "post-exploitation",
       "interface": "cli",
-      "command": "hashcat",
-      "homepage": "https://hashcat.net/hashcat/",
-      "notes": "GPU acceleration needs the appropriate OpenCL driver for your hardware; without it hashcat falls back to the CPU."
+      "command": "iodine",
+      "homepage": "https://github.com/yarrick/iodine"
     },
     {
-      "package": "hashid",
-      "name": "hashID",
-      "summary": "Identify the type of a given password hash",
-      "category": "password",
+      "package": "krb5-user",
+      "name": "Kerberos clients",
+      "summary": "MIT Kerberos tools (kinit, klist) for AD ticket handling",
+      "category": "post-exploitation",
       "interface": "cli",
-      "command": "hashid",
-      "homepage": "https://github.com/psypanda/hashID"
+      "command": "kinit",
+      "homepage": "https://web.mit.edu/kerberos/"
     },
     {
-      "package": "crunch",
-      "name": "crunch",
-      "summary": "Generate wordlists from a character set and pattern",
-      "category": "password",
+      "package": "polenum",
+      "name": "polenum",
+      "summary": "Retrieve the password policy from a Windows host over SMB",
+      "category": "post-exploitation",
       "interface": "cli",
-      "command": "crunch",
-      "homepage": "https://github.com/crunchsec/crunch"
+      "command": "polenum",
+      "homepage": "https://github.com/Wh1t3Fox/polenum"
     },
     {
-      "package": "cewl",
-      "name": "CeWL",
-      "summary": "Build a target-specific wordlist by spidering a website",
-      "category": "password",
+      "package": "proxychains4",
+      "name": "ProxyChains-NG",
+      "summary": "Force a program's connections through a chain of proxies",
+      "category": "post-exploitation",
       "interface": "cli",
-      "command": "cewl",
-      "homepage": "https://github.com/digininja/CeWL"
+      "command": "proxychains4",
+      "homepage": "https://github.com/rofl0r/proxychains-ng"
     },
     {
       "package": "python3-impacket",
@@ -115,13 +198,14 @@
       "homepage": "https://github.com/dirkjanm/ldapdomaindump"
     },
     {
-      "package": "krb5-user",
-      "name": "Kerberos clients",
-      "summary": "MIT Kerberos tools (kinit, klist) for AD ticket handling",
+      "package": "smbclient",
+      "name": "smbclient",
+      "summary": "Command-line client for SMB/CIFS file and print shares",
       "category": "post-exploitation",
       "interface": "cli",
-      "command": "kinit",
-      "homepage": "https://web.mit.edu/kerberos/"
+      "command": "smbclient",
+      "homepage": "https://www.samba.org",
+      "notes": "The smbclient package also ships rpcclient and nmblookup, handy for Windows/Samba enumeration over MS-RPC and NetBIOS."
     },
     {
       "package": "smbmap",
@@ -133,52 +217,6 @@
       "homepage": "https://github.com/ShawnDEvans/smbmap"
     },
     {
-      "package": "polenum",
-      "name": "polenum",
-      "summary": "Retrieve the password policy from a Windows host over SMB",
-      "category": "post-exploitation",
-      "interface": "cli",
-      "command": "polenum",
-      "homepage": "https://github.com/Wh1t3Fox/polenum"
-    },
-    {
-      "package": "freerdp3-x11",
-      "name": "FreeRDP",
-      "summary": "Remote Desktop Protocol client for reaching Windows hosts",
-      "category": "post-exploitation",
-      "interface": "cli",
-      "command": "xfreerdp3",
-      "homepage": "https://www.freerdp.com"
-    },
-    {
-      "package": "weevely",
-      "name": "Weevely",
-      "summary": "Generate and manage a stealthy PHP web shell",
-      "category": "exploitation",
-      "interface": "cli",
-      "command": "weevely",
-      "homepage": "https://github.com/epinna/weevely3"
-    },
-    {
-      "package": "thc-ipv6",
-      "name": "THC-IPv6",
-      "summary": "Toolkit for attacking and testing IPv6 and ICMPv6",
-      "category": "exploitation",
-      "interface": "cli",
-      "command": "atk6-alive6",
-      "homepage": "https://github.com/vanhauser-thc/thc-ipv6",
-      "notes": "Ships many separate programs named atk6-* (e.g. atk6-alive6, atk6-parasite6); see the package's file list for the full set."
-    },
-    {
-      "package": "proxychains4",
-      "name": "ProxyChains-NG",
-      "summary": "Force a program's connections through a chain of proxies",
-      "category": "post-exploitation",
-      "interface": "cli",
-      "command": "proxychains4",
-      "homepage": "https://github.com/rofl0r/proxychains-ng"
-    },
-    {
       "package": "sshuttle",
       "name": "sshuttle",
       "summary": "Transparent proxy and VPN over an SSH connection for pivoting",
@@ -186,15 +224,6 @@
       "interface": "cli",
       "command": "sshuttle",
       "homepage": "https://github.com/sshuttle/sshuttle"
-    },
-    {
-      "package": "iodine",
-      "name": "iodine",
-      "summary": "Tunnel IPv4 traffic through a DNS server to bypass filtering",
-      "category": "post-exploitation",
-      "interface": "cli",
-      "command": "iodine",
-      "homepage": "https://github.com/yarrick/iodine"
     },
     {
       "package": "aircrack-ng",
@@ -207,22 +236,13 @@
       "notes": "Monitor-mode capture needs a wireless adapter and driver that support it."
     },
     {
-      "package": "wifite",
-      "name": "Wifite",
-      "summary": "Automate wireless auditing using the aircrack-ng tools",
-      "category": "wireless",
-      "interface": "cli",
-      "command": "wifite",
-      "homepage": "https://github.com/derv82/wifite2"
-    },
-    {
-      "package": "reaver",
-      "name": "Reaver",
+      "package": "bully",
+      "name": "Bully",
       "summary": "Brute-force Wi-Fi Protected Setup (WPS) PINs",
       "category": "wireless",
       "interface": "cli",
-      "command": "reaver",
-      "homepage": "https://github.com/t6x/reaver-wps-fork-t6x"
+      "command": "bully",
+      "homepage": "https://github.com/aanarchyy/bully"
     },
     {
       "package": "hcxdumptool",
@@ -243,53 +263,6 @@
       "homepage": "https://github.com/ZerBea/hcxtools"
     },
     {
-      "package": "cupp",
-      "name": "CUPP",
-      "summary": "Build targeted password dictionaries from personal data",
-      "category": "password",
-      "interface": "cli",
-      "command": "cupp",
-      "homepage": "https://github.com/Mebus/cupp"
-    },
-    {
-      "package": "ophcrack",
-      "name": "Ophcrack",
-      "summary": "Crack Windows LM/NTLM passwords using rainbow tables",
-      "category": "password",
-      "interface": "gui",
-      "desktop-id": "ophcrack",
-      "homepage": "https://ophcrack.sourceforge.io",
-      "notes": "Rainbow tables are downloaded separately; the package ships the cracker, not the tables."
-    },
-    {
-      "package": "smbclient",
-      "name": "smbclient",
-      "summary": "Command-line client for SMB/CIFS file and print shares",
-      "category": "post-exploitation",
-      "interface": "cli",
-      "command": "smbclient",
-      "homepage": "https://www.samba.org",
-      "notes": "The smbclient package also ships rpcclient and nmblookup, handy for Windows/Samba enumeration over MS-RPC and NetBIOS."
-    },
-    {
-      "package": "bully",
-      "name": "Bully",
-      "summary": "Brute-force Wi-Fi Protected Setup (WPS) PINs",
-      "category": "wireless",
-      "interface": "cli",
-      "command": "bully",
-      "homepage": "https://github.com/aanarchyy/bully"
-    },
-    {
-      "package": "pixiewps",
-      "name": "Pixiewps",
-      "summary": "Offline WPS PIN recovery (pixie-dust attack)",
-      "category": "wireless",
-      "interface": "cli",
-      "command": "pixiewps",
-      "homepage": "https://github.com/wiire-a/pixiewps"
-    },
-    {
       "package": "hostapd",
       "name": "hostapd",
       "summary": "Access-point and authentication daemon for rogue-AP testing",
@@ -308,22 +281,40 @@
       "homepage": "https://wireless.wiki.kernel.org/en/users/documentation/iw"
     },
     {
-      "package": "wavemon",
-      "name": "wavemon",
-      "summary": "Ncurses monitor for wireless signal and link quality",
+      "package": "mdk3",
+      "name": "MDK3",
+      "summary": "Wi-Fi stress testing and deauthentication (802.11)",
       "category": "wireless",
       "interface": "cli",
-      "command": "wavemon",
-      "homepage": "https://github.com/uoaerg/wavemon"
+      "command": "mdk3",
+      "homepage": "https://github.com/charlesxsh/mdk3-master"
     },
     {
-      "package": "wireless-tools",
-      "name": "Wireless Tools",
-      "summary": "Classic iwconfig/iwlist utilities for wireless interfaces",
+      "package": "mdk4",
+      "name": "MDK4",
+      "summary": "Wi-Fi stress testing and attacks (802.11), MDK3 successor",
       "category": "wireless",
       "interface": "cli",
-      "command": "iwconfig",
-      "homepage": "https://hewlettpackard.github.io/wireless-tools/"
+      "command": "mdk4",
+      "homepage": "https://github.com/aircrack-ng/mdk4"
+    },
+    {
+      "package": "pixiewps",
+      "name": "Pixiewps",
+      "summary": "Offline WPS PIN recovery (pixie-dust attack)",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "pixiewps",
+      "homepage": "https://github.com/wiire-a/pixiewps"
+    },
+    {
+      "package": "reaver",
+      "name": "Reaver",
+      "summary": "Brute-force Wi-Fi Protected Setup (WPS) PINs",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "reaver",
+      "homepage": "https://github.com/t6x/reaver-wps-fork-t6x"
     },
     {
       "package": "rfkill",
@@ -333,6 +324,33 @@
       "interface": "cli",
       "command": "rfkill",
       "homepage": "https://git.kernel.org/pub/scm/linux/kernel/git/jberg/rfkill.git"
+    },
+    {
+      "package": "wavemon",
+      "name": "wavemon",
+      "summary": "Ncurses monitor for wireless signal and link quality",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "wavemon",
+      "homepage": "https://github.com/uoaerg/wavemon"
+    },
+    {
+      "package": "wifite",
+      "name": "Wifite",
+      "summary": "Automate wireless auditing using the aircrack-ng tools",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "wifite",
+      "homepage": "https://github.com/derv82/wifite2"
+    },
+    {
+      "package": "wireless-tools",
+      "name": "Wireless Tools",
+      "summary": "Classic iwconfig/iwlist utilities for wireless interfaces",
+      "category": "wireless",
+      "interface": "cli",
+      "command": "iwconfig",
+      "homepage": "https://hewlettpackard.github.io/wireless-tools/"
     }
   ],
   "external": [

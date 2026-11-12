@@ -8,34 +8,6 @@
   "metapackage": "shadow-arsenal-core",
   "tools": [
     {
-      "package": "nmap",
-      "name": "Nmap",
-      "summary": "Network exploration tool and security/port scanner",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "nmap",
-      "homepage": "https://nmap.org"
-    },
-    {
-      "package": "zenmap",
-      "name": "Zenmap",
-      "summary": "Graphical front end for the Nmap scanner",
-      "category": "information-gathering",
-      "interface": "gui",
-      "desktop-id": "zenmap",
-      "homepage": "https://nmap.org/zenmap",
-      "notes": "Runs scans as your own user; privileged scan types still need root, which Zenmap asks for when you choose them."
-    },
-    {
-      "package": "masscan",
-      "name": "MASSCAN",
-      "summary": "Asynchronous TCP port scanner for large address ranges",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "masscan",
-      "homepage": "https://github.com/robertdavidgraham/masscan"
-    },
-    {
       "package": "arp-scan",
       "name": "arp-scan",
       "summary": "Discover and fingerprint IP hosts on the local network with ARP",
@@ -54,6 +26,33 @@
       "homepage": "https://www.isc.org/bind/"
     },
     {
+      "package": "masscan",
+      "name": "MASSCAN",
+      "summary": "Asynchronous TCP port scanner for large address ranges",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "masscan",
+      "homepage": "https://github.com/robertdavidgraham/masscan"
+    },
+    {
+      "package": "nmap",
+      "name": "Nmap",
+      "summary": "Network exploration tool and security/port scanner",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "nmap",
+      "homepage": "https://nmap.org"
+    },
+    {
+      "package": "traceroute",
+      "name": "traceroute",
+      "summary": "Trace the route IPv4/IPv6 packets take to a host",
+      "category": "information-gathering",
+      "interface": "cli",
+      "command": "traceroute",
+      "homepage": "https://traceroute.sourceforge.net"
+    },
+    {
       "package": "whois",
       "name": "whois",
       "summary": "Query WHOIS registries for domain and network ownership",
@@ -63,22 +62,23 @@
       "homepage": "https://github.com/rfc1036/whois"
     },
     {
-      "package": "whatweb",
-      "name": "WhatWeb",
-      "summary": "Identify the technologies a website is built with",
-      "category": "web-application",
-      "interface": "cli",
-      "command": "whatweb",
-      "homepage": "https://morningstarsecurity.com/research/whatweb"
+      "package": "zenmap",
+      "name": "Zenmap",
+      "summary": "Graphical front end for the Nmap scanner",
+      "category": "information-gathering",
+      "interface": "gui",
+      "desktop-id": "zenmap",
+      "homepage": "https://nmap.org/zenmap",
+      "notes": "Runs scans as your own user; privileged scan types still need root, which Zenmap asks for when you choose them."
     },
     {
-      "package": "sslscan",
-      "name": "sslscan",
-      "summary": "Report the TLS versions and ciphers a service accepts",
-      "category": "web-application",
+      "package": "tcpdump",
+      "name": "tcpdump",
+      "summary": "Command-line network packet capture and inspection",
+      "category": "sniffing-spoofing",
       "interface": "cli",
-      "command": "sslscan",
-      "homepage": "https://github.com/rbsec/sslscan"
+      "command": "tcpdump",
+      "homepage": "https://www.tcpdump.org"
     },
     {
       "package": "wireshark",
@@ -92,31 +92,22 @@
       "notes": "Capturing needs permission to the interface; Debian's dpkg-reconfigure wireshark-common sets up the 'wireshark' group so you need not run it as root."
     },
     {
-      "package": "tcpdump",
-      "name": "tcpdump",
-      "summary": "Command-line network packet capture and inspection",
-      "category": "sniffing-spoofing",
-      "interface": "cli",
-      "command": "tcpdump",
-      "homepage": "https://www.tcpdump.org"
-    },
-    {
-      "package": "netcat-openbsd",
-      "name": "netcat (OpenBSD)",
-      "summary": "Read and write data across network connections",
+      "package": "age",
+      "name": "age",
+      "summary": "Simple, modern file-encryption tool",
       "category": "utilities",
       "interface": "cli",
-      "command": "nc",
-      "homepage": "https://www.openbsd.org"
+      "command": "age",
+      "homepage": "https://age-encryption.org"
     },
     {
-      "package": "socat",
-      "name": "socat",
-      "summary": "Multipurpose relay for bidirectional data between two streams",
+      "package": "cryptsetup",
+      "name": "cryptsetup",
+      "summary": "Manage LUKS and dm-crypt encrypted volumes",
       "category": "utilities",
       "interface": "cli",
-      "command": "socat",
-      "homepage": "http://www.dest-unreach.org/socat/"
+      "command": "cryptsetup",
+      "homepage": "https://gitlab.com/cryptsetup/cryptsetup"
     },
     {
       "package": "curl",
@@ -128,13 +119,13 @@
       "homepage": "https://curl.se"
     },
     {
-      "package": "proxychains4",
-      "name": "ProxyChains-NG",
-      "summary": "Force a program's connections through a chain of proxies",
+      "package": "gnupg",
+      "name": "GnuPG",
+      "summary": "OpenPGP encryption and signing of files and email",
       "category": "utilities",
       "interface": "cli",
-      "command": "proxychains4",
-      "homepage": "https://github.com/rofl0r/proxychains-ng"
+      "command": "gpg",
+      "homepage": "https://gnupg.org"
     },
     {
       "package": "keepassxc",
@@ -148,76 +139,22 @@
       "notes": "Transitional package; it pulls in keepassxc-full. Keep client and scope credentials out of shell history and in a vault like this one."
     },
     {
-      "package": "traceroute",
-      "name": "traceroute",
-      "summary": "Trace the route IPv4/IPv6 packets take to a host",
-      "category": "information-gathering",
-      "interface": "cli",
-      "command": "traceroute",
-      "homepage": "https://traceroute.sourceforge.net"
+      "package": "kleopatra",
+      "name": "Kleopatra",
+      "summary": "Graphical certificate and OpenPGP/S-MIME key manager",
+      "category": "utilities",
+      "interface": "gui",
+      "desktop-id": "org.kde.kleopatra",
+      "homepage": "https://apps.kde.org/kleopatra/"
     },
     {
-      "package": "gnupg",
-      "name": "GnuPG",
-      "summary": "OpenPGP encryption and signing of files and email",
+      "package": "netcat-openbsd",
+      "name": "netcat (OpenBSD)",
+      "summary": "Read and write data across network connections",
       "category": "utilities",
       "interface": "cli",
-      "command": "gpg",
-      "homepage": "https://gnupg.org"
-    },
-    {
-      "package": "openssl",
-      "name": "OpenSSL",
-      "summary": "TLS/SSL and general-purpose cryptography command-line tool",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "openssl",
-      "homepage": "https://www.openssl.org"
-    },
-    {
-      "package": "cryptsetup",
-      "name": "cryptsetup",
-      "summary": "Manage LUKS and dm-crypt encrypted volumes",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "cryptsetup",
-      "homepage": "https://gitlab.com/cryptsetup/cryptsetup"
-    },
-    {
-      "package": "age",
-      "name": "age",
-      "summary": "Simple, modern file-encryption tool",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "age",
-      "homepage": "https://age-encryption.org"
-    },
-    {
-      "package": "tor",
-      "name": "Tor",
-      "summary": "Route traffic through the Tor anonymity overlay network",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "tor",
-      "homepage": "https://www.torproject.org"
-    },
-    {
-      "package": "openvpn",
-      "name": "OpenVPN",
-      "summary": "Establish SSL/TLS virtual private network tunnels",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "openvpn",
-      "homepage": "https://openvpn.net"
-    },
-    {
-      "package": "wireguard-tools",
-      "name": "WireGuard tools",
-      "summary": "Configure WireGuard VPN tunnels (wg, wg-quick)",
-      "category": "utilities",
-      "interface": "cli",
-      "command": "wg",
-      "homepage": "https://www.wireguard.com"
+      "command": "nc",
+      "homepage": "https://www.openbsd.org"
     },
     {
       "package": "openssh-client",
@@ -229,13 +166,40 @@
       "homepage": "https://www.openssh.com"
     },
     {
-      "package": "steghide",
-      "name": "Steghide",
-      "summary": "Hide and extract data in image and audio files",
+      "package": "openssl",
+      "name": "OpenSSL",
+      "summary": "TLS/SSL and general-purpose cryptography command-line tool",
       "category": "utilities",
       "interface": "cli",
-      "command": "steghide",
-      "homepage": "https://steghide.sourceforge.net"
+      "command": "openssl",
+      "homepage": "https://www.openssl.org"
+    },
+    {
+      "package": "openvpn",
+      "name": "OpenVPN",
+      "summary": "Establish SSL/TLS virtual private network tunnels",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "openvpn",
+      "homepage": "https://openvpn.net"
+    },
+    {
+      "package": "outguess",
+      "name": "OutGuess",
+      "summary": "Universal steganography tool for hiding data in images",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "outguess",
+      "homepage": "https://github.com/resurrecting-open-source-projects/outguess"
+    },
+    {
+      "package": "proxychains4",
+      "name": "ProxyChains-NG",
+      "summary": "Force a program's connections through a chain of proxies",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "proxychains4",
+      "homepage": "https://github.com/rofl0r/proxychains-ng"
     },
     {
       "package": "secure-delete",
@@ -247,13 +211,67 @@
       "homepage": "https://packages.debian.org/trixie/secure-delete"
     },
     {
-      "package": "kleopatra",
-      "name": "Kleopatra",
-      "summary": "Graphical certificate and OpenPGP/S-MIME key manager",
+      "package": "socat",
+      "name": "socat",
+      "summary": "Multipurpose relay for bidirectional data between two streams",
       "category": "utilities",
-      "interface": "gui",
-      "desktop-id": "org.kde.kleopatra",
-      "homepage": "https://apps.kde.org/kleopatra/"
+      "interface": "cli",
+      "command": "socat",
+      "homepage": "http://www.dest-unreach.org/socat/"
+    },
+    {
+      "package": "steghide",
+      "name": "Steghide",
+      "summary": "Hide and extract data in image and audio files",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "steghide",
+      "homepage": "https://steghide.sourceforge.net"
+    },
+    {
+      "package": "stegsnow",
+      "name": "stegsnow",
+      "summary": "Hide messages in the whitespace of text files",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "stegsnow",
+      "homepage": "http://www.darkside.com.au/snow/"
+    },
+    {
+      "package": "tor",
+      "name": "Tor",
+      "summary": "Route traffic through the Tor anonymity overlay network",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "tor",
+      "homepage": "https://www.torproject.org"
+    },
+    {
+      "package": "wireguard-tools",
+      "name": "WireGuard tools",
+      "summary": "Configure WireGuard VPN tunnels (wg, wg-quick)",
+      "category": "utilities",
+      "interface": "cli",
+      "command": "wg",
+      "homepage": "https://www.wireguard.com"
+    },
+    {
+      "package": "sslscan",
+      "name": "sslscan",
+      "summary": "Report the TLS versions and ciphers a service accepts",
+      "category": "web-application",
+      "interface": "cli",
+      "command": "sslscan",
+      "homepage": "https://github.com/rbsec/sslscan"
+    },
+    {
+      "package": "whatweb",
+      "name": "WhatWeb",
+      "summary": "Identify the technologies a website is built with",
+      "category": "web-application",
+      "interface": "cli",
+      "command": "whatweb",
+      "homepage": "https://morningstarsecurity.com/research/whatweb"
     }
   ],
   "external": [

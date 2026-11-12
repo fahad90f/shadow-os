@@ -352,11 +352,13 @@ Depends:
  openssh-client,
  openssl,
  openvpn,
+ outguess,
  proxychains4,
  secure-delete,
  socat,
  sslscan,
  steghide,
+ stegsnow,
  tcpdump,
  tor,
  traceroute,
@@ -373,7 +375,7 @@ Description: SHADOW Arsenal profile - Core Security
  profiles build on. Like every profile it is installed on demand; start here,
  the specialised profiles add to it.
  .
- This metapackage depends on the 27 tools of the profile, all from Debian
+ This metapackage depends on the 29 tools of the profile, all from Debian
  main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Metasploit Framework,
@@ -442,7 +444,9 @@ Depends:
  bettercap,
  bind9-dnsutils,
  dnsenum,
+ dnsmap,
  dnsrecon,
+ dsniff,
  ettercap-graphical,
  fierce,
  fping,
@@ -466,6 +470,7 @@ Depends:
  smbclient,
  smbmap,
  snmp,
+ sublist3r,
  tcpdump,
  tcpflow,
  termshark,
@@ -481,7 +486,7 @@ Description: SHADOW Arsenal profile - Network Security
  Sniffing and Spoofing tools and underpins both the Red Team and Blue Team
  profiles.
  .
- This metapackage depends on the 36 tools of the profile, all from Debian
+ This metapackage depends on the 39 tools of the profile, all from Debian
  main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Amass, subfinder, httpx
@@ -516,6 +521,8 @@ Depends:
  iw,
  john,
  krb5-user,
+ mdk3,
+ mdk4,
  medusa,
  ncrack,
  ophcrack,
@@ -543,7 +550,7 @@ Description: SHADOW Arsenal profile - Red Team
  Responder, NetExec, BloodHound, Sliver) are not in Debian main and are listed
  as external tools with vendor install instructions rather than bundled.
  .
- This metapackage depends on the 35 tools of the profile, all from Debian
+ This metapackage depends on the 37 tools of the profile, all from Debian
  main; APT installs every one of them with it.
  .
  Not included, because they are not in Debian main: Metasploit Framework,
@@ -817,60 +824,13 @@ Description: SHADOW Arsenal profile - Complete Arsenal
  most users are better served installing the specific profiles they need. The
  tools are referenced from the other profiles, not duplicated here.
  .
- This metapackage depends on the metapackages of the profiles it combines (230
+ This metapackage depends on the metapackages of the profiles it combines (237
  tools in total).
  .
  These tools are for authorised security testing, research, defence and
  education only: use them on systems you own or have explicit written
  permission to test, and follow the law that applies to you. They come with no
  warranty.
-
-Package: shadow-files
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
- kio6, libarchive-tools, breeze-icon-theme, shared-mime-info
-Recommends: udisks2, kio-extras, shadow-terminal
-Suggests: shadow-archive-manager
-Description: SHADOW Files
- The file manager of Shadow OS: grid and list views, tabs and split view,
- search, previews, trash with restore, permissions, archives, removable
- drives and network locations, with file operations that report progress
- and ask before replacing or deleting.
-
-Package: shadow-security-center
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
- shadow-hardening, pkexec, polkitd
-Recommends: shadow-updater
-Description: SHADOW Security Center
- Shows the real security state of the machine as reported by system checks:
- firewall, AppArmor, disk encryption, Secure Boot, updates, listening
- services and connections, logins, audit events and kernel hardening, with
- the recommendations that follow from them, and manages the host firewall.
- It reports states with their evidence; it does not compute scores.
-
-Package: shadow-screenshot
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
- kwin-wayland, qt6-image-formats-plugins
-Recommends: xdg-desktop-portal, shadow-files
-Description: SHADOW Screenshot
- Captures the whole screen, one monitor, a window or a selected region, with
- optional delay, then offers saving, copying to the clipboard and simple
- annotations (crop, arrow, rectangle, text, pixelate). Also usable from the
- command line.
-
-Package: shadow-disk-manager
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
- udisks2, polkitd, e2fsprogs, dosfstools
-Recommends: cryptsetup-bin, btrfs-progs, exfatprogs, ntfs-3g, smartmontools
-Suggests: xfsprogs, f2fs-tools
-Description: SHADOW Disk Manager
- Drives and partitions through UDisks2: partition map, mounting, LUKS
- unlock, formatting, partition tables, resizing, checking and disk images.
- Destructive actions name the device, list what will be lost, require the
- device name to be typed and are refused for the disk the system runs from.
 
 Package: shadow-recovery
 Architecture: any
