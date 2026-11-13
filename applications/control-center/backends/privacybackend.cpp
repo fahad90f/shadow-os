@@ -569,6 +569,7 @@ void PrivacyBackend::refreshHarden()
         bool aideInit = false, appArmor = false, auditd = false, bootH = false;
         QString aideLastCheck;
         int aideChanges = 0;
+        QString level = QStringLiteral("hardened");
 
         QFile stateFile(QStringLiteral("/run/shadow-harden-state.json"));
         if (stateFile.open(QIODevice::ReadOnly)) {
@@ -582,6 +583,15 @@ void PrivacyBackend::refreshHarden()
         // Cross-check on-disk evidence (survives reboots that clear /run)
         aideInit = aideInit || QFile::exists(QStringLiteral("/var/lib/aide/aide.db"));
         bootH    = bootH    || QFile::exists(QStringLiteral("/etc/default/grub.d/90-shadow-hardening.cfg"));
+
+        // Hardening level: the marker file is the source of truth (survives reboot).
+        QFile levelFile(QStringLiteral("/etc/shadow-os/hardening-level"));
+        if (levelFile.open(QIODevice::ReadOnly)) {
+            const QString name = QString::fromUtf8(levelFile.readAll()).trimmed();
+            if (name == QLatin1String("standard") || name == QLatin1String("hardened")
+                || name == QLatin1String("paranoid"))
+                level = name;
+        }
 
         // AppArmor status
         if (!appArmor) {
@@ -602,6 +612,7 @@ void PrivacyBackend::refreshHarden()
             m_appArmorEnforcing = appArmor;
             m_auditdRunning     = auditd;
             m_bootHardened      = bootH;
+            m_hardeningLevel    = level;
             Q_EMIT hardenChanged();
         }, Qt::QueuedConnection);
     });
@@ -648,6 +659,16 @@ void PrivacyBackend::aideCheck()          { runShadowHarden({QStringLiteral("aid
 void PrivacyBackend::enforceAppArmor()    { runShadowHarden({QStringLiteral("enforce-apparmor")}); }
 void PrivacyBackend::applyBootHardening() { runShadowHarden({QStringLiteral("boot-harden")}); }
 void PrivacyBackend::hardenFilesystems()  { runShadowHarden({QStringLiteral("fs-harden")}); }
+
+void PrivacyBackend::setHardeningLevel(const QString &level)
+{
+    if (level != QLatin1String("standard") && level != QLatin1String("hardened")
+        && level != QLatin1String("paranoid"))
+        return;
+    if (level == m_hardeningLevel)
+        return;
+    runShadowHarden({QStringLiteral("level"), level});
+}
 
 QJsonObject PrivacyBackend::toJson() const
 {

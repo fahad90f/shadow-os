@@ -305,6 +305,31 @@ NxPage {
         title: qsTr("OS Integrity & Kernel Lockdown")
         description: qsTr("AIDE file integrity monitoring, AppArmor MAC enforcement, kernel audit daemon, and boot-level lockdown with 24 hardening parameters.")
 
+        // Hardening level
+        NxRow {
+            icon: "shield"
+            iconColor: privacy.hardeningLevel === "paranoid" ? Theme.danger
+                     : privacy.hardeningLevel === "standard" ? Theme.textMuted : Theme.success
+            title: qsTr("Hardening level")
+            subtitle: privacy.hardeningLevel === "paranoid"
+                ? qsTr("Paranoid: maximum lockdown. Web-browser and Flatpak sandboxes will NOT work.")
+                : privacy.hardeningLevel === "standard"
+                  ? qsTr("Standard: core protections; nothing that commonly breaks apps.")
+                  : qsTr("Hardened (default): strong limits, browser and Flatpak sandboxes still work.")
+            ColumnLayout {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Theme.spaceXs
+                NxSegmented {
+                    model: [qsTr("Standard"), qsTr("Hardened"), qsTr("Paranoid")]
+                    enabled: !privacy.hardenBusy
+                    currentIndex: privacy.hardeningLevel === "paranoid" ? 2
+                                : privacy.hardeningLevel === "standard" ? 0 : 1
+                    onActivated: (index) => privacy.setHardeningLevel(
+                        index === 2 ? "paranoid" : index === 0 ? "standard" : "hardened")
+                }
+            }
+        }
+
         // AIDE file integrity monitor
         NxRow {
             icon: privacy.aideChanges > 0 ? "alert-triangle" : privacy.aideInitialized ? "shield-check" : "shield-off"

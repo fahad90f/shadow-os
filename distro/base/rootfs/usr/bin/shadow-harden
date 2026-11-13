@@ -13,6 +13,9 @@ Commands:
   enforce-apparmor  Put all AppArmor profiles into enforce mode.
   boot-harden       Write 24 kernel boot parameters to GRUB; run update-grub.
   fs-harden         Remount /proc (hidepid=2), /tmp and /dev/shm (noexec+nosuid+nodev).
+  level [NAME]      Show, or set to NAME, the hardening level
+                    (standard | hardened | paranoid). With no NAME, prints the
+                    current level and what each one changes.
 """
 
 import sys
@@ -35,6 +38,42 @@ GRUB_DIR     = Path("/etc/default/grub.d")
 GRUB_CFG     = GRUB_DIR / "90-shadow-hardening.cfg"
 AUDIT_RULES  = Path("/etc/audit/rules.d/90-shadow-audit.rules")
 POLKIT_RULE  = Path("/etc/polkit-1/rules.d/50-shadow-harden.rules")
+
+# Hardening levels. These sysctl keys trade compatibility for security, so they
+# are chosen here rather than fixed in 91-shadow-extreme.conf. The level file is
+# numbered 99 so it wins over 90/91. "standard" keeps every common desktop app
+# working; "hardened" (the default) is safe for a normal desktop too, because it
+# leaves unprivileged user namespaces ON so browser and Flatpak sandboxes work;
+# "paranoid" turns user namespaces OFF, which breaks those sandboxes.
+LEVEL_FILE   = Path("/etc/sysctl.d/99-shadow-level.conf")
+LEVEL_MARKER = Path("/etc/shadow-os/hardening-level")
+LEVEL_ORDER  = ("standard", "hardened", "paranoid")
+DEFAULT_LEVEL = "hardened"
+
+LEVELS = {
+    "standard": {
+        "kernel.unprivileged_userns_clone": "1",   # browsers, Flatpak, containers
+        "kernel.unprivileged_bpf_disabled": "0",   # profilers/tracers work
+        "kernel.perf_event_paranoid":       "2",   # perf for non-root (limited)
+    },
+    "hardened": {
+        "kernel.unprivileged_userns_clone": "1",   # kept ON so sandboxes work
+        "kernel.unprivileged_bpf_disabled": "1",   # no unprivileged BPF
+        "kernel.perf_event_paranoid":       "3",   # perf root-only
+    },
+    "paranoid": {
+        "kernel.unprivileged_userns_clone": "0",   # BREAKS browser/Flatpak sandboxes
+        "kernel.unprivileged_bpf_disabled": "2",   # BPF fully off
+        "kernel.perf_event_paranoid":       "4",   # perf fully off
+    },
+}
+
+LEVEL_NOTES = {
+    "standard": "Everyday desktop. Core protections on; nothing that commonly breaks apps.",
+    "hardened": "Default. Stronger limits, but keeps browser and Flatpak sandboxes working.",
+    "paranoid": "Maximum. Disables unprivileged user namespaces — web-browser and Flatpak "
+                "sandboxes, and most container tools, will not work.",
+}
 
 BOOT_PARAMS = (
     "slab_nomerge "
@@ -120,6 +159,9 @@ def cmd_status() -> None:
 
     # Boot hardening
     s["boot_hardened"] = GRUB_CFG.exists()
+
+    # Hardening level
+    s["hardening_level"] = current_level()
 
     print(json.dumps(s, indent=2))
 
@@ -362,6 +404,61 @@ def cmd_fs_harden() -> None:
     print("Filesystem hardening applied.")
 
 
+def current_level() -> str:
+    """The level named in the marker file, else the default."""
+    try:
+        name = LEVEL_MARKER.read_text().strip()
+        if name in LEVELS:
+            return name
+    except Exception:
+        pass
+    return DEFAULT_LEVEL
+
+
+def cmd_level() -> None:
+    """Show, or with an argument set, the hardening level."""
+    target = sys.argv[2] if len(sys.argv) > 2 else None
+
+    if target is None:
+        now = current_level()
+        print(f"Current hardening level: {now}\n")
+        for name in LEVEL_ORDER:
+            mark = "*" if name == now else " "
+            print(f" {mark} {name:9s} {LEVEL_NOTES[name]}")
+        print("\nChange it with:  shadow-harden level <name>")
+        return
+
+    if target not in LEVELS:
+        print(f"Unknown level: {target}", file=sys.stderr)
+        print(f"Available: {', '.join(LEVEL_ORDER)}", file=sys.stderr)
+        sys.exit(1)
+
+    settings = LEVELS[target]
+    LEVEL_FILE.write_text(
+        "# Shadow OS hardening level — written by `shadow-harden level`.\n"
+        "# Do not edit by hand; it is overwritten. Change the level with the\n"
+        "# command above or the Control Center.\n"
+        f"# level = {target}\n\n"
+        + "".join(f"{key} = {value}\n" for key, value in settings.items())
+    )
+    # Apply now (best-effort: a key may be absent on some kernels).
+    for key, value in settings.items():
+        subprocess.run(["sysctl", "-qw", f"{key}={value}"], check=False)
+
+    LEVEL_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    LEVEL_MARKER.write_text(target + "\n")
+
+    s = load_state()
+    s["hardening_level"] = target
+    save_state(s)
+
+    print(f"Hardening level set to {target}.")
+    print(LEVEL_NOTES[target])
+    if target == "paranoid":
+        print("\nWARNING: web-browser and Flatpak sandboxes will not start at this "
+              "level. Switch back with:  shadow-harden level hardened")
+
+
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
@@ -373,6 +470,7 @@ COMMANDS = {
     "enforce-apparmor": cmd_enforce_apparmor,
     "boot-harden":      cmd_boot_harden,
     "fs-harden":        cmd_fs_harden,
+    "level":            cmd_level,
 }
 
 

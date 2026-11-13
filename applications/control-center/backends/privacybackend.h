@@ -78,6 +78,7 @@ class PrivacyBackend : public QObject
     Q_PROPERTY(bool bootHardened READ bootHardened NOTIFY hardenChanged)
     Q_PROPERTY(bool hardenBusy READ hardenBusy NOTIFY hardenChanged)
     Q_PROPERTY(QString hardenOutput READ hardenOutput NOTIFY hardenChanged)
+    Q_PROPERTY(QString hardeningLevel READ hardeningLevel NOTIFY hardenChanged) // standard|hardened|paranoid
 
 public:
     explicit PrivacyBackend(QObject *parent = nullptr);
@@ -124,6 +125,7 @@ public:
     bool bootHardened() const { return m_bootHardened; }
     bool hardenBusy() const { return m_hardenBusy; }
     QString hardenOutput() const { return m_hardenOutput; }
+    QString hardeningLevel() const { return m_hardeningLevel; }
 
     Q_INVOKABLE void setAutolock(bool on);
     Q_INVOKABLE void setLockTimeoutMinutes(int minutes);
@@ -162,6 +164,7 @@ public:
     Q_INVOKABLE void enforceAppArmor();
     Q_INVOKABLE void applyBootHardening();
     Q_INVOKABLE void hardenFilesystems();
+    Q_INVOKABLE void setHardeningLevel(const QString &level);
 
     QJsonObject toJson() const;
 
@@ -216,6 +219,7 @@ private:
     bool m_appArmorEnforcing = false;
     bool m_auditdRunning = false;
     bool m_bootHardened = false;
+    QString m_hardeningLevel = QStringLiteral("hardened");
     bool m_hardenBusy = false;
     QString m_hardenOutput;
     std::shared_ptr<bool> m_alive;

@@ -16,6 +16,30 @@ Principle from the package description: none of these settings disables a
 security mechanism to make software work. Where something can break, the
 table says how to change the one setting concerned.
 
+## Hardening level
+
+Three sysctl settings trade compatibility for security, so they are chosen by a
+**hardening level** instead of being fixed. Set it in the Control Center under
+Privacy → *OS Integrity & Kernel Lockdown*, or on the command line:
+
+```bash
+shadow-harden level            # show the current level and what each changes
+sudo shadow-harden level hardened
+```
+
+| Level | `unprivileged_userns_clone` | `unprivileged_bpf_disabled` | `perf_event_paranoid` | Effect |
+|---|---|---|---|---|
+| `standard` | 1 | 0 | 2 | Everyday desktop; nothing that commonly breaks apps. |
+| `hardened` *(default)* | 1 | 1 | 3 | Strong limits, but browser and Flatpak sandboxes still work. |
+| `paranoid` | 0 | 2 | 4 | Maximum. **Breaks** web-browser and Flatpak sandboxes and most container tools. |
+
+The level is written to `/etc/sysctl.d/99-shadow-level.conf` and recorded in
+`/etc/shadow-os/hardening-level`; it is applied at once and again at every boot.
+The default is `hardened` with unprivileged user namespaces **on**, so browsers
+and Flatpak work out of the box — the one setting most likely to break apps is
+only disabled at `paranoid`. Everything in `91-shadow-extreme.conf` is applied
+at every level.
+
 ## Overview
 
 | Area | File on the system | Source |
