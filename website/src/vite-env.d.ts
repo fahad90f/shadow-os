@@ -1,5 +1,5 @@
 interface ImportMetaEnv {
-  /** Base URL of the package repository; see .env.example. */
+  /** Base URL of the package repository when it is not this site; see .env.example. */
   readonly VITE_REPO_URL?: string;
 }
 

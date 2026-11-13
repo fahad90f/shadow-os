@@ -11,100 +11,105 @@ Two kinds of update reach an installed system:
   from Debian's official repositories. `sudo apt full-upgrade` or Shadow
   Updater.
 - **Shadow OS's own packages** (desktop, apps, installer, arsenal): delivered
-  from the **Shadow package repository**, which GitHub Actions publishes to
-  GitHub Pages after every successful build. This needs a one-time setup.
+  from the **Shadow update site**, which you publish from your own computer
+  with one command. This needs a one-time setup.
 
-## One-time setup (do this once)
+The update site is one Vercel project that holds two things: the website
+(`website/`, a React + TypeScript app showing the published build and its
+packages) and the signed APT repository that `apt` downloads from.
 
-### 1. Create the release signing key
-On your own computer, in a clone of this repository:
+## One-time setup
+
+You need a Debian-based computer (Parrot, Debian, Ubuntu) with this repository
+cloned, Node.js 20.19 or newer, and a free Vercel account.
+
+1. Sign in to Vercel from the terminal:
+
+   ```bash
+   npx vercel login
+   ```
+
+2. Publish the website alone, so that Vercel assigns it an address:
+
+   ```bash
+   scripts/publish-updates.sh
+   ```
+
+3. On vercel.com open the project `shadow-os-updates` and copy the address
+   under **Domains** (it looks like `https://shadow-os-updates.vercel.app`).
+
+4. Build and publish the packages for that address:
+
+   ```bash
+   scripts/publish-updates.sh --url https://shadow-os-updates.vercel.app
+   ```
+
+   The address is written to `distro/base/shadow.conf` (commit it) and built
+   into the packages. The first run creates the build environment and the
+   signing key, so it takes a while.
+
+### The signing key
+The repository is signed with a key the script creates in
+`/var/lib/shadow-signing` on your computer. Installed systems accept updates
+only from that key, so:
+
+- **back the directory up** (`sudo tar czf shadow-signing-backup.tgz -C /var/lib
+  shadow-signing`, kept somewhere safe). Without it you cannot publish updates
+  that existing installations accept; they would have to be switched to a new
+  key with `enable-updates.sh` again;
+- never commit it, upload it or paste it anywhere. Anyone who has it can sign
+  packages your machines will install.
+
+## Shipping a change
 
 ```bash
-scripts/make-signing-key.sh
+scripts/publish-updates.sh
 ```
 
-It writes the **public** key to `distro/signing/shadow-archive-keyring.asc`
-(commit that) and prints the **private** key once. Copy the private key into a
-new GitHub Actions secret and then clear it from your screen:
+It builds the packages from the current checkout, signs the repository, and
+uploads it with the website. Installed systems get the change at the next
+`sudo apt update && sudo apt upgrade` or Shadow Updater check. No data is lost.
 
-- GitHub → your repo → **Settings → Secrets and variables → Actions → New
-  repository secret**
-- Name: `SHADOW_SIGNING_KEY`
-- Value: the entire private-key block the script printed
+APT only installs a version newer than the one installed, so every build is
+stamped: the packages are versioned `<release>.build<time>` (for example
+`0.2.0.build202611130542`). There is no need to edit `debian/changelog` for an
+ordinary change; raise the version there and in `distro/base/shadow.conf` for
+a new release. `apt upgrade` never removes packages; when an update needs that,
+APT says packages were "kept back" and `sudo apt full-upgrade` applies it.
 
-Never commit the private key or paste it anywhere else. If it ever leaks, run
-the script again to make a new key and replace both the secret and the
-committed public key.
-
-```bash
-git add distro/signing/shadow-archive-keyring.asc
-git commit -m "Add Shadow OS release signing public key"
-git push
-```
-
-### 2. Enable GitHub Pages
-GitHub → **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-
-That's it. The next build signs the repository with your key, publishes it to
-the repository's GitHub Pages address (`https://<owner>.github.io/<repository>/`,
-for example `https://fahad90f.github.io/shadow-os/`), and bakes that address
-(enabled) into the images it produces. Images built **without** the secret keep
-the Shadow source disabled, so they never point at a repository that can't be
-verified, and nothing is published: a build without the secret signs with a
-throw-away key that no installed system trusts.
-
-`scripts/gen-repo-site.py` prepares what is published: the repository,
-`repo.json` (the published build and its packages) and `enable-updates.sh`
-(below).
-
-### 3. Deploy the website (optional)
-`website/` is a React + TypeScript (Vite) app that shows the published build,
-its packages and how to update. It holds no packages itself: it reads
-`repo.json` from the repository address in the visitor's browser, so it never
-needs redeploying when a new build is published.
-
-On Vercel: **Add New → Project**, import this repository, set **Root
-Directory** to `website`, keep the detected Vite settings, deploy. Only if the
-repository is not at `https://fahad90f.github.io/shadow-os`, set the
-environment variable `VITE_REPO_URL` to its address (`website/.env.example`).
-
-Locally: `cd website && npm install && npm run dev`.
+`scripts/publish-updates.sh --no-deploy` does everything except the upload; the
+result is in `build/out/site`.
 
 ## How an installed system then updates
 
-Images built after setup already have the repository configured:
+An image built after the packages were published (`sudo env
+SHADOW_SIGNING_HOME=/var/lib/shadow-signing build/iso/build.sh`) has the update
+site configured:
 
 ```bash
 sudo apt update && sudo apt upgrade      # or open Shadow Updater
 ```
 
-A system installed from an image built **before** setup has the source disabled
-and trusts the throw-away key of that image build. Switch it over once:
+A system installed from an older image has the source disabled and trusts the
+throw-away key of that image build. Switch it over once:
 
 ```bash
-curl -fsSLO https://<owner>.github.io/<repository>/enable-updates.sh
+curl -fsSLO https://<the address>/enable-updates.sh
 sudo sh enable-updates.sh
 ```
 
-The script installs the current `shadow-archive-keyring` package (the release
-key and the enabled source) and turns off the package snapshot that came with
-the old image (`shadow-local.sources`), which is signed with the old key. The
-first key is taken on trust over HTTPS; compare the fingerprint shown on the
-site with the one `scripts/make-signing-key.sh` printed if that matters to you.
+The script installs the current `shadow-archive-keyring` package (the key and
+the enabled source) and turns off the package snapshot that came with the old
+image (`shadow-local.sources`), which is signed with the old key. The first key
+is taken on trust over HTTPS; the site shows its fingerprint.
 
-## Adding a feature and shipping it
+## What CI does
 
-1. Change the code and `git push`. CI builds the packages, boots the image
-   made from them, signs the repository and publishes it (about an hour).
-2. Installed systems get the update at the next `sudo apt update && sudo apt
-   upgrade` / Shadow Updater check. No data is lost.
-
-APT only installs a version newer than the one installed, so CI stamps every
-build: the packages are versioned `<release>+build<run number>` (for example
-`0.2.0+build48`). There is no need to edit `debian/changelog` for an ordinary
-change; raise the version there and in `distro/base/shadow.conf` for a new
-release. `apt upgrade` never removes packages; when an update needs that, APT
-says packages were "kept back" and `sudo apt full-upgrade` applies it.
+The GitHub Actions pipeline builds and tests images but publishes nothing. Its
+images are signed with a per-run development key and ship the Shadow source
+disabled. To have CI sign with the release key instead, store an export of it
+as the `SHADOW_SIGNING_KEY` secret (`scripts/make-signing-key.sh` creates a key
+for that purpose; use the same key in `/var/lib/shadow-signing`).
 
 ## Without the online repository
 

@@ -10,6 +10,9 @@
 #
 # The repository can be served as static files from any web server or object
 # store (docs/packaging/repositories.md); the image build consumes it directly.
+#
+#   SHADOW_REPO_NO_DBGSYM=1   leave debug-symbol packages out (they are most of
+#                             the repository's size; the update site sets this)
 
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
@@ -17,7 +20,7 @@ ARCH="$(host_arch)"
 while [ $# -gt 0 ]; do
     case "$1" in
         --arch) ARCH="$2"; shift 2 ;;
-        -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
@@ -72,6 +75,7 @@ for deb in "$PKG_OUT"/*.deb; do
     if [ "$arch" != "all" ] && [ "$arch" != "$ARCH" ]; then continue; fi
     comp="$(component_for "$name")"
     run_reprepro -C "$comp" remove "$SHADOW_CODENAME" "$name" >/dev/null 2>&1 || true
+    case "$name" in *-dbgsym) [ -z "${SHADOW_REPO_NO_DBGSYM:-}" ] || continue ;; esac
     run_reprepro -C "$comp" includedeb "$SHADOW_CODENAME" "/out/packages/$(basename "$deb")" >/dev/null
 done
 run_reprepro export "$SHADOW_CODENAME" >/dev/null

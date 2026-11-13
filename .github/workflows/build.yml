@@ -6,15 +6,15 @@
 #                  followed by booting the installed disk
 #   kernel         the SHADOW kernel packages for amd64 and arm64
 #   iso-arm64      packages + ISO on a native arm64 runner, UEFI boot test
-#   pages          the amd64 package repository on GitHub Pages, where
-#                  installed systems get it with APT (the website that
-#                  presents it is website/, deployed separately)
 #
 # Signing: a development archive key is generated per run unless the
 # SHADOW_SIGNING_KEY secret holds an ASCII-armoured release key. Private keys
-# never live in the repository. The update site is only published with the
-# release key: installed systems could not verify a per-run key
-# (docs/packaging/repositories.md).
+# never live in the repository.
+#
+# This pipeline publishes nothing for installed systems: the update site is
+# built and uploaded with scripts/publish-updates.sh
+# (docs/packaging/online-updates.md). Images built here with a development
+# key ship the SHADOW APT source disabled, because they could not verify it.
 name: build
 
 on:
@@ -26,8 +26,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 # A newer push supersedes a running build of the same branch.
 concurrency:
@@ -36,17 +34,17 @@ concurrency:
 
 env:
   SHADOW_JOBS: "4"
-  # Package versions are <release>+build<run number>, so every run is an
+  # Package versions are <release>.build<run number>, so every run is an
   # upgrade over the one before it.
   SHADOW_BUILD_ID: ${{ github.run_number }}
+  # Empty: the SHADOW APT source stays disabled unless the release key is
+  # imported below.
+  SHADOW_REPO_URL: ""
 
 jobs:
   iso-amd64:
     runs-on: ubuntu-24.04
     timeout-minutes: 300
-    outputs:
-      release_signed: ${{ steps.signing.outputs.release_signed }}
-      repo_url: ${{ steps.signing.outputs.repo_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -66,7 +64,6 @@ jobs:
           ls -l /dev/kvm
 
       - name: Import release signing key
-        id: signing
         env:
           SHADOW_SIGNING_KEY: ${{ secrets.SHADOW_SIGNING_KEY }}
         if: env.SHADOW_SIGNING_KEY != ''
@@ -74,12 +71,10 @@ jobs:
           sudo mkdir -p -m 700 /var/lib/shadow-signing
           printf '%s' "$SHADOW_SIGNING_KEY" | sudo gpg --homedir /var/lib/shadow-signing --batch --import
           echo "SHADOW_SIGNING_HOME=/var/lib/shadow-signing" >> "$GITHUB_ENV"
-          # The update site of this repository (GitHub Pages); the packages
-          # and the image are built pointing at it.
-          repo_url="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}"
+          # Signed with the release key, the image can follow the update
+          # site configured in distro/base/shadow.conf.
+          repo_url="$(env -u SHADOW_REPO_URL sh -c '. ./distro/base/shadow.conf; printf %s "$SHADOW_REPO_URL"')"
           echo "SHADOW_REPO_URL=$repo_url" >> "$GITHUB_ENV"
-          echo "repo_url=$repo_url" >> "$GITHUB_OUTPUT"
-          echo "release_signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Static checks
         run: |
@@ -288,41 +283,3 @@ jobs:
         run: |
           sudo -E python3 -u tests/boot/test_live_boot.py --arch arm64 \
             --iso "$(ls build/out/iso/shadow-os-*-arm64.iso)" --firmware uefi
-
-  # The signed Shadow package repository on GitHub Pages, so installed
-  # systems update Shadow packages with "apt upgrade" / Shadow Updater. Runs
-  # after the image built from these packages has passed its
-  # boot tests, and only when they were signed with the release key.
-  # Requires: Settings -> Pages -> Source: GitHub Actions, and the
-  # SHADOW_SIGNING_KEY secret (see docs/packaging/online-updates.md).
-  pages:
-    needs: iso-amd64
-    if: >-
-      needs.iso-amd64.outputs.release_signed == 'true' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/awesome-ritchie-t7kh7s' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-24.04
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: shadow-packages-amd64
-          path: site
-      - name: Assemble the repository for publishing
-        run: |
-          # The artifact holds packages/ and repo/. Published: repo/, repo.json
-          # (what the website in website/ shows) and the script that switches
-          # older installations over. SHADOW_SITE_URL is an optional repository
-          # variable: the address the website is deployed at.
-          python3 scripts/gen-repo-site.py --repo site/repo --out public \
-            --url "${{ needs.iso-amd64.outputs.repo_url }}" \
-            --build "$SHADOW_BUILD_ID" --commit "$GITHUB_SHA" \
-            --source-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
-            --site-url "${{ vars.SHADOW_SITE_URL }}"
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: public
-      - id: deploy
-        uses: actions/deploy-pages@v4

@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Prepare the Shadow OS package repository for publishing.
 
-    scripts/gen-repo-site.py --repo build/out/repo --out public --url URL
+    scripts/gen-repo-site.py --repo build/out/repo --out DIR --url URL
                              [--build N] [--commit SHA] [--source-url URL]
-                             [--site-url URL]
 
 Writes the repository itself (dists/, pool/, the archive key) to --out, plus:
 
@@ -12,15 +11,13 @@ Writes the repository itself (dists/, pool/, the archive key) to --out, plus:
                                 the website (website/, a React app)
     enable-updates.sh           switches an older installation to this repository
     shadow-archive-keyring.deb  the keyring package under a version-free name
-    index.html                  one line saying what this address is
 
-The result is static files: any web server can host them. CI publishes them
-with GitHub Pages.
+The result is static files that any web server can host;
+scripts/publish-updates.sh adds the website and uploads everything.
 """
 import argparse
 import datetime
 import gzip
-import html
 import json
 import os
 import re
@@ -134,7 +131,6 @@ def main():
     parser.add_argument("--build", default="", help="build number of the packages")
     parser.add_argument("--commit", default="", help="source commit the packages were built from")
     parser.add_argument("--source-url", default="", help="URL of the source repository")
-    parser.add_argument("--site-url", default="", help="URL of the website, linked from index.html")
     args = parser.parse_args()
 
     conf = read_conf()
@@ -164,7 +160,6 @@ def main():
 
     with open(os.path.join(args.out, "enable-updates.sh"), "w", encoding="utf-8") as handle:
         handle.write(ENABLE_SCRIPT.replace("@URL@", url))
-    open(os.path.join(args.out, ".nojekyll"), "w").close()
 
     # One entry per package; an architecture-specific package is listed once.
     by_name = {}
@@ -199,12 +194,6 @@ def main():
         json.dump(manifest, handle, indent=1)
         handle.write("\n")
 
-    site = args.site_url.rstrip("/")
-    pointer = ' See <a href="{0}">{0}</a>.'.format(html.escape(site, quote=True)) if site else ""
-    with open(os.path.join(args.out, "index.html"), "w", encoding="utf-8") as handle:
-        handle.write("<!doctype html>\n<meta charset=\"utf-8\">\n<title>{0} package repository</title>\n"
-                     "<p>{0} package repository. APT reads it; it is not meant to be browsed.{1}</p>\n".format(
-                         html.escape(conf["SHADOW_NAME"]), pointer))
     print(f"gen-repo-site: {len(by_name)} packages ({build}) → {args.out}")
 
 

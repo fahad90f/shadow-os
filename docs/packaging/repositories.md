@@ -129,7 +129,7 @@ been verified.
 
 ## Enabling a hosted repository (`SHADOW_REPO_URL`)
 
-CI does this with GitHub Pages once the release key is configured:
+`scripts/publish-updates.sh` does this with Vercel:
 [online-updates.md](online-updates.md). This is what happens underneath, and
 how to host the repository elsewhere.
 

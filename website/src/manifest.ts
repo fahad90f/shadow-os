@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 
-/** Base URL of the package repository; CI publishes repo.json next to it. */
-export const REPO_URL = (import.meta.env.VITE_REPO_URL ?? "https://fahad90f.github.io/shadow-os").replace(/\/+$/, "");
+/**
+ * Base URL of the package repository. scripts/publish-updates.sh uploads the
+ * packages next to this site, so by default it is the site's own address.
+ */
+export const REPO_URL = (import.meta.env.VITE_REPO_URL || window.location.origin).replace(/\/+$/, "");
 
 export interface RepoPackage {
   name: string;
@@ -22,7 +25,7 @@ export interface RepoManifest {
   version: string;
   codename: string;
   channel: string;
-  /** Package version of the published build, e.g. "0.2.0+build48". */
+  /** Package version of the published build, e.g. "0.2.0.build202611130542". */
   build: string;
   /** Publication time, ISO 8601 in UTC. */
   published: string;
