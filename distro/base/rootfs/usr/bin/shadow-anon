@@ -11,6 +11,8 @@ FEATURES
     IPv6 privacy (temporary addresses preferred)
     Transparent Tor proxy — ALL TCP + DNS through Tor (iptables)
     DNS-over-Tor — no DNS leaks (resolv.conf → Tor DNSPort)
+    Network kill switch — drop any non-Tor traffic, including all IPv6, so
+      nothing leaks the real IP if Tor stops (iptables + ip6tables)
     New Tor circuits (new apparent exit IP)
     Tor bridge / obfs4 support for censored networks
 
@@ -26,7 +28,7 @@ FEATURES
   Threat presets
     basic    — MAC random + IPv6 privacy + hostname
     enhanced — basic + Tor + DNS protection
-    maximum  — enhanced + transparent proxy + BT kill + kernel hardening
+    maximum  — enhanced + transparent proxy + kill switch + BT kill + kernel hardening
 
   One-shot commands
     rotate       — run current threat-level protections once
@@ -245,6 +247,67 @@ def transparent_proxy_active():
     rc, out, _ = sh(["iptables", "-t", "nat", "-L", TPROXY_CHAIN, "-n"])
     return rc == 0 and TPROXY_PORT in out
 
+# ── Network kill switch ───────────────────────────────────────────────────────
+# Blocks every outbound packet that is NOT Tor's own traffic (or loopback /
+# the local network), so if Tor stops or the transparent-proxy rules are
+# flushed, applications cannot fall back to the real connection and leak the
+# direct IP. IPv6 is dropped outright (the Tor proxy here is IPv4-only), which
+# also closes the common IPv6 leak. The rules live in the filter table, so they
+# compose with the NAT-table transparent proxy above.
+
+KILL_CHAIN = "SHADOWKILL"
+
+def _kill_rules(ipt, v6):
+    """OUTPUT rules for the kill switch; order matters (first match wins)."""
+    rules = [
+        [ipt, "-A", KILL_CHAIN, "-o", "lo", "-j", "ACCEPT"],
+        [ipt, "-A", KILL_CHAIN, "-m", "owner", "--uid-owner", "debian-tor", "-j", "ACCEPT"],
+        [ipt, "-A", KILL_CHAIN, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"],
+    ]
+    if not v6:
+        # Let the machine get on the network at all: DHCP, and the private LAN.
+        rules += [
+            [ipt, "-A", KILL_CHAIN, "-p", "udp", "--dport", "67:68", "-j", "ACCEPT"],
+            [ipt, "-A", KILL_CHAIN, "-d", "127.0.0.0/8",    "-j", "ACCEPT"],
+            [ipt, "-A", KILL_CHAIN, "-d", "10.0.0.0/8",     "-j", "ACCEPT"],
+            [ipt, "-A", KILL_CHAIN, "-d", "172.16.0.0/12",  "-j", "ACCEPT"],
+            [ipt, "-A", KILL_CHAIN, "-d", "192.168.0.0/16", "-j", "ACCEPT"],
+            [ipt, "-A", KILL_CHAIN, "-d", "169.254.0.0/16", "-j", "ACCEPT"],
+        ]
+    # Everything else is a leak: drop it.
+    rules.append([ipt, "-A", KILL_CHAIN, "-j", "DROP"])
+    return rules
+
+def kill_switch_on():
+    need_root()
+    log("Network kill switch (block any non-Tor traffic)")
+    for ipt in ("iptables", "ip6tables"):
+        v6 = ipt == "ip6tables"
+        sh([ipt, "-N", KILL_CHAIN])
+        sh([ipt, "-F", KILL_CHAIN])
+        for cmd in _kill_rules(ipt, v6):
+            sh(cmd)
+        # Hook once.
+        rc, _, _ = sh([ipt, "-C", "OUTPUT", "-j", KILL_CHAIN])
+        if rc != 0:
+            sh([ipt, "-I", "OUTPUT", "1", "-j", KILL_CHAIN])
+    ok("kill switch ON — only Tor, loopback and the local network may send traffic")
+    save_state({"kill_switch": True})
+
+def kill_switch_off():
+    need_root()
+    log("Disabling network kill switch")
+    for ipt in ("iptables", "ip6tables"):
+        sh([ipt, "-D", "OUTPUT", "-j", KILL_CHAIN])
+        sh([ipt, "-F", KILL_CHAIN])
+        sh([ipt, "-X", KILL_CHAIN])
+    ok("kill switch off")
+    save_state({"kill_switch": False})
+
+def kill_switch_active():
+    rc, out, _ = sh(["iptables", "-L", KILL_CHAIN, "-n"])
+    return rc == 0 and "DROP" in out
+
 # ── DNS-over-Tor ──────────────────────────────────────────────────────────────
 
 RESOLV_BACKUP = "/etc/resolv.conf.shadow-backup"
@@ -424,6 +487,7 @@ def ghost_mode_on():
     time.sleep(2)
     transparent_proxy_on()
     dns_protect_on()
+    kill_switch_on()
     wipe_logs()
     save_state({"ghost_mode": True, "threat_model": "maximum"})
     print("\n╔═══════════════════════════════════════════╗")
@@ -433,6 +497,7 @@ def ghost_mode_on():
 def ghost_mode_off():
     need_root()
     log("Disabling Ghost Mode")
+    kill_switch_off()
     transparent_proxy_off()
     dns_protect_off()
     kill_bluetooth(False)
@@ -548,17 +613,38 @@ def leak_test():
             print(f"    {addr}  ({scope})")
     if not has_v6:
         print("    no IPv6 (or IPv6 disabled)")
+    elif have("curl"):
+        # Active probe: can IPv6 actually reach the internet? If the kill switch
+        # is on it should be blocked, which is what we want for anonymity.
+        rc, v6ip, _ = sh(["curl", "-s", "-6", "--max-time", "6", "https://api6.ipify.org"], timeout=10)
+        if rc == 0 and v6ip:
+            print(f"    reachable as {v6ip}  ← WARNING: IPv6 can leak your real address")
+        else:
+            print("    IPv6 cannot reach the internet (good — no IPv6 leak)")
 
     print("\n[5] Transparent Tor proxy:")
     print(f"    {'ACTIVE — all TCP through Tor' if transparent_proxy_active() else 'inactive'}")
 
-    print("\n[6] Bluetooth:")
+    print("\n[6] Network kill switch:")
+    if kill_switch_active():
+        print("    ON — non-Tor traffic is blocked")
+        if have("curl"):
+            # With the kill switch on and Tor's own user excepted, a direct
+            # connection by THIS process (not debian-tor) should fail.
+            rc, _, _ = sh(["curl", "-s", "--max-time", "6", "-o", "/dev/null",
+                           "http://1.1.1.1"], timeout=10)
+            print("    verified: direct connection blocked" if rc != 0
+                  else "    WARNING: a direct connection still succeeded — kill switch not effective")
+    else:
+        print("    off — if Tor stops, applications can leak the real IP")
+
+    print("\n[7] Bluetooth:")
     _, rfout, _ = sh(["rfkill", "list", "bluetooth"])
     killed = "Soft blocked: yes" in rfout or "Hard blocked: yes" in rfout
     print(f"    {'killed (rfkill blocked)' if killed else 'active — trackable by nearby devices'}")
 
     state = load_state()
-    print(f"\n[7] Threat model  : {state.get('threat_model', 'basic')}")
+    print(f"\n[8] Threat model  : {state.get('threat_model', 'basic')}")
     print(f"    Ghost Mode    : {'ON' if state.get('ghost_mode') else 'OFF'}")
     print(f"    Kernel harden : {'applied' if kernel_hardened() else 'default'}")
     print()
@@ -582,6 +668,7 @@ def status():
     print(f"ghost mode  : {'ON' if state.get('ghost_mode') else 'off'}")
     print(f"threat model: {state.get('threat_model', 'basic')}")
     print(f"tproxy      : {'ON' if transparent_proxy_active() else 'off'}")
+    print(f"kill switch : {'ON' if kill_switch_active() else 'off'}")
     print(f"dns protect : {'ON' if state.get('dns_protected') else 'off'}")
     print(f"bt killed   : {'YES' if bluetooth_killed() else 'no'}")
     print(f"usb blocked : {'YES' if Path(USB_RULE).exists() else 'no'}")
@@ -604,7 +691,8 @@ def panel():
         print("[4]  Stop auto        [5]  Ghost Mode ON     [6]  Ghost Mode OFF")
         print("[7]  Threat: basic    [8]  Threat: enhanced  [9]  Threat: maximum")
         print("[n]  NUKE             [l]  Leak test         [b]  Kill Bluetooth")
-        print("[k]  Harden kernel    [w]  Wipe logs         [q]  Quit")
+        print("[s]  Kill switch toggle                      [k]  Harden kernel")
+        print("[w]  Wipe logs        [q]  Quit")
         try:
             c = input("\n> ").strip().lower()
         except (EOFError, KeyboardInterrupt):
@@ -621,6 +709,7 @@ def panel():
         elif c == "n": nuke()
         elif c == "l": leak_test()
         elif c == "b": kill_bluetooth(True)
+        elif c == "s": kill_switch_off() if kill_switch_active() else kill_switch_on()
         elif c == "k": harden_kernel(True)
         elif c == "w": wipe_logs()
         elif c == "q": break
@@ -651,6 +740,8 @@ def main():
     sub.add_parser("restore-usb")
     sub.add_parser("transparent-proxy-on")
     sub.add_parser("transparent-proxy-off")
+    sub.add_parser("kill-switch-on")
+    sub.add_parser("kill-switch-off")
     sub.add_parser("dns-protect-on")
     sub.add_parser("dns-protect-off")
     s = sub.add_parser("start")
@@ -683,6 +774,8 @@ def main():
         "restore-usb":           lambda: kill_usb(False),
         "transparent-proxy-on":  transparent_proxy_on,
         "transparent-proxy-off": transparent_proxy_off,
+        "kill-switch-on":        kill_switch_on,
+        "kill-switch-off":       kill_switch_off,
         "dns-protect-on":        dns_protect_on,
         "dns-protect-off":       dns_protect_off,
         "start":                 lambda: start(a.interval),
