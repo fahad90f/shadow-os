@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome & Setup
+GenericName=First-run setup
+Comment=Hardware check, security level and encrypted backups
+Exec=shadow-terminal -e shadow-welcome
+Icon=preferences-system
+Terminal=false
+Categories=System;Settings;
+Keywords=welcome;setup;first;hardware;backup;hardening;

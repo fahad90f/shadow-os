@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Shadow OS Welcome
+Comment=First-run setup: hardware check, security level, backups
+Exec=shadow-terminal -e shadow-welcome --autostart
+Icon=preferences-system
+Terminal=false
+Categories=System;
+X-GNOME-Autostart-enabled=true
