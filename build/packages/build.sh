@@ -80,14 +80,38 @@ fi
 "$SHADOW_ROOT/build/packages/signing-key.sh" >/dev/null
 cp "$SHADOW_OUT/keys/shadow-archive-keyring.gpg" "$CHROOT/build/pkg/archive-key.gpg"
 
+# Optional compiler cache. When SHADOW_CCACHE_DIR points at a directory on the
+# host (scripts/publish-updates.sh sets it), unchanged source files are not
+# recompiled between builds — the bulk of a rebuild. ccache is deterministic,
+# so the packages are identical with it on or off. It is installed into the
+# chroot on demand and never added to the build dependencies. Left unset (e.g.
+# in CI, where the runner is thrown away) the build is unaffected.
+CCACHE_BIND=()
+CCACHE_PREFIX=""
+if [ -n "${SHADOW_CCACHE_DIR:-}" ]; then
+    mkdir -p "$SHADOW_CCACHE_DIR"
+    if [ ! -e "$CHROOT/usr/bin/ccache" ]; then
+        log "installing ccache into the build chroot (once)"
+        in_chroot "$CHROOT" -- /bin/bash -euc \
+            'apt-get update -qq && apt-get install -y --no-install-recommends ccache' \
+            || die "could not install ccache into the chroot"
+    fi
+    CCACHE_BIND=(--bind "$SHADOW_CCACHE_DIR:/build/ccache")
+    CCACHE_PREFIX="/usr/lib/ccache:"
+    log "ccache enabled ($SHADOW_CCACHE_DIR)"
+fi
+
 log "dpkg-buildpackage $MODE ($ARCH, $SHADOW_JOBS jobs)"
-in_chroot "$CHROOT" -- /bin/bash -euc '
+in_chroot "$CHROOT" "${CCACHE_BIND[@]}" -- /bin/bash -euc '
     cd "$1"
+    export PATH="$5$PATH"
+    export CCACHE_DIR=/build/ccache
+    export CCACHE_MAXSIZE="${6}"
     export SHADOW_ARCHIVE_KEY=/build/pkg/archive-key.gpg
     export SHADOW_REPO_URL="$2"
     export DEB_BUILD_OPTIONS="parallel=$3"
     dpkg-buildpackage -us -uc --no-sign "$4"
-' build "$SRC" "${SHADOW_REPO_URL:-}" "$SHADOW_JOBS" "$MODE"
+' build "$SRC" "${SHADOW_REPO_URL:-}" "$SHADOW_JOBS" "$MODE" "$CCACHE_PREFIX" "${SHADOW_CCACHE_MAXSIZE:-5G}"
 
 count=0
 for deb in "$CHROOT"/build/pkg/*.deb; do

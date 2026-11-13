@@ -48,6 +48,10 @@ done
 
 : "${SHADOW_SIGNING_HOME:=/var/lib/shadow-signing}"
 : "${SHADOW_VERCEL_PROJECT:=shadow-os-updates}"
+# A compiler cache, kept between runs, so a rebuild only recompiles what
+# changed. The first build fills it and is no faster; later ones are much
+# quicker. Set SHADOW_CCACHE_DIR= (empty) to turn it off.
+: "${SHADOW_CCACHE_DIR:=/var/cache/shadow-ccache}"
 # Where --local installs to. Only tests point this at another system root.
 : "${SHADOW_LOCAL_ROOT:=}"
 STAGE="$ROOT/build/out/site"
@@ -95,6 +99,7 @@ build_repository() {
     }
     BUILD_ID="$(date -u +%Y%m%d%H%M)"
     local build_env=(env "SHADOW_SIGNING_HOME=$SHADOW_SIGNING_HOME" "SHADOW_REPO_URL=$SITE_URL" "SHADOW_BUILD_ID=$BUILD_ID")
+    [ -z "${SHADOW_CCACHE_DIR:-}" ] || build_env+=("SHADOW_CCACHE_DIR=$SHADOW_CCACHE_DIR")
     log "building the packages (build $BUILD_ID; about a quarter of an hour)"
     as_root "${build_env[@]}" build/packages/build.sh >&2
     as_root "${build_env[@]}" SHADOW_REPO_NO_DBGSYM=1 build/packages/repo.sh >&2
