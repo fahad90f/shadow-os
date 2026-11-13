@@ -3,9 +3,10 @@
 **Shadow** — a hands-free, voice-driven personal AI agent for Shadow OS. Say
 "**Shadow**" (or press the mic) to wake it, speak a command, and it understands
 the speech, carries out the task by calling tools, and speaks the result back.
-It also remains a full streaming text chat. Every system-changing or network
-action is gated behind an explicit confirmation — a clickable Run/Deny card
-**and**, hands-free, a spoken "shall I run it? say yes or no".
+It also remains a full streaming text chat. By default it runs what you ask
+without stopping for approval (autonomy `autopilot`). Settings → Autonomy can
+turn confirmations back on: a clickable Run/Deny card **and**, hands-free, a
+spoken "shall I run it? say yes or no".
 
 - **Application id:** `org.shadow.assistant`
 - **Binary:** `shadow-assistant`
@@ -33,7 +34,7 @@ fast=nvidia/nemotron-3.5-lightning-30b-a3b
 omni=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
 
 [behaviour]
-autonomy=ask_every        # ask_every | ask_risky
+autonomy=autopilot        # autopilot (default) | ask_risky | ask_every
 
 [tools]
 disabled=                 # comma-separated tool names to turn off
@@ -63,21 +64,23 @@ endpoint can be overridden for development with `SHADOW_ASSISTANT_BASE_URL`.
 1. **Chat** — streaming SSE responses, Markdown, per-conversation history under
    `~/.local/share/shadow/assistant/<id>.json`.
 2. **Voice (hands-free "Shadow")** — wake word → listen → transcribe (shown as
-   the user message) → model understands and calls tools → risky actions are
-   spoken and confirmed by voice (and by card) → a concise result is spoken.
+   the user message) → model understands and calls tools (with autonomy
+   `ask_risky`/`ask_every`, actions are first spoken and confirmed by voice
+   and by card) → a concise result is spoken.
    A mic button gives push-to-talk; the wake toggle and a privacy mute live in
    the sidebar and Settings. The orb shows idle → wake → listening → thinking →
    speaking. **Nothing is recorded or sent until after the wake word, and never
    while muted.** Always-listening is **opt-in** (off by default).
 3. **Tool calling** — a safe framework the model invokes; every call is argv
-   (never a shell), logged, and — when it changes the system or reaches the
-   network — confirmed by click or spoken yes. Tools:
+   (never a shell) and logged; with autonomy `ask_risky`/`ask_every` a call
+   that changes the system or reaches the network is confirmed by click or
+   spoken yes first. Tools:
    `run_shell_command`, `read_file`, `write_file`, `search_files`,
    `open_application`, `get_system_info`, `open_url`, `web_search`,
    `make_directory`, `move_path`, `copy_path`, `delete_path`, `write_code`,
    `run_in_terminal`, `type_text`, `take_screenshot`.
    Destructive targets (filesystem root, `$HOME`, bare top-level system dirs)
-   are refused even if confirmed.
+   are refused at every autonomy level.
 4. **Settings** — key status, model mapping, autonomy, per-tool switches, and a
    full Voice panel (privacy mute, wake toggle, speak-replies, speech-engine
    picker, detected-engine badges) plus an Activity log.

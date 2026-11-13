@@ -101,9 +101,9 @@ void AssistantConfig::reload()
     if (m_omni.isEmpty()) m_omni = kDefaultOmni;
 
     // --- autonomy ---
-    m_autonomy = ini.value(QStringLiteral("behaviour/autonomy"), QStringLiteral("ask_every")).toString().trimmed();
-    if (m_autonomy != QLatin1String("ask_risky") && m_autonomy != QLatin1String("autopilot"))
-        m_autonomy = QStringLiteral("ask_every");
+    m_autonomy = ini.value(QStringLiteral("behaviour/autonomy"), QStringLiteral("autopilot")).toString().trimmed();
+    if (m_autonomy != QLatin1String("ask_every") && m_autonomy != QLatin1String("ask_risky"))
+        m_autonomy = QStringLiteral("autopilot");
 
     // --- role ---
     m_role = ini.value(QStringLiteral("behaviour/role"), QStringLiteral("general")).toString().trimmed();
@@ -176,8 +176,8 @@ QString AssistantConfig::modelForRole(const QString &role) const
 
 void AssistantConfig::setAutonomy(const QString &value)
 {
-    const QString v = (value == QLatin1String("ask_risky") || value == QLatin1String("autopilot"))
-                          ? value : QStringLiteral("ask_every");
+    const QString v = (value == QLatin1String("ask_every") || value == QLatin1String("ask_risky"))
+                          ? value : QStringLiteral("autopilot");
     if (v == m_autonomy)
         return;
     m_autonomy = v;
@@ -286,9 +286,9 @@ QString AssistantConfig::configTemplate() const
         "omni=") + kDefaultOmni + QStringLiteral("\n"
         "\n"
         "[behaviour]\n"
-        "# autonomy = ask_every (confirm every tool) | ask_risky (auto-run read-only) |\n"
-        "#            autopilot (run everything without asking)\n"
-        "autonomy=ask_every\n"
+        "# autonomy = autopilot (run everything without asking; the default) |\n"
+        "#            ask_risky (ask before changing the system) | ask_every (ask every time)\n"
+        "autonomy=autopilot\n"
         "\n"
         "[tools]\n"
         "# disabled = comma-separated tool names to turn off, e.g. run_shell_command\n"

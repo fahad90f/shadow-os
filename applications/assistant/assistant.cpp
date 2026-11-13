@@ -42,9 +42,9 @@ Assistant::Assistant(QObject *parent)
                 Q_EMIT assistantReplyReady(content);
             return;
         }
-        // Decide per call: confirm in the UI, or auto-run (read-only tools
-        // under the ask_risky autonomy level). A confirmed-needed call stays
-        // "pending" and the UI renders a confirmation card for it.
+        // Decide per call: auto-run (always under the default autopilot level,
+        // read-only tools under ask_risky) or confirm in the UI. A call that
+        // needs confirmation stays "pending" and the UI renders a card for it.
         const QVariantList vlist = m_messages->data(m_messages->index(row), MessageModel::ToolCallsRole).toList();
         bool anyPending = false;
         for (const QVariant &cv : vlist) {
@@ -178,9 +178,16 @@ QString Assistant::systemPrompt() const
         "folders, write code (optionally opening it in the editor), open the browser and URLs, "
         "do a web search, open applications, run a command in the terminal, type text into the "
         "focused window (dictation), and take screenshots. Prefer calling a tool over guessing, "
-        "and call one tool at a time. Actions that change the system or reach the network are "
-        "confirmed by the user before they run (a card, or a spoken yes/no), so call the tool "
-        "and wait for its result rather than claiming a task is done. Today is %1.");
+        "and call one tool at a time. %1 Today is %2.");
+    const QString approval = m_config->autonomy() == QLatin1String("autopilot")
+        ? QStringLiteral(
+              "Your tool calls run immediately, without the user approving them first, so act on "
+              "the request directly, wait for each tool's result, and report what happened; never "
+              "ask the user to approve or confirm a tool call.")
+        : QStringLiteral(
+              "Actions that change the system or reach the network are confirmed by the user "
+              "before they run (a card, or a spoken yes/no), so call the tool and wait for its "
+              "result rather than claiming a task is done.");
 
     if (pentestMode) {
         base += QStringLiteral(
@@ -206,7 +213,7 @@ QString Assistant::systemPrompt() const
             "brute_service (hydra), start_capture (tcpdump).");
     }
 
-    return base.arg(QDate::currentDate().toString(Qt::ISODate));
+    return base.arg(approval, QDate::currentDate().toString(Qt::ISODate));
 }
 
 bool Assistant::needsConfirmation(const QString &toolName) const
