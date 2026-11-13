@@ -62,6 +62,24 @@ NxPage {
     }
 
     NxSection {
+        title: qsTr("Offline model")
+        description: qsTr("Run the assistant on a model on this computer instead of the NVIDIA cloud — nothing you type or say leaves the machine. Needs a local model server (set it up in a terminal with: shadow-assistant-local setup). A capable GPU makes it usable.")
+        NxRow {
+            icon: settings.config && settings.config.localMode ? "shield-check" : "globe"
+            iconColor: settings.config && settings.config.localMode ? Theme.success : Theme.textMuted
+            title: qsTr("Run offline (local model)")
+            subtitle: settings.config && settings.config.localMode
+                      ? qsTr("On — using %1 on this computer").arg(settings.config.localModel)
+                      : qsTr("Off — using the NVIDIA cloud")
+            Switch {
+                anchors.verticalCenter: parent.verticalCenter
+                checked: settings.config ? settings.config.localMode : false
+                onToggled: if (settings.config) settings.config.localMode = checked
+            }
+        }
+    }
+
+    NxSection {
         title: qsTr("Mode")
         description: qsTr("Switch the assistant's persona and available tools.")
         RowLayout {

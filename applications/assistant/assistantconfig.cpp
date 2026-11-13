@@ -18,6 +18,10 @@ const QString kDefaultPlanner = QStringLiteral("nvidia/nemotron-3-ultra-550b-a55
 const QString kDefaultFast = QStringLiteral("nvidia/nemotron-3.5-lightning-30b-a3b");
 const QString kDefaultOmni = QStringLiteral("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
 const QString kDefaultBaseUrl = QStringLiteral("https://integrate.api.nvidia.com/v1");
+// Offline default: an OpenAI-compatible server on this machine. ollama's
+// default port is 11434; shadow-assistant-local sets it up and pulls a model.
+const QString kDefaultLocalBaseUrl = QStringLiteral("http://127.0.0.1:11434/v1");
+const QString kDefaultLocalModel   = QStringLiteral("llama3.1:8b");
 
 // Canonical set of tool names the registry exposes. Kept in step with
 // ToolRegistry; config only needs the names to compute the enabled list.
@@ -89,6 +93,17 @@ void AssistantConfig::reload()
     }
     while (m_baseUrl.endsWith(QLatin1Char('/')))
         m_baseUrl.chop(1);
+
+    // --- local (offline) model ---
+    m_localMode = ini.value(QStringLiteral("api/local"), false).toBool();
+    m_localBaseUrl = ini.value(QStringLiteral("api/local_base_url"), kDefaultLocalBaseUrl).toString().trimmed();
+    if (m_localBaseUrl.isEmpty())
+        m_localBaseUrl = kDefaultLocalBaseUrl;
+    while (m_localBaseUrl.endsWith(QLatin1Char('/')))
+        m_localBaseUrl.chop(1);
+    m_localModel = ini.value(QStringLiteral("models/local"), kDefaultLocalModel).toString().trimmed();
+    if (m_localModel.isEmpty())
+        m_localModel = kDefaultLocalModel;
 
     // --- model mapping ---
     m_brain = ini.value(QStringLiteral("models/brain"), kDefaultBrain).toString().trimmed();
@@ -168,10 +183,25 @@ void AssistantConfig::save()
 
 QString AssistantConfig::modelForRole(const QString &role) const
 {
+    // Offline: one local model serves every role.
+    if (m_localMode)
+        return m_localModel;
     if (role == QLatin1String("planner")) return m_planner;
     if (role == QLatin1String("fast")) return m_fast;
     if (role == QLatin1String("omni")) return m_omni;
     return m_brain;
+}
+
+void AssistantConfig::setLocalMode(bool on)
+{
+    if (on == m_localMode)
+        return;
+    m_localMode = on;
+    {
+        QSettings ini(iniPath(), QSettings::IniFormat);
+        ini.setValue(QStringLiteral("api/local"), on);
+    }
+    Q_EMIT changed();
 }
 
 void AssistantConfig::setAutonomy(const QString &value)
@@ -277,6 +307,10 @@ QString AssistantConfig::configTemplate() const
         "[api]\n"
         "key=nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n"
         "# base_url=https://integrate.api.nvidia.com/v1   # usually leave unset\n"
+        "# Offline: run a model on this computer instead of the cloud (no key\n"
+        "# needed). Easiest setup:  shadow-assistant-local setup\n"
+        "# local=true\n"
+        "# local_base_url=http://127.0.0.1:11434/v1\n"
         "\n"
         "[models]\n"
         "# Change these to the exact model IDs available on your NVIDIA account.\n"
@@ -284,6 +318,7 @@ QString AssistantConfig::configTemplate() const
         "planner=") + kDefaultPlanner + QStringLiteral("\n"
         "fast=") + kDefaultFast + QStringLiteral("\n"
         "omni=") + kDefaultOmni + QStringLiteral("\n"
+        "# local=llama3.1:8b   # model used when [api] local=true\n"
         "\n"
         "[behaviour]\n"
         "# autonomy = autopilot (run everything without asking; the default) |\n"

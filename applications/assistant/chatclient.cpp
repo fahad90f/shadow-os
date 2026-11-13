@@ -67,7 +67,9 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setRawHeader("Accept", "text/event-stream");
-    req.setRawHeader("Authorization", "Bearer " + m_config->apiKey().toUtf8());
+    // Local mode needs no key; a cloud request always carries the bearer token.
+    if (!m_config->apiKey().isEmpty())
+        req.setRawHeader("Authorization", "Bearer " + m_config->apiKey().toUtf8());
 
     m_reply = m_net->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
     connect(m_reply, &QNetworkReply::readyRead, this, &ChatClient::onReadyRead);

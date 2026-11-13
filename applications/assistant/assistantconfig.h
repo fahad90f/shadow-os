@@ -27,6 +27,10 @@ class AssistantConfig : public QObject
     Q_PROPERTY(QString apiKeySource READ apiKeySource NOTIFY changed)
     Q_PROPERTY(QString baseUrl READ baseUrl NOTIFY changed)
     Q_PROPERTY(bool baseUrlOverridden READ baseUrlOverridden NOTIFY changed)
+    // Local, offline model (an OpenAI-compatible server on this machine, e.g.
+    // ollama) instead of the NVIDIA cloud. Nothing leaves the computer.
+    Q_PROPERTY(bool localMode READ localMode WRITE setLocalMode NOTIFY changed)
+    Q_PROPERTY(QString localModel READ localModel NOTIFY changed)
     Q_PROPERTY(QString configPath READ configPath CONSTANT)
     Q_PROPERTY(QString configTemplate READ configTemplate CONSTANT)
     Q_PROPERTY(QString brainModel READ brainModel NOTIFY changed)
@@ -63,12 +67,17 @@ class AssistantConfig : public QObject
 public:
     explicit AssistantConfig(QObject *parent = nullptr);
 
-    bool apiKeyConfigured() const { return !m_apiKey.isEmpty(); }
+    // In local mode no key is needed: the model runs on this machine.
+    bool apiKeyConfigured() const { return m_localMode || !m_apiKey.isEmpty(); }
     QString apiKeySource() const { return m_apiKeySource; }
     // The key itself is never exposed to QML; only the network layer reads it.
     QString apiKey() const { return m_apiKey; }
-    QString baseUrl() const { return m_baseUrl; }
+    // The endpoint actually used: the local server in local mode, else the cloud.
+    QString baseUrl() const { return m_localMode ? m_localBaseUrl : m_baseUrl; }
     bool baseUrlOverridden() const { return m_baseUrlOverridden; }
+    bool localMode() const { return m_localMode; }
+    void setLocalMode(bool on);
+    QString localModel() const { return m_localModel; }
     QString configPath() const;
     QString configTemplate() const;
 
@@ -124,6 +133,9 @@ private:
     QString m_apiKey, m_apiKeySource;
     QString m_baseUrl;
     bool m_baseUrlOverridden = false;
+    bool m_localMode = false;
+    QString m_localBaseUrl;
+    QString m_localModel;
     QString m_brain, m_planner, m_fast, m_omni;
     QString m_autonomy;
     QString m_role;
