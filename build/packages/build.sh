@@ -3,6 +3,10 @@
 #
 #   build/packages/build.sh [--arch amd64|arm64] [--indep | --arch-only]
 #
+#   SHADOW_BUILD_ID=<number>   package version becomes <version>+build<number>,
+#                 so a later build of the same release is an upgrade for APT
+#                 (CI passes its run number). Unset: the plain release version.
+#
 #   (default)     all packages for the architecture, plus architecture-
 #                 independent ones
 #   --indep       only architecture-independent packages (no compiler run;
@@ -24,7 +28,7 @@ while [ $# -gt 0 ]; do
         --arch) ARCH="$2"; shift 2 ;;
         --indep) MODE="-A"; shift ;;
         --arch-only) MODE="-B"; shift ;;
-        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
@@ -61,6 +65,14 @@ done < "$SHADOW_ROOT/build/packages/wip.exclude"
     | (cd "$SHADOW_ROOT" && while IFS= read -r -d "" f; do [ -e "$f" ] && printf '%s\0' "$f"; done) \
     | rsync -a --from0 --files-from=- "$SHADOW_ROOT/" "$CHROOT$SRC/"
 
+# APT only upgrades to a higher version. Builds of the same release are told
+# apart by the build number, stamped into the exported changelog only.
+if [ -n "${SHADOW_BUILD_ID:-}" ]; then
+    case "$SHADOW_BUILD_ID" in *[!0-9]*) die "SHADOW_BUILD_ID must be a number, not '$SHADOW_BUILD_ID'" ;; esac
+    sed -i "1s/($VERSION)/($VERSION+build$SHADOW_BUILD_ID)/" "$CHROOT$SRC/debian/changelog"
+    log "package version $VERSION+build$SHADOW_BUILD_ID"
+fi
+
 # The archive public key ships in shadow-archive-keyring.
 "$SHADOW_ROOT/build/packages/signing-key.sh" >/dev/null
 cp "$SHADOW_OUT/keys/shadow-archive-keyring.gpg" "$CHROOT/build/pkg/archive-key.gpg"
@@ -77,6 +89,9 @@ in_chroot "$CHROOT" -- /bin/bash -euc '
 count=0
 for deb in "$CHROOT"/build/pkg/*.deb; do
     [ -f "$deb" ] || continue
+    # One version per package: an older build left here would be published too.
+    base="${deb##*/}"
+    rm -f "$PKG_OUT/${base%%_*}_"*"_${base##*_}"
     cp "$deb" "$PKG_OUT/"
     count=$((count + 1))
 done

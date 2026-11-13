@@ -46,29 +46,52 @@ git push
 GitHub → **Settings → Pages → Build and deployment → Source: GitHub Actions.**
 
 That's it. The next build signs the repository with your key, publishes it to
-`https://fahad90fa.github.io/Custom-OS/`, and bakes that address (enabled) into
-the images it produces. Images built **without** the secret keep the Shadow
-source disabled, so they never point at a repository that can't be verified.
+the repository's GitHub Pages address (`https://<owner>.github.io/<repository>/`,
+for example `https://fahad90f.github.io/shadow-os/`), and bakes that address
+(enabled) into the images it produces. Images built **without** the secret keep
+the Shadow source disabled, so they never point at a repository that can't be
+verified, and nothing is published: a build without the secret signs with a
+throw-away key that no installed system trusts.
+
+The site is assembled by `scripts/gen-repo-site.py`. Besides the repository it
+serves a page listing the published build and its packages, and
+`enable-updates.sh` (below).
 
 ## How an installed system then updates
 
-Images built after setup already have the repository configured. On an existing
-install you can point it there yourself — the source file is
-`/etc/apt/sources.list.d/shadow.sources`; set `Enabled: yes` (the public key is
-already installed as `/usr/share/keyrings/shadow-archive-keyring.gpg`). Then:
+Images built after setup already have the repository configured:
 
 ```bash
-sudo apt update
-sudo apt full-upgrade      # or open Shadow Updater
+sudo apt update && sudo apt upgrade      # or open Shadow Updater
 ```
+
+A system installed from an image built **before** setup has the source disabled
+and trusts the throw-away key of that image build. Switch it over once:
+
+```bash
+curl -fsSLO https://<owner>.github.io/<repository>/enable-updates.sh
+sudo sh enable-updates.sh
+```
+
+The script installs the current `shadow-archive-keyring` package (the release
+key and the enabled source) and turns off the package snapshot that came with
+the old image (`shadow-local.sources`), which is signed with the old key. The
+first key is taken on trust over HTTPS; compare the fingerprint shown on the
+site with the one `scripts/make-signing-key.sh` printed if that matters to you.
 
 ## Adding a feature and shipping it
 
-1. Change the code and raise the version in `debian/changelog` (APT only
-   installs a version newer than the one installed).
-2. `git push`. CI builds the packages, signs the repository and publishes it.
-3. Installed systems get the update at the next `apt full-upgrade` / Shadow
-   Updater check. No data is lost.
+1. Change the code and `git push`. CI builds the packages, boots the image
+   made from them, signs the repository and publishes it (about an hour).
+2. Installed systems get the update at the next `sudo apt update && sudo apt
+   upgrade` / Shadow Updater check. No data is lost.
+
+APT only installs a version newer than the one installed, so CI stamps every
+build: the packages are versioned `<release>+build<run number>` (for example
+`0.2.0+build48`). There is no need to edit `debian/changelog` for an ordinary
+change; raise the version there and in `distro/base/shadow.conf` for a new
+release. `apt upgrade` never removes packages; when an update needs that, APT
+says packages were "kept back" and `sudo apt full-upgrade` applies it.
 
 ## Without the online repository
 

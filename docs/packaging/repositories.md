@@ -129,7 +129,9 @@ been verified.
 
 ## Enabling a hosted repository (`SHADOW_REPO_URL`)
 
-Not done yet; this is how the build system supports it.
+CI does this with GitHub Pages once the release key is configured:
+[online-updates.md](online-updates.md). This is what happens underneath, and
+how to host the repository elsewhere.
 
 1. Publish `build/out/repo` (the `dists/` and `pool/` directories) at an
    HTTPS URL, signed with a release key.
