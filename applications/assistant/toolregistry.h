@@ -7,6 +7,8 @@
 #include <QString>
 #include <functional>
 
+#include "undojournal.h"
+
 class AssistantConfig;
 
 // Describes one capability the model may invoke. Execution that changes the
@@ -67,7 +69,11 @@ public:
     // is responsible for having obtained confirmation where required.
     void execute(const ToolInvocation &call, Done done);
 
+    // The log of file-changing actions, with undo.
+    UndoJournal *journal() { return &m_journal; }
+
 private:
     AssistantConfig *m_config;
     QList<ToolSpec> m_specs;
+    UndoJournal m_journal;
 };

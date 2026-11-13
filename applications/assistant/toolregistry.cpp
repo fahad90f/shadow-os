@@ -596,14 +596,21 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
         const QString content = call.args.value(QStringLiteral("content")).toString();
         QFileInfo fi(path);
         QDir().mkpath(fi.absolutePath());
+        const UndoJournal::Token tok = m_journal.prepareWrite(path);
         QFile f(path);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            m_journal.discard(tok);
             done({false, tr("Could not write %1: %2").arg(path, f.errorString())});
             return;
         }
         const qint64 n = f.write(content.toUtf8());
         f.close();
-        done({n >= 0, tr("Wrote %n byte(s) to %1.", nullptr, int(content.toUtf8().size())).arg(path)});
+        const QString summary = tr("Wrote %n byte(s) to %1.", nullptr, int(content.toUtf8().size())).arg(path);
+        if (n >= 0)
+            m_journal.commit(tok, QStringLiteral("write_file"), path, summary);
+        else
+            m_journal.discard(tok);
+        done({n >= 0, summary});
         return;
     }
 
@@ -711,10 +718,13 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
             done({false, tr("No path given.")});
             return;
         }
-        if (QDir().mkpath(path))
+        const UndoJournal::Token tok = m_journal.prepareMkdir(path);
+        if (QDir().mkpath(path)) {
+            m_journal.commit(tok, QStringLiteral("make_directory"), path, tr("Created directory %1.").arg(path));
             done({true, tr("Created directory %1.").arg(path)});
-        else
+        } else {
             done({false, tr("Could not create directory %1.").arg(path)});
+        }
         return;
     }
 
@@ -736,15 +746,20 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
         }
         const bool move = call.name == QLatin1String("move_path");
         const QString program = move ? QStringLiteral("mv") : QStringLiteral("cp");
+        const UndoJournal::Token tok = move ? m_journal.prepareMove(src, dst) : m_journal.prepareCopy(dst);
         QStringList args;
         if (!move)
             args << QStringLiteral("-r");
         args << QStringLiteral("--") << src << dst;
-        Command::run(this, program, args, [done, move, src, dst](const CommandResult &r) {
-            if (r.exitCode == 0)
-                done({true, (move ? QObject::tr("Moved %1 to %2.") : QObject::tr("Copied %1 to %2.")).arg(src, dst)});
-            else
+        Command::run(this, program, args, [this, done, move, src, dst, tok](const CommandResult &r) {
+            if (r.exitCode == 0) {
+                const QString summary = (move ? QObject::tr("Moved %1 to %2.") : QObject::tr("Copied %1 to %2.")).arg(src, dst);
+                m_journal.commit(tok, move ? QStringLiteral("move_path") : QStringLiteral("copy_path"), dst, summary);
+                done({true, summary});
+            } else {
+                m_journal.discard(tok);
                 done({false, r.errText().isEmpty() ? QObject::tr("Failed (exit %1).").arg(r.exitCode) : r.errText()});
+            }
         }, 60000);
         return;
     }
@@ -765,13 +780,17 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
             return;
         }
         const bool recursive = call.args.value(QStringLiteral("recursive")).toBool();
+        const UndoJournal::Token tok = m_journal.prepareDelete(path);
         QStringList args;
         args << (recursive ? QStringLiteral("-rf") : QStringLiteral("-f")) << QStringLiteral("--") << path;
-        Command::run(this, QStringLiteral("rm"), args, [done, path](const CommandResult &r) {
-            if (r.exitCode == 0)
+        Command::run(this, QStringLiteral("rm"), args, [this, done, path, tok](const CommandResult &r) {
+            if (r.exitCode == 0) {
+                m_journal.commit(tok, QStringLiteral("delete_path"), path, QObject::tr("Deleted %1.").arg(path));
                 done({true, QObject::tr("Deleted %1.").arg(path)});
-            else
+            } else {
+                m_journal.discard(tok);
                 done({false, r.errText().isEmpty() ? QObject::tr("Failed (exit %1).").arg(r.exitCode) : r.errText()});
+            }
         }, 60000);
         return;
     }
@@ -786,14 +805,17 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
         }
         QFileInfo fi(path);
         QDir().mkpath(fi.absolutePath());
+        const UndoJournal::Token tok = m_journal.prepareWrite(path);
         QFile f(path);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            m_journal.discard(tok);
             done({false, tr("Could not write %1: %2").arg(path, f.errorString())});
             return;
         }
         f.write(content.toUtf8());
         f.close();
         const QString wrote = tr("Wrote %n byte(s) to %1.", nullptr, int(content.toUtf8().size())).arg(path);
+        m_journal.commit(tok, QStringLiteral("write_code"), path, wrote);
         if (open && Command::available(QStringLiteral("shadow-editor"))) {
             Command::run(this, QStringLiteral("shadow-editor"), {path}, [done, wrote](const CommandResult &) {
                 done({true, wrote + QStringLiteral(" ") + QObject::tr("Opened it in the editor.")});

@@ -76,11 +76,16 @@ public:
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
     Q_INVOKABLE void reloadConfig();
 
+    // Action history (file-changing tool calls) and undo.
+    Q_INVOKABLE QVariantList actionLog() const;
+    Q_INVOKABLE QString undoAction(const QString &id);
+
 Q_SIGNALS:
     void phaseChanged();
     void activeChanged();
     void thinkHardChanged();
     void toolLogChanged();
+    void actionLogChanged();
     void errorMessage(const QString &text);
     // Voice integration: a final assistant answer is ready to be spoken.
     void assistantReplyReady(const QString &text);

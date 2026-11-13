@@ -20,6 +20,7 @@ Assistant::Assistant(QObject *parent)
     m_client = new ChatClient(m_config, this);
 
     connect(m_config, &AssistantConfig::changed, this, &Assistant::phaseChanged);
+    connect(m_registry->journal(), &UndoJournal::changed, this, &Assistant::actionLogChanged);
 
     connect(m_client, &ChatClient::delta, this, [this](const QString &text) {
         if (m_assistantRow >= 0) {
@@ -404,4 +405,21 @@ void Assistant::logCall(const QString &name, const QString &preview, const QStri
 void Assistant::copyToClipboard(const QString &text) const
 {
     QGuiApplication::clipboard()->setText(text);
+}
+
+QVariantList Assistant::actionLog() const
+{
+    QVariantList out;
+    const QJsonArray entries = m_registry->journal()->list();
+    for (const QJsonValue &v : entries)
+        out.append(v.toObject().toVariantMap());
+    return out;
+}
+
+QString Assistant::undoAction(const QString &id)
+{
+    const QString err = m_registry->journal()->undo(id);
+    if (!err.isEmpty())
+        Q_EMIT errorMessage(err);
+    return err;
 }

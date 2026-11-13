@@ -298,7 +298,32 @@ NxWindow {
 
                 NxDivider { Layout.fillWidth: true }
 
-                // footer nav
+                // footer nav — history
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: Theme.rowHeight
+                    radius: Theme.radiusSm
+                    color: window.view === "history" ? Theme.alpha(Theme.accent, 0.14)
+                         : historyHover.hovered ? Theme.bgHover : "transparent"
+                    HoverHandler { id: historyHover }
+                    TapHandler { onTapped: window.view = "history" }
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.spaceSm
+                        spacing: Theme.spaceSm
+                        NxIcon { name: "undo"; size: Theme.iconSmall
+                                 color: window.view === "history" ? Theme.accent : Theme.textSecondary }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("History & undo")
+                            color: Theme.textPrimary
+                            font.family: Theme.fontUi
+                            font.pixelSize: Theme.fontSizeBody
+                        }
+                    }
+                }
+
+                // footer nav — settings
                 Rectangle {
                     Layout.fillWidth: true
                     height: Theme.rowHeight
@@ -341,14 +366,19 @@ NxWindow {
                 controller: agent
                 voice: voice
             }
+            ActionsPage {
+                anchors.fill: parent
+                visible: window.view === "history"
+                controller: agent
+            }
             SetupPage {
                 anchors.fill: parent
-                visible: window.view !== "settings" && !agent.config.apiKeyConfigured
+                visible: window.view !== "settings" && window.view !== "history" && !agent.config.apiKeyConfigured
                 controller: agent
             }
             ChatPage {
                 anchors.fill: parent
-                visible: window.view !== "settings" && agent.config.apiKeyConfigured
+                visible: window.view !== "settings" && window.view !== "history" && agent.config.apiKeyConfigured
                 controller: agent
                 voice: voice
                 orbState: window.orbState

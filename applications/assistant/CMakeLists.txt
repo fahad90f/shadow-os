@@ -13,6 +13,7 @@ shadow_add_app(shadow-assistant
         chatclient.cpp chatclient.h
         conversationstore.cpp conversationstore.h
         toolregistry.cpp toolregistry.h
+        undojournal.cpp undojournal.h
         voicecontroller.cpp voicecontroller.h
     QML Main.qml ${ASSISTANT_QML}
     DESKTOP org.shadow.assistant.desktop
