@@ -10,15 +10,43 @@ Two kinds of update reach an installed system:
 - **Debian packages** (kernel, browser, security fixes): already automatic,
   from Debian's official repositories. `sudo apt full-upgrade` or Shadow
   Updater.
-- **Shadow OS's own packages** (desktop, apps, installer, arsenal): delivered
-  from the **Shadow update site**, which you publish from your own computer
-  with one command. This needs a one-time setup.
+- **Shadow OS's own packages** (desktop, apps, installer, arsenal): built from
+  this repository with `scripts/publish-updates.sh`, in one of two ways:
+  - **for the machine you build on** — the packages become an APT source on
+    that machine. Nothing is uploaded and no account is needed;
+  - **for other machines too** — the packages are uploaded, with a website, to
+    Vercel, and every installation follows that address.
+
+## Updating the machine you build on
+
+On an installed Shadow OS (or any Debian 13 system running the Shadow
+packages), in a clone of this repository:
+
+```bash
+scripts/publish-updates.sh --local
+sudo apt update && sudo apt upgrade
+```
+
+The first command builds the packages from the current checkout, signs them and
+copies them to `/var/lib/shadow-updates`, which it registers in
+`/etc/apt/sources.list.d/shadow-updates.sources`. The second installs whatever
+changed. Repeat both after every change you want on the system.
+
+The first run installs the build tools and creates the build environment and
+the signing key (below), so it takes longer; later runs take about a quarter of
+an hour, because the packages are rebuilt from scratch each time.
+
+The package snapshot that came with the installation image
+(`shadow-local.sources`) is signed with that image's key. The script turns it
+off once, because the upgrade replaces the key with yours.
+
+## Updating other machines: the update site
 
 The update site is one Vercel project that holds two things: the website
 (`website/`, a React + TypeScript app showing the published build and its
 packages) and the signed APT repository that `apt` downloads from.
 
-## One-time setup
+### One-time setup
 
 You need a Debian-based computer (Parrot, Debian, Ubuntu) with this repository
 cloned, Node.js 20.19 or newer, and a free Vercel account.
@@ -48,19 +76,7 @@ cloned, Node.js 20.19 or newer, and a free Vercel account.
    into the packages. The first run creates the build environment and the
    signing key, so it takes a while.
 
-### The signing key
-The repository is signed with a key the script creates in
-`/var/lib/shadow-signing` on your computer. Installed systems accept updates
-only from that key, so:
-
-- **back the directory up** (`sudo tar czf shadow-signing-backup.tgz -C /var/lib
-  shadow-signing`, kept somewhere safe). Without it you cannot publish updates
-  that existing installations accept; they would have to be switched to a new
-  key with `enable-updates.sh` again;
-- never commit it, upload it or paste it anywhere. Anyone who has it can sign
-  packages your machines will install.
-
-## Shipping a change
+### Shipping a change
 
 ```bash
 scripts/publish-updates.sh
@@ -80,7 +96,7 @@ APT says packages were "kept back" and `sudo apt full-upgrade` applies it.
 `scripts/publish-updates.sh --no-deploy` does everything except the upload; the
 result is in `build/out/site`.
 
-## How an installed system then updates
+### How an installed system then updates
 
 An image built after the packages were published (`sudo env
 SHADOW_SIGNING_HOME=/var/lib/shadow-signing build/iso/build.sh`) has the update
@@ -102,6 +118,18 @@ The script installs the current `shadow-archive-keyring` package (the key and
 the enabled source) and turns off the package snapshot that came with the old
 image (`shadow-local.sources`), which is signed with the old key. The first key
 is taken on trust over HTTPS; the site shows its fingerprint.
+
+## The signing key
+The packages are signed with a key the script creates in
+`/var/lib/shadow-signing` on your computer. Installed systems accept updates
+only from that key, so:
+
+- **back the directory up** (`sudo tar czf shadow-signing-backup.tgz -C /var/lib
+  shadow-signing`, kept somewhere safe). Without it you cannot publish updates
+  that existing installations accept; they would have to be switched to a new
+  key with `enable-updates.sh` again;
+- never commit it, upload it or paste it anywhere. Anyone who has it can sign
+  packages your machines will install.
 
 ## What CI does
 
