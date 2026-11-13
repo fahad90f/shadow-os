@@ -19,6 +19,7 @@ QtObject {
     property string mode: "erase-disk"      // erase-disk | free-space | manual
     property bool encrypt: false
     property bool separateHome: false
+    property bool snapshots: false          // btrfs @/@home subvolumes + rollback
     property string swap: "file"            // file | partition | none
     // manual mode: device path → { use: "/" | "/boot/efi" | … | "swap", format: bool }
     property var manualMounts: ({})
@@ -98,6 +99,7 @@ QtObject {
             storage.disk = diskPath
             storage.encrypt = encrypt
             storage.separate_home = separateHome
+            storage.snapshots = snapshots
             storage.swap = swap
         }
         const doc = {
@@ -132,6 +134,7 @@ QtObject {
         if (s.disk) diskPath = s.disk
         encrypt = s.encrypt === true
         separateHome = s.separate_home === true
+        snapshots = s.snapshots === true
         if (s.swap) swap = s.swap
         if (s.bootloader_device) bootloaderDevice = s.bootloader_device
         const mounts = {}

@@ -281,11 +281,24 @@ StepPage {
                 icon: "home"
                 title: qsTr("Separate /home")
                 subtitle: qsTr("Personal files get their own partition (or logical volume), so the system can be reinstalled without touching them.")
+                enabled: !page.wiz.snapshots
                 Switch {
                     anchors.verticalCenter: parent.verticalCenter
-                    checked: page.wiz.separateHome
+                    checked: page.wiz.separateHome && !page.wiz.snapshots
+                    enabled: !page.wiz.snapshots
                     Accessible.name: qsTr("Separate /home")
                     onToggled: page.wiz.separateHome = checked
+                }
+            }
+            NxRow {
+                icon: "undo"
+                title: qsTr("Snapshots & rollback (Btrfs)")
+                subtitle: qsTr("Installs on Btrfs with @/@home subvolumes. A snapshot is taken automatically before every update, and you can roll a broken update back from the boot menu. /home becomes a subvolume of the same filesystem.")
+                Switch {
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: page.wiz.snapshots
+                    Accessible.name: qsTr("Snapshots and rollback")
+                    onToggled: page.wiz.snapshots = checked
                 }
             }
             NxRow {

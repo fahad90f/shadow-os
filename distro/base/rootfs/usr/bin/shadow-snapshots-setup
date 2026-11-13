@@ -1,0 +1,52 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Configure btrfs snapshots + rollback on first boot, but only when the system
+# was actually installed on btrfs (the installer's opt-in "Snapshots" option).
+# On ext4 installs this does nothing, so it is safe to ship everywhere.
+#
+# It sets up:
+#   * snapper   — a "root" config that manages timeline + pre/post snapshots;
+#   * an APT hook — a snapshot is taken automatically before every upgrade;
+#   * grub-btrfs — adds the snapshots to the boot menu so a broken update can
+#                  be rolled back by booting an earlier snapshot.
+set -u
+LOG="logger -t shadow-snapshots"
+
+# Only act on a btrfs root.
+root_fs=$(findmnt -n -o FSTYPE / 2>/dev/null || echo "")
+if [ "$root_fs" != "btrfs" ]; then
+    $LOG "root filesystem is '$root_fs', not btrfs — nothing to do."
+    exit 0
+fi
+
+command -v snapper >/dev/null || { $LOG "snapper not installed; skipping."; exit 0; }
+
+# snapper's "root" config. create-config refuses if it already exists, so guard.
+if [ ! -e /etc/snapper/configs/root ]; then
+    snapper -c root create-config / 2>&1 | $LOG || { $LOG "snapper create-config failed."; exit 0; }
+    # Keep a sensible, bounded history; adjust in /etc/snapper/configs/root.
+    snapper -c root set-config \
+        TIMELINE_CREATE=yes TIMELINE_CLEANUP=yes \
+        NUMBER_CLEANUP=yes NUMBER_LIMIT=20 NUMBER_LIMIT_IMPORTANT=10 2>&1 | $LOG
+    systemctl enable --now snapper-timeline.timer snapper-cleanup.timer 2>&1 | $LOG || true
+fi
+
+# A snapshot before every APT transaction.
+hook=/etc/apt/apt.conf.d/80shadow-snapshot
+if [ ! -e "$hook" ]; then
+    cat > "$hook" <<'APT'
+// Shadow OS: take a btrfs snapshot before each APT run, so an update can be
+// rolled back from the boot menu. Written by shadow-snapshots-setup.
+DPkg::Pre-Invoke { "if command -v snapper >/dev/null && [ -e /etc/snapper/configs/root ]; then snapper -c root create -t single -c number -d 'apt' >/dev/null 2>&1 || true; fi"; };
+APT
+    $LOG "installed APT pre-upgrade snapshot hook."
+fi
+
+# grub-btrfs: regenerate the boot menu to include snapshots, and keep it current.
+if command -v grub-mkconfig >/dev/null; then
+    systemctl enable grub-btrfsd 2>&1 | $LOG || true
+    grub-mkconfig -o /boot/grub/grub.cfg 2>&1 | $LOG || true
+fi
+
+$LOG "btrfs snapshots and rollback configured."
+exit 0

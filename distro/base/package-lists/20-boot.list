@@ -9,6 +9,12 @@ efibootmgr
 os-prober
 mokutil
 
+# Snapshots and rollback for btrfs installs (opt-in in the installer). Inert on
+# ext4 installs; shadow-snapshots-setup only configures them when / is btrfs.
+snapper
+grub-btrfs
+inotify-tools
+
 # UEFI x86_64 — Microsoft-signed shim + Debian-signed GRUB (Secure Boot)
 shim-signed [amd64]
 grub-efi-amd64-bin [amd64]

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import re
 import shutil
 import time
@@ -192,19 +193,35 @@ class Executor:
             self.run.run(["mkfs.vfat", "-F", "32"] + (["-n", label[:11]] if label else []) + [device])
         elif fmt == "ext4":
             self.run.run(["mkfs.ext4", "-F", "-q"] + (["-L", label] if label else []) + [device])
+        elif fmt == "btrfs":
+            self.run.run(["mkfs.btrfs", "-f"] + (["-L", label] if label else []) + [device])
         elif fmt == "swap":
             self.run.run(["mkswap", "-f"] + (["-L", label] if label else []) + [device])
         else:
             raise InstallError(f"Internal error: unknown filesystem type {fmt!r}.")
 
+    def _make_subvolumes(self, device: str, subvolumes: list):
+        """Create the btrfs subvolumes (@, @home) on a freshly made filesystem."""
+        tmp = tempfile.mkdtemp(prefix="shadow-btrfs-")
+        try:
+            self.run.run(["mount", device, tmp])
+            try:
+                for sv in subvolumes:
+                    self.run.run(["btrfs", "subvolume", "create", os.path.join(tmp, sv["name"])])
+            finally:
+                self.run.run(["umount", tmp])
+        finally:
+            os.rmdir(tmp)
+
     def step_format(self):
-        todo = [(p["device"], p["format"], p["label"]) for p in self.plan["partitions"]
-                if p["format"] and p["format"] != "luks"]
+        units = [p for p in self.plan["partitions"] if p["format"] and p["format"] != "luks"]
         if self.plan["lvm"]:
-            todo += [(lv["device"], lv["format"], lv["label"]) for lv in self.plan["lvm"]["lvs"]]
-        for i, (device, fmt, label) in enumerate(todo):
-            self._mkfs(device, fmt, label)
-            self._progress((i + 1) / len(todo))
+            units += list(self.plan["lvm"]["lvs"])
+        for i, u in enumerate(units):
+            self._mkfs(u["device"], u["format"], u["label"])
+            if u["format"] == "btrfs" and u.get("subvolumes"):
+                self._make_subvolumes(u["device"], u["subvolumes"])
+            self._progress((i + 1) / len(units))
         self._settle()
 
     def step_keep(self):
@@ -212,17 +229,26 @@ class Executor:
 
     # ------------------------------------------------------------------ mount
     def _mount_table(self) -> list[dict]:
-        """Everything that gets mounted or used, with resolved devices."""
+        """Everything that gets mounted or used, with resolved devices. A btrfs
+        volume with subvolumes expands into one entry per subvolume (@→/,
+        @home→/home), each carrying its subvol= mount option."""
         entries = []
+
+        def add(device, mountpoint, fstype, is_swap, subvolumes):
+            if subvolumes:
+                for sv in subvolumes:
+                    entries.append({"device": device, "mountpoint": sv["mountpoint"], "fstype": fstype,
+                                    "swap": False, "subvol": sv["name"]})
+            elif mountpoint or is_swap:
+                entries.append({"device": device, "mountpoint": mountpoint, "fstype": fstype,
+                                "swap": is_swap, "subvol": None})
+
         for p in self.plan["partitions"]:
-            if p["mountpoint"] or p["role"] == "swap":
-                fstype = p["format"] or p.get("existing_fstype")
-                entries.append({"device": p["device"], "mountpoint": p["mountpoint"], "fstype": fstype,
-                                "swap": p["role"] == "swap"})
+            add(p["device"], p["mountpoint"], p["format"] or p.get("existing_fstype"),
+                p["role"] == "swap", p.get("subvolumes"))
         if self.plan["lvm"]:
             for lv in self.plan["lvm"]["lvs"]:
-                entries.append({"device": lv["device"], "mountpoint": lv["mountpoint"], "fstype": lv["format"],
-                                "swap": lv["format"] == "swap"})
+                add(lv["device"], lv["mountpoint"], lv["format"], lv["format"] == "swap", lv.get("subvolumes"))
         return entries
 
     def step_mount(self):
@@ -235,7 +261,11 @@ class Executor:
         for e in mounts:
             where = self.target + ("" if e["mountpoint"] == "/" else e["mountpoint"])
             os.makedirs(where, exist_ok=True)
-            opts = ["-o", "umask=0077"] if e["fstype"] == "vfat" else []
+            opts = []
+            if e["fstype"] == "vfat":
+                opts = ["-o", "umask=0077"]
+            elif e.get("subvol"):
+                opts = ["-o", f"subvol={e['subvol']}"]
             self.run.run(["mount"] + opts + [e["device"], where])
             self.mounted.append(where)
 
@@ -314,6 +344,8 @@ class Executor:
                 passno = 0
             if e["fstype"] == "btrfs" or e["fstype"] == "xfs":
                 opts = "defaults"
+            if e.get("subvol"):
+                opts = f"subvol={e['subvol']}" if opts in ("defaults", "") else f"{opts},subvol={e['subvol']}"
             lines.append(f"UUID={uuid}  {e['mountpoint']}  {e['fstype']}  {opts}  0  {passno}")
         for e in self._mount_table():
             if e["swap"]:

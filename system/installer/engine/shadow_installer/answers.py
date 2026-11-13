@@ -53,6 +53,7 @@ class Storage:
     passphrase: str | None = None
     separate_home: bool = False
     root_size_gib: int | None = None
+    snapshots: bool = False         # btrfs with @/@home subvolumes for rollback
     swap: str = "file"              # file | partition | none
     swap_size_gib: int | None = None
     mounts: list[ManualMount] = field(default_factory=list)
@@ -199,8 +200,8 @@ def parse(data: dict, *, zoneinfo_dir: str = "/usr/share/zoneinfo",
     s = data.get("storage")
     if s is None:
         raise InstallError("Answer file: 'storage' is required.")
-    _expect_keys(s, {"mode", "disk", "encrypt", "passphrase", "separate_home", "root_size_gib", "swap",
-                     "swap_size_gib", "mounts", "bootloader_device"}, "storage")
+    _expect_keys(s, {"mode", "disk", "encrypt", "passphrase", "separate_home", "root_size_gib", "snapshots",
+                     "swap", "swap_size_gib", "mounts", "bootloader_device"}, "storage")
     mode = _str(s, "mode", None, "storage", required=True)
     if mode not in ("erase-disk", "free-space", "manual"):
         raise InstallError("Answer file: storage.mode must be 'erase-disk', 'free-space' or 'manual'.")
@@ -209,6 +210,7 @@ def parse(data: dict, *, zoneinfo_dir: str = "/usr/share/zoneinfo",
     storage.passphrase = _str(s, "passphrase", None, "storage")
     storage.separate_home = _bool(s, "separate_home", False, "storage")
     storage.root_size_gib = _int(s, "root_size_gib", "storage", 16, 4096)
+    storage.snapshots = _bool(s, "snapshots", False, "storage")
     storage.swap = _str(s, "swap", "file", "storage")
     if storage.swap not in ("file", "partition", "none"):
         raise InstallError("Answer file: storage.swap must be 'file', 'partition' or 'none'.")

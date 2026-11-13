@@ -1,0 +1,13 @@
+[Unit]
+Description=Shadow OS: configure btrfs snapshots and rollback (first boot, btrfs only)
+After=local-fs.target
+ConditionPathExists=!/var/lib/shadow/snapshots-configured
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/shadow-snapshots-setup
+ExecStartPost=/usr/bin/install -D -m 644 /dev/null /var/lib/shadow/snapshots-configured
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

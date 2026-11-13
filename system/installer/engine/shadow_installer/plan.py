@@ -133,6 +133,9 @@ def _guided_layout(answers: Answers, report: dict, *, region_start: int, region_
     """Lay out new partitions inside [region_start, region_end). Returns
     (partitions, lvm, swapfile_size)."""
     st = answers.storage
+    # With btrfs snapshots, /home is a subvolume of the one filesystem, so a
+    # separate /home partition does not apply.
+    separate_home = st.separate_home and not st.snapshots
     pos = _align_up(region_start)
     end = _align_down(region_end)
     parts: list[dict] = []
@@ -152,6 +155,7 @@ def _guided_layout(answers: Answers, report: dict, *, region_start: int, region_
                       "typecode": code, "partlabel": f"shadow-{role.replace('_', '-')}",
                       "format": fmt, "label": LABELS.get(role), "mountpoint": mountpoint})
         pos += size
+        return parts[-1]
 
     if need_bios_grub:
         take("bios_grub", BIOS_GRUB_SIZE, None, None)
@@ -168,7 +172,7 @@ def _guided_layout(answers: Answers, report: dict, *, region_start: int, region_
         # An automatically sized swap file yields to the system on small disks
         # instead of making the installation impossible.
         room = (end - pos) - (LUKS_LVM_OVERHEAD if st.encrypt else 0) - base_root
-        if not st.separate_home:
+        if not separate_home:
             swapfile = max(0, min(swapfile, _align_down(room, GIB)))
     min_root = base_root + swapfile
     lvm = None
@@ -177,7 +181,7 @@ def _guided_layout(answers: Answers, report: dict, *, region_start: int, region_
         take("luks", None, "luks", None)
         inside = _align_down(parts[-1]["size"] - LUKS_LVM_OVERHEAD, 4 * MIB)
         avail = inside - swap_part
-        if st.separate_home:
+        if separate_home:
             root = st.root_size_gib * GIB if st.root_size_gib else min(max(_align_down(int(avail * 0.35), GIB), 40 * GIB), 120 * GIB)
             home = avail - root
             if root < min_root or home < MIN_HOME:
@@ -193,7 +197,12 @@ def _guided_layout(answers: Answers, report: dict, *, region_start: int, region_
         lvs = []
         if swap_part:
             lvs.append({"name": "swap", "size": swap_part, "format": "swap", "mountpoint": None, "label": LABELS["swap"]})
-        if st.separate_home:
+        if st.snapshots:
+            # One btrfs root LV with @/@home subvolumes (see the erase path).
+            lvs.append({"name": "root", "size": None, "format": "btrfs", "mountpoint": "/", "label": LABELS["root"],
+                        "subvolumes": [{"name": "@", "mountpoint": "/"},
+                                       {"name": "@home", "mountpoint": "/home"}]})
+        elif separate_home:
             lvs.append({"name": "root", "size": _align_down(root, 4 * MIB), "format": "ext4", "mountpoint": "/", "label": LABELS["root"]})
             lvs.append({"name": "home", "size": None, "format": "ext4", "mountpoint": "/home", "label": LABELS["home"]})
         else:
@@ -207,7 +216,19 @@ def _guided_layout(answers: Answers, report: dict, *, region_start: int, region_
         if swap_part:
             take("swap", swap_part, "swap", None)
         avail = end - pos
-        if st.separate_home:
+        if st.snapshots:
+            # One btrfs filesystem with @ (/) and @home (/home) subvolumes, so
+            # a pre-update snapshot can roll the whole system back. /home is a
+            # subvolume, not a separate partition, so it shares the space.
+            if avail < min_root:
+                raise InstallError("There is not enough space.",
+                                   f"The system needs at least {human_size(min_root)}; {human_size(avail)} is available.")
+            root_part = take("root", None, "btrfs", "/")
+            root_part["subvolumes"] = [
+                {"name": "@", "mountpoint": "/"},
+                {"name": "@home", "mountpoint": "/home"},
+            ]
+        elif separate_home:
             root = st.root_size_gib * GIB if st.root_size_gib else min(max(_align_down(int(avail * 0.35), GIB), 40 * GIB), 120 * GIB)
             if root < min_root or avail - root < MIN_HOME:
                 raise InstallError(

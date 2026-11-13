@@ -155,11 +155,11 @@ not receive updates**. Debian base and security updates are unaffected.
 
 ## Rollback
 
-There is no SHADOW-specific rollback mechanism. What is and is not available:
+What is and is not available:
 
 | Mechanism | State |
 |---|---|
-| Filesystem snapshots (btrfs, LVM, Timeshift-style) | **not implemented.** The installer formats ext4. On encrypted installations the volume group is fully allocated, so there is no free space for LVM snapshots |
+| Filesystem snapshots + rollback (btrfs) | **opt-in in the installer** ("Snapshots & rollback"). The disk is formatted btrfs with `@`/`@home` subvolumes; `shadow-snapshots-setup` configures snapper, a snapshot before every APT run, and grub-btrfs so a broken update can be rolled back from the boot menu. Default installs still use ext4 with none of this. **Not yet tested on a real install** — verify in a VM before relying on it |
 | Transactional or image-based updates | not implemented |
 | Older package versions in the SHADOW repository | not available: the repository keeps one version per package |
 | Downgrading a Debian package | standard APT: `sudo apt install <package>=<version>` works while that version is still in an enabled suite. Debian's stable suites normally carry only the current version; older ones are on `snapshot.debian.org`, which is **not** configured |
