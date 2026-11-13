@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Encrypted Backup
+GenericName=Backup
+Comment=Back up your files, encrypted, to a drive you choose
+Exec=shadow-terminal -e shadow-backup status
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Utility;Archiving;
+Keywords=backup;restore;encrypted;restic;snapshot;

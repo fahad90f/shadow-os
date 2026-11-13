@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""shadow-backup — encrypted backups of your files for Shadow OS.
+
+A thin, safe wrapper around restic (encrypted, deduplicated, incremental). It
+runs as your normal user and backs up your home directory to a drive you
+choose. The backup is encrypted, so the drive can be lost or stolen without
+exposing your files.
+
+  shadow-backup setup <target-dir>   Prepare <target-dir> (e.g. a USB drive) as
+                                     the encrypted backup location and remember it.
+  shadow-backup run                  Back up now. Only what changed is copied.
+  shadow-backup list                 List the backups (snapshots) on the drive.
+  shadow-backup restore <id> <dir>   Restore snapshot <id> (or 'latest') into <dir>.
+  shadow-backup status               Where backups go, and when the last one ran.
+  shadow-backup forget               Keep 7 daily / 4 weekly / 6 monthly; prune the rest.
+
+Config:  ~/.config/shadow/backup.conf   (the target path and what to include)
+Key:     ~/.config/shadow/backup.key    (the repository password, mode 600)
+
+Keep a copy of the key somewhere safe and separate from the drive: without it
+the backup cannot be decrypted, by you or anyone else.
+"""
+import json
+import os
+import secrets
+import subprocess
+import sys
+from pathlib import Path
+
+CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "shadow"
+CONFIG     = CONFIG_DIR / "backup.conf"
+KEYFILE    = CONFIG_DIR / "backup.key"
+
+DEFAULT_EXCLUDES = [
+    str(Path.home() / ".cache"),
+    str(Path.home() / ".local/share/Trash"),
+    str(Path.home() / "**/node_modules"),
+    str(Path.home() / ".config/shadow/backup.key"),  # never back up the key to the same drive
+]
+
+
+def die(msg: str) -> "None":
+    print(f"shadow-backup: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def have_restic() -> bool:
+    return subprocess.run(["sh", "-c", "command -v restic"], capture_output=True).returncode == 0
+
+
+def load_config() -> dict:
+    try:
+        return json.loads(CONFIG.read_text())
+    except OSError:
+        die("not set up yet. Run:  shadow-backup setup /path/to/drive")
+    except json.JSONDecodeError:
+        die(f"{CONFIG} is corrupt; fix or delete it and run setup again.")
+
+
+def restic(cfg: dict, args: list, **kw) -> subprocess.CompletedProcess:
+    env = dict(os.environ)
+    env["RESTIC_REPOSITORY"] = cfg["repository"]
+    env["RESTIC_PASSWORD_FILE"] = str(KEYFILE)
+    return subprocess.run(["restic", *args], env=env, **kw)
+
+
+def cmd_setup(argv: list) -> None:
+    if not argv:
+        die("usage: shadow-backup setup <target-dir>")
+    target = Path(argv[0]).expanduser().resolve()
+    if not target.is_dir():
+        die(f"{target} is not a directory. Plug the drive in and give its mounted path.")
+    repo = target / "shadow-backup"
+
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    # A strong random repository password, stored readable only by you.
+    if not KEYFILE.exists():
+        KEYFILE.write_text(secrets.token_urlsafe(32) + "\n")
+        KEYFILE.chmod(0o600)
+        print(f"Wrote a new backup key to {KEYFILE} (keep a copy somewhere safe).")
+
+    cfg = {
+        "repository": str(repo),
+        "include": [str(Path.home())],
+        "exclude": DEFAULT_EXCLUDES,
+    }
+    CONFIG.write_text(json.dumps(cfg, indent=2) + "\n")
+    CONFIG.chmod(0o600)
+
+    # Initialise the encrypted repository if it is not there yet.
+    check = restic(cfg, ["cat", "config"], capture_output=True)
+    if check.returncode != 0:
+        print(f"Preparing the encrypted backup location at {repo} …")
+        if restic(cfg, ["init"]).returncode != 0:
+            die("could not initialise the backup repository.")
+    else:
+        print(f"Using the existing backup location at {repo}.")
+    print("Done. Back up now with:  shadow-backup run")
+
+
+def require_restic_and_key(cfg: dict) -> None:
+    if not have_restic():
+        die("restic is not installed. Install it with:  sudo apt install restic")
+    if not KEYFILE.exists():
+        die(f"the backup key {KEYFILE} is missing. Run setup again, or restore the key.")
+
+
+def cmd_run(_argv: list) -> None:
+    cfg = load_config()
+    require_restic_and_key(cfg)
+    args = ["backup", "--one-file-system"]
+    for path in cfg.get("exclude", []):
+        args += ["--exclude", path]
+    args += [p for p in cfg.get("include", []) if Path(p).exists()]
+    print(f"Backing up to {cfg['repository']} …")
+    rc = restic(cfg, args).returncode
+    if rc != 0:
+        die("backup failed. Is the drive still connected?")
+    print("Backup complete.")
+
+
+def cmd_list(_argv: list) -> None:
+    cfg = load_config()
+    require_restic_and_key(cfg)
+    restic(cfg, ["snapshots", "--compact"])
+
+
+def cmd_restore(argv: list) -> None:
+    if len(argv) < 2:
+        die("usage: shadow-backup restore <snapshot-id|latest> <destination-dir>")
+    snap, dest = argv[0], Path(argv[1]).expanduser()
+    cfg = load_config()
+    require_restic_and_key(cfg)
+    dest.mkdir(parents=True, exist_ok=True)
+    print(f"Restoring snapshot {snap} into {dest} …")
+    rc = restic(cfg, ["restore", snap, "--target", str(dest)]).returncode
+    if rc != 0:
+        die("restore failed.")
+    print("Restore complete.")
+
+
+def cmd_status(_argv: list) -> None:
+    cfg = load_config()
+    print(f"Backup location : {cfg['repository']}")
+    print(f"Includes        : {', '.join(cfg.get('include', []))}")
+    print(f"Key file        : {KEYFILE}")
+    if not have_restic():
+        print("restic          : NOT installed (sudo apt install restic)")
+        return
+    target_root = Path(cfg["repository"]).parent
+    if not target_root.exists():
+        print("Drive           : not connected")
+        return
+    r = restic(cfg, ["snapshots", "--latest", "1", "--compact"], capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip():
+        print("Last backup     :")
+        print("\n".join("  " + line for line in r.stdout.strip().splitlines()))
+    else:
+        print("Last backup     : none yet (run: shadow-backup run)")
+
+
+def cmd_forget(_argv: list) -> None:
+    cfg = load_config()
+    require_restic_and_key(cfg)
+    rc = restic(cfg, ["forget", "--prune",
+                      "--keep-daily", "7", "--keep-weekly", "4", "--keep-monthly", "6"]).returncode
+    if rc != 0:
+        die("pruning old backups failed.")
+    print("Old backups pruned (kept 7 daily, 4 weekly, 6 monthly).")
+
+
+COMMANDS = {
+    "setup":   cmd_setup,
+    "run":     cmd_run,
+    "list":    cmd_list,
+    "restore": cmd_restore,
+    "status":  cmd_status,
+    "forget":  cmd_forget,
+}
+
+
+def main() -> None:
+    if os.geteuid() == 0:
+        die("run as your normal user, not root — it backs up your own files.")
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        return
+    cmd = sys.argv[1]
+    if cmd not in COMMANDS:
+        die(f"unknown command '{cmd}'. Try: {', '.join(COMMANDS)}")
+    COMMANDS[cmd](sys.argv[2:])
+
+
+if __name__ == "__main__":
+    main()

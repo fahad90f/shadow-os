@@ -27,6 +27,9 @@ steghide
 libimage-exiftool-perl
 secure-delete
 
+# Encrypted backups (shadow-backup wraps this)
+restic
+
 # Extra confinement profiles for the hardened baseline
 apparmor-profiles-extra
 
