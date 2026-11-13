@@ -53,9 +53,22 @@ the Shadow source disabled, so they never point at a repository that can't be
 verified, and nothing is published: a build without the secret signs with a
 throw-away key that no installed system trusts.
 
-The site is assembled by `scripts/gen-repo-site.py`. Besides the repository it
-serves a page listing the published build and its packages, and
-`enable-updates.sh` (below).
+`scripts/gen-repo-site.py` prepares what is published: the repository,
+`repo.json` (the published build and its packages) and `enable-updates.sh`
+(below).
+
+### 3. Deploy the website (optional)
+`website/` is a React + TypeScript (Vite) app that shows the published build,
+its packages and how to update. It holds no packages itself: it reads
+`repo.json` from the repository address in the visitor's browser, so it never
+needs redeploying when a new build is published.
+
+On Vercel: **Add New → Project**, import this repository, set **Root
+Directory** to `website`, keep the detected Vite settings, deploy. Only if the
+repository is not at `https://fahad90f.github.io/shadow-os`, set the
+environment variable `VITE_REPO_URL` to its address (`website/.env.example`).
+
+Locally: `cd website && npm install && npm run dev`.
 
 ## How an installed system then updates
 

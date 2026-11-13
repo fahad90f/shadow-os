@@ -6,8 +6,9 @@
 #                  followed by booting the installed disk
 #   kernel         the SHADOW kernel packages for amd64 and arm64
 #   iso-arm64      packages + ISO on a native arm64 runner, UEFI boot test
-#   pages          the update site: the amd64 package repository on GitHub
-#                  Pages, where installed systems get it with APT
+#   pages          the amd64 package repository on GitHub Pages, where
+#                  installed systems get it with APT (the website that
+#                  presents it is website/, deployed separately)
 #
 # Signing: a development archive key is generated per run unless the
 # SHADOW_SIGNING_KEY secret holds an ASCII-armoured release key. Private keys
@@ -288,9 +289,9 @@ jobs:
           sudo -E python3 -u tests/boot/test_live_boot.py --arch arm64 \
             --iso "$(ls build/out/iso/shadow-os-*-arm64.iso)" --firmware uefi
 
-  # The update site: the signed Shadow package repository on GitHub Pages, so
-  # installed systems update Shadow packages with "apt upgrade" / Shadow
-  # Updater. Runs after the image built from these packages has passed its
+  # The signed Shadow package repository on GitHub Pages, so installed
+  # systems update Shadow packages with "apt upgrade" / Shadow Updater. Runs
+  # after the image built from these packages has passed its
   # boot tests, and only when they were signed with the release key.
   # Requires: Settings -> Pages -> Source: GitHub Actions, and the
   # SHADOW_SIGNING_KEY secret (see docs/packaging/online-updates.md).
@@ -309,14 +310,17 @@ jobs:
         with:
           name: shadow-packages-amd64
           path: site
-      - name: Assemble the update site
+      - name: Assemble the repository for publishing
         run: |
-          # The artifact holds packages/ and repo/; the site is repo/ plus the
-          # landing page and the script that switches older installations over.
+          # The artifact holds packages/ and repo/. Published: repo/, repo.json
+          # (what the website in website/ shows) and the script that switches
+          # older installations over. SHADOW_SITE_URL is an optional repository
+          # variable: the address the website is deployed at.
           python3 scripts/gen-repo-site.py --repo site/repo --out public \
             --url "${{ needs.iso-amd64.outputs.repo_url }}" \
             --build "$SHADOW_BUILD_ID" --commit "$GITHUB_SHA" \
-            --source-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+            --source-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --site-url "${{ vars.SHADOW_SITE_URL }}"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public
