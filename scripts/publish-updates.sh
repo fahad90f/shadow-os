@@ -4,11 +4,17 @@
 #
 #     sudo apt update && sudo apt upgrade
 #
-#   scripts/publish-updates.sh --local
+#   scripts/publish-updates.sh --local [--restart | --later | --now]
 #   scripts/publish-updates.sh [--url https://<name>.vercel.app] [--no-deploy]
 #
 #   --local       for this machine only: register the packages as an APT
 #                 source here (/var/lib/shadow-updates). Nothing is uploaded.
+#                 The new build is downloaded and installed during the next
+#                 restart; the script asks whether to restart now.
+#     --restart   restart without asking
+#     --later     do not ask; install whenever the computer is next restarted
+#     --now       only register the packages; install them yourself with
+#                 sudo apt update && sudo apt upgrade
 #   (default)     for other machines too: upload the packages, with the
 #                 website, to Vercel.
 #   --url URL     the address of the Vercel site. Needed once; it is stored in
@@ -35,16 +41,21 @@ as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 URL_ARG=""
 DEPLOY=1
 LOCAL=0
+INSTALL=ask
 while [ $# -gt 0 ]; do
     case "$1" in
         --local) LOCAL=1; shift ;;
+        --restart) INSTALL=restart; shift ;;
+        --later) INSTALL=later; shift ;;
+        --now) INSTALL=now; shift ;;
         --url) URL_ARG="${2:-}"; shift 2 ;;
         --no-deploy) DEPLOY=0; shift ;;
-        -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
 [ "$LOCAL" -eq 0 ] || [ -z "$URL_ARG" ] || die "--local and --url do not go together"
+[ "$LOCAL" -eq 1 ] || [ "$INSTALL" = ask ] || die "--restart, --later and --now go with --local"
 
 : "${SHADOW_SIGNING_HOME:=/var/lib/shadow-signing}"
 : "${SHADOW_VERCEL_PROJECT:=shadow-os-updates}"
@@ -118,7 +129,7 @@ if [ "$LOCAL" -eq 1 ]; then
     printf '%s\n' \
         "# Shadow OS packages built on this machine (scripts/publish-updates.sh --local)." \
         "Types: deb" \
-        "URIs: file:///var/lib/shadow-updates" \
+        "URIs: copy:///var/lib/shadow-updates" \
         "Suites: $CODENAME" \
         "Components: core security community" \
         "Signed-By: /usr/share/keyrings/shadow-updates.gpg" \
@@ -131,8 +142,40 @@ if [ "$LOCAL" -eq 1 ]; then
         as_root mv "$snapshot" "$snapshot.disabled"
         log "disabled the package snapshot of the installation image ($snapshot.disabled)"
     fi
-    log "build $BUILD_ID is ready. Install it with:"
-    printf '\n    sudo apt update && sudo apt upgrade\n\n' >&2
+    if [ -n "$SHADOW_LOCAL_ROOT" ] || [ "$INSTALL" = now ]; then
+        log "build $BUILD_ID is ready. Install it with:"
+        printf '\n    sudo apt update && sudo apt upgrade\n\n' >&2
+        exit 0
+    fi
+
+    # Install at the next restart, before the desktop starts, so that nothing
+    # that is being replaced is running (shadow-offline-update, part of the
+    # Updater). A system from before that tool gets it first, on its own.
+    if ! command -v shadow-offline-update >/dev/null; then
+        log "installing the restart-time updater (once)"
+        as_root apt-get -q update >&2
+        as_root env DEBIAN_FRONTEND=noninteractive apt-get -q -y install --only-upgrade shadow-updater >&2
+        command -v shadow-offline-update >/dev/null \
+            || die "the Updater of build $BUILD_ID has no shadow-offline-update; install with: sudo apt update && sudo apt upgrade"
+    fi
+    as_root shadow-offline-update prepare >&2
+    as_root test -L /system-update || { log "nothing to install: this system already runs build $BUILD_ID"; exit 0; }
+
+    if command -v notify-send >/dev/null && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+        notify-send -a "Shadow OS" -i system-software-update "Updates ready" \
+            "Build $BUILD_ID will be installed during the next restart." 2>/dev/null || true
+    fi
+    answer=n
+    [ "$INSTALL" = restart ] && answer=y
+    if [ "$INSTALL" = ask ] && [ -t 0 ]; then
+        printf '\nBuild %s will be installed during the next restart.\nRestart now? [y/N] ' "$BUILD_ID" >&2
+        read -r answer || answer=n
+    fi
+    case "$answer" in
+        [yY]*) log "restarting to install build $BUILD_ID"; as_root systemctl reboot; exit 0 ;;
+    esac
+    log "build $BUILD_ID will be installed the next time you restart the computer"
+    log "(not wanted after all: sudo shadow-offline-update cancel)"
     exit 0
 fi
 

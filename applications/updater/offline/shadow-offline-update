@@ -1,0 +1,133 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Install updates during the next restart, before the desktop starts.
+#
+#   shadow-offline-update prepare        download the available updates and
+#                                        install them at the next restart
+#   shadow-offline-update status         what is prepared, how the last run went
+#   shadow-offline-update cancel         do not install at the next restart
+#   shadow-offline-update apply [--no-reboot]
+#                                        install what was prepared; run by
+#                                        shadow-offline-update.service while the
+#                                        system boots into system-update.target
+#
+# This is systemd's offline-update scheme (systemd.offline-updates(7)): prepare
+# points /system-update at this tool's state directory, which makes the next
+# boot enter system-update.target, where the service installs the updates with
+# nothing else running and restarts into the updated system.
+#
+# Updates come from every configured APT source, including the local
+# repository that scripts/publish-updates.sh --local registers. Nothing is
+# ever removed: an update that would need to remove a package is held back,
+# as "apt upgrade" does.
+set -euo pipefail
+
+STATE=/var/lib/shadow/offline-update
+LINK=/system-update
+LOG=/var/log/shadow-offline-update.log
+APT_DPKG=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Dpkg::Use-Pty=0)
+
+die() { echo "shadow-offline-update: $*" >&2; exit 1; }
+[ "$(id -u)" -eq 0 ] || die "must run as root (sudo shadow-offline-update $*)"
+
+ours() { [ -L "$LINK" ] && [ "$(readlink "$LINK")" = "$STATE" ]; }
+
+# Package names an upgrade would install or update, from a simulation.
+pending_packages() {
+    apt-get -s -q --with-new-pkgs upgrade 2>/dev/null | awk '/^Inst /{print $2}'
+}
+
+cmd_prepare() {
+    echo "Checking for updates…"
+    apt-get -q update || echo "shadow-offline-update: some package sources could not be refreshed; using what is available" >&2
+    local packages
+    packages="$(pending_packages)" || die "could not work out the updates (see: sudo apt-get -s upgrade)"
+    if [ -z "$packages" ]; then
+        rm -f "$STATE/packages"
+        if ours; then rm -f "$LINK"; fi
+        echo "The system is up to date."
+        return 0
+    fi
+    local count
+    count="$(wc -l <<<"$packages")"
+    echo "Downloading $count update(s)…"
+    DEBIAN_FRONTEND=noninteractive apt-get -q -y -d --with-new-pkgs "${APT_DPKG[@]}" upgrade >/dev/null \
+        || die "downloading the updates failed"
+
+    mkdir -p "$STATE"
+    printf '%s\n' "$packages" > "$STATE/packages"
+    date -u +%Y-%m-%dT%H:%M:%SZ > "$STATE/prepared"
+    ln -sfn "$STATE" "$LINK"
+
+    # Debian's restart-needed convention: the Updater shows its "Restart now"
+    # banner for it, and so do other tools that follow it.
+    echo "*** Updates are ready and will be installed during the next restart ***" > /run/reboot-required
+    { cat /run/reboot-required.pkgs 2>/dev/null || true; printf '%s\n' "$packages"; } | sort -u > /run/reboot-required.pkgs.new
+    mv /run/reboot-required.pkgs.new /run/reboot-required.pkgs
+
+    echo "$count update(s) are ready. They will be installed during the next restart:"
+    sed 's/^/  /' <<<"$packages"
+}
+
+cmd_apply() {
+    local reboot=1
+    [ "${1:-}" = "--no-reboot" ] && reboot=0
+    # /system-update may belong to another updater; leave it alone then.
+    if ! ours; then
+        echo "shadow-offline-update: no update prepared by this tool"
+        return 0
+    fi
+    # Remove the trigger first, so that a failure cannot make every boot an
+    # update boot.
+    rm -f "$LINK"
+    if command -v plymouth >/dev/null && plymouth --ping 2>/dev/null; then
+        plymouth display-message --text="Installing updates — do not turn off the computer" || true
+    fi
+
+    local result=success
+    {
+        echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) installing prepared updates"
+        cat "$STATE/packages" 2>/dev/null || true
+    } >>"$LOG"
+    # Only what prepare downloaded is installed: no network at this point.
+    if ! DEBIAN_FRONTEND=noninteractive apt-get -y --no-download --with-new-pkgs "${APT_DPKG[@]}" upgrade >>"$LOG" 2>&1; then
+        result=failed
+        # Leave dpkg in a consistent state whatever happened.
+        DEBIAN_FRONTEND=noninteractive dpkg --configure -a >>"$LOG" 2>&1 || true
+    fi
+    echo "$result $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STATE/last-result"
+    echo "=== $result" >>"$LOG"
+    rm -f "$STATE/packages" "$STATE/prepared"
+    [ "$result" = success ] && apt-get -q clean >/dev/null 2>&1 || true
+
+    if [ "$reboot" -eq 1 ]; then
+        systemctl --no-block reboot
+    fi
+    [ "$result" = success ]
+}
+
+cmd_status() {
+    if ours && [ -s "$STATE/packages" ]; then
+        echo "Prepared, installed at the next restart ($(cat "$STATE/prepared" 2>/dev/null)):"
+        sed 's/^/  /' "$STATE/packages"
+    else
+        echo "Nothing is prepared."
+    fi
+    if [ -s "$STATE/last-result" ]; then
+        echo "Last run: $(cat "$STATE/last-result")   (log: $LOG)"
+    fi
+}
+
+cmd_cancel() {
+    if ours; then rm -f "$LINK"; fi
+    rm -f "$STATE/packages" "$STATE/prepared"
+    echo "No updates will be installed at the next restart."
+}
+
+case "${1:-}" in
+    prepare) cmd_prepare ;;
+    apply) shift; cmd_apply "$@" ;;
+    status) cmd_status ;;
+    cancel) cmd_cancel ;;
+    *) sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

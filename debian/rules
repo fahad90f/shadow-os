@@ -42,6 +42,14 @@ override_dh_auto_install-arch:
 override_dh_auto_test-arch:
 	@echo "GUI smoke tests run from tests/desktop/smoke.sh, not during package build"
 
+# shadow-offline-update.service installs prepared updates and restarts the
+# computer: it must only ever run in an update boot, never be started by the
+# package. Upgrading the Updater from inside that boot would otherwise make the
+# service wait for itself.
+override_dh_installsystemd-arch:
+	dh_installsystemd -a -Nshadow-updater
+	dh_installsystemd -pshadow-updater --no-start
+
 # ---- architecture-independent packages: nothing to compile ------------------
 override_dh_auto_configure-indep override_dh_auto_test-indep:
 	@true

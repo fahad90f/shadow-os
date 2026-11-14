@@ -24,13 +24,37 @@ packages), in a clone of this repository:
 
 ```bash
 scripts/publish-updates.sh --local
-sudo apt update && sudo apt upgrade
 ```
 
-The first command builds the packages from the current checkout, signs them and
-copies them to `/var/lib/shadow-updates`, which it registers in
-`/etc/apt/sources.list.d/shadow-updates.sources`. The second installs whatever
-changed. Repeat both after every change you want on the system.
+This builds the packages from the current checkout, signs them and copies them
+to `/var/lib/shadow-updates`, which it registers in
+`/etc/apt/sources.list.d/shadow-updates.sources`. It then downloads everything
+that changed and asks:
+
+```
+Build 202611142051 will be installed during the next restart.
+Restart now? [y/N]
+```
+
+The updates are installed while the computer restarts, before the desktop
+starts, so nothing that is being replaced is running; the boot splash says
+"Installing updates", and the computer then restarts once more into the updated
+system. Answer `n` and they are installed whenever you next restart.
+
+| | |
+|---|---|
+| `--restart` | restart straight away, without asking |
+| `--later` | do not ask; install at the next restart |
+| `--now` | only register the packages; install them yourself with `sudo apt update && sudo apt upgrade` |
+| `sudo shadow-offline-update status` | what is waiting for the next restart, and how the last installation went |
+| `sudo shadow-offline-update cancel` | do not install at the next restart |
+
+The installation log is `/var/log/shadow-offline-update.log`. Updates from
+Debian that are pending at the same time are installed in the same restart.
+
+A system installed from an image that predates the restart-time installer
+gets it first: the script updates the Updater on its own (`shadow-updater`,
+which contains `shadow-offline-update`) and then prepares the rest.
 
 The first run installs the build tools and creates the build environment and
 the signing key (below), so it takes longer; later runs take about a quarter of
