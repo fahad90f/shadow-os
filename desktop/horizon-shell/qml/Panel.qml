@@ -22,13 +22,39 @@ ShellSurface {
     signal sessionMenuRequested()
     signal clockRequested()
 
+    // "never" | "smart" (hidden while an application window is open) | "always"
+    readonly property string hideMode: shellSettings.panelHide
+    readonly property bool wantsHidden: hideMode === "always" || (hideMode === "smart" && windows.openWindows)
+    // Shown anyway while the pointer is on it, and while one of its menus or
+    // popups (launcher, calendar, session menu, a module's popup) is open.
+    property bool peeking: false
+    property bool holdOpen: false
+    readonly property bool revealed: !wantsHidden || peeking || holdOpen
+
     layer: "top"
     scope: "shadow-panel"
     anchorTop: true; anchorLeft: true; anchorRight: true
-    exclusiveZone: Theme.panelHeight
+    // Only a panel that never hides reserves space; a hiding one floats over
+    // windows when it is shown.
+    exclusiveZone: hideMode === "never" ? Theme.panelHeight : 0
     width: screen ? screen.width : 1280
-    height: Theme.panelHeight
+    // Hidden, a thin strip stays at the top edge: touching it with the
+    // pointer brings the panel back.
+    height: revealed ? Theme.panelHeight : 2
     visible: true
+
+    HoverHandler {
+        id: panelHover
+        onHoveredChanged: {
+            if (hovered) { hideTimer.stop(); root.peeking = true }
+            else hideTimer.restart()
+        }
+    }
+    Timer {
+        id: hideTimer
+        interval: 900
+        onTriggered: if (!panelHover.hovered) root.peeking = false
+    }
 
     property date now: new Date()
     Timer {
@@ -38,6 +64,14 @@ ShellSurface {
         triggeredOnStart: true
         onTriggered: root.now = new Date()
     }
+
+    // The contents keep the full panel height; while the panel is hidden the
+    // window is only the trigger strip and the contents are not shown.
+    Item {
+    id: content
+    width: root.width
+    height: Theme.panelHeight
+    visible: root.revealed
 
     Rectangle {
         anchors.fill: parent
@@ -156,4 +190,5 @@ ShellSurface {
             onClicked: root.sessionMenuRequested()
         }
     }
+    } // content
 }

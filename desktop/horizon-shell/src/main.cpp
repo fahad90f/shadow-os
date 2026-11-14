@@ -90,6 +90,7 @@ int main(int argc, char **argv)
     }
 
     WindowModel windows(&applications);
+    windows.setWorkspaces(&workspaces);
     DockModel dock(&applications, &windows, &settings);
     Shortcuts shortcuts;
     PolkitAgent polkitAgent;

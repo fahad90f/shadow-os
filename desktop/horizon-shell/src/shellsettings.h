@@ -15,9 +15,10 @@
 //   WallpaperFill=crop            crop | fit | stretch | center | tile
 //   [Dock]
 //   Pinned=org.shadow.files.desktop,org.shadow.terminal.desktop,…   desktop ids, in order
-//   AutoHide=false
+//   Hide=smart                    never | smart (while an application window is open) | always
 //   IconSize=44                   32–72
 //   [Panel]
+//   Hide=smart                    never | smart | always
 //   Clock24h=true
 //   ClockSeconds=false
 //   ClockDate=true
@@ -33,7 +34,8 @@ class ShellSettings : public QObject
     Q_PROPERTY(QString wallpaperLight READ wallpaperLight WRITE setWallpaperLight NOTIFY wallpaperChanged)
     Q_PROPERTY(QString wallpaperFill READ wallpaperFill WRITE setWallpaperFill NOTIFY wallpaperChanged)
     Q_PROPERTY(QStringList dockPinned READ dockPinned WRITE setDockPinned NOTIFY dockPinnedChanged)
-    Q_PROPERTY(bool dockAutoHide READ dockAutoHide WRITE setDockAutoHide NOTIFY dockChanged)
+    Q_PROPERTY(QString dockHide READ dockHide WRITE setDockHide NOTIFY dockChanged)
+    Q_PROPERTY(QString panelHide READ panelHide WRITE setPanelHide NOTIFY panelChanged)
     Q_PROPERTY(int dockIconSize READ dockIconSize WRITE setDockIconSize NOTIFY dockChanged)
     Q_PROPERTY(bool clock24h READ clock24h WRITE setClock24h NOTIFY panelChanged)
     Q_PROPERTY(bool clockSeconds READ clockSeconds WRITE setClockSeconds NOTIFY panelChanged)
@@ -47,7 +49,8 @@ public:
     QString wallpaperLight() const { return m_wallpaperLight; }
     QString wallpaperFill() const { return m_wallpaperFill; }
     QStringList dockPinned() const { return m_dockPinned; }
-    bool dockAutoHide() const { return m_dockAutoHide; }
+    QString dockHide() const { return m_dockHide; }
+    QString panelHide() const { return m_panelHide; }
     int dockIconSize() const { return m_dockIconSize; }
     bool clock24h() const { return m_clock24h; }
     bool clockSeconds() const { return m_clockSeconds; }
@@ -57,7 +60,8 @@ public:
     void setWallpaperLight(const QString &path);
     void setWallpaperFill(const QString &mode);
     void setDockPinned(const QStringList &ids);
-    void setDockAutoHide(bool hide);
+    void setDockHide(const QString &mode);
+    void setPanelHide(const QString &mode);
     void setDockIconSize(int size);
     void setClock24h(bool on);
     void setClockSeconds(bool on);
@@ -82,7 +86,8 @@ private:
     QFileSystemWatcher m_watcher;
     QString m_wallpaper, m_wallpaperLight, m_wallpaperFill;
     QStringList m_dockPinned;
-    bool m_dockAutoHide = false;
+    QString m_dockHide = QStringLiteral("smart");
+    QString m_panelHide = QStringLiteral("smart");
     int m_dockIconSize = 44;
     bool m_clock24h = true, m_clockSeconds = false, m_clockDate = true;
 };

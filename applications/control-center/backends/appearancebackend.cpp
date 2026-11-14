@@ -26,6 +26,20 @@ QSettings appearanceSettings()
 
 const QStringList kFillModes = {QStringLiteral("crop"), QStringLiteral("fit"), QStringLiteral("stretch"),
                                 QStringLiteral("center"), QStringLiteral("tile")};
+const QStringList kHideModes = {QStringLiteral("never"), QStringLiteral("smart"), QStringLiteral("always")};
+
+// Same reading as the shell (desktop/horizon-shell/src/shellsettings.cpp):
+// Dock/Hide replaced the boolean Dock/AutoHide, which keeps its meaning when
+// set explicitly; with neither set the default is smart.
+QString hideMode(const QSettings &s, const QString &key, const QString &legacyKey = {})
+{
+    const QString mode = s.value(key).toString();
+    if (kHideModes.contains(mode))
+        return mode;
+    if (!legacyKey.isEmpty() && s.contains(legacyKey))
+        return s.value(legacyKey).toBool() ? QStringLiteral("always") : QStringLiteral("never");
+    return QStringLiteral("smart");
+}
 
 QString toLocalPath(const QString &pathOrUrl)
 {
@@ -103,19 +117,22 @@ void AppearanceBackend::load()
     QString fill = s.value(QStringLiteral("Desktop/WallpaperFill"), QStringLiteral("crop")).toString();
     if (!kFillModes.contains(fill))
         fill = QStringLiteral("crop");
-    const bool autoHide = s.value(QStringLiteral("Dock/AutoHide"), false).toBool();
+    const QString dockHide = hideMode(s, QStringLiteral("Dock/Hide"), QStringLiteral("Dock/AutoHide"));
+    const QString panelHide = hideMode(s, QStringLiteral("Panel/Hide"));
     const int iconSize = qBound(32, s.value(QStringLiteral("Dock/IconSize"), 44).toInt(), 72);
     const bool c24 = s.value(QStringLiteral("Panel/Clock24h"), true).toBool();
     const bool secs = s.value(QStringLiteral("Panel/ClockSeconds"), false).toBool();
     const bool date = s.value(QStringLiteral("Panel/ClockDate"), true).toBool();
 
     const bool changed = dark != m_wallpaperDark || light != m_wallpaperLight || fill != m_wallpaperFill
-                         || autoHide != m_dockAutoHide || iconSize != m_dockIconSize || c24 != m_clock24h
+                         || dockHide != m_dockHide || panelHide != m_panelHide
+                         || iconSize != m_dockIconSize || c24 != m_clock24h
                          || secs != m_clockSeconds || date != m_clockDate;
     m_wallpaperDark = dark;
     m_wallpaperLight = light;
     m_wallpaperFill = fill;
-    m_dockAutoHide = autoHide;
+    m_dockHide = dockHide;
+    m_panelHide = panelHide;
     m_dockIconSize = iconSize;
     m_clock24h = c24;
     m_clockSeconds = secs;
@@ -227,10 +244,16 @@ void AppearanceBackend::setWallpaperFill(const QString &mode)
         store(QStringLiteral("Desktop/WallpaperFill"), mode);
 }
 
-void AppearanceBackend::setDockAutoHide(bool hide)
+void AppearanceBackend::setDockHide(const QString &mode)
 {
-    if (hide != m_dockAutoHide)
-        store(QStringLiteral("Dock/AutoHide"), hide);
+    if (kHideModes.contains(mode) && mode != m_dockHide)
+        store(QStringLiteral("Dock/Hide"), mode);
+}
+
+void AppearanceBackend::setPanelHide(const QString &mode)
+{
+    if (kHideModes.contains(mode) && mode != m_panelHide)
+        store(QStringLiteral("Panel/Hide"), mode);
 }
 
 void AppearanceBackend::setDockIconSize(int size)
@@ -279,7 +302,8 @@ QJsonObject AppearanceBackend::toJson() const
         {QStringLiteral("wallpaperDark"), m_wallpaperDark},
         {QStringLiteral("wallpaperLight"), m_wallpaperLight},
         {QStringLiteral("wallpaperFill"), m_wallpaperFill},
-        {QStringLiteral("dockAutoHide"), m_dockAutoHide},
+        {QStringLiteral("dockHide"), m_dockHide},
+        {QStringLiteral("panelHide"), m_panelHide},
         {QStringLiteral("dockIconSize"), m_dockIconSize},
         {QStringLiteral("clock24h"), m_clock24h},
         {QStringLiteral("clockSeconds"), m_clockSeconds},

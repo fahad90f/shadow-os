@@ -391,13 +391,14 @@ NxPage {
         title: qsTr("Dock")
         NxRow {
             icon: "dock"
-            title: qsTr("Hide the dock automatically")
-            subtitle: qsTr("The dock slides away and returns when the pointer reaches the bottom edge.")
-            Switch {
+            title: qsTr("Hide the dock")
+            subtitle: qsTr("When hidden, it returns while the pointer touches the bottom edge of the screen.")
+            NxSegmented {
                 anchors.verticalCenter: parent.verticalCenter
-                checked: backend.dockAutoHide
-                Accessible.name: qsTr("Hide the dock automatically")
-                onToggled: backend.setDockAutoHide(checked)
+                model: [qsTr("Never"), qsTr("When an app is open"), qsTr("Always")]
+                currentIndex: ["never", "smart", "always"].indexOf(backend.dockHide)
+                Accessible.name: qsTr("Hide the dock")
+                onActivated: (index) => backend.setDockHide(["never", "smart", "always"][index])
             }
         }
         NxRow {
@@ -432,8 +433,20 @@ NxPage {
 
     // ---- panel ----------------------------------------------------------------------
     NxSection {
-        title: qsTr("Panel clock")
+        title: qsTr("Top panel")
         description: qsTr("Stored in %1, which the shell follows.").arg(backend.settingsFile)
+        NxRow {
+            icon: "window"
+            title: qsTr("Hide the top panel")
+            subtitle: qsTr("When hidden, it returns while the pointer touches the top edge of the screen.")
+            NxSegmented {
+                anchors.verticalCenter: parent.verticalCenter
+                model: [qsTr("Never"), qsTr("When an app is open"), qsTr("Always")]
+                currentIndex: ["never", "smart", "always"].indexOf(backend.panelHide)
+                Accessible.name: qsTr("Hide the top panel")
+                onActivated: (index) => backend.setPanelHide(["never", "smart", "always"][index])
+            }
+        }
         NxRow {
             icon: "clock"
             title: qsTr("24-hour clock")

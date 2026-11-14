@@ -14,8 +14,14 @@ ShellSurface {
     readonly property real barHeight: iconSize + Theme.spaceSm * 2 + 6 + Theme.spaceXs * 2
     readonly property real labelSpace: 34
     readonly property real bottomGap: Theme.spaceSm
-    readonly property bool autoHide: shellSettings.dockAutoHide
-    property bool revealed: !autoHide
+    // "never" | "smart" (hidden while an application window is open) | "always"
+    readonly property string hideMode: shellSettings.dockHide
+    readonly property bool wantsHidden: hideMode === "always" || (hideMode === "smart" && windows.openWindows)
+    // Shown anyway while the pointer is on it, and while something belonging
+    // to it (its menu) is open.
+    property bool peeking: false
+    property bool holdOpen: false
+    readonly property bool revealed: !wantsHidden || peeking || holdOpen
     // A layer surface cannot ask where it is; anchored to the bottom edge
     // only, the compositor centres it horizontally on the screen.
     readonly property real screenX: ((screen ? screen.width : width) - width) / 2
@@ -23,25 +29,26 @@ ShellSurface {
     layer: "top"
     scope: "shadow-dock"
     anchorBottom: true
-    exclusiveZone: autoHide ? 0 : Math.round(barHeight + bottomGap + 2)
+    // Only a dock that never hides reserves space; a hiding one floats over
+    // windows when it is shown.
+    exclusiveZone: hideMode === "never" ? Math.round(barHeight + bottomGap + 2) : 0
     width: Math.max(160, bar.width + Theme.spaceXl * 2)
-    height: revealed ? Math.round(barHeight + bottomGap + labelSpace) : 6
+    // Hidden, a thin strip stays at the bottom edge: touching it with the
+    // pointer brings the dock back.
+    height: revealed ? Math.round(barHeight + bottomGap + labelSpace) : 4
     visible: true
-
-    onAutoHideChanged: revealed = !autoHide
 
     HoverHandler {
         id: dockHover
         onHoveredChanged: {
-            if (!root.autoHide) return
-            if (hovered) { hideTimer.stop(); root.revealed = true }
+            if (hovered) { hideTimer.stop(); root.peeking = true }
             else hideTimer.restart()
         }
     }
     Timer {
         id: hideTimer
         interval: 900
-        onTriggered: if (root.autoHide && !dockHover.hovered) root.revealed = false
+        onTriggered: if (!dockHover.hovered) root.peeking = false
     }
 
     Rectangle {

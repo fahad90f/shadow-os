@@ -16,8 +16,8 @@
 // documented in desktop/horizon-shell/src/shellsettings.h:
 //
 //   [Desktop] Wallpaper, WallpaperLight, WallpaperFill
-//   [Dock]    AutoHide, IconSize
-//   [Panel]   Clock24h, ClockSeconds, ClockDate
+//   [Dock]    Hide, IconSize
+//   [Panel]   Hide, Clock24h, ClockSeconds, ClockDate
 //
 // Colour scheme, accent, transparency, motion and font scale are not handled
 // here: the page binds them to the Appearance singleton of org.shadow.ui.
@@ -34,7 +34,9 @@ class AppearanceBackend : public QObject
     Q_PROPERTY(QString wallpaperDark READ wallpaperDark NOTIFY shellChanged)
     Q_PROPERTY(QString wallpaperLight READ wallpaperLight NOTIFY shellChanged)
     Q_PROPERTY(QString wallpaperFill READ wallpaperFill NOTIFY shellChanged)
-    Q_PROPERTY(bool dockAutoHide READ dockAutoHide NOTIFY shellChanged)
+    // "never" | "smart" (hidden while an application window is open) | "always"
+    Q_PROPERTY(QString dockHide READ dockHide NOTIFY shellChanged)
+    Q_PROPERTY(QString panelHide READ panelHide NOTIFY shellChanged)
     Q_PROPERTY(int dockIconSize READ dockIconSize NOTIFY shellChanged)
     Q_PROPERTY(bool clock24h READ clock24h NOTIFY shellChanged)
     Q_PROPERTY(bool clockSeconds READ clockSeconds NOTIFY shellChanged)
@@ -50,7 +52,8 @@ public:
     QString wallpaperDark() const { return m_wallpaperDark; }
     QString wallpaperLight() const { return m_wallpaperLight; }
     QString wallpaperFill() const { return m_wallpaperFill; }
-    bool dockAutoHide() const { return m_dockAutoHide; }
+    QString dockHide() const { return m_dockHide; }
+    QString panelHide() const { return m_panelHide; }
     int dockIconSize() const { return m_dockIconSize; }
     bool clock24h() const { return m_clock24h; }
     bool clockSeconds() const { return m_clockSeconds; }
@@ -63,7 +66,8 @@ public:
     // an image Qt can decode; local path or file:// URL.
     Q_INVOKABLE bool setWallpaper(const QString &pathOrUrl, bool light);
     Q_INVOKABLE void setWallpaperFill(const QString &mode);
-    Q_INVOKABLE void setDockAutoHide(bool hide);
+    Q_INVOKABLE void setDockHide(const QString &mode);
+    Q_INVOKABLE void setPanelHide(const QString &mode);
     Q_INVOKABLE void setDockIconSize(int size);
     Q_INVOKABLE void setClock24h(bool on);
     Q_INVOKABLE void setClockSeconds(bool on);
@@ -89,7 +93,8 @@ private:
     QFileSystemWatcher m_watcher;
     QVariantList m_wallpapers;
     QString m_wallpaperDark, m_wallpaperLight, m_wallpaperFill;
-    bool m_dockAutoHide = false;
+    QString m_dockHide = QStringLiteral("smart");
+    QString m_panelHide = QStringLiteral("smart");
     int m_dockIconSize = 44;
     bool m_clock24h = true, m_clockSeconds = false, m_clockDate = true;
 };

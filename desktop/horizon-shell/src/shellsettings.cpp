@@ -13,6 +13,19 @@ QSettings settings()
 }
 const QStringList kFillModes = {QStringLiteral("crop"), QStringLiteral("fit"), QStringLiteral("stretch"),
                                 QStringLiteral("center"), QStringLiteral("tile")};
+const QStringList kHideModes = {QStringLiteral("never"), QStringLiteral("smart"), QStringLiteral("always")};
+
+// Dock/Hide replaced the boolean Dock/AutoHide: an explicit AutoHide keeps its
+// meaning (true → always, false → never); with neither set the default is smart.
+QString hideMode(const QSettings &s, const QString &key, const QString &legacyKey = {})
+{
+    const QString mode = s.value(key).toString();
+    if (kHideModes.contains(mode))
+        return mode;
+    if (!legacyKey.isEmpty() && s.contains(legacyKey))
+        return s.value(legacyKey).toBool() ? QStringLiteral("always") : QStringLiteral("never");
+    return QStringLiteral("smart");
+}
 } // namespace
 
 QString ShellSettings::configPath()
@@ -81,18 +94,20 @@ void ShellSettings::load()
         Q_EMIT dockPinnedChanged();
     }
 
-    const bool autoHide = s.value(QStringLiteral("Dock/AutoHide"), false).toBool();
+    const QString dockHide = hideMode(s, QStringLiteral("Dock/Hide"), QStringLiteral("Dock/AutoHide"));
     const int iconSize = qBound(32, s.value(QStringLiteral("Dock/IconSize"), 44).toInt(), 72);
-    if (autoHide != m_dockAutoHide || iconSize != m_dockIconSize) {
-        m_dockAutoHide = autoHide;
+    if (dockHide != m_dockHide || iconSize != m_dockIconSize) {
+        m_dockHide = dockHide;
         m_dockIconSize = iconSize;
         Q_EMIT dockChanged();
     }
 
+    const QString panelHide = hideMode(s, QStringLiteral("Panel/Hide"));
     const bool c24 = s.value(QStringLiteral("Panel/Clock24h"), true).toBool();
     const bool secs = s.value(QStringLiteral("Panel/ClockSeconds"), false).toBool();
     const bool date = s.value(QStringLiteral("Panel/ClockDate"), true).toBool();
-    if (c24 != m_clock24h || secs != m_clockSeconds || date != m_clockDate) {
+    if (panelHide != m_panelHide || c24 != m_clock24h || secs != m_clockSeconds || date != m_clockDate) {
+        m_panelHide = panelHide;
         m_clock24h = c24;
         m_clockSeconds = secs;
         m_clockDate = date;
@@ -140,12 +155,20 @@ void ShellSettings::setDockPinned(const QStringList &ids)
     Q_EMIT dockPinnedChanged();
 }
 
-void ShellSettings::setDockAutoHide(bool hide)
+void ShellSettings::setDockHide(const QString &mode)
 {
-    if (hide == m_dockAutoHide) return;
-    m_dockAutoHide = hide;
-    store(QStringLiteral("Dock/AutoHide"), hide);
+    if (mode == m_dockHide || !kHideModes.contains(mode)) return;
+    m_dockHide = mode;
+    store(QStringLiteral("Dock/Hide"), mode);
     Q_EMIT dockChanged();
+}
+
+void ShellSettings::setPanelHide(const QString &mode)
+{
+    if (mode == m_panelHide || !kHideModes.contains(mode)) return;
+    m_panelHide = mode;
+    store(QStringLiteral("Panel/Hide"), mode);
+    Q_EMIT panelChanged();
 }
 
 void ShellSettings::setDockIconSize(int size)
@@ -189,7 +212,8 @@ QVariantMap ShellSettings::toMap() const
         {QStringLiteral("wallpaperLight"), m_wallpaperLight},
         {QStringLiteral("wallpaperFill"), m_wallpaperFill},
         {QStringLiteral("dockPinned"), m_dockPinned},
-        {QStringLiteral("dockAutoHide"), m_dockAutoHide},
+        {QStringLiteral("dockHide"), m_dockHide},
+        {QStringLiteral("panelHide"), m_panelHide},
         {QStringLiteral("dockIconSize"), m_dockIconSize},
         {QStringLiteral("clock24h"), m_clock24h},
         {QStringLiteral("clockSeconds"), m_clockSeconds},

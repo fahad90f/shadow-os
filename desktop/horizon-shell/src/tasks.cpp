@@ -4,6 +4,7 @@
 #include "applications.h"
 #include "plasmawindowmanagement.h"
 #include "shellsettings.h"
+#include "workspaces.h"
 
 #include <QWindow>
 
@@ -25,6 +26,41 @@ WindowModel::WindowModel(Applications *apps, QObject *parent)
             Q_EMIT tasksChanged();
         }
     });
+    // Anything that can put a window on screen or take it off.
+    connect(this, &WindowModel::countChanged, this, &WindowModel::updateOpenWindows);
+    connect(this, &WindowModel::tasksChanged, this, &WindowModel::updateOpenWindows);
+    connect(this, &WindowModel::taskStateChanged, this, &WindowModel::updateOpenWindows);
+    connect(this, &WindowModel::showingDesktopChanged, this, &WindowModel::updateOpenWindows);
+}
+
+void WindowModel::setWorkspaces(Workspaces *workspaces)
+{
+    m_workspaces = workspaces;
+    connect(workspaces, &Workspaces::currentChanged, this, &WindowModel::updateOpenWindows);
+    updateOpenWindows();
+}
+
+void WindowModel::updateOpenWindows()
+{
+    bool open = false;
+    if (!showingDesktop()) {
+        const QString current = m_workspaces ? m_workspaces->current() : QString();
+        for (const PlasmaWindow *w : taskWindows()) {
+            if (w->is(PlasmaWindow::Minimized))
+                continue;
+            // A window on other workspaces only is not on screen. One that
+            // lists no workspace, or is on all of them, always is.
+            if (!current.isEmpty() && !w->is(PlasmaWindow::OnAllDesktops)
+                && !w->desktops().isEmpty() && !w->desktops().contains(current))
+                continue;
+            open = true;
+            break;
+        }
+    }
+    if (open != m_openWindows) {
+        m_openWindows = open;
+        Q_EMIT openWindowsChanged();
+    }
 }
 
 bool WindowModel::available() const

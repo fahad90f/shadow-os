@@ -10,6 +10,7 @@ class Applications;
 class PlasmaWindow;
 class PlasmaWindowManagement;
 class ShellSettings;
+class Workspaces;
 
 // The open top-level windows, as reported by the compositor.
 class WindowModel : public QAbstractListModel
@@ -23,6 +24,10 @@ class WindowModel : public QAbstractListModel
     Q_PROPERTY(QString activeTitle READ activeTitle NOTIFY activeChanged)
     Q_PROPERTY(QString activeAppName READ activeAppName NOTIFY activeChanged)
     Q_PROPERTY(bool showingDesktop READ showingDesktop WRITE setShowingDesktop NOTIFY showingDesktopChanged)
+    // True while an application window is on screen: a task window that is not
+    // minimized and is on the current workspace. The dock and the panel hide
+    // in their "smart" mode while this is true.
+    Q_PROPERTY(bool openWindows READ openWindows NOTIFY openWindowsChanged)
 
 public:
     enum Roles { UuidRole = Qt::UserRole + 1, TitleRole, AppIdRole, DesktopIdRole, AppNameRole, IconRole,
@@ -44,6 +49,9 @@ public:
     QString activeAppName() const;
     bool showingDesktop() const;
     void setShowingDesktop(bool show);
+    bool openWindows() const { return m_openWindows; }
+    // The current workspace decides which windows count as open.
+    void setWorkspaces(Workspaces *workspaces);
 
     Q_INVOKABLE void activate(const QString &uuid);
     Q_INVOKABLE void close(const QString &uuid);
@@ -62,6 +70,7 @@ Q_SIGNALS:
     void countChanged();
     void activeChanged();
     void showingDesktopChanged();
+    void openWindowsChanged();
     void tasksChanged();            // set of windows or their app assignment changed
     void taskStateChanged();        // only state/title of existing windows changed
 
@@ -70,11 +79,14 @@ private:
     void removeWindow(PlasmaWindow *w);
     int rowOf(const PlasmaWindow *w) const;
     PlasmaWindow *activeWindow() const;
+    void updateOpenWindows();
 
     Applications *m_apps;
     PlasmaWindowManagement *m_wm;
+    Workspaces *m_workspaces = nullptr;
     QList<PlasmaWindow *> m_windows;
     QStringList m_stacking;
+    bool m_openWindows = false;
 };
 
 struct DockItem

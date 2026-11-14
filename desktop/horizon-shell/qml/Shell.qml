@@ -129,6 +129,9 @@ QtObject {
         sessionMenuOpen: sessionMenu.open
         clockOpen: shell.openOverlayName === "calendar"
         clockEnabled: shell.overlayNames.indexOf("calendar") >= 0
+        // Named overlays (launcher, calendar, session menu, module popups)
+        // belong to the panel: a hidden panel comes back while one is open.
+        holdOpen: shell.openOverlayName !== ""
         onLauncherRequested: shell.trigger("launcher")
         onSessionMenuRequested: shell.trigger("session-menu")
         onClockRequested: shell.trigger("calendar")
@@ -136,6 +139,7 @@ QtObject {
 
     property Dock dockBar: Dock {
         screen: shell.primaryScreen
+        holdOpen: shell.dockMenu.open
         onMenuRequested: (index, centerX) => { dockMenu.prepare(index, centerX); shell.present(dockMenu) }
     }
 
