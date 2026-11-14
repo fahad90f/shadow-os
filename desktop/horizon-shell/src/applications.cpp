@@ -5,7 +5,11 @@
 #include <KSycoca>
 #include <KWaylandExtras>
 #include <KWindowSystem>
+#include <QDir>
+#include <QFileInfo>
+#include <QProcess>
 #include <QSettings>
+#include <QStandardPaths>
 
 #include <algorithm>
 
@@ -38,12 +42,86 @@ Applications::Applications(QObject *parent)
     : QAbstractListModel(parent)
 {
     reload();
-    connect(KSycoca::self(), &KSycoca::databaseChanged, this, [this] {
-        beginResetModel();
-        reload();
-        endResetModel();
-        Q_EMIT countChanged();
+    connect(KSycoca::self(), &KSycoca::databaseChanged, this, &Applications::reloadModel);
+
+    m_rebuildTimer.setSingleShot(true);
+    m_rebuildTimer.setInterval(1500);
+    connect(&m_rebuildTimer, &QTimer::timeout, this, &Applications::rebuildDatabase);
+    connect(&m_dirWatcher, &QFileSystemWatcher::directoryChanged, this, [this] { m_rebuildTimer.start(); });
+    watchDirectories();
+}
+
+void Applications::reloadModel()
+{
+    beginResetModel();
+    reload();
+    endResetModel();
+    Q_EMIT countChanged();
+}
+
+void Applications::watchDirectories()
+{
+    // The user's own directory may not exist yet; create it so that entries
+    // added there later are noticed too.
+    const QString userDir = QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation);
+    if (!userDir.isEmpty())
+        QDir().mkpath(userDir);
+
+    QStringList dirs;
+    for (const QString &base : QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation)) {
+        if (!QFileInfo(base).isDir())
+            continue;
+        dirs << base;
+        // Desktop ids may live one level down (e.g. applications/kde4/).
+        for (const QFileInfo &sub : QDir(base).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
+            dirs << sub.absoluteFilePath();
+    }
+    const QStringList watched = m_dirWatcher.directories();
+    for (const QString &d : std::as_const(dirs)) {
+        if (!watched.contains(d))
+            m_dirWatcher.addPath(d);
+    }
+}
+
+void Applications::rebuildDatabase()
+{
+    if (m_builder) {                    // a rebuild is running; run once more after it
+        m_rebuildAgain = true;
+        return;
+    }
+    const auto finish = [this] {
+        // Close the old database so the next query reads the rebuilt one.
+        KSycoca::self()->ensureCacheValid();
+        reloadModel();
+        watchDirectories();             // new subdirectories may have appeared
+        if (m_rebuildAgain) {
+            m_rebuildAgain = false;
+            m_rebuildTimer.start();
+        }
+    };
+
+    const QString tool = QStandardPaths::findExecutable(QStringLiteral("kbuildsycoca6"));
+    if (tool.isEmpty()) {
+        finish();                       // ensureCacheValid() rebuilds in-process
+        return;
+    }
+    // Out of process, so the shell does not stall while the database builds.
+    m_builder = new QProcess(this);
+    m_builder->setProcessChannelMode(QProcess::ForwardedErrorChannel);
+    m_builder->setStandardOutputFile(QProcess::nullDevice());
+    connect(m_builder, &QProcess::finished, this, [this, finish] {
+        m_builder->deleteLater();
+        m_builder = nullptr;
+        finish();
     });
+    connect(m_builder, &QProcess::errorOccurred, this, [this, finish](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart)
+            return;                     // other errors still end in finished()
+        m_builder->deleteLater();
+        m_builder = nullptr;
+        finish();
+    });
+    m_builder->start(tool, {});
 }
 
 QString Applications::groupFor(const KService::Ptr &service)

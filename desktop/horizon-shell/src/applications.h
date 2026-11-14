@@ -3,9 +3,13 @@
 
 #include <KService>
 #include <QAbstractListModel>
+#include <QFileSystemWatcher>
 #include <QHash>
 #include <QQmlEngine>
+#include <QTimer>
 #include <QWindow>
+
+class QProcess;
 
 struct AppEntry
 {
@@ -71,8 +75,21 @@ Q_SIGNALS:
 
 private:
     void reload();
+    void reloadModel();
     void refilter();
     static QString groupFor(const KService::Ptr &service);
+
+    // The desktop-entry database (KSycoca) is only rebuilt when something runs
+    // kbuildsycoca6; in a Plasma session that is kded6, which this session
+    // does not run. So the application directories are watched here, and a
+    // change (a package installed or removed) rebuilds the database and
+    // reloads the model, without a new login.
+    void watchDirectories();
+    void rebuildDatabase();
+    QFileSystemWatcher m_dirWatcher;
+    QTimer m_rebuildTimer;          // debounces bursts of changes (dpkg unpacking)
+    QProcess *m_builder = nullptr;  // running kbuildsycoca6
+    bool m_rebuildAgain = false;    // changes arrived while it was running
 
     QList<AppEntry> m_all;
     QList<int> m_visible;                       // indices into m_all

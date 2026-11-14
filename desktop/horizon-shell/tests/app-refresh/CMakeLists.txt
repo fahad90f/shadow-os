@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.25)
+# Standalone test, not part of the package build: run.sh builds and runs it.
+project(apptest CXX)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_CXX_STANDARD 20)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml)
+find_package(KF6Service REQUIRED)
+find_package(KF6KIO REQUIRED)
+find_package(KF6WindowSystem REQUIRED)
+add_executable(apptest test.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../../src/applications.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../../src/applications.h)
+target_include_directories(apptest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
+target_link_libraries(apptest PRIVATE Qt6::Gui Qt6::Qml KF6::Service KF6::KIOGui KF6::WindowSystem)
