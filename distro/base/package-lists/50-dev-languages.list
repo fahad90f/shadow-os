@@ -1,0 +1,61 @@
+# Programming languages and their tool chains, preinstalled on every desktop
+# image and therefore on every system installed from it. All from Debian main.
+#
+# Deliberately left out:
+#   php       — the metapackage pulls in the Apache web server; php-cli is the
+#               language without a running web server.
+#   swift     — in Debian that is OpenStack Swift (object storage). The Swift
+#               language is swiftlang.
+#   database servers (postgresql, mariadb-server) — they run as services
+#               listening on the network. The clients and SQLite are enough to
+#               write and run SQL; install a server when one is needed.
+
+# C and C++
+build-essential
+clang
+gdb
+cmake
+
+# Assembly (GNU as comes with binutils, via build-essential)
+nasm
+yasm
+
+# Python
+python3-full
+python3-pip
+python3-venv
+python3-dev
+
+# JavaScript / Node.js
+nodejs
+npm
+
+# Go
+golang-go
+
+# Rust
+rustc
+cargo
+
+# Ruby
+ruby-full
+
+# Lua
+lua5.4
+luarocks
+
+# PHP
+php-cli
+composer
+
+# Swift
+swiftlang
+
+# Kotlin (and the Java runtime and compiler it needs)
+default-jdk
+kotlin
+
+# SQL
+sqlite3
+postgresql-client
+mariadb-client

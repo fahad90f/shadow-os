@@ -34,7 +34,7 @@ The first desktop image built was 1.03 GB.
 
 | Variant | Package lists | SHADOW packages | Purpose |
 |---|---|---|---|
-| `desktop` | `10-core 15-firmware 20-boot 30-live 40-desktop` | `shadow-base-files shadow-archive-keyring shadow-boot shadow-installer shadow-live shadow-hardening shadow-artwork shadow-themes shadow-ui shadow-horizon shadow-sysinfo shadow-monitor shadow-installer-gui shadow-store shadow-updater shadow-control-center shadow-network-center shadow-arsenal shadow-arsenal-data shadow-files` | the release image |
+| `desktop` | `10-core 15-firmware 20-boot 30-live 40-desktop 45-security-core 50-dev-languages` | `shadow-base-files shadow-archive-keyring shadow-boot shadow-installer shadow-live shadow-hardening shadow-artwork shadow-themes shadow-ui shadow-horizon shadow-sysinfo shadow-monitor shadow-installer-gui shadow-store shadow-updater shadow-control-center shadow-network-center shadow-arsenal shadow-arsenal-data shadow-files` | the release image |
 | `minimal` | `10-core 20-boot 30-live` | `shadow-base-files shadow-archive-keyring shadow-boot shadow-installer shadow-live` | console-only image with the installer engine, for build-system bring-up and fast automated boot and installer tests. Not a release artefact |
 
 Note that `minimal` contains neither `shadow-hardening` nor the firmware
@@ -54,9 +54,11 @@ architectures.
 |---|---|
 | `10-core` | systemd, D-Bus, Debian's signed kernel, initramfs-tools, sudo, polkit, locales and console, base utilities, hardware inspection, storage and filesystem tools (ext4, FAT, btrfs, XFS, NTFS, exFAT, LUKS, LVM), NetworkManager and network utilities |
 | `15-firmware` | firmware and CPU microcode from Debian's `non-free-firmware` component ([../installation/hardware.md](../installation/hardware.md)) |
-| `20-boot` | GRUB common files, `efibootmgr`, `os-prober`, `mokutil`, signed shim and GRUB for UEFI, `grub-pc-bin` for BIOS |
+| `20-boot` | GRUB common files, `efibootmgr`, `os-prober`, `mokutil`, signed shim and GRUB for UEFI, `grub-pc-bin` for BIOS; snapper and grub-btrfs for the opt-in btrfs snapshots (inert on ext4) |
 | `30-live` | live-boot, live-config, live-tools, user-setup |
 | `40-desktop` | Plymouth, SDDM, portals, KWin and Xwayland, Mesa, PipeWire, BlueZ, UPower, power-profiles-daemon, UDisks2, AccountsService, PackageKit, AppStream, fwupd, fonts, Firefox ESR, tools the SHADOW applications call |
+| `45-security-core` | Tor, torsocks, proxychains, WireGuard and OpenVPN, KeePassXC, GnuPG, age, cryptsetup, MAC and metadata privacy tools, restic (encrypted backups) |
+| `50-dev-languages` | C and C++ (GCC, Clang, GDB, CMake), assembly (NASM, YASM, GNU as), Python 3 with pip and venv, Node.js and npm, Go, Rust and Cargo, Ruby, Lua 5.4 and LuaRocks, PHP (CLI, no web server) and Composer, Swift, Kotlin with the default JDK, SQL (SQLite, PostgreSQL and MariaDB clients). No database servers |
 
 Packages are installed **without Recommends and Suggests** in both the base
 layer and the SHADOW layer, so anything needed must be listed explicitly or
