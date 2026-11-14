@@ -159,7 +159,7 @@ What is and is not available:
 
 | Mechanism | State |
 |---|---|
-| Filesystem snapshots + rollback (btrfs) | **opt-in in the installer** ("Snapshots & rollback"). The disk is formatted btrfs with `@`/`@home` subvolumes; `shadow-snapshots-setup` configures snapper, a snapshot before every APT run, and grub-btrfs so a broken update can be rolled back from the boot menu. Default installs still use ext4 with none of this. **Not yet tested on a real install** — verify in a VM before relying on it |
+| Filesystem snapshots + rollback (btrfs) | **opt-in in the installer** ("Snapshots & rollback"). The disk is formatted btrfs with `@`/`@home` subvolumes; `shadow-snapshots-setup` configures snapper and a snapshot before every APT run; a broken update is rolled back with `sudo snapper -c root undochange <n>..0` (number from `snapper -c root list`) and a reboot. There are no boot-menu entries for snapshots: grub-btrfs is not packaged in Debian, so a system that no longer boots must be rolled back from the live medium. Default installs still use ext4 with none of this. **Not yet tested on a real install** — verify in a VM before relying on it |
 | Transactional or image-based updates | not implemented |
 | Older package versions in the SHADOW repository | not available: the repository keeps one version per package |
 | Downgrading a Debian package | standard APT: `sudo apt install <package>=<version>` works while that version is still in an enabled suite. Debian's stable suites normally carry only the current version; older ones are on `snapshot.debian.org`, which is **not** configured |

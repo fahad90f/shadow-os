@@ -10,10 +10,10 @@ os-prober
 mokutil
 
 # Snapshots and rollback for btrfs installs (opt-in in the installer). Inert on
-# ext4 installs; shadow-snapshots-setup only configures them when / is btrfs.
+# ext4 installs; shadow-snapshots-setup only configures it when / is btrfs.
+# (grub-btrfs, which adds snapshots to the boot menu, is not packaged in
+# Debian; rollback is "snapper undochange" instead.)
 snapper
-grub-btrfs
-inotify-tools
 
 # UEFI x86_64 — Microsoft-signed shim + Debian-signed GRUB (Secure Boot)
 shim-signed [amd64]

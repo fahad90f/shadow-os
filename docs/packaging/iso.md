@@ -54,7 +54,7 @@ architectures.
 |---|---|
 | `10-core` | systemd, D-Bus, Debian's signed kernel, initramfs-tools, sudo, polkit, locales and console, base utilities, hardware inspection, storage and filesystem tools (ext4, FAT, btrfs, XFS, NTFS, exFAT, LUKS, LVM), NetworkManager and network utilities |
 | `15-firmware` | firmware and CPU microcode from Debian's `non-free-firmware` component ([../installation/hardware.md](../installation/hardware.md)) |
-| `20-boot` | GRUB common files, `efibootmgr`, `os-prober`, `mokutil`, signed shim and GRUB for UEFI, `grub-pc-bin` for BIOS; snapper and grub-btrfs for the opt-in btrfs snapshots (inert on ext4) |
+| `20-boot` | GRUB common files, `efibootmgr`, `os-prober`, `mokutil`, signed shim and GRUB for UEFI, `grub-pc-bin` for BIOS; snapper for the opt-in btrfs snapshots (inert on ext4) |
 | `30-live` | live-boot, live-config, live-tools, user-setup |
 | `40-desktop` | Plymouth, SDDM, portals, KWin and Xwayland, Mesa, PipeWire, BlueZ, UPower, power-profiles-daemon, UDisks2, AccountsService, PackageKit, AppStream, fwupd, fonts, Firefox ESR, tools the SHADOW applications call |
 | `45-security-core` | Tor, torsocks, proxychains, WireGuard and OpenVPN, KeePassXC, GnuPG, age, cryptsetup, MAC and metadata privacy tools, restic (encrypted backups) |

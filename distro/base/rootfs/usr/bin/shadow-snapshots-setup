@@ -5,10 +5,14 @@
 # On ext4 installs this does nothing, so it is safe to ship everywhere.
 #
 # It sets up:
-#   * snapper   — a "root" config that manages timeline + pre/post snapshots;
-#   * an APT hook — a snapshot is taken automatically before every upgrade;
-#   * grub-btrfs — adds the snapshots to the boot menu so a broken update can
-#                  be rolled back by booting an earlier snapshot.
+#   * snapper   — a "root" config that manages timeline + numbered snapshots;
+#   * an APT hook — a snapshot is taken automatically before every APT run.
+#
+# Rolling back a bad update: find the snapshot taken before it, then undo
+# every change made since:
+#     sudo snapper -c root list
+#     sudo snapper -c root undochange <number>..0
+# and reboot.
 set -u
 LOG="logger -t shadow-snapshots"
 
@@ -31,22 +35,17 @@ if [ ! -e /etc/snapper/configs/root ]; then
     systemctl enable --now snapper-timeline.timer snapper-cleanup.timer 2>&1 | $LOG || true
 fi
 
-# A snapshot before every APT transaction.
+# A snapshot before every APT run.
 hook=/etc/apt/apt.conf.d/80shadow-snapshot
 if [ ! -e "$hook" ]; then
     cat > "$hook" <<'APT'
 // Shadow OS: take a btrfs snapshot before each APT run, so an update can be
-// rolled back from the boot menu. Written by shadow-snapshots-setup.
+// rolled back with "snapper -c root undochange <n>..0". Written by
+// shadow-snapshots-setup.
 DPkg::Pre-Invoke { "if command -v snapper >/dev/null && [ -e /etc/snapper/configs/root ]; then snapper -c root create -t single -c number -d 'apt' >/dev/null 2>&1 || true; fi"; };
 APT
     $LOG "installed APT pre-upgrade snapshot hook."
 fi
 
-# grub-btrfs: regenerate the boot menu to include snapshots, and keep it current.
-if command -v grub-mkconfig >/dev/null; then
-    systemctl enable grub-btrfsd 2>&1 | $LOG || true
-    grub-mkconfig -o /boot/grub/grub.cfg 2>&1 | $LOG || true
-fi
-
-$LOG "btrfs snapshots and rollback configured."
+$LOG "btrfs snapshots configured; roll back with: snapper -c root undochange <n>..0"
 exit 0

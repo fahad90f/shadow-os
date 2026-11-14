@@ -293,7 +293,7 @@ StepPage {
             NxRow {
                 icon: "undo"
                 title: qsTr("Snapshots & rollback (Btrfs)")
-                subtitle: qsTr("Installs on Btrfs with @/@home subvolumes. A snapshot is taken automatically before every update, and you can roll a broken update back from the boot menu. /home becomes a subvolume of the same filesystem.")
+                subtitle: qsTr("Installs on Btrfs with @/@home subvolumes. A snapshot is taken automatically before every update, and a broken update can be rolled back with one command (snapper undochange). /home becomes a subvolume of the same filesystem.")
                 Switch {
                     anchors.verticalCenter: parent.verticalCenter
                     checked: page.wiz.snapshots
