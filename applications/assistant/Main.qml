@@ -21,6 +21,34 @@ NxWindow {
     // "chat" | "settings". The setup state replaces the chat page when no key.
     property string view: "chat"
 
+    // Started at login with --background: no window until "Shadow" is heard
+    // or the assistant is opened.
+    readonly property bool startHidden: Qt.application.arguments.indexOf("--background") >= 0
+    visible: !startHidden
+    // While the wake word is on, closing the window keeps the assistant
+    // listening in the background; it quits once the wake word is off.
+    readonly property bool keepListening: agent.config.wakeEnabled && voice.wakeAvailable
+    onClosing: (close) => {
+        if (window.keepListening) {
+            close.accepted = false
+            window.hide()
+        }
+    }
+    function present() {
+        if (!window.visible)
+            window.show()
+        if (window.visibility === Window.Minimized)
+            window.showNormal()
+        window.raise()
+        window.requestActivate()
+    }
+    // Opening the assistant again (dock, launcher) while it runs in the
+    // background brings its window back.
+    Connections {
+        target: shadowApp
+        function onActivationRequested(args) { window.present() }
+    }
+
     // Composite presence state: the mic side (voice) takes precedence while a
     // voice turn is active, otherwise the model's chat phase drives the orb.
     readonly property string orbState: {
@@ -53,6 +81,7 @@ NxWindow {
         }
         function onWakeDetected() {
             window.view = "chat"
+            window.present()
             window.toaster.show(qsTr("Shadow is listening…"), "info")
         }
         function onYesNoResult(tag, yes) {

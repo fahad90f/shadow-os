@@ -179,6 +179,12 @@ void VoiceController::setState(const QString &s)
 {
     if (s == m_state)
         return;
+    // The microphone still hears the end of the assistant's own speech (and
+    // the listener reports a phrase only after a short silence): ignore what
+    // it hears for a moment after speaking, so a reply that mentions "Shadow"
+    // can never wake it or answer its own question.
+    if (m_state == QLatin1String("speaking"))
+        m_quietUntil = QDateTime::currentMSecsSinceEpoch() + 1200;
     m_state = s;
     Q_EMIT stateChanged();
 }
@@ -247,9 +253,14 @@ void VoiceController::startCommandCapture()
         Q_EMIT unavailable(tr("No speech-to-text engine is installed (pocketsphinx + an en-us model)."));
         return;
     }
-    if (m_capture)
+    if (m_capture || m_listenerCommand)
         return; // already capturing
     stopSpeaking();                 // barge-in: stop any reply first
+    if (listenerTranscribes()) {
+        // The running listener hears the command and knows when it ends.
+        awaitCommandFromListener();
+        return;
+    }
     const int secs = m_config ? m_config->maxUtteranceSecs() : 12;
     m_captureWav = tmpWav(QStringLiteral("cmd"));
     const QStringList argv = captureArgv(m_captureWav, secs);
@@ -398,12 +409,20 @@ QStringList VoiceController::pocketsphinxKeyphraseLiveArgv() const
     const QString md = modelDir();
     QStringList argv;
     if (m_pocketsphinxBin == QLatin1String("pocketsphinx_continuous")) {
+        // Transcribe every phrase (with the general English language model)
+        // rather than spot the keyphrase alone: the words after "Shadow" are
+        // the command, and the end of a phrase is where the user stops
+        // talking. Keyphrase spotting reported "shadow" only at the end of the
+        // whole sentence, by which time the command had already been said.
+        Q_UNUSED(phrase);
+        Q_UNUSED(thr);
         argv << m_pocketsphinxBin << QStringLiteral("-inmic") << QStringLiteral("yes")
-             << QStringLiteral("-keyphrase") << phrase
-             << QStringLiteral("-kws_threshold") << QString::number(thr, 'g', 3)
              << QStringLiteral("-logfn") << QStringLiteral("/dev/null");
         if (!md.isEmpty())
             argv << QStringLiteral("-hmm") << md;
+        const QString dev = m_config ? m_config->inputDevice() : QString();
+        if (!dev.isEmpty())
+            argv << QStringLiteral("-adcdev") << dev;
     } else {
         argv << m_pocketsphinxBin << QStringLiteral("-keyphrase") << phrase << QStringLiteral("live");
         if (!md.isEmpty())
@@ -412,9 +431,121 @@ QStringList VoiceController::pocketsphinxKeyphraseLiveArgv() const
     return argv;
 }
 
+void VoiceController::listenNow()
+{
+    m_forceListen = true;
+    syncWakeListener();
+}
+
+bool VoiceController::listenerTranscribes() const
+{
+    return m_wake && m_wake->state() == QProcess::Running
+        && m_pocketsphinxBin == QLatin1String("pocketsphinx_continuous");
+}
+
+QString VoiceController::wakeRemainder(const QString &utterance, const QString &phrase, bool *hit)
+{
+    *hit = false;
+    const QString text = utterance.toLower().simplified();
+    QStringList words = phrase.toLower().simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (words.isEmpty() || text.isEmpty())
+        return {};
+    for (QString &w : words)
+        w = QRegularExpression::escape(w);
+    // "shadow", "hey shadow", "ok shadow", "shadow's"/"shadows" (how the
+    // recogniser sometimes hears it), as whole words anywhere in the phrase.
+    const QRegularExpression re(QStringLiteral("(?:^|\\s)(?:(?:hey|hi|ok|okay)\\s+)?%1(?:'s|s)?(?=\\s|$)")
+                                    .arg(words.join(QStringLiteral("\\s+"))));
+    const QRegularExpressionMatch m = re.match(text);
+    if (!m.hasMatch())
+        return {};
+    *hit = true;
+    return text.mid(m.capturedEnd()).trimmed();
+}
+
+void VoiceController::onListenerLine(const QString &line)
+{
+    const QString text = line.toLower().simplified();
+    if (text.isEmpty() || (m_config && m_config->micMuted()))
+        return;
+    if (m_state == QLatin1String("speaking") || QDateTime::currentMSecsSinceEpoch() < m_quietUntil)
+        return;
+    const QString phrase = m_config ? m_config->wakePhrase() : QStringLiteral("shadow");
+    bool hit = false;
+    const QString rest = wakeRemainder(text, phrase, &hit);
+
+    if (m_listenerCommand) {
+        // The command after a bare "Shadow" (or push-to-talk); a repeated wake
+        // word in front of it is dropped, a wake word alone keeps waiting.
+        if (hit && rest.isEmpty())
+            return;
+        finishListenerCommand(hit ? rest : text);
+        return;
+    }
+    if (!hit || m_state != QLatin1String("idle"))
+        return;
+    Q_EMIT wakeDetected();
+    beginVoiceTurn();
+    if (!listenerTranscribes()) {
+        // Keyphrase spotting only: record the command separately.
+        setState(QStringLiteral("wake"));
+        startCommandCapture();
+        return;
+    }
+    if (!rest.isEmpty()) {
+        Q_EMIT transcriptReady(rest);   // "Shadow, open the terminal"
+        return;
+    }
+    setState(QStringLiteral("wake"));
+    awaitCommandFromListener();         // "Shadow" … "open the terminal"
+}
+
+void VoiceController::awaitCommandFromListener()
+{
+    m_listenerCommand = true;
+    setState(QStringLiteral("listening"));
+    if (!m_commandTimer) {
+        m_commandTimer = new QTimer(this);
+        m_commandTimer->setSingleShot(true);
+        connect(m_commandTimer, &QTimer::timeout, this, [this]() {
+            if (!m_listenerCommand)
+                return;
+            m_listenerCommand = false;
+            setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
+            if (m_awaitingYesNo) {
+                // No spoken answer: the on-screen card decides.
+                m_awaitingYesNo = false;
+                m_pendingTag.clear();
+                return;
+            }
+            endVoiceTurn();
+            Q_EMIT unavailable(tr("I didn't catch that."));
+        });
+    }
+    // Time to start talking plus the longest command.
+    const int secs = m_config ? m_config->maxUtteranceSecs() : 12;
+    m_commandTimer->start((secs + 6) * 1000);
+}
+
+void VoiceController::finishListenerCommand(const QString &text)
+{
+    m_listenerCommand = false;
+    if (m_commandTimer)
+        m_commandTimer->stop();
+    setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
+    if (m_awaitingYesNo) {
+        const QString tag = m_pendingTag;
+        m_awaitingYesNo = false;
+        m_pendingTag.clear();
+        Q_EMIT yesNoResult(tag, looksLikeYes(text));
+        return;
+    }
+    Q_EMIT transcriptReady(text);
+}
+
 void VoiceController::syncWakeListener()
 {
-    const bool want = m_config && m_config->wakeEnabled() && !m_config->micMuted() && wakeAvailable();
+    const bool want = m_config && (m_config->wakeEnabled() || m_forceListen) && !m_config->micMuted() && wakeAvailable();
     if (want && !m_wake)
         startWakeListener();
     else if (!want && m_wake)
@@ -427,30 +558,41 @@ void VoiceController::startWakeListener()
         return;
     const QStringList argv = pocketsphinxKeyphraseLiveArgv();
     m_wake = new QProcess(this);
-    m_wake->setProcessChannelMode(QProcess::MergedChannels);
-    const QString phrase = (m_config ? m_config->wakePhrase() : QStringLiteral("shadow")).toLower();
-    connect(m_wake, &QProcess::readyRead, this, [this, phrase]() {
+    // Only the recognised phrases (stdout); diagnostics go nowhere.
+    m_wake->setProcessChannelMode(QProcess::SeparateChannels);
+    m_wake->setStandardErrorFile(QProcess::nullDevice());
+    m_wakeBuffer.clear();
+    connect(m_wake, &QProcess::readyReadStandardOutput, this, [this]() {
         if (!m_wake)
             return;
-        const QString chunk = QString::fromUtf8(m_wake->readAll()).toLower();
-        if (chunk.contains(phrase)) {
-            // Only react while idle and unmuted; capture the command next.
-            if (m_config && m_config->micMuted())
+        m_wakeBuffer += m_wake->readAllStandardOutput();
+        int nl;
+        while ((nl = m_wakeBuffer.indexOf('\n')) >= 0) {
+            const QString line = QString::fromUtf8(m_wakeBuffer.left(nl));
+            m_wakeBuffer.remove(0, nl + 1);
+            onListenerLine(line);
+            if (!m_wake)
                 return;
-            if (m_state == QLatin1String("idle")) {
-                Q_EMIT wakeDetected();
-                setState(QStringLiteral("wake"));
-                beginVoiceTurn();
-                startCommandCapture();
-            }
         }
     });
     connect(m_wake, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
-        if (m_wake) {
-            m_wake->deleteLater();
-            m_wake = nullptr;
+        if (!m_wake)
+            return;
+        // The microphone went away (or was not there yet at login), or the
+        // engine stopped: start it again, waiting longer while it keeps failing.
+        const bool ranLong = m_wakeRunning.isValid() && m_wakeRunning.elapsed() > 60000;
+        m_wake->deleteLater();
+        m_wake = nullptr;
+        if (m_listenerCommand) {
+            m_listenerCommand = false;
+            if (m_commandTimer)
+                m_commandTimer->stop();
+            setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
         }
+        m_wakeRestartDelay = ranLong || m_wakeRestartDelay == 0 ? 2000 : qMin(m_wakeRestartDelay * 2, 15000);
+        QTimer::singleShot(m_wakeRestartDelay, this, &VoiceController::syncWakeListener);
     });
+    m_wakeRunning.start();
     m_wake->start(argv.first(), argv.mid(1));
 }
 
@@ -461,6 +603,12 @@ void VoiceController::stopWakeListener()
     QProcess *w = m_wake;
     m_wake = nullptr;
     disconnect(w, nullptr, this, nullptr);
+    if (m_listenerCommand) {
+        m_listenerCommand = false;
+        if (m_commandTimer)
+            m_commandTimer->stop();
+        setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
+    }
     w->terminate();
     if (!w->waitForFinished(500))
         w->kill();
@@ -659,6 +807,9 @@ void VoiceController::cancel()
         if (!m_captureWav.isEmpty())
             QFile::remove(m_captureWav);
     }
+    m_listenerCommand = false;
+    if (m_commandTimer)
+        m_commandTimer->stop();
     m_awaitingYesNo = false;
     m_pendingTag.clear();
     setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
@@ -688,6 +839,7 @@ QJsonObject VoiceController::diagnostics() const
             {QStringLiteral("tts"), ttsAvailable()},
             {QStringLiteral("stt"), sttAvailable()},
             {QStringLiteral("wake"), wakeAvailable()},
+            {QStringLiteral("listenerRunning"), m_wake != nullptr},
             {QStringLiteral("typeText"), typeAvailable()},
         }},
         {QStringLiteral("config"), m_config ? QJsonObject{

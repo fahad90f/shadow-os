@@ -134,7 +134,14 @@ void AssistantConfig::reload()
             m_enabledTools << t;
 
     // --- voice ---
-    m_wakeEnabled = ini.value(QStringLiteral("voice/wake_word_enabled"), false).toBool();
+    // Saying "Shadow" works out of the box. The listener transcribes on this
+    // computer only and keeps nothing; the toggle in the sidebar and Settings
+    // turns it off. Earlier versions wrote wake_word_enabled=false into every
+    // saved configuration without the user choosing it, so the stored value
+    // counts only once the user has switched it themselves (wake_word_chosen).
+    m_wakeEnabled = ini.value(QStringLiteral("voice/wake_word_chosen"), false).toBool()
+        ? ini.value(QStringLiteral("voice/wake_word_enabled"), true).toBool()
+        : true;
     m_wakePhrase = ini.value(QStringLiteral("voice/wake_phrase"), QStringLiteral("shadow")).toString().trimmed().toLower();
     if (m_wakePhrase.isEmpty())
         m_wakePhrase = QStringLiteral("shadow");
@@ -253,6 +260,7 @@ void AssistantConfig::setWakeEnabled(bool v)
 {
     if (v == m_wakeEnabled) return;
     m_wakeEnabled = v;
+    QSettings(iniPath(), QSettings::IniFormat).setValue(QStringLiteral("voice/wake_word_chosen"), true);
     save();
     Q_EMIT changed();
 }

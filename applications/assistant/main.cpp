@@ -7,10 +7,12 @@
 #include <shadowapp.h>
 
 #include <QCommandLineOption>
+#include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTextStream>
+#include <QTimer>
 
 int main(int argc, char **argv)
 {
@@ -36,7 +38,16 @@ int main(int argc, char **argv)
         QStringLiteral("text"));
     QCommandLineOption synthOutOpt(QStringLiteral("voice-out"),
         QStringLiteral("Output WAV path for --voice-synthesize."), QStringLiteral("wav"));
-    app.parser().addOptions({transcribeOpt, wakeOpt, synthOpt, synthOutOpt});
+    QCommandLineOption listenOpt(QStringLiteral("voice-listen"),
+        QStringLiteral("Run the wake-word listener on the microphone for <seconds> and print what it "
+                       "does as JSON lines (wake, command, state), without the window."),
+        QStringLiteral("seconds"));
+    // Started at login (org.shadow.assistant-listen.desktop): no window until
+    // the user says "Shadow" or opens the assistant; exits at once when the
+    // wake word is switched off.
+    QCommandLineOption backgroundOpt(QStringLiteral("background"),
+        QStringLiteral("Start without a window and listen for the wake word."));
+    app.parser().addOptions({transcribeOpt, wakeOpt, synthOpt, synthOutOpt, listenOpt, backgroundOpt});
     if (!app.processArguments())
         return 0;
 
@@ -70,6 +81,42 @@ int main(int argc, char **argv)
         }
         out << QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented));
         return 0;
+    }
+
+    if (app.parser().isSet(listenOpt)) {
+        AssistantConfig config;
+        VoiceController voice;
+        voice.setConfig(&config);
+        QTextStream out(stdout);
+        auto emitLine = [&out](const QJsonObject &o) {
+            out << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact)) << '\n';
+            out.flush();
+        };
+        QObject::connect(&voice, &VoiceController::wakeDetected, [&]() {
+            emitLine({{QStringLiteral("event"), QStringLiteral("wake")}});
+        });
+        QObject::connect(&voice, &VoiceController::transcriptReady, [&](const QString &text) {
+            emitLine({{QStringLiteral("event"), QStringLiteral("command")}, {QStringLiteral("text"), text}});
+        });
+        QObject::connect(&voice, &VoiceController::stateChanged, [&]() {
+            emitLine({{QStringLiteral("event"), QStringLiteral("state")}, {QStringLiteral("state"), voice.state()}});
+        });
+        QObject::connect(&voice, &VoiceController::unavailable, [&](const QString &reason) {
+            emitLine({{QStringLiteral("event"), QStringLiteral("unavailable")}, {QStringLiteral("reason"), reason}});
+        });
+        voice.listenNow();
+        emitLine({{QStringLiteral("event"), QStringLiteral("listening")},
+                  {QStringLiteral("wakePhrase"), config.wakePhrase()},
+                  {QStringLiteral("running"), voice.diagnostics().value(QStringLiteral("capabilities"))
+                                                  .toObject().value(QStringLiteral("listenerRunning"))}});
+        QTimer::singleShot(qMax(1, app.parser().value(listenOpt).toInt()) * 1000, qApp, &QCoreApplication::quit);
+        return qApp->exec();
+    }
+
+    if (app.parser().isSet(backgroundOpt)) {
+        AssistantConfig config;
+        if (!config.wakeEnabled())
+            return 0;   // nothing to listen for
     }
 
     if (!app.dumpTopic().isEmpty()) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <QElapsedTimer>
 #include <QJsonObject>
 #include <QObject>
 #include <QProcess>
@@ -9,18 +10,24 @@
 #include <QStringList>
 
 class AssistantConfig;
+class QTimer;
 
 // The voice subsystem for the hands-free "Shadow" assistant.
 //
 // Everything here drives verified command-line engines through an argument
 // vector (never a shell), so the application links no extra libraries:
 //
-//   * wake word   — pocketsphinx keyphrase spotting ("shadow"), opt-in, run as
-//                   a long-lived listener that only reports a hit; nothing is
-//                   recorded or sent anywhere until the phrase fires, and never
-//                   while muted.
-//   * capture     — parecord / pw-record / arecord into a 16 kHz mono WAV, with
-//                   a maximum utterance length.
+//   * wake word   — a long-lived offline pocketsphinx listener on the
+//                   microphone that transcribes each spoken phrase locally when
+//                   it ends; a phrase containing "shadow" wakes the assistant,
+//                   and whatever follows the wake word in the same breath is the
+//                   command. Every other phrase is dropped on the spot: nothing
+//                   is recorded, stored or sent, and nothing runs while muted.
+//                   The listener restarts by itself if the microphone goes away.
+//   * capture     — after a bare "Shadow" (or push-to-talk) the listener's next
+//                   phrase is the command, ending when the user stops talking.
+//                   Without the listener: parecord / pw-record / arecord into a
+//                   16 kHz mono WAV, with a maximum utterance length.
 //   * command STT — pocketsphinx offline transcription of the captured WAV
 //                   (works with no network). (Live NVIDIA ASR is the intended
 //                   primary but needs an audio endpoint + microphone; see README.)
@@ -84,6 +91,9 @@ public:
     bool wakePhraseInWavSync(const QString &wavPath, const QString &phrase, double threshold, QString *error = nullptr) const;
     // Synthesize text to a WAV with the resolved/forced TTS engine; false on failure.
     bool synthesizeToWavSync(const QString &text, const QString &outWav, QString *error = nullptr) const;
+    // If the wake phrase occurs in a transcribed phrase, set *hit and return
+    // what was said after it ("" for the wake word alone).
+    static QString wakeRemainder(const QString &utterance, const QString &phrase, bool *hit);
 
 public Q_SLOTS:
     void refresh();
@@ -102,6 +112,9 @@ public Q_SLOTS:
     void endVoiceTurn();
     // Re-evaluate the wake listener against the current opt-in/mute settings.
     void syncWakeListener();
+    // Run the wake listener whatever the wake setting says (still honours mute);
+    // used by the headless --voice-listen diagnostic.
+    void listenNow();
 
 Q_SIGNALS:
     void configChanged();
@@ -125,6 +138,10 @@ private:
     void transcribeCapturedFile(const QString &wavPath);
     void startWakeListener();
     void stopWakeListener();
+    void onListenerLine(const QString &line);
+    bool listenerTranscribes() const;
+    void awaitCommandFromListener();
+    void finishListenerCommand(const QString &text);
     QString pocketsphinxBin() const { return m_pocketsphinxBin; }
     QString modelDir() const;
     QStringList pocketsphinxTranscribeArgv(const QString &wavPath) const;
@@ -148,4 +165,13 @@ private:
     QProcess *m_speak = nullptr;
     QProcess *m_wake = nullptr;
     QString m_captureWav;
+
+    // Wake listener bookkeeping.
+    QByteArray m_wakeBuffer;        // partial output line
+    bool m_forceListen = false;     // listenNow()
+    bool m_listenerCommand = false; // the next phrase heard is the command
+    QTimer *m_commandTimer = nullptr;
+    qint64 m_quietUntil = 0;        // ignore the assistant's own voice until then
+    int m_wakeRestartDelay = 0;     // ms; grows while the listener keeps failing
+    QElapsedTimer m_wakeRunning;
 };

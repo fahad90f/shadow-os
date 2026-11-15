@@ -38,15 +38,19 @@ NxPage {
     ListModel { id: actionModel }
 
     NxEmptyState {
-        anchors.centerIn: parent
+        Layout.alignment: Qt.AlignHCenter
+        Layout.topMargin: Theme.spaceXl * 2
         visible: actionModel.count === 0
         icon: "undo"
         title: qsTr("Nothing to undo yet")
         message: qsTr("When the assistant writes, moves or deletes a file, it shows up here and you can undo it.")
     }
 
+    // The page scrolls; the list is as tall as its entries.
     ListView {
-        anchors.fill: parent
+        Layout.fillWidth: true
+        Layout.preferredHeight: contentHeight
+        interactive: false
         visible: actionModel.count > 0
         model: actionModel
         spacing: Theme.spaceSm

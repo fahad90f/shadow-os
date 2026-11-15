@@ -19,3 +19,6 @@ shadow_add_app(shadow-assistant
     DESKTOP org.shadow.assistant.desktop
     LIBS Qt6::Network
 )
+
+# Listen for the wake word from login on (exits at once when it is switched off).
+install(FILES org.shadow.assistant-listen.desktop DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/autostart)

@@ -40,9 +40,9 @@ autonomy=autopilot        # autopilot (default) | ask_risky | ask_every
 disabled=                 # comma-separated tool names to turn off
 
 [voice]
-wake_word_enabled=false   # always-listening is OPT-IN (off by default)
-wake_phrase=shadow        # keyphrase that wakes the assistant
-wake_threshold=1e-20      # pocketsphinx kws threshold (smaller = stricter)
+wake_word_enabled=true    # listen for the wake phrase (on; the toggle turns it off)
+wake_phrase=shadow        # word that wakes the assistant
+wake_threshold=1e-20      # keyphrase-spotting threshold, used only with pocketsphinx 5
 muted=false               # privacy mic mute — nothing is captured when true
 speak_replies=true        # speak answers aloud
 tts_engine=auto           # auto | piper | speechd | espeak
@@ -52,7 +52,7 @@ piper_model=              # path to a piper .onnx voice model (required for pipe
 stt_mode=auto             # auto | nvidia | pocketsphinx
 capture_tool=auto         # auto | parecord | pw-record | arecord
 input_device=             # optional capture device (PulseAudio/PipeWire source)
-max_utterance_secs=12     # stop capturing a command after this long
+max_utterance_secs=12     # give up waiting for a command after this long
 pocketsphinx_model=       # optional path to an acoustic model directory
 ```
 
@@ -69,8 +69,17 @@ endpoint can be overridden for development with `SHADOW_ASSISTANT_BASE_URL`.
    and by card) → a concise result is spoken.
    A mic button gives push-to-talk; the wake toggle and a privacy mute live in
    the sidebar and Settings. The orb shows idle → wake → listening → thinking →
-   speaking. **Nothing is recorded or sent until after the wake word, and never
-   while muted.** Always-listening is **opt-in** (off by default).
+   speaking. Say it in one breath ("Shadow, open the terminal") or pause after
+   "Shadow" and then give the command; the command ends when you stop talking.
+   The listener transcribes each phrase **on this computer** with pocketsphinx
+   and drops every phrase without the wake word at once: **nothing is recorded,
+   stored or sent until after the wake word, and nothing runs while muted.**
+   The wake word is on by default and starts at login
+   (`/etc/xdg/autostart/org.shadow.assistant-listen.desktop`, which runs
+   `shadow-assistant --background`: no window until you say "Shadow"); closing
+   the window keeps it listening. Switch the wake word off (sidebar or
+   Settings) and the assistant stops listening and quits when closed.
+   `shadow-assistant --voice-listen 30` shows what the listener hears.
 3. **Tool calling** — a safe framework the model invokes; every call is argv
    (never a shell) and logged; with autonomy `ask_risky`/`ask_every` a call
    that changes the system or reaches the network is confirmed by click or

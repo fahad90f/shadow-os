@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Shadow Assistant (wake word)
+Comment=Listens for "Shadow" so the assistant answers without opening it first
+Exec=shadow-assistant --background
+Icon=org.shadow.assistant
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-phase=2
