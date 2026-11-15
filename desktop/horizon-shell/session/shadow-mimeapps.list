@@ -1,0 +1,13 @@
+# Default applications of the Shadow Horizon session (XDG_CURRENT_DESKTOP=
+# SHADOW:KDE reads $XDG_CONFIG_DIRS/shadow-mimeapps.list). Installed as
+# /etc/xdg/shadow-mimeapps.list.
+#
+# Web links that applications open — "Sign in with Google" buttons and the
+# like — go to the web browser. A browser made the default (its own "make
+# default" button, or xdg-settings set default-web-browser) is recorded in
+# ~/.config/mimeapps.list, which takes precedence over this file.
+[Default Applications]
+x-scheme-handler/http=firefox-esr.desktop
+x-scheme-handler/https=firefox-esr.desktop
+text/html=firefox-esr.desktop
+application/xhtml+xml=firefox-esr.desktop

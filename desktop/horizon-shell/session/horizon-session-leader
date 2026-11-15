@@ -52,6 +52,11 @@ fi
 if command -v kbuildsycoca6 >/dev/null 2>&1; then
     kbuildsycoca6 >/dev/null 2>&1
 fi
+# The links that applications installed for this user handle (claude://,
+# vscode://… — how a browser hands a finished sign-in back to the app).
+if command -v update-desktop-database >/dev/null 2>&1 && [ -d "$HOME/.local/share/applications" ]; then
+    update-desktop-database -q "$HOME/.local/share/applications" 2>/dev/null || true
+fi
 
 if have_systemd_user; then
     systemctl --user --no-block start shadow-horizon-session.target

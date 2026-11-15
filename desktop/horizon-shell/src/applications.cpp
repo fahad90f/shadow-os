@@ -105,6 +105,16 @@ void Applications::rebuildDatabase()
         finish();                       // ensureCacheValid() rebuilds in-process
         return;
     }
+    // Applications installed for this user only (AppImages, tarballs, the
+    // Claude desktop app…) register the links they handle — such as the
+    // claude:// link a browser opens to finish a sign-in — in desktop files
+    // under ~/.local/share/applications. Browsers look these up in that
+    // folder's mimeinfo.cache, which nothing else keeps up to date.
+    const QString userApps = QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation);
+    const QString indexer = QStandardPaths::findExecutable(QStringLiteral("update-desktop-database"));
+    if (!indexer.isEmpty() && QFileInfo(userApps).isDir())
+        QProcess::startDetached(indexer, {QStringLiteral("-q"), userApps});
+
     // Out of process, so the shell does not stall while the database builds.
     m_builder = new QProcess(this);
     m_builder->setProcessChannelMode(QProcess::ForwardedErrorChannel);

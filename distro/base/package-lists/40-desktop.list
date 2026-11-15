@@ -24,6 +24,13 @@ kwin-wayland
 # casting and the other KWin plug-ins; kwin-wayland alone has none of them.
 kwin-common
 xwayland
+# Opening web links from applications: xdg-open hands links to kde-open in the
+# Shadow session (kde-cli-tools); browsers make themselves the default with
+# kwriteconfig6 (libkf6config-bin); applications register the links they
+# handle (claude://, vscode://…) with update-desktop-database.
+kde-cli-tools
+libkf6config-bin
+desktop-file-utils
 plasma-desktoptheme
 
 # Graphics: Mesa for Intel, AMD, Nouveau, virtual GPUs and software rendering

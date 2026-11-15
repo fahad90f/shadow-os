@@ -89,7 +89,7 @@ install(FILES session/shadow-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/x
 install(FILES session/shadow-horizon-session.target DESTINATION lib/systemd/user)
 # System-wide defaults; a user's own files in ~/.config take precedence.
 install(FILES session/shadow-applications.menu DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/menus)
-install(FILES session/kwinrc session/kscreenlockerrc DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg)
+install(FILES session/kwinrc session/kscreenlockerrc session/shadow-mimeapps.list DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg)
 # The Alt+Tab window switcher ([TabBox] LayoutName=shadow in kwinrc).
 install(DIRECTORY session/tabbox/shadow DESTINATION ${CMAKE_INSTALL_DATADIR}/kwin/tabbox)
 
