@@ -20,6 +20,9 @@ xdg-desktop-portal-gtk
 
 # Compositor (pulled in by shadow-horizon as well; listed for clarity)
 kwin-wayland
+# Window switcher (Alt+Tab) support, the scripted window animations, screen
+# casting and the other KWin plug-ins; kwin-wayland alone has none of them.
+kwin-common
 xwayland
 plasma-desktoptheme
 

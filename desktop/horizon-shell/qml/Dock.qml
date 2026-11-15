@@ -79,6 +79,26 @@ ShellSurface {
                     onMiddleClicked: dock.launchNew(index, root)
                     onMenuRequested: root.menuRequested(index, root.screenX + bar.x + row.x + item.x + item.width / 2)
 
+                    // Tell KWin where this icon is, so the entry's windows
+                    // minimise into it (magic lamp). Re-sent when the icon
+                    // moves, its windows change or the dock hides/shows.
+                    onWindowCountChanged: geometryTimer.restart()
+                    onXChanged: geometryTimer.restart()
+                    Component.onCompleted: geometryTimer.restart()
+                    Connections {
+                        target: root
+                        function onRevealedChanged() { geometryTimer.restart() }
+                        function onWidthChanged() { geometryTimer.restart() }
+                    }
+                    Timer {
+                        id: geometryTimer
+                        interval: 120
+                        onTriggered: {
+                            const p = item.mapToItem(null, 0, 0)
+                            dock.setIconGeometry(index, root, Qt.rect(p.x, p.y, item.width, item.height))
+                        }
+                    }
+
                     // Name label above the hovered entry.
                     Rectangle {
                         visible: item.hovered

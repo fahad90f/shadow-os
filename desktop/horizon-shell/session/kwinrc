@@ -16,29 +16,99 @@ FocusPolicy=ClickToFocus
 RollOverDesktops=true
 
 [Plugins]
-# Effects: smooth workspace slide, window open/close scaling, overview.
+# Window animations (KWin 6 effect ids). The scripted ones (fading popups,
+# dialog parent, maximize, frozen app, full screen, translucency, window
+# view) come from the kwin-common/kwin-data packages, which shadow-horizon
+# depends on.
+# Windows open and close with a 3D glide, minimise into the dock with the
+# magic lamp, wobble gently while dragged, morph when maximised.
+glideEnabled=true
+scaleEnabled=false
+fadeEnabled=false
+magiclampEnabled=true
+squashEnabled=false
+wobblywindowsEnabled=true
+maximizeEnabled=true
+fullscreenEnabled=true
+translucencyEnabled=true
+# Workspaces slide; overview and window view (all windows side by side).
 slideEnabled=true
-scaleEnabled=true
-fadeEnabled=true
 overviewEnabled=true
+windowviewEnabled=true
+# Pop-ups and dialogs: menus fade, pop-ups slide out of the bar that opened
+# them, dialogs drop down from their window like a sheet.
+fadingpopupsEnabled=true
+slidingpopupsEnabled=true
+sheetEnabled=true
+dialogparentEnabled=true
+frozenappEnabled=true
+# Glass: blur and contrast behind the panel, dock and pop-ups.
 blurEnabled=true
 contrastEnabled=true
-kwin4_effect_dialogparentEnabled=true
-kwin4_effect_fadingpopupsEnabled=true
-kwin4_effect_loginEnabled=false
-kwin4_effect_logoutEnabled=false
+# Alt+Tab: the other windows fade back while one is selected.
+highlightwindowEnabled=true
+# Shake the pointer to find it.
+shakecursorEnabled=true
+loginEnabled=false
+logoutEnabled=false
 # No compositor-drawn splash/screen edges belonging to Plasma.
 screenedgeEnabled=false
 
 [Effect-overview]
 BorderActivate=9
 
+[Effect-glide]
+Duration=260
+RotationAngle=60
+RotationEdge=0
+
+[Effect-magiclamp]
+AnimationDuration=320
+
+[Effect-wobblywindows]
+# A soft, short wobble while moving, none while resizing or opening.
+Drag=85
+Stiffness=10
+WobblynessLevel=1
+MoveWobble=true
+ResizeWobble=false
+OpenWobble=false
+CloseWobble=false
+
+[Effect-translucency]
+# Windows turn slightly see-through while they are dragged.
+MoveResize=88
+
+[Effect-slide]
+HorizontalGap=48
+VerticalGap=48
+SlideBackground=false
+
+[Effect-blur]
+BlurStrength=10
+NoiseStrength=3
+
 [Xwayland]
 Scale=1
 XwaylandEavesdrops=None
 
 [TabBox]
-LayoutName=thumbnail_grid
+# Alt+Tab: the Shadow switcher (/usr/share/kwin/tabbox/shadow) with live
+# previews of every window on the workspace, minimised ones included.
+LayoutName=shadow
+ShowTabBox=true
+HighlightWindows=true
+MinimizedMode=0
+DesktopMode=1
+ApplicationsMode=0
+OrderMinimizedMode=0
+
+[TabBoxAlternative]
+LayoutName=shadow
+ShowTabBox=true
+HighlightWindows=true
+MinimizedMode=0
+DesktopMode=0
 
 [org.kde.kdecoration2]
 BorderSize=None

@@ -4,6 +4,7 @@
 #include "qwayland-plasma-window-management.h"
 
 #include <QObject>
+#include <QRect>
 #include <QStringList>
 #include <QtWaylandClient/QWaylandClientExtension>
 
@@ -43,6 +44,13 @@ public:
     bool is(State s) const { return m_state & s; }
 
     void requestState(quint32 flags, quint32 state) { set_state(flags, state); }
+    // Where the window goes when it is minimised: a rectangle on a shell
+    // surface (the dock icon), for the minimise animation.
+    void setMinimizedGeometry(struct ::wl_surface *panel, const QRect &rect)
+    {
+        set_minimized_geometry(panel, quint32(qMax(0, rect.x())), quint32(qMax(0, rect.y())),
+                               quint32(qMax(1, rect.width())), quint32(qMax(1, rect.height())));
+    }
 
 Q_SIGNALS:
     void changed();

@@ -6,7 +6,9 @@
 #include "shellsettings.h"
 #include "workspaces.h"
 
+#include <QGuiApplication>
 #include <QWindow>
+#include <qpa/qplatformnativeinterface.h>
 
 // ============================================================ WindowModel
 
@@ -383,6 +385,22 @@ void DockModel::activate(int row, QWindow *origin)
     // Several windows: if one of them is in front, bring the next one up
     // (lowest in the stack first, so repeated clicks cycle through all).
     m_windows->activate(item.active ? item.windows.first() : top);
+}
+
+void DockModel::setIconGeometry(int row, QWindow *dock, const QRectF &rect)
+{
+    if (row < 0 || row >= m_items.size() || !dock || !dock->handle())
+        return;
+    auto *native = QGuiApplication::platformNativeInterface();
+    auto *surface = native ? static_cast<struct ::wl_surface *>(
+                                 native->nativeResourceForWindow(QByteArrayLiteral("surface"), dock))
+                           : nullptr;
+    if (!surface)
+        return;
+    const QRect r = rect.toAlignedRect();
+    for (const QString &uuid : std::as_const(m_items.at(row).windows))
+        if (PlasmaWindow *w = m_windows->window(uuid))
+            w->setMinimizedGeometry(surface, r);
 }
 
 void DockModel::launchNew(int row, QWindow *origin)

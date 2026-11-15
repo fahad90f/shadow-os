@@ -73,7 +73,7 @@ foreach(dir IN LISTS HORIZON_MODULE_DIRS)
     target_include_directories(horizon-shell PRIVATE ${dir})
 endforeach()
 target_link_libraries(horizon-shell PRIVATE
-    Shadow::App Qt6::WaylandClient PkgConfig::WAYLAND_CLIENT
+    Shadow::App Qt6::WaylandClient Qt6::GuiPrivate PkgConfig::WAYLAND_CLIENT
     KF6::Service KF6::KIOGui KF6::WindowSystem KF6::GlobalAccel
     PolkitQt6-1::Agent PolkitQt6-1::Core)
 
@@ -90,6 +90,8 @@ install(FILES session/shadow-horizon-session.target DESTINATION lib/systemd/user
 # System-wide defaults; a user's own files in ~/.config take precedence.
 install(FILES session/shadow-applications.menu DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/menus)
 install(FILES session/kwinrc session/kscreenlockerrc DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg)
+# The Alt+Tab window switcher ([TabBox] LayoutName=shadow in kwinrc).
+install(DIRECTORY session/tabbox/shadow DESTINATION ${CMAKE_INSTALL_DATADIR}/kwin/tabbox)
 
 # Per-module build additions (extra packages, link libraries, generated
 # sources). The target "horizon-shell" exists at this point.

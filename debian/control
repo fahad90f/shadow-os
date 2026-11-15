@@ -187,7 +187,7 @@ Package: shadow-horizon
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
  shadow-ui (= ${binary:Version}), shadow-artwork, shadow-themes,
- kwin-wayland, xwayland, kwin-style-breeze, qml6-module-org-kde-layershell, layer-shell-qt,
+ kwin-wayland, kwin-common, xwayland, kwin-style-breeze, qml6-module-org-kde-layershell, layer-shell-qt,
  plasma-integration, breeze-icon-theme, breeze-cursor-theme, hicolor-icon-theme,
  libkf6service-bin, kio6,
  dbus-user-session, polkitd, pkexec,

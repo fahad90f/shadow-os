@@ -123,6 +123,9 @@ public:
     Q_INVOKABLE void setPinned(int row, bool pinned);
     Q_INVOKABLE void move(int from, int to);            // reorder pinned launchers
     Q_INVOKABLE QVariantList windowsOf(int row) const;  // [{uuid, title, active, minimized}]
+    // The entry's icon rectangle on the dock surface: its windows minimise
+    // into it (KWin's magic lamp animation).
+    Q_INVOKABLE void setIconGeometry(int row, QWindow *dock, const QRectF &rect);
 
 private:
     void rebuild(bool structural);

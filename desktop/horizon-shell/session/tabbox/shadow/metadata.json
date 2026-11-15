@@ -1,0 +1,16 @@
+{
+    "KPackageStructure": "KWin/WindowSwitcher",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Shadow OS"
+            }
+        ],
+        "Description": "Shadow OS window switcher: live previews of every window, minimised ones included",
+        "Icon": "preferences-system-windows-switcher-thumbnail-grid",
+        "Id": "shadow",
+        "License": "GPL-3.0-or-later",
+        "Name": "Shadow"
+    },
+    "X-Plasma-API": "declarativeappletscript"
+}
