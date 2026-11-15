@@ -151,14 +151,16 @@ if [ "$LOCAL" -eq 1 ]; then
     # Install at the next restart, before the desktop starts, so that nothing
     # that is being replaced is running (shadow-offline-update, part of the
     # Updater). A system from before that tool gets it first, on its own.
-    if ! command -v shadow-offline-update >/dev/null; then
+    # In /usr/sbin, which is not on a normal user's PATH: look it up by path.
+    offline_tool=/usr/sbin/shadow-offline-update
+    if [ ! -x "$offline_tool" ]; then
         log "installing the restart-time updater (once)"
         as_root apt-get -q update >&2
         as_root env DEBIAN_FRONTEND=noninteractive apt-get -q -y install --only-upgrade shadow-updater >&2
-        command -v shadow-offline-update >/dev/null \
+        [ -x "$offline_tool" ] \
             || die "the Updater of build $BUILD_ID has no shadow-offline-update; install with: sudo apt update && sudo apt upgrade"
     fi
-    as_root shadow-offline-update prepare >&2
+    as_root "$offline_tool" prepare >&2
     as_root test -L /system-update || { log "nothing to install: this system already runs build $BUILD_ID"; exit 0; }
 
     if command -v notify-send >/dev/null && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
