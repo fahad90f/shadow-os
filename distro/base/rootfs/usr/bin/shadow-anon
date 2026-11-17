@@ -163,11 +163,36 @@ def ipv6_privacy():
 
 # ── Hostname randomization ────────────────────────────────────────────────────
 
+def _sync_etc_hosts(name):
+    """Point 127.0.1.1 at the current hostname so sudo/getaddrinfo resolve it."""
+    try:
+        path = Path("/etc/hosts")
+        lines = path.read_text().splitlines() if path.exists() else []
+        out, replaced = [], False
+        for line in lines:
+            parts = line.split()
+            if parts and parts[0] == "127.0.1.1":
+                out.append(f"127.0.1.1\t{name}")
+                replaced = True
+            else:
+                out.append(line)
+        if not replaced:
+            # Keep the loopback line first, then add the 127.0.1.1 mapping.
+            insert_at = 1 if out and out[0].split()[:1] == ["127.0.0.1"] else len(out)
+            out.insert(insert_at, f"127.0.1.1\t{name}")
+        path.write_text("\n".join(out) + "\n")
+    except OSError as exc:
+        warn(f"/etc/hosts: {exc}")
+
 def random_hostname():
     log("Hostname randomization")
     name = "shadow-" + "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(8))
     rc, _, e = sh(["hostnamectl", "set-hostname", name])
-    ok(f"→ {name}") if rc == 0 else warn(f"hostnamectl: {e}")
+    if rc == 0:
+        _sync_etc_hosts(name)
+        ok(f"→ {name}")
+    else:
+        warn(f"hostnamectl: {e}")
 
 # ── Tor circuits ──────────────────────────────────────────────────────────────
 
