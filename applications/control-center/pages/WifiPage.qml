@@ -315,8 +315,10 @@ NxPage {
                 required property bool connectable
                 required property string note
                 // Exposed by WifiBackend for the brute-connect flow.
-                required property string bssid
-                required property string channel
+                // Non-required so the delegate still renders on older backend builds
+                // that don't yet expose these roles.
+                property string bssid: model.bssid !== undefined ? model.bssid : ""
+                property string channel: model.channel !== undefined ? model.channel : ""
 
                 readonly property bool attempting: wifi.connecting && wifi.connectingSsid === ssid
                 readonly property bool bruteRunning: page.bruteBssid === network.bssid && bruteAudit.running
