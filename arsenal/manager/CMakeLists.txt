@@ -29,6 +29,15 @@ install(FILES ${ARSENAL_MANIFESTS}
         DESTINATION ${CMAKE_INSTALL_DATADIR}/shadow/arsenal/profiles
         COMPONENT shadow-arsenal-data)
 
+# Built-in wordlists (used by the Wi-Fi Audit page in Control Center).
+file(GLOB ARSENAL_WORDLISTS CONFIGURE_DEPENDS
+     ${CMAKE_CURRENT_SOURCE_DIR}/../../security/arsenal/wordlists/*.txt)
+if(ARSENAL_WORDLISTS)
+    install(FILES ${ARSENAL_WORDLISTS}
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/shadow-arsenal/wordlists
+            COMPONENT shadow-arsenal-data)
+endif()
+
 # User documentation, next to the application (package shadow-arsenal).
 file(GLOB ARSENAL_DOCS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../docs/*.md)
 install(FILES ${ARSENAL_DOCS} DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/shadow-arsenal)

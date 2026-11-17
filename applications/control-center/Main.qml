@@ -23,6 +23,7 @@ NxWindow {
 
     readonly property var allPages: [
         { key: "wifi",          title: qsTr("Wi-Fi"),              icon: "wifi",          section: qsTr("Network"),         source: "pages/WifiPage.qml",          keywords: "wireless wlan hotspot" },
+        { key: "wifi-audit",    title: qsTr("Wi-Fi Audit"),        icon: "shield-alert",  section: qsTr("Network"),         source: "pages/WifiAuditPage.qml",     keywords: "brute force wpa wpa2 password crack aircrack pentest security test attack" },
         { key: "network",       title: qsTr("Wired & Proxy"),      icon: "ethernet",      section: qsTr("Network"),         source: "pages/NetworkPage.qml",       keywords: "ethernet lan ip dns proxy" },
         { key: "bluetooth",     title: qsTr("Bluetooth"),          icon: "bluetooth",     section: qsTr("Network"),         source: "pages/BluetoothPage.qml",     keywords: "pair device" },
         { key: "vpn",           title: qsTr("VPN"),                icon: "shield",        section: qsTr("Network"),         source: "pages/VpnPage.qml",           keywords: "wireguard openvpn tunnel" },

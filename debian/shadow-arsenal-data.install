@@ -1,1 +1,2 @@
 arsenal/profiles/*.json usr/share/shadow/arsenal/profiles
+security/arsenal/wordlists/*.txt usr/share/shadow-arsenal/wordlists

@@ -311,6 +311,15 @@ NxPage {
                     onClicked: network.inUse ? wifi.disconnectDevice()
                                              : page.join(network.key, network.ssid, network.securityKind, network.saved)
                 }
+                // Open the Wi-Fi Audit page pre-aimed at this network.
+                NxIconButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: network.securityKind !== "open" && network.securityKind !== "owe"
+                    iconName: "shield-alert"
+                    tooltip: qsTr("Brute-force password audit")
+                    Accessible.name: qsTr("Audit %1").arg(network.ssid)
+                    onClicked: page.ApplicationWindow.window.openPage("wifi-audit")
+                }
             }
         }
         EmptyRow {
