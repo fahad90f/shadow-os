@@ -19,6 +19,41 @@ NxPage {
     property string forgetUuid: ""
     property string forgetName: ""
 
+    // ---- Brute Connect state ------------------------------------------------
+    // Network currently being brute-forced (empty = none running).
+    property string bruteBssid: ""
+    property string bruteSsid:  ""
+    property string bruteKey:   ""
+
+    WifiAuditBackend {
+        id: bruteAudit
+        onChanged: {
+            if (bruteAudit.phase === "found") {
+                // Auto-connect with the discovered password.
+                wifi.connectNetwork(page.bruteKey, bruteAudit.result)
+                bruteDialog.close()
+                page.ApplicationWindow.window.toaster.show(
+                    qsTr("Connected to %1 — password: %2").arg(page.bruteSsid).arg(bruteAudit.result), "success")
+                page.bruteBssid = ""
+            } else if (bruteAudit.phase === "not_found") {
+                page.ApplicationWindow.window.toaster.show(
+                    qsTr("Password not found for %1 — try a larger wordlist").arg(page.bruteSsid), "warning")
+                page.bruteBssid = ""
+            } else if (bruteAudit.phase === "error") {
+                page.ApplicationWindow.window.toaster.show(bruteAudit.errorMessage, "danger")
+                page.bruteBssid = ""
+            }
+        }
+    }
+
+    function startBruteConnect(key, ssid, bssid, channel) {
+        page.bruteBssid = bssid
+        page.bruteSsid  = ssid
+        page.bruteKey   = key
+        bruteAudit.start(bssid, ssid, channel, "")
+        bruteDialog.open()
+    }
+
     readonly property var macPolicies: [
         { value: "", text: qsTr("NetworkManager's default") },
         { value: "permanent", text: qsTr("Hardware address") },
@@ -279,8 +314,12 @@ NxPage {
                 required property bool saved
                 required property bool connectable
                 required property string note
+                // Exposed by WifiBackend for the brute-connect flow.
+                required property string bssid
+                required property string channel
 
                 readonly property bool attempting: wifi.connecting && wifi.connectingSsid === ssid
+                readonly property bool bruteRunning: page.bruteBssid === network.bssid && bruteAudit.running
 
                 icon: securityKind === "open" ? "wifi" : "lock"
                 iconColor: inUse ? Theme.accent : Theme.textSecondary
@@ -300,6 +339,7 @@ NxPage {
                     litColor: network.inUse ? Theme.accent : Theme.textPrimary
                     Accessible.name: qsTr("Signal %1 %").arg(network.strength)
                 }
+                // Normal connect / disconnect button.
                 NxButton {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(implicitWidth, 104)
@@ -307,18 +347,33 @@ NxPage {
                     kind: network.inUse || !network.saved ? "secondary" : "primary"
                     enabled: network.connectable && (!wifi.connecting || network.attempting)
                     busy: network.attempting
-                    Accessible.name: network.inUse ? qsTr("Disconnect from %1").arg(network.ssid) : qsTr("Connect to %1").arg(network.ssid)
+                    Accessible.name: network.inUse ? qsTr("Disconnect from %1").arg(network.ssid)
+                                                   : qsTr("Connect to %1").arg(network.ssid)
                     onClicked: network.inUse ? wifi.disconnectDevice()
                                              : page.join(network.key, network.ssid, network.securityKind, network.saved)
                 }
-                // Open the Wi-Fi Audit page pre-aimed at this network.
-                NxIconButton {
+                // Brute Connect: try every common password, then auto-connect.
+                NxButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: network.securityKind !== "open" && network.securityKind !== "owe"
-                    iconName: "shield-alert"
-                    tooltip: qsTr("Brute-force password audit")
-                    Accessible.name: qsTr("Audit %1").arg(network.ssid)
-                    onClicked: page.ApplicationWindow.window.openPage("wifi-audit")
+                    visible: !network.inUse
+                             && network.securityKind !== "open"
+                             && network.securityKind !== "owe"
+                    text: network.bruteRunning ? qsTr("Cracking…") : qsTr("Brute Connect")
+                    kind: "ghost"
+                    iconName: network.bruteRunning ? "loader" : "shield-alert"
+                    busy: network.bruteRunning
+                    enabled: !bruteAudit.running || network.bruteRunning
+                    Accessible.name: qsTr("Brute-force connect to %1").arg(network.ssid)
+                    onClicked: {
+                        if (network.bruteRunning) {
+                            bruteAudit.stop()
+                            page.bruteBssid = ""
+                            bruteDialog.open()   // re-open to show stopped state
+                        } else {
+                            page.startBruteConnect(network.key, network.ssid,
+                                                   network.bssid, network.channel)
+                        }
+                    }
                 }
             }
         }
@@ -579,6 +634,153 @@ NxPage {
                     kind: "primary"
                     enabled: hiddenDialog.problem === ""
                     onClicked: hiddenDialog.submit()
+                }
+            }
+        }
+    }
+
+    // ---- Brute Connect progress dialog --------------------------------------
+    Dialog {
+        id: bruteDialog
+        title: qsTr("Brute Connect — %1").arg(page.bruteSsid)
+        width: Math.min(460, page.width - Theme.spaceXxl)
+        footer: null
+        closePolicy: bruteAudit.running ? Popup.NoAutoClose : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
+
+        onClosed: {
+            if (bruteAudit.running) {
+                bruteAudit.stop()
+                page.bruteBssid = ""
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Theme.spaceMd
+
+            // Phase indicator row
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceSm
+                NxIcon {
+                    name: {
+                        switch (bruteAudit.phase) {
+                            case "monitor":  return "wifi"
+                            case "capture":  return "download"
+                            case "deauth":   return "zap"
+                            case "cracking": return "key"
+                            case "found":    return "unlock"
+                            case "not_found":return "lock"
+                            case "error":    return "alert-triangle"
+                            default:         return "loader"
+                        }
+                    }
+                    size: 20
+                    color: bruteAudit.phase === "found"    ? Theme.success
+                         : bruteAudit.phase === "error"    ? Theme.danger
+                         : bruteAudit.phase === "not_found"? Theme.textMuted
+                         : Theme.accent
+                }
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: {
+                        switch (bruteAudit.phase) {
+                            case "monitor":  return qsTr("Enabling monitor mode on wireless adapter…")
+                            case "scan":     return qsTr("Finding target channel…")
+                            case "capture":  return qsTr("Capturing WPA handshake — waiting for a client to reconnect…")
+                            case "deauth":   return qsTr("Sending deauthentication packets to force a reconnection…")
+                            case "cracking": return bruteAudit.total > 0
+                                             ? qsTr("Testing passwords: %1 / %2…")
+                                               .arg(bruteAudit.progress.toLocaleString())
+                                               .arg(bruteAudit.total.toLocaleString())
+                                             : qsTr("Running dictionary attack…")
+                            case "found":    return qsTr("Password found! Connecting now…")
+                            case "not_found":return qsTr("Password not in built-in list.\nTip: use Wi-Fi Audit with a custom wordlist (e.g. rockyou.txt).")
+                            case "error":    return bruteAudit.errorMessage
+                            case "cleanup":  return qsTr("Restoring wireless adapter…")
+                            default:         return qsTr("Starting…")
+                        }
+                    }
+                    color: bruteAudit.phase === "found"    ? Theme.success
+                         : bruteAudit.phase === "error"    ? Theme.danger
+                         : Theme.textPrimary
+                }
+                // Pulsing dot while running
+                Rectangle {
+                    width: 10; height: 10; radius: 5
+                    color: Theme.accent
+                    visible: bruteAudit.running
+                    SequentialAnimation on opacity {
+                        running: bruteAudit.running
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 1.0; duration: 500; easing.type: Easing.InOutSine }
+                        NumberAnimation { to: 0.2; duration: 500; easing.type: Easing.InOutSine }
+                    }
+                }
+            }
+
+            // Progress bar during cracking phase
+            ProgressBar {
+                Layout.fillWidth: true
+                visible: bruteAudit.phase === "cracking" && bruteAudit.total > 0
+                from: 0; to: bruteAudit.total; value: bruteAudit.progress
+            }
+
+            // Result box when password found
+            Rectangle {
+                Layout.fillWidth: true
+                visible: bruteAudit.phase === "found"
+                height: foundRow.implicitHeight + Theme.spaceMd * 2
+                radius: Theme.radius
+                color: Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.12)
+                border.color: Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.35)
+                RowLayout {
+                    id: foundRow
+                    anchors {
+                        left: parent.left; right: parent.right
+                        verticalCenter: parent.verticalCenter
+                        leftMargin: Theme.spaceMd; rightMargin: Theme.spaceSm
+                    }
+                    spacing: Theme.spaceSm
+                    NxIcon { name: "key"; size: 16; color: Theme.success }
+                    Label { text: qsTr("Password:"); color: Theme.textSecondary }
+                    Label {
+                        text: bruteAudit.result
+                        color: Theme.success
+                        font.bold: true
+                        font.family: Theme.monoFamily
+                        font.pixelSize: Theme.fontSizeBody + 2
+                    }
+                }
+            }
+
+            // Last log line (single line, keeps dialog compact)
+            Label {
+                Layout.fillWidth: true
+                visible: bruteAudit.log.length > 0 && bruteAudit.phase !== "found"
+                text: bruteAudit.log.length > 0 ? bruteAudit.log[bruteAudit.log.length - 1] : ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSizeSmall
+                font.family: Theme.monoFamily
+                elide: Text.ElideRight
+            }
+
+            // Buttons
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: Theme.spaceXs
+                spacing: Theme.spaceSm
+                Item { Layout.fillWidth: true }
+                NxButton {
+                    text: bruteAudit.running ? qsTr("Stop") : qsTr("Close")
+                    kind: bruteAudit.running ? "danger" : "secondary"
+                    onClicked: {
+                        if (bruteAudit.running) {
+                            bruteAudit.stop()
+                            page.bruteBssid = ""
+                        }
+                        bruteDialog.close()
+                    }
                 }
             }
         }
