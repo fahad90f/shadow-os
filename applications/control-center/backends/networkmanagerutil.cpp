@@ -4,6 +4,8 @@
 #include "networkcommon.h"
 
 #include <QCoreApplication>
+#include <QDBusArgument>
+#include <QDBusMessage>
 #include <QDBusMetaType>
 #include <QDBusObjectPath>
 #include <QDBusServiceWatcher>
@@ -199,6 +201,68 @@ void deleteConnection(const QString &connectionPath, QObject *context,
     dbusCall(QDBusConnection::systemBus(), call, context, [done](const QDBusMessage &reply) {
         if (done)
             done(reply.type() == QDBusMessage::ReplyMessage, dbusErrorText(reply));
+    });
+}
+
+void readWifiPassword(const QString &uuid, QObject *context,
+                      std::function<void(const QString &password, const QString &error)> done)
+{
+    static const QMetaType registered = qDBusRegisterMetaType<Settings>();
+    Q_UNUSED(registered)
+    const auto fail = [done](const QString &error) { if (done) done(QString(), error); };
+    if (!isUuid(uuid)) {
+        fail(QCoreApplication::translate("NetworkManager", "Unknown connection profile."));
+        return;
+    }
+    const QString connectionInterface = QStringLiteral("org.freedesktop.NetworkManager.Settings.Connection");
+    const QDBusMessage find = dbusMethod(service(), rootPath() + QStringLiteral("/Settings"),
+                                         QStringLiteral("org.freedesktop.NetworkManager.Settings"),
+                                         QStringLiteral("GetConnectionByUuid"), {uuid});
+    dbusCall(QDBusConnection::systemBus(), find, context, [context, done, fail, connectionInterface](const QDBusMessage &found) {
+        if (found.type() != QDBusMessage::ReplyMessage || found.arguments().isEmpty()) {
+            fail(dbusErrorText(found));
+            return;
+        }
+        const QString path = dbusPlain(found.arguments().at(0)).toString();
+        // One setting per call: Wi-Fi security first, then 802.1X (enterprise).
+        const auto secretOf = [](const QDBusMessage &reply, const QString &setting) {
+            if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+                return QString();
+            const QVariantMap v = qdbus_cast<Settings>(reply.arguments().at(0)).value(setting);
+            if (setting == QLatin1String("802-1x"))
+                return v.value(QStringLiteral("password")).toString();
+            QString pw = v.value(QStringLiteral("psk")).toString();
+            if (pw.isEmpty()) {
+                const int index = qBound(0, v.value(QStringLiteral("wep-tx-keyidx")).toInt(), 3);
+                pw = v.value(QStringLiteral("wep-key%1").arg(index)).toString();
+            }
+            return pw;
+        };
+        const QDBusMessage wifi = dbusMethod(service(), path, connectionInterface, QStringLiteral("GetSecrets"),
+                                             {QStringLiteral("802-11-wireless-security")});
+        dbusCall(QDBusConnection::systemBus(), wifi, context, [context, done, fail, path, secretOf, connectionInterface](const QDBusMessage &reply) {
+            if (reply.type() == QDBusMessage::ErrorMessage) {
+                fail(reply.errorName().endsWith(QLatin1String("PermissionDenied"))
+                         ? QCoreApplication::translate("NetworkManager", "Not allowed to read the password of this network.")
+                         : dbusErrorText(reply));
+                return;
+            }
+            const QString pw = secretOf(reply, QStringLiteral("802-11-wireless-security"));
+            if (!pw.isEmpty()) {
+                if (done) done(pw, QString());
+                return;
+            }
+            const QDBusMessage eap = dbusMethod(service(), path, connectionInterface, QStringLiteral("GetSecrets"),
+                                                {QStringLiteral("802-1x")});
+            dbusCall(QDBusConnection::systemBus(), eap, context, [done, fail, secretOf](const QDBusMessage &r) {
+                const QString eapPassword = secretOf(r, QStringLiteral("802-1x"));
+                if (eapPassword.isEmpty())
+                    fail(QCoreApplication::translate("NetworkManager",
+                        "No password is stored for this network (it is open, or the password is asked for every time)."));
+                else if (done)
+                    done(eapPassword, QString());
+            }, 120000);
+        }, 120000);
     });
 }
 

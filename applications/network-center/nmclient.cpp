@@ -1433,6 +1433,55 @@ void Nm::setAutoconnect(const QString &uuid, bool autoconnect)
     });
 }
 
+void Nm::readWifiPassword(const QString &uuid)
+{
+    const QString profile = profilePath(uuid);
+    if (!running() || !Net::isUuid(uuid) || profile.isEmpty()) {
+        Q_EMIT wifiPasswordRead(uuid, QString(), tr("Unknown connection profile."));
+        return;
+    }
+    // GetSecrets() returns the secrets of one setting; NetworkManager asks the
+    // owner's secret agent (the keyring) for those not stored system-wide.
+    // Polkit decides who may read them; an administrator prompt can appear.
+    const auto fromReply = [](const QDBusMessage &reply, const QString &setting) {
+        const NmSettings s = qdbus_cast<NmSettings>(reply.arguments().value(0));
+        const QVariantMap v = s.value(setting);
+        if (setting == QLatin1String("802-1x"))
+            return v.value(QStringLiteral("password")).toString();
+        QString pw = v.value(QStringLiteral("psk")).toString();
+        if (pw.isEmpty()) {
+            const int index = v.value(QStringLiteral("wep-tx-keyidx")).toInt();
+            pw = v.value(QStringLiteral("wep-key%1").arg(qBound(0, index, 3))).toString();
+        }
+        return pw;
+    };
+    const auto failed = [this, uuid](const QDBusMessage &reply) {
+        Q_EMIT wifiPasswordRead(uuid, QString(), reply.errorName().endsWith(QLatin1String("PermissionDenied"))
+            ? tr("Not allowed to read the password of this network.")
+            : tr("The password could not be read: %1").arg(reply.errorMessage()));
+    };
+    call(profile, kIfSettingsConnection, QStringLiteral("GetSecrets"), {QStringLiteral("802-11-wireless-security")},
+         [this, uuid, profile, fromReply, failed](const QDBusMessage &reply) {
+        if (reply.type() == QDBusMessage::ErrorMessage) {
+            failed(reply);
+            return;
+        }
+        const QString pw = fromReply(reply, QStringLiteral("802-11-wireless-security"));
+        if (!pw.isEmpty()) {
+            Q_EMIT wifiPasswordRead(uuid, pw, QString());
+            return;
+        }
+        // Enterprise (WPA-EAP) networks keep the password in the 802.1X setting.
+        call(profile, kIfSettingsConnection, QStringLiteral("GetSecrets"), {QStringLiteral("802-1x")},
+             [this, uuid, fromReply](const QDBusMessage &eap) {
+            const QString eapPassword = eap.type() == QDBusMessage::ErrorMessage ? QString() : fromReply(eap, QStringLiteral("802-1x"));
+            Q_EMIT wifiPasswordRead(uuid, eapPassword, eapPassword.isEmpty()
+                ? tr("No password is stored for this network (it is open, or the password is asked for every time).")
+                : QString());
+        }, kAuthTimeoutMs);
+    }, kAuthTimeoutMs);
+}
+
 void Nm::setWifiEnabled(bool enabled)
 {
     const QString op = QStringLiteral("wifi-radio");

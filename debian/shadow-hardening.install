@@ -9,3 +9,7 @@ security/firewall/shadow-firewall usr/sbin
 security/audit/shadow-security-status usr/sbin
 security/audit/50-shadow.rules etc/audit/rules.d
 security/permissions/org.shadow.security.policy usr/share/polkit-1/actions
+distro/base/rootfs/usr/bin/shadow-anon usr/bin
+distro/base/rootfs/etc/apparmor.d/usr.bin.shadow-anon etc/apparmor.d
+distro/base/rootfs/usr/lib/systemd/system/shadow-anon-rotate.service usr/lib/systemd/system
+distro/base/rootfs/usr/lib/systemd/system/shadow-anon-rotate.timer usr/lib/systemd/system

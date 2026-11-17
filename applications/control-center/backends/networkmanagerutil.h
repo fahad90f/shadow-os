@@ -102,6 +102,13 @@ void addAndActivate(const Settings &settings, const QString &devicePath, const Q
 void deleteConnection(const QString &connectionPath, QObject *context,
                       std::function<void(bool ok, const QString &error)> done);
 
+// The stored password of the profile 'uuid' (WPA/WPA3 passphrase, WEP key or
+// 802.1X password), via Settings.GetConnectionByUuid and
+// Settings.Connection.GetSecrets; NetworkManager asks the owner's secret agent
+// for secrets kept in a keyring. 'password' is empty when 'error' says why.
+void readWifiPassword(const QString &uuid, QObject *context,
+                      std::function<void(const QString &password, const QString &error)> done);
+
 // Why an activation failed, from NMDeviceStateReason.
 QString stateReasonText(uint reason);
 

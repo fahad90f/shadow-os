@@ -143,7 +143,7 @@ Architecture: all
 Depends: ${misc:Depends}, python3, nftables, apparmor, auditd, sudo, iproute2, init-system-helpers,
  util-linux, procps
 Recommends: apparmor-profiles, apparmor-profiles-extra, apparmor-utils, cryptsetup-bin, mokutil,
- shadow-boot
+ shadow-boot, tor, torsocks, curl, iptables, rfkill, macchanger
 Description: Shadow OS security baseline
  The security configuration Shadow OS ships with, as one removable package:
  .
@@ -153,6 +153,9 @@ Description: Shadow OS security baseline
   * a default-deny nftables host firewall and shadow-firewall to manage it;
   * audit rules for identity, privilege, kernel-module and boot-chain changes;
   * NetworkManager privacy defaults (per-network MAC address, IPv6 privacy);
+  * shadow-anon, the identity protection engine behind Hide Me (Tor
+    transparent proxy, DNS over Tor, kill switch, MAC/hostname rotation),
+    with its AppArmor profile;
   * shadow-security-status, the read-only JSON report of firewall, AppArmor,
     disk encryption, Secure Boot, updates, listening services, logins, audit
     and hardening state that the Security Center displays.

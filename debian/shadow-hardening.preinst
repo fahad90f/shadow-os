@@ -10,6 +10,16 @@ case "$1" in
             dpkg-divert --package shadow-hardening --add --rename \
                 --divert /etc/nftables.conf.debian /etc/nftables.conf
         fi
+        # Images before this package shipped shadow-anon copied an AppArmor
+        # profile for it that blocked nearly everything it does. That copy is
+        # owned by no package, so dpkg would treat the fixed profile as a
+        # conflicting configuration file and could keep the broken one. Move
+        # it aside only if it is exactly that unmodified file.
+        profile=/etc/apparmor.d/usr.bin.shadow-anon
+        if [ -f "$profile" ] && ! dpkg-query -S "$profile" >/dev/null 2>&1 \
+           && [ "$(md5sum < "$profile" | cut -d' ' -f1)" = adad79e9654ca7d30b51d0f34a6da6dd ]; then
+            mv "$profile" "$profile.dpkg-old"
+        fi
         ;;
 esac
 

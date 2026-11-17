@@ -347,6 +347,73 @@ NxPage {
                              : qsTr("Never used"))
                     return parts.join("  ·  ")
                 }
+                // Stored password: read from NetworkManager only when asked
+                // and kept in this row only while it is shown.
+                property string password: ""
+                property bool shown: false
+                property bool reading: false
+                property bool copyAfterRead: false
+
+                function readPassword(copy) {
+                    copyAfterRead = copy
+                    reading = true
+                    wifi.readPassword(uuid)
+                }
+                function copyPassword() {
+                    wifi.copyToClipboard(password)
+                    page.ApplicationWindow.window.toaster.show(qsTr("Password of %1 copied to the clipboard").arg(name), "success")
+                }
+
+                Connections {
+                    target: wifi
+                    function onPasswordRead(uuid, password, error) {
+                        if (uuid !== known.uuid || !known.reading)
+                            return
+                        known.reading = false
+                        if (password === "") {
+                            page.ApplicationWindow.window.toaster.show(error, "warning")
+                            return
+                        }
+                        known.password = password
+                        if (known.copyAfterRead)
+                            known.copyPassword()
+                        else
+                            known.shown = true
+                    }
+                }
+
+                Label {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: known.shown && known.password !== ""
+                    text: known.password
+                    textFormat: Text.PlainText
+                    font.family: Theme.fontMono
+                    color: Theme.textPrimary
+                    elide: Text.ElideMiddle
+                    width: Math.min(implicitWidth, 240)
+                    Accessible.name: qsTr("Password")
+                }
+                NxIconButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    enabled: !known.reading
+                    iconName: known.shown ? "eye-off" : "eye"
+                    tooltip: known.shown ? qsTr("Hide password") : qsTr("Show password of %1").arg(known.name)
+                    onClicked: {
+                        if (known.shown) {
+                            known.shown = false
+                            known.password = ""
+                        } else {
+                            known.readPassword(false)
+                        }
+                    }
+                }
+                NxIconButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    enabled: !known.reading
+                    iconName: "copy"
+                    tooltip: qsTr("Copy password of %1").arg(known.name)
+                    onClicked: known.password !== "" ? known.copyPassword() : known.readPassword(true)
+                }
                 CheckBox {
                     anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("Connect automatically")
