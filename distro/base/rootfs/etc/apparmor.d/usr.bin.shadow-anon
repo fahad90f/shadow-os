@@ -1,7 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # AppArmor profile for /usr/bin/shadow-anon
-# Shadow OS identity and anonymity engine.
-# Runs as root via pkexec; this profile constrains it to known paths.
+# Shadow OS identity and anonymity engine (the Hide Me panel runs it as root
+# through pkexec).
+#
+# This profile confines the Python program itself to the files it manages.
+# The system tools it drives (NetworkManager's nmcli, systemctl, iptables/nft,
+# ip, hostnamectl, …) reconfigure the whole machine by design; they run under
+# their own profile when one exists and unconfined otherwise (PUx), exactly
+# as when an administrator types them. Confining them inside this profile
+# broke every feature: on Debian /bin is a link to /usr/bin, /bin/sh is dash,
+# iptables is /usr/sbin/xtables-nft-multi and modprobe is /usr/bin/kmod, and
+# AppArmor only matches those resolved paths.
 
 #include <tunables/global>
 
@@ -9,135 +18,149 @@
   #include <abstractions/base>
   #include <abstractions/nameservice>
   #include <abstractions/python>
+  #include <abstractions/openssl>
+  #include <abstractions/ssl_certs>
 
   # ---- Capabilities -------------------------------------------------------
-  # Required for: network config, iptables, MAC changing, rfkill, sysctl,
-  # file attribute manipulation (chattr), process management.
   capability net_admin,
   capability net_raw,
   capability sys_admin,
+  capability sys_module,
   capability dac_override,
   capability dac_read_search,
   capability chown,
   capability fowner,
+  capability fsetid,
   capability kill,
-  capability sys_ptrace,
   capability setuid,
   capability setgid,
+  capability linux_immutable,
 
-  # ---- Own binary and Python runtime -------------------------------------
-  /usr/bin/shadow-anon r,
-  /usr/bin/python3*    ix,
-  /usr/lib/python3*/   r,
-  /usr/lib/python3*/** r,
-  /usr/local/lib/python3*/** r,
+  # The leak test talks to the network (curl, torsocks); iptables and ip use
+  # netlink.
+  network inet,
+  network inet6,
+  network netlink raw,
+  network unix,
 
-  # ---- Proc and sys (read only) ------------------------------------------
-  /proc/               r,
-  /proc/**             r,
-  /sys/                r,
-  /sys/**              r,
+  # Child processes are signalled (timeouts) and report back.
+  signal,
+  unix,
 
-  # ---- State file --------------------------------------------------------
-  /run/shadow-anon-state.json rw,
+  # ---- Own program and the Python runtime --------------------------------
+  /usr/bin/shadow-anon              r,
+  /usr/bin/python3*                 ix,
+  /usr/lib/python3*/                r,
+  /usr/lib/python3*/**              mr,
+  /usr/lib/python3/dist-packages/** mr,
+  /usr/local/lib/python3*/**        r,
+  /etc/python3*/**                  r,
 
-  # ---- Tor configuration -------------------------------------------------
-  /etc/tor/            rw,
-  /etc/tor/**          rw,
-  /var/lib/tor/        r,
-  /var/lib/tor/**      r,
-  /run/tor/            rw,
-  /run/tor/**          rw,
+  # ---- Proc and sys --------------------------------------------------------
+  @{PROC}/                          r,
+  @{PROC}/**                        r,
+  @{PROC}/sys/net/**                rw,
+  @{PROC}/sys/kernel/**             rw,
+  @{PROC}/sys/vm/**                 rw,
+  /sys/                             r,
+  /sys/**                           r,
 
-  # ---- NetworkManager ----------------------------------------------------
-  /etc/NetworkManager/conf.d/   rw,
-  /etc/NetworkManager/conf.d/** rw,
+  /dev/null                         rw,
+  /dev/tty                          rw,
+  /dev/pts/*                        rw,
+  /usr/share/terminfo/**            r,
+  /etc/terminfo/**                  r,
 
-  # ---- Sysctl / kernel config --------------------------------------------
-  /etc/sysctl.d/       rw,
-  /etc/sysctl.d/**     rw,
+  # ---- State ------------------------------------------------------------------
+  /run/shadow-anon-state.json       rw,
 
-  # ---- udev rules --------------------------------------------------------
-  /etc/udev/rules.d/   rw,
-  /etc/udev/rules.d/** rw,
+  # ---- Tor ----------------------------------------------------------------------
+  /etc/tor/                         rw,
+  /etc/tor/**                       rw,
+  /var/lib/tor/                     r,
+  /var/lib/tor/**                   r,
+  /run/tor/                         r,
+  /run/tor/**                       r,
+  /usr/lib/@{multiarch}/torsocks/** mr,
+  /usr/lib/torsocks/**              mr,
 
-  # ---- DNS ---------------------------------------------------------------
-  /etc/resolv.conf     rw,
-  /etc/resolv.conf.shadow-backup rw,
+  # ---- Files it writes --------------------------------------------------------
+  /etc/NetworkManager/conf.d/       rw,
+  /etc/NetworkManager/conf.d/**     rw,
+  /etc/sysctl.d/                    rw,
+  /etc/sysctl.d/**                  rw,
+  /etc/udev/rules.d/                rw,
+  /etc/udev/rules.d/**              rw,
+  /etc/systemd/system/              r,
+  /etc/systemd/system/shadow-anon-rotate.timer.d/   rw,
+  /etc/systemd/system/shadow-anon-rotate.timer.d/** rw,
 
-  # ---- Logs (wipe command) -----------------------------------------------
-  /var/log/            r,
-  /var/log/**          rw,
-  /home/*/.bash_history rw,
-  /home/*/.zsh_history  rw,
-  /root/.bash_history   rw,
-  /root/.zsh_history    rw,
+  # DNS: /etc/resolv.conf may be a link into /run.
+  /etc/resolv.conf                  rw,
+  /etc/resolv.conf.shadow-backup    rw,
+  /run/NetworkManager/resolv.conf   rw,
+  /run/NetworkManager/no-stub-resolv.conf rw,
+  /run/systemd/resolve/*.conf       rw,
 
-  # ---- Temporary files ---------------------------------------------------
-  /tmp/shadow-*        rw,
-  /tmp/shadow-*/       rw,
-  /tmp/shadow-*/**     rw,
+  # ---- Log wipe ----------------------------------------------------------------
+  /var/log/                         r,
+  /var/log/**                       rw,
+  /home/                            r,
+  /home/*/                          r,
+  /home/*/.bash_history             rw,
+  /home/*/.zsh_history              rw,
+  /home/*/.fish_history             rw,
+  /home/*/.cache/                   r,
+  /home/*/.cache/thumbnails/        rw,
+  /home/*/.cache/thumbnails/**      rw,
+  /root/                            r,
+  /root/.bash_history               rw,
+  /root/.zsh_history                rw,
+  /root/.fish_history               rw,
+  /tmp/                             r,
+  /tmp/**                           rw,
 
-  # ---- Executables called by shadow-anon ---------------------------------
-  /sbin/iptables                   ix,
-  /sbin/iptables-restore           ix,
-  /sbin/iptables-save              ix,
-  /sbin/ip6tables                  ix,
-  /sbin/ip6tables-restore          ix,
-  /usr/sbin/iptables               ix,
-  /usr/sbin/iptables-restore       ix,
-  /usr/sbin/ip6tables              ix,
-  /bin/ip                          ix,
-  /sbin/ip                         ix,
-  /usr/sbin/ip                     ix,
-  /sbin/sysctl                     ix,
-  /usr/sbin/sysctl                 ix,
-  /usr/sbin/rfkill                 ix,
-  /usr/sbin/macchanger             ix,
-  /bin/hostname                    ix,
-  /usr/bin/hostname                ix,
-  /usr/bin/timedatectl             ix,
-  /bin/timedatectl                 ix,
-  /usr/bin/find                    ix,
-  /bin/find                        ix,
-  /bin/rm                          ix,
-  /usr/bin/rm                      ix,
-  /usr/bin/journalctl              ix,
-  /bin/truncate                    ix,
-  /usr/bin/truncate                ix,
-  /usr/bin/tor                     Cx -> tor_child,
-  /bin/systemctl                   ix,
-  /usr/bin/systemctl               ix,
-  /sbin/udevadm                    ix,
-  /usr/sbin/udevadm                ix,
-  /usr/bin/chattr                  ix,
-  /usr/bin/torsocks                ix,
-  /usr/bin/curl                    ix,
-  /usr/bin/wget                    ix,
-  /bin/bash                        ix,
-  /bin/sh                          ix,
-  /usr/bin/bash                    ix,
-  /usr/bin/sh                      ix,
+  # ---- Helpers that run inside this profile -----------------------------------
+  /usr/bin/dash                     ix,
+  /usr/bin/bash                     ix,
+  /usr/bin/clear                    ix,
+  /usr/bin/find                     ix,
+  /usr/bin/curl                     ix,
+  /usr/bin/torsocks                 ix,
+  /usr/bin/env                      ix,
+  /usr/bin/getopt                   ix,
+  /usr/bin/basename                 ix,
+  /usr/bin/dirname                  ix,
+  /usr/bin/readlink                 ix,
+  /usr/bin/cat                      ix,
+  /usr/bin/sed                      ix,
+  /usr/bin/grep                     ix,
+  /usr/bin/id                       ix,
+  /usr/bin/uname                    ix,
+  /usr/bin/which                    ix,
 
-  # ---- dbus (systemctl calls) --------------------------------------------
-  /run/dbus/system_bus_socket      rw,
-  /run/systemd/private/            r,
-  /run/systemd/private/**          r,
+  # ---- System tools: their own profile, or unconfined ------------------------
+  /usr/bin/nmcli                    PUx,
+  /usr/bin/systemctl                PUx,
+  /usr/bin/hostnamectl              PUx,
+  /usr/bin/timedatectl              PUx,
+  /usr/bin/journalctl               PUx,
+  /usr/bin/udevadm                  PUx,
+  /usr/bin/kmod                     PUx,
+  /usr/bin/ip                       PUx,
+  /usr/bin/hostname                 PUx,
+  /usr/bin/chattr                   PUx,
+  /usr/bin/macchanger               PUx,
+  /usr/sbin/xtables-nft-multi       PUx,
+  /usr/sbin/xtables-legacy-multi    PUx,
+  /usr/sbin/iptables*               PUx,
+  /usr/sbin/ip6tables*              PUx,
+  /usr/sbin/nft                     PUx,
+  /usr/sbin/sysctl                  PUx,
+  /usr/sbin/rfkill                  PUx,
+  /usr/sbin/macchanger              PUx,
+  /usr/sbin/modprobe                PUx,
 
-  # ---- tor sub-profile ---------------------------------------------------
-  profile tor_child {
-    #include <abstractions/base>
-    /usr/bin/tor             r,
-    /etc/tor/**              r,
-    /var/lib/tor/**          rw,
-    /run/tor/**              rw,
-    /proc/sys/net/core/somaxconn r,
-    network inet  stream,
-    network inet6 stream,
-    network inet  dgram,
-    network inet6 dgram,
-    capability net_bind_service,
-    capability setuid,
-    capability setgid,
-  }
+  # Site-specific additions.
+  include if exists <local/usr.bin.shadow-anon>
 }

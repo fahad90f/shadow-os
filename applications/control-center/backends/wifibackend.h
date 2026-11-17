@@ -100,6 +100,10 @@ public:
     Q_INVOKABLE void setAutoconnect(const QString &uuid, bool autoconnect);
     // policy: "" (NetworkManager's default), "permanent", "random", "stable" or "preserve".
     Q_INVOKABLE void setMacPolicy(const QString &uuid, const QString &policy);
+    // Read the stored password of a saved network; answered by passwordRead().
+    // The password is not kept here: only the QML row that asked shows it.
+    Q_INVOKABLE void readPassword(const QString &uuid);
+    Q_INVOKABLE void copyToClipboard(const QString &text) const;
     // Empty if 'password' is acceptable for that kind of network, else why not.
     Q_INVOKABLE QString passwordProblem(const QString &securityKind, const QString &password) const;
 
@@ -116,6 +120,8 @@ Q_SIGNALS:
     void busyChanged();
     void failed(const QString &message);
     void connected(const QString &ssid);
+    // 'password' is empty when 'error' says why it could not be read.
+    void passwordRead(const QString &uuid, const QString &password, const QString &error);
 
 private Q_SLOTS:
     void onDeviceStateChanged(uint newState, uint oldState, uint reason);

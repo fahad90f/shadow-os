@@ -360,6 +360,75 @@ NxPage {
                            modelData.keyMgmt !== "" ? modelData.keyMgmt : qsTr("open"),
                            modelData.autoconnect ? qsTr("joins automatically") : qsTr("joins only on request"),
                            modelData.active ? qsTr("in use") : ""].filter(s => s !== "").join(" · ")
+
+                // Stored password: read from NetworkManager only when asked,
+                // kept in this row only while it is shown.
+                readonly property bool secured: modelData.keyMgmt !== "" && modelData.keyMgmt !== "none"
+                property string password: ""
+                property bool shown: false
+                property bool reading: false
+                property bool copyAfterRead: false
+
+                function readPassword(copy) {
+                    copyAfterRead = copy
+                    reading = true
+                    Nm.readWifiPassword(modelData.uuid)
+                }
+                function copyPassword() {
+                    NetUtil.copyToClipboard(password)
+                    ApplicationWindow.window.toaster.show(qsTr("Password of “%1” copied to the clipboard").arg(title), "success")
+                }
+
+                Connections {
+                    target: Nm
+                    function onWifiPasswordRead(uuid, password, error) {
+                        if (uuid !== savedRow.modelData.uuid || !savedRow.reading)
+                            return
+                        savedRow.reading = false
+                        if (password === "") {
+                            ApplicationWindow.window.toaster.show(error, "warning")
+                            return
+                        }
+                        savedRow.password = password
+                        if (savedRow.copyAfterRead)
+                            savedRow.copyPassword()
+                        else
+                            savedRow.shown = true
+                    }
+                }
+
+                Label {
+                    visible: savedRow.shown && savedRow.password !== ""
+                    text: savedRow.password
+                    font.family: Theme.fontMono
+                    color: Theme.textPrimary
+                    textFormat: Text.PlainText
+                    elide: Text.ElideMiddle
+                    width: Math.min(implicitWidth, 260)
+                    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                    Accessible.name: qsTr("Password")
+                }
+                NxIconButton {
+                    visible: savedRow.secured
+                    enabled: !savedRow.reading
+                    iconName: savedRow.shown ? "eye-off" : "eye"
+                    tooltip: savedRow.shown ? qsTr("Hide password") : qsTr("Show password of %1").arg(savedRow.title)
+                    onClicked: {
+                        if (savedRow.shown) {
+                            savedRow.shown = false
+                            savedRow.password = ""
+                        } else {
+                            savedRow.readPassword(false)
+                        }
+                    }
+                }
+                NxIconButton {
+                    visible: savedRow.secured
+                    enabled: !savedRow.reading
+                    iconName: "copy"
+                    tooltip: qsTr("Copy password of %1").arg(savedRow.title)
+                    onClicked: savedRow.password !== "" ? savedRow.copyPassword() : savedRow.readPassword(true)
+                }
                 NxIconButton {
                     iconName: "trash"
                     tooltip: qsTr("Forget %1").arg(savedRow.title)

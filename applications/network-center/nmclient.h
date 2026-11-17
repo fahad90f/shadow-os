@@ -120,6 +120,11 @@ public:
     Q_INVOKABLE void deactivateConnection(const QString &uuid);
     Q_INVOKABLE void deleteConnection(const QString &uuid);
     Q_INVOKABLE void setAutoconnect(const QString &uuid, bool autoconnect);
+    // Read the stored password of a saved Wi-Fi profile (WPA/WPA3 passphrase,
+    // WEP key or 802.1X password) from NetworkManager; the answer arrives as
+    // wifiPasswordRead(). Nothing is cached: the secret only lives in the QML
+    // row that asked for it.
+    Q_INVOKABLE void readWifiPassword(const QString &uuid);
 
     // ---- Wi-Fi -------------------------------------------------------------------
     Q_INVOKABLE void setWifiEnabled(bool enabled);
@@ -166,6 +171,8 @@ Q_SIGNALS:
     void operationFinished(const QString &operation, const QString &target, bool ok, const QString &message);
     // An activation needs a secret that is not stored; ask and call activateWithSecret().
     void secretsRequired(const QString &uuid, const QString &name);
+    // Answer to readWifiPassword(): 'password' is empty when 'error' says why.
+    void wifiPasswordRead(const QString &uuid, const QString &password, const QString &error);
 
 public Q_SLOTS:
     void scheduleRefresh();

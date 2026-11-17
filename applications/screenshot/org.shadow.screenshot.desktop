@@ -3,7 +3,7 @@ Type=Application
 Name=Screenshot
 GenericName=Screen Capture
 Comment=Capture the screen, a window or a region, then annotate, save or copy it
-Exec=shadow-screenshot
+Exec=/usr/bin/shadow-screenshot
 Icon=org.shadow.screenshot
 Terminal=false
 Categories=Utility;Graphics;
@@ -11,7 +11,10 @@ Keywords=screenshot;capture;print screen;snip;region;annotate;
 StartupNotify=false
 StartupWMClass=org.shadow.screenshot
 X-SHADOW-Component=screenshot
-# KWin only lets applications that declare this take screenshots.
+# KWin only lets applications that declare this take screenshots. It finds this
+# file by comparing the canonical path of Exec= with the running binary, so
+# Exec= must be an absolute path: a bare "shadow-screenshot" never matches and
+# every capture (and --clipboard) is refused.
 X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
 # Clipboard access without a focused window (shadow-screenshot --clipboard).
 X-KDE-Wayland-Interfaces=zwlr_data_control_manager_v1,ext_data_control_manager_v1
@@ -19,8 +22,8 @@ Actions=Region;Window;
 
 [Desktop Action Region]
 Name=Capture a Region
-Exec=shadow-screenshot --region
+Exec=/usr/bin/shadow-screenshot --region
 
 [Desktop Action Window]
 Name=Capture the Active Window
-Exec=shadow-screenshot --window --delay 3
+Exec=/usr/bin/shadow-screenshot --window --delay 3

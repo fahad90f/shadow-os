@@ -9,6 +9,12 @@ case "$1" in
             # administrator's choice alone.
             deb-systemd-helper enable nftables.service >/dev/null || true
         fi
+        # Load the (new) AppArmor profile of shadow-anon (Hide Me) now.
+        if [ -d /sys/kernel/security/apparmor ] && command -v apparmor_parser >/dev/null 2>&1; then
+            apparmor_parser --replace --write-cache /etc/apparmor.d/usr.bin.shadow-anon >/dev/null 2>&1 || \
+                echo "shadow-hardening: warning: could not load the AppArmor profile of shadow-anon" >&2
+        fi
+        rm -f /etc/apparmor.d/usr.bin.shadow-anon.dpkg-old
         # Apply the kernel settings now where a running system allows it.
         if [ -d /run/systemd/system ]; then
             sysctl --quiet --system >/dev/null 2>&1 || true

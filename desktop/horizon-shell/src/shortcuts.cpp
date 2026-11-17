@@ -55,8 +55,15 @@ void Shortcuts::add(const char *name, const QString &description, const QList<QK
     // A default key can get lost from the stored binding (it was briefly
     // taken while another instance registered, or a crash interrupted the
     // registration). If the stored binding is only a part of the default one
-    // and the missing keys are free, restore the default.
-    const QList<QKeySequence> active = KGlobalAccel::self()->shortcut(action);
+    // and the missing keys are free, restore the default. A lost key is often
+    // not removed but left behind as an empty or "unknown" slot (the launcher
+    // was stored as Key_unknown + Alt+F1, so the Windows key did nothing);
+    // such slots count as missing.
+    QList<QKeySequence> active;
+    for (const QKeySequence &k : KGlobalAccel::self()->shortcut(action)) {
+        if (!k.isEmpty() && k[0].key() != Qt::Key_unknown)
+            active << k;
+    }
     bool subset = active.size() < keys.size();
     for (const QKeySequence &k : active)
         subset = subset && keys.contains(k);

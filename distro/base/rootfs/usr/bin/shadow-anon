@@ -42,7 +42,7 @@ HONEST LIMITS
   routes ALL TCP — not just browser traffic. UDP (except DNS) is blocked
   while the proxy is active. Each rotation briefly drops connectivity.
 """
-import argparse, json, os, random, string, subprocess, sys, time
+import argparse, json, os, random, shutil, string, subprocess, sys, time
 from pathlib import Path
 
 # ── utilities ─────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ def sh(cmd, timeout=30):
         return 124, "", "timeout"
 
 def have(prog):
-    return sh(["sh", "-c", f"command -v {prog}"])[0] == 0
+    return shutil.which(prog, path=os.environ.get("PATH", "") + ":/usr/sbin:/usr/bin:/sbin:/bin") is not None
 
 def need_root():
     if os.geteuid() != 0:
@@ -106,16 +106,39 @@ def nm_managed(iface):
 
 # ── MAC randomization ─────────────────────────────────────────────────────────
 
+def active_profile(iface):
+    """UUID of the NetworkManager profile active on 'iface', or ''."""
+    rc, out, _ = sh(["nmcli", "-t", "-f", "UUID,DEVICE", "connection", "show", "--active"])
+    if rc != 0:
+        return ""
+    for line in out.splitlines():
+        uuid, _, dev = line.partition(":")
+        if dev == iface:
+            return uuid
+    return ""
+
 def randomize_mac():
     log("MAC address randomization")
     for ifc in net_ifaces():
         if have("nmcli") and nm_managed(ifc):
             kind = "wifi" if os.path.exists(f"/sys/class/net/{ifc}/wireless") else "ethernet"
-            sh(["nmcli", "device", "set", ifc, "managed", "yes"])
-            sh(["nmcli", "connection", "modify", "--temporary", ifc,
-                f"{'802-11-wireless' if kind=='wifi' else '802-3-ethernet'}.cloned-mac-address", "random"])
-            sh(["nmcli", "device", "reapply", ifc])
-            ok(f"{ifc} → randomized (NetworkManager)")
+            prop = f"{'802-11-wireless' if kind == 'wifi' else '802-3-ethernet'}.cloned-mac-address"
+            uuid = active_profile(ifc)
+            if not uuid:
+                ok(f"{ifc}: not connected — gets a random MAC on its next connection")
+                continue
+            # --temporary: the saved profile keeps its own setting; "random"
+            # means a new address on every activation.
+            rc, _, e = sh(["nmcli", "connection", "modify", "--temporary", uuid, prop, "random"])
+            if rc != 0:
+                warn(f"{ifc}: {e or 'nmcli refused the change'}")
+                continue
+            rc, _, e = sh(["nmcli", "--wait", "30", "connection", "up", uuid], timeout=40)
+            try:
+                mac = Path(f"/sys/class/net/{ifc}/address").read_text().strip()
+            except OSError:
+                mac = "?"
+            ok(f"{ifc} → {mac} (randomized, reconnected)") if rc == 0 else warn(f"{ifc}: reconnect failed: {e}")
         elif have("macchanger"):
             sh(["ip", "link", "set", ifc, "down"])
             sh(["macchanger", "-r", ifc])
@@ -151,6 +174,7 @@ def random_hostname():
 TORRC_D   = "/etc/tor/torrc.d"
 TORRC     = "/etc/tor/torrc"
 TPROXY_CF = "/etc/tor/torrc.d/shadow-tproxy.conf"
+TORDNS_CF = "/etc/tor/torrc.d/shadow-dns.conf"
 BRIDGE_CF = "/etc/tor/torrc.d/shadow-bridges.conf"
 
 def _ensure_torrc_d():
@@ -163,23 +187,27 @@ def _ensure_torrc_d():
     except OSError:
         pass
 
+def restart_tor():
+    """(Re)start Tor so it reads /etc/tor/torrc.d; True on success."""
+    sh(["systemctl", "enable", "tor"])
+    rc, _, _ = sh(["systemctl", "restart", "tor@default"], timeout=60)
+    if rc != 0:
+        rc, _, _ = sh(["systemctl", "restart", "tor"], timeout=60)
+    return rc == 0
+
 def new_tor_identity():
     log("Tor circuits (new exit IP)")
     if not have("tor"):
         warn("tor is not installed")
         return
-    sh(["systemctl", "start", "tor"])
-    rc, _, _ = sh(["systemctl", "restart", "tor@default"])
-    if rc != 0:
-        rc, _, _ = sh(["systemctl", "restart", "tor"])
-    ok("new Tor circuit set requested") if rc == 0 else warn("Tor restart failed")
+    ok("new Tor circuit set requested") if restart_tor() else warn("Tor restart failed (journalctl -u tor@default)")
 
 def set_tor_bridges(bridges):
     need_root()
     _ensure_torrc_d()
     if not bridges:
         Path(BRIDGE_CF).unlink(missing_ok=True)
-        sh(["systemctl", "reload-or-restart", "tor"])
+        restart_tor()
         ok("Tor bridges disabled (direct connection)")
         return
     lines = ["UseBridges 1\n",
@@ -187,7 +215,7 @@ def set_tor_bridges(bridges):
     for b in bridges:
         lines.append(f"Bridge {b}\n")
     Path(BRIDGE_CF).write_text("".join(lines))
-    sh(["systemctl", "reload-or-restart", "tor"])
+    restart_tor()
     ok(f"configured {len(bridges)} Tor bridge(s)")
 
 # ── Transparent Tor proxy ─────────────────────────────────────────────────────
@@ -195,6 +223,32 @@ def set_tor_bridges(bridges):
 TPROXY_CHAIN = "SHADOWTOR"
 TPROXY_PORT  = "9040"
 DNS_PORT     = "5353"
+
+def _write_tor_dns():
+    """Tor answers DNS on 127.0.0.1:DNS_PORT (used by DNS protection and the proxy)."""
+    _ensure_torrc_d()
+    Path(TORDNS_CF).write_text(
+        "# Shadow OS DNS-over-Tor — written by shadow-anon\n"
+        f"DNSPort 127.0.0.1:{DNS_PORT}\n"
+        "AutomapHostsOnResolve 1\n"
+        "VirtualAddrNetworkIPv4 10.192.0.0/10\n"
+    )
+
+def _nat_reset(chain):
+    """Create 'chain' in the nat table, or empty it if it exists."""
+    if sh(["iptables", "-t", "nat", "-N", chain])[0] != 0:
+        sh(["iptables", "-t", "nat", "-F", chain])
+
+def _nat_hook(chain):
+    """Jump from nat OUTPUT to 'chain' exactly once."""
+    if sh(["iptables", "-t", "nat", "-C", "OUTPUT", "-j", chain])[0] != 0:
+        sh(["iptables", "-t", "nat", "-I", "OUTPUT", "1", "-j", chain])
+
+def _nat_remove(chain):
+    while sh(["iptables", "-t", "nat", "-D", "OUTPUT", "-j", chain])[0] == 0:
+        pass
+    sh(["iptables", "-t", "nat", "-F", chain])
+    sh(["iptables", "-t", "nat", "-X", chain])
 
 def transparent_proxy_on():
     need_root()
@@ -204,30 +258,33 @@ def transparent_proxy_on():
         "# Shadow OS transparent proxy — written by shadow-anon\n"
         f"TransPort 127.0.0.1:{TPROXY_PORT} IsolateClientAddr IsolateClientProtocol "
         "IsolateDestAddr IsolateDestPort\n"
-        f"DNSPort 127.0.0.1:{DNS_PORT}\n"
         "VirtualAddrNetworkIPv4 10.192.0.0/10\n"
         "AutomapHostsSuffixes .onion,.exit\n"
         "AutomapHostsOnResolve 1\n"
     )
-    sh(["systemctl", "start", "tor"])
-    sh(["systemctl", "reload-or-restart", "tor"])
+    _write_tor_dns()
+    if not restart_tor():
+        warn("Tor did not start — not redirecting traffic (it would all fail)")
+        Path(TPROXY_CF).unlink(missing_ok=True)
+        return
     time.sleep(2)
 
     ipt = "iptables"
+    _nat_reset(TPROXY_CHAIN)
     for cmd in [
-        [ipt, "-t", "nat", "-N", TPROXY_CHAIN],
         [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-m", "owner", "--uid-owner", "debian-tor", "-j", "RETURN"],
+        # DNS first: queries to 127.0.0.1:53 must still be sent to Tor.
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "udp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT],
+        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "tcp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT],
         [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "127.0.0.0/8",    "-j", "RETURN"],
         [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "10.0.0.0/8",     "-j", "RETURN"],
         [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "172.16.0.0/12",  "-j", "RETURN"],
         [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "192.168.0.0/16", "-j", "RETURN"],
         [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "169.254.0.0/16", "-j", "RETURN"],
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "udp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT],
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "tcp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT],
         [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "tcp", "--syn",         "-j", "REDIRECT", "--to-ports", TPROXY_PORT],
-        [ipt, "-t", "nat", "-A", "OUTPUT", "-j", TPROXY_CHAIN],
     ]:
         sh(cmd)
+    _nat_hook(TPROXY_CHAIN)
 
     ok(f"all TCP → Tor:{TPROXY_PORT},  DNS → Tor:{DNS_PORT}")
     save_state({"transparent_proxy": True})
@@ -236,10 +293,11 @@ def transparent_proxy_off():
     need_root()
     log("Disabling transparent Tor proxy")
     ipt = "iptables"
-    sh([ipt, "-t", "nat", "-D", "OUTPUT", "-j", TPROXY_CHAIN])
-    sh([ipt, "-t", "nat", "-F", TPROXY_CHAIN])
-    sh([ipt, "-t", "nat", "-X", TPROXY_CHAIN])
+    _nat_remove(TPROXY_CHAIN)
     Path(TPROXY_CF).unlink(missing_ok=True)
+    if not load_state().get("dns_protected"):
+        Path(TORDNS_CF).unlink(missing_ok=True)
+    restart_tor()
     ok("transparent proxy disabled")
     save_state({"transparent_proxy": False})
 
@@ -313,18 +371,36 @@ def kill_switch_active():
 RESOLV_BACKUP = "/etc/resolv.conf.shadow-backup"
 NM_DNS_CONF   = "/etc/NetworkManager/conf.d/90-shadow-dns.conf"
 
+DNS_CHAIN = "SHADOWDNS"
+
 def dns_protect_on():
     need_root()
     log("DNS-over-Tor (no DNS leaks)")
+    if not have("tor"):
+        warn("tor is not installed — DNS left unchanged")
+        return
+    _write_tor_dns()
+    if not restart_tor():
+        warn("Tor did not start — DNS left unchanged (it would stop working)")
+        return
+    # Every DNS query (to 127.0.0.1 or any server) goes to Tor's DNSPort,
+    # except Tor's own.
+    _nat_reset(DNS_CHAIN)
+    for proto in ("udp", "tcp"):
+        sh(["iptables", "-t", "nat", "-A", DNS_CHAIN, "-m", "owner", "--uid-owner", "debian-tor", "-j", "RETURN"])
+        sh(["iptables", "-t", "nat", "-A", DNS_CHAIN, "-p", proto, "--dport", "53",
+            "-j", "REDIRECT", "--to-ports", DNS_PORT])
+    _nat_hook(DNS_CHAIN)
     if not Path(RESOLV_BACKUP).exists():
         try:
-            import shutil
             shutil.copy2("/etc/resolv.conf", RESOLV_BACKUP)
         except OSError:
             pass
     Path(NM_DNS_CONF).write_text("[main]\ndns=none\n")
     sh(["systemctl", "reload", "NetworkManager"])
     sh(["chattr", "-i", "/etc/resolv.conf"])
+    if os.path.islink("/etc/resolv.conf"):
+        os.unlink("/etc/resolv.conf")
     Path("/etc/resolv.conf").write_text(
         "# Shadow OS — DNS routed through Tor's DNSPort\n"
         "nameserver 127.0.0.1\n"
@@ -338,10 +414,13 @@ def dns_protect_off():
     need_root()
     log("Restoring system DNS")
     sh(["chattr", "-i", "/etc/resolv.conf"])
+    _nat_remove(DNS_CHAIN)
+    if not transparent_proxy_active():
+        Path(TORDNS_CF).unlink(missing_ok=True)
     Path(NM_DNS_CONF).unlink(missing_ok=True)
     if Path(RESOLV_BACKUP).exists():
-        import shutil
         shutil.copy2(RESOLV_BACKUP, "/etc/resolv.conf")
+        Path(RESOLV_BACKUP).unlink(missing_ok=True)
         ok("resolv.conf restored from backup")
     else:
         Path("/etc/resolv.conf").write_text("nameserver 1.1.1.1\nnameserver 9.9.9.9\n")
@@ -462,7 +541,6 @@ def wipe_logs():
     for d in Path("/home").iterdir():
         tc = d / ".cache" / "thumbnails"
         if tc.is_dir():
-            import shutil
             shutil.rmtree(tc, ignore_errors=True)
             tc.mkdir(parents=True, exist_ok=True)
     ok("thumbnail caches cleared")
@@ -513,10 +591,18 @@ def set_threat_model(model):
         sys.exit(f"shadow-anon: unknown threat model '{model}' (basic|enhanced|maximum)")
     log(f"Setting threat model: {model}")
     if model == "basic":
-        randomize_mac(); ipv6_privacy(); random_hostname()
+        if kill_switch_active():
+            kill_switch_off()
         if transparent_proxy_active():
             transparent_proxy_off()
+        if load_state().get("dns_protected"):
+            dns_protect_off()
+        randomize_mac(); ipv6_privacy(); random_hostname()
     elif model == "enhanced":
+        if kill_switch_active():
+            kill_switch_off()
+        if transparent_proxy_active():
+            transparent_proxy_off()
         randomize_mac(); ipv6_privacy(); random_hostname()
         new_tor_identity()
         dns_protect_on()
@@ -555,10 +641,15 @@ def start(interval):
     td = Path("/etc/systemd/system/shadow-anon-rotate.timer.d")
     td.mkdir(parents=True, exist_ok=True)
     (td / "interval.conf").write_text(
-        f"[Timer]\nOnUnitActiveSec=\nOnBootSec={interval}s\nOnUnitActiveSec={interval}s\n"
+        "# Written by shadow-anon start\n"
+        f"[Timer]\nOnBootSec=\nOnUnitActiveSec=\nOnBootSec={interval}s\nOnUnitActiveSec={interval}s\n"
     )
     sh(["systemctl", "daemon-reload"])
-    sh(["systemctl", "enable", "--now", "shadow-anon-rotate.timer"])
+    sh(["systemctl", "enable", "shadow-anon-rotate.timer"])
+    rc, _, e = sh(["systemctl", "restart", "shadow-anon-rotate.timer"])
+    if rc != 0:
+        warn(f"the rotation timer did not start: {e}")
+        return
     ok(f"auto-rotation every {interval}s")
     save_state({"auto_rotate": True})
 

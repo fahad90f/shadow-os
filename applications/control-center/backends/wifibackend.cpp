@@ -5,7 +5,9 @@
 #include "networkcommon.h"
 #include "networkmanagerutil.h"
 
+#include <QClipboard>
 #include <QDBusConnection>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QRegularExpression>
 
@@ -747,6 +749,19 @@ void WifiBackend::setMacPolicy(const QString &uuid, const QString &policy)
     runChange({QStringLiteral("connection"), QStringLiteral("modify"), QStringLiteral("uuid"), uuid,
                QStringLiteral("802-11-wireless.cloned-mac-address"), policy},
               tr("The MAC address setting could not be changed"));
+}
+
+void WifiBackend::readPassword(const QString &uuid)
+{
+    Nm::readWifiPassword(uuid, this, [this, uuid](const QString &password, const QString &error) {
+        Q_EMIT passwordRead(uuid, password, error);
+    });
+}
+
+void WifiBackend::copyToClipboard(const QString &text) const
+{
+    if (QClipboard *clipboard = QGuiApplication::clipboard())
+        clipboard->setText(text);
 }
 
 QJsonObject WifiBackend::toJson() const
