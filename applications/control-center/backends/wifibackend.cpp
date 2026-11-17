@@ -417,6 +417,10 @@ void WifiBackend::publish(const Fetch &fetch)
                     {QStringLiteral("apPath"), fields.at(9)},
                     {QStringLiteral("connectable"), note.isEmpty()},
                     {QStringLiteral("note"), note},
+                    // BSSID and channel of the strongest AP for this network,
+                    // used by the Wi-Fi Audit / Brute Connect flow.
+                    {QStringLiteral("bssid"), fields.at(3)},
+                    {QStringLiteral("channel"), fields.at(4)},
                 };
             }
             if (inUse) {
