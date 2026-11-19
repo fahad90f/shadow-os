@@ -12,6 +12,11 @@ namespace {
 // enough that real multi-step agent work (scan → enumerate → read → write a
 // report, etc.) never trips it; it exists only to cap a runaway loop.
 constexpr int kMaxToolRounds = 100;
+// Automatic retries for a transient API failure (server error, overload,
+// timeout, rate limit) before the error is shown to the user. These are the
+// "something went wrong, try again later" cases; retrying quietly clears most
+// of them, especially on large high-effort requests.
+constexpr int kMaxRetries = 3;
 }
 
 Assistant::Assistant(QObject *parent)
@@ -36,6 +41,7 @@ Assistant::Assistant(QObject *parent)
             [this](const QString &content, const QJsonArray &toolCalls, const QJsonArray &thinking, const QString &) {
         if (m_assistantRow < 0)
             return;
+        m_retries = 0; // a completion arrived: this request succeeded
         const int row = m_assistantRow;
         m_messages->finishAssistant(row, content, toolCalls, thinking, m_registry);
         m_assistantRow = -1;
@@ -77,6 +83,31 @@ Assistant::Assistant(QObject *parent)
             maybeContinue(row);
     });
     connect(m_client, &ChatClient::failed, this, [this](const QString &code, const QString &message) {
+        // Auto-retry transient failures (server error, overload, timeout, rate
+        // limit) — the "something went wrong, try again later" cases — but only
+        // when nothing was streamed yet, so a retry can't duplicate partial
+        // output. Permanent errors (bad request, auth, not found, refusal) are
+        // shown immediately; retrying them would just fail again.
+        const bool transient = code == QLatin1String("server") || code == QLatin1String("timeout")
+                            || code == QLatin1String("rate_limit") || code == QLatin1String("network");
+        const bool nothingStreamed = m_assistantRow < 0
+            || m_messages->data(m_messages->index(m_assistantRow), MessageModel::ContentRole).toString().trimmed().isEmpty();
+        if (transient && nothingStreamed && m_retries < kMaxRetries) {
+            ++m_retries;
+            m_messages->dropEmptyStreamingTail(); // discard the empty failed bubble
+            m_assistantRow = -1;
+            setPhase(QStringLiteral("thinking"));
+            const int delayMs = 1500 * (1 << (m_retries - 1)); // 1.5s → 3s → 6s backoff
+            QTimer::singleShot(delayMs, this, [this]() {
+                // Stand down if the user stopped or started something else.
+                if (m_phase == QLatin1String("idle") || m_phase == QLatin1String("error")
+                    || m_phase == QLatin1String("setup"))
+                    return;
+                startCompletion();
+            });
+            return;
+        }
+        m_retries = 0;
         if (m_assistantRow >= 0) {
             // Drop the empty streaming placeholder's streaming flag.
             m_messages->finishAssistant(m_assistantRow, m_messages->data(m_messages->index(m_assistantRow), MessageModel::ContentRole).toString(), {}, {}, m_registry);
@@ -88,7 +119,6 @@ Assistant::Assistant(QObject *parent)
         Q_EMIT errorMessage(message);
         // Return to idle so the user can retry.
         setPhase(m_config->apiKeyConfigured() ? QStringLiteral("idle") : QStringLiteral("setup"));
-        Q_UNUSED(code);
     });
 
     setPhase(m_config->apiKeyConfigured() ? QStringLiteral("idle") : QStringLiteral("setup"));
@@ -250,6 +280,7 @@ void Assistant::sendMessage(const QString &text)
     m_store->touch(m_activeId, trimmed);
     saveActive();
     m_toolRounds = 0;
+    m_retries = 0;
     startCompletion();
 }
 

@@ -155,6 +155,21 @@ int MessageModel::appendError(const QString &text)
     return int(m_messages.size()) - 1;
 }
 
+bool MessageModel::dropEmptyStreamingTail()
+{
+    if (m_messages.isEmpty())
+        return false;
+    const Message &m = m_messages.last();
+    if (m.kind != QLatin1String("assistant") || !m.content.isEmpty() || !m.toolCalls.isEmpty())
+        return false;
+    const int row = int(m_messages.size()) - 1;
+    beginRemoveRows({}, row, row);
+    m_messages.removeLast();
+    endRemoveRows();
+    Q_EMIT countChanged();
+    return true;
+}
+
 void MessageModel::setToolStatus(int row, const QString &callId, const QString &status, const QString &result)
 {
     if (row < 0 || row >= m_messages.size())

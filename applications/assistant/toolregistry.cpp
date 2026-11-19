@@ -868,13 +868,21 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
         QStringList args;
         if (!workdir.trimmed().isEmpty())
             args << QStringLiteral("--workdir") << workdir;
-        args << QStringLiteral("-e") << command;
-        Command::run(this, QStringLiteral("shadow-terminal"), args, [done, command](const CommandResult &r) {
-            if (r.exitCode == 0)
-                done({true, QObject::tr("Opened the terminal running: %1").arg(command)});
-            else
-                done({false, r.errText().isEmpty() ? QObject::tr("Failed (exit %1).").arg(r.exitCode) : r.errText()});
-        }, 15000);
+        // -e must be last: shadow-terminal execs the words after it directly,
+        // with no shell. Passing the command line as one argument would try to
+        // exec a program literally named e.g. "ls -la /home". Run it through a
+        // shell so pipes, redirections, variables and multi-word commands work,
+        // then drop into an interactive shell (in the same cwd, preserving any
+        // cd the command did) so the user can watch and keep working.
+        const QString wrapped = command + QStringLiteral("; exec \"${SHELL:-/bin/bash}\" -i");
+        args << QStringLiteral("-e") << QStringLiteral("/bin/sh") << QStringLiteral("-c") << wrapped;
+        // A terminal window stays open for as long as the user keeps it, so we
+        // must NOT wait for it to exit — that always timed out and reported a
+        // false failure. Launch it detached and report success once it starts.
+        if (QProcess::startDetached(QStringLiteral("shadow-terminal"), args))
+            done({true, QObject::tr("Opened the terminal running: %1").arg(command)});
+        else
+            done({false, tr("Could not open the terminal.")});
         return;
     }
 

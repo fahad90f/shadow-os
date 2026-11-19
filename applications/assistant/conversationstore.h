@@ -67,6 +67,11 @@ public:
                          const QJsonArray &thinking, ToolRegistry *registry);
     int appendToolResult(const QString &toolCallId, const QString &toolName, const QString &result);
     int appendError(const QString &text);
+    // Drop the trailing row if it is an empty, still-streaming assistant
+    // placeholder — used to discard the failed bubble before an automatic
+    // retry so retries don't pile up empty assistant turns. Returns true if a
+    // row was removed.
+    bool dropEmptyStreamingTail();
 
     // Update a pending tool call within an assistant message.
     void setToolStatus(int row, const QString &callId, const QString &status, const QString &result = {});
