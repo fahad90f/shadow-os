@@ -7,7 +7,10 @@
 #include <QJsonDocument>
 
 namespace {
-constexpr int kMaxToolRounds = 8;
+// Backstop against a genuinely stuck model that calls tools forever. Set high
+// enough that real multi-step agent work (scan → enumerate → read → write a
+// report, etc.) never trips it; it exists only to cap a runaway loop.
+constexpr int kMaxToolRounds = 100;
 }
 
 Assistant::Assistant(QObject *parent)
