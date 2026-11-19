@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QGuiApplication>
 #include <QJsonDocument>
+#include <QTimer>
 
 namespace {
 // Backstop against a genuinely stuck model that calls tools forever. Set high
@@ -382,7 +383,25 @@ void Assistant::maybeContinue(int row)
         setPhase(QStringLiteral("idle"));
         return;
     }
-    startCompletion();
+    // Start the next turn on a clean event-loop tick, never nested inside the
+    // previous reply's finished() handler. That synchronous re-entrancy
+    // (onFinished → completed → maybeContinue → startCompletion → send, which
+    // opens a new QNetworkReply while the old one's slot is still on the stack)
+    // is what crashed the assistant after a few tool rounds. A single-shot
+    // guard stops two queued continuations from racing into two requests.
+    if (m_continueScheduled)
+        return;
+    m_continueScheduled = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_continueScheduled = false;
+        // If the user stopped (or an error landed) in the meantime, don't open
+        // a new request. A live continuation is always mid-run (thinking /
+        // awaiting / streaming); idle/error/setup means we should stand down.
+        if (m_phase == QLatin1String("idle") || m_phase == QLatin1String("error")
+            || m_phase == QLatin1String("setup"))
+            return;
+        startCompletion();
+    });
 }
 
 void Assistant::stop()

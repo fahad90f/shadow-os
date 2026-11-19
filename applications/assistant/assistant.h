@@ -122,5 +122,8 @@ private:
     // the end, firing two overlapping continuation requests; this defers the
     // continuation until the whole round has been dispatched.
     bool m_dispatching = false;
+    // True while a continuation request is queued on the event loop, so a
+    // second maybeContinue() in the same tick cannot start a second request.
+    bool m_continueScheduled = false;
     QVariantList m_log;
 };
