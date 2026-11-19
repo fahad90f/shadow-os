@@ -10,28 +10,35 @@ spoken "shall I run it? say yes or no".
 
 - **Application id:** `org.shadow.assistant`
 - **Binary:** `shadow-assistant`
-- **Backend:** NVIDIA Nemotron models via the OpenAI-compatible API at
-  `https://integrate.api.nvidia.com/v1` (chat/completions, SSE streaming,
-  QtNetwork).
+- **Backend:** Anthropic **Claude** models via the native Messages API at
+  `https://api.anthropic.com/v1` (`/messages`, SSE streaming, QtNetwork). The
+  defaults use the best current models — **Claude Opus 5.5** for chat, planning
+  and vision, **Claude Haiku 5.5** for fast background helpers. An
+  OpenAI-compatible local server (ollama) is still supported for fully offline
+  use (`[api] local=true`).
 
 ## Configuration
 
-The NVIDIA API key is **never** stored in the application or this repository.
-It is read at run time from, in order of precedence:
+The Claude (Anthropic) API key is **never** stored in the application or this
+repository. It is read at run time from, in order of precedence:
 
 1. the environment variable `SHADOW_ASSISTANT_API_KEY`, or
-2. `~/.config/shadow/assistant.conf` (INI; create it `chmod 600`).
+2. the environment variable `ANTHROPIC_API_KEY`, or
+3. `~/.config/shadow/assistant.conf` (INI; create it `chmod 600`).
+
+Get a key at <https://console.anthropic.com/> (keys start with `sk-ant-`).
 
 ```ini
 [api]
-key=nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-# base_url=https://integrate.api.nvidia.com/v1   # usually leave unset
+key=sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+# base_url=https://api.anthropic.com/v1   # usually leave unset
+# anthropic_version=2023-06-01            # Messages API version header
 
 [models]
-brain=nvidia/nemotron-3.5-super-vl-120b-a12b
-planner=nvidia/nemotron-3-ultra-550b-a55b
-fast=nvidia/nemotron-3.5-lightning-30b-a3b
-omni=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+brain=claude-opus-5-5      # chat, tools, vision — the default
+planner=claude-opus-5-5    # "Think hard" deep reasoning
+fast=claude-haiku-5-5      # quick background helpers
+omni=claude-opus-5-5       # voice & image
 
 [behaviour]
 autonomy=autopilot        # autopilot (default) | ask_risky | ask_every
@@ -49,7 +56,7 @@ tts_engine=auto           # auto | piper | speechd | espeak
 tts_voice=                # speechd/espeak voice name (e.g. en-us)
 piper_bin=piper           # piper executable (neural TTS, if installed)
 piper_model=              # path to a piper .onnx voice model (required for piper)
-stt_mode=auto             # auto | nvidia | pocketsphinx
+stt_mode=auto             # voice is transcribed offline (Claude has no speech-to-text)
 capture_tool=auto         # auto | parecord | pw-record | arecord
 input_device=             # optional capture device (PulseAudio/PipeWire source)
 max_utterance_secs=12     # give up waiting for a command after this long
@@ -109,11 +116,9 @@ absent (an "unavailable" state with a reason — never a dead control):
 | Speak back | `piper` (neural) → `spd-say` (speech-dispatcher) → `espeak-ng` | first available, piper needs a `.onnx` voice model |
 | Typing | `wtype` (Wayland) → `xdotool` (X11) | `type_text` tool |
 
-**STT primary/fallback.** The brief's intended *primary* is NVIDIA ASR via the
-`omni` role; the offline **pocketsphinx** path is the always-available fallback
-and is what this build wires end-to-end (real, no network). Live NVIDIA audio
-transcription needs an audio/transcription endpoint and a microphone and is not
-exercised in this build — see Limitations.
+**STT is offline-only.** Claude has no speech-to-text, so spoken commands are
+always transcribed **on this computer** with **pocketsphinx**; only the
+resulting text is sent to the model. There is no cloud ASR path.
 
 ## Diagnostics
 
@@ -178,11 +183,10 @@ instead; no `Qt6::Multimedia` link is required.
   and barge-in could not be exercised here. The subprocess invocations and the
   `--voice-*` hooks are real and correct in form; they need the user's image
   (with the packages above) and a microphone to verify end to end.
-- **Live NVIDIA ASR** (the `omni` role as the STT *primary*) is not wired; the
-  offline pocketsphinx path is the implemented STT. The `omni` model is a chat
-  model, not a transcription endpoint.
-- The live NVIDIA chat endpoint was never reached (no outbound network in the
-  chroot); streaming/tool-calls are verified against the mock only.
+- **Cloud ASR** is not available with Claude (it has no speech-to-text); the
+  offline pocketsphinx path is the implemented STT.
+- The live Claude Messages endpoint was never reached (no outbound network in
+  the chroot); streaming/tool-calls are verified against the mock only.
 - The exact pocketsphinx CLI flags target the classic `pocketsphinx_continuous`
   and the 5.x `pocketsphinx` binaries; the resolved binary is auto-detected but
   the precise flags/model layout should be confirmed on the image.

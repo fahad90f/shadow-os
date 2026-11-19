@@ -29,8 +29,8 @@ class QTimer;
 //                   Without the listener: parecord / pw-record / arecord into a
 //                   16 kHz mono WAV, with a maximum utterance length.
 //   * command STT — pocketsphinx offline transcription of the captured WAV
-//                   (works with no network). (Live NVIDIA ASR is the intended
-//                   primary but needs an audio endpoint + microphone; see README.)
+//                   (works with no network). Claude has no speech-to-text, so
+//                   transcription always runs locally; the model handles text.
 //   * speak back  — piper (neural) if a voice model is configured, else
 //                   speech-dispatcher (spd-say), else espeak-ng.
 //

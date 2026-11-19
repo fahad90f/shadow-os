@@ -29,11 +29,11 @@ Assistant::Assistant(QObject *parent)
         }
     });
     connect(m_client, &ChatClient::completed, this,
-            [this](const QString &content, const QJsonArray &toolCalls, const QString &) {
+            [this](const QString &content, const QJsonArray &toolCalls, const QJsonArray &thinking, const QString &) {
         if (m_assistantRow < 0)
             return;
         const int row = m_assistantRow;
-        m_messages->finishAssistant(row, content, toolCalls, m_registry);
+        m_messages->finishAssistant(row, content, toolCalls, thinking, m_registry);
         m_assistantRow = -1;
         saveActive();
 
@@ -71,7 +71,7 @@ Assistant::Assistant(QObject *parent)
     connect(m_client, &ChatClient::failed, this, [this](const QString &code, const QString &message) {
         if (m_assistantRow >= 0) {
             // Drop the empty streaming placeholder's streaming flag.
-            m_messages->finishAssistant(m_assistantRow, m_messages->data(m_messages->index(m_assistantRow), MessageModel::ContentRole).toString(), {}, m_registry);
+            m_messages->finishAssistant(m_assistantRow, m_messages->data(m_messages->index(m_assistantRow), MessageModel::ContentRole).toString(), {}, {}, m_registry);
             m_assistantRow = -1;
         }
         m_messages->appendError(message);
@@ -381,7 +381,7 @@ void Assistant::stop()
     m_client->cancel();
     if (m_assistantRow >= 0) {
         const QString partial = m_messages->data(m_messages->index(m_assistantRow), MessageModel::ContentRole).toString();
-        m_messages->finishAssistant(m_assistantRow, partial, {}, m_registry);
+        m_messages->finishAssistant(m_assistantRow, partial, {}, {}, m_registry);
         m_assistantRow = -1;
     }
     saveActive();

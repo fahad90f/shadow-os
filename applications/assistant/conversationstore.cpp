@@ -96,7 +96,8 @@ void MessageModel::appendDelta(int row, const QString &text)
     Q_EMIT dataChanged(idx, idx, {ContentRole});
 }
 
-void MessageModel::finishAssistant(int row, const QString &content, const QJsonArray &toolCalls, ToolRegistry *registry)
+void MessageModel::finishAssistant(int row, const QString &content, const QJsonArray &toolCalls,
+                                   const QJsonArray &thinking, ToolRegistry *registry)
 {
     if (row < 0 || row >= m_messages.size())
         return;
@@ -104,6 +105,11 @@ void MessageModel::finishAssistant(int row, const QString &content, const QJsonA
     if (!content.isEmpty())
         m.content = content;
     m.streaming = false;
+    // Keep the raw thinking blocks only when there are tool calls to replay
+    // them with; a completed text turn never needs them again.
+    m.thinkingJson = (!thinking.isEmpty() && !toolCalls.isEmpty())
+        ? QString::fromUtf8(QJsonDocument(thinking).toJson(QJsonDocument::Compact))
+        : QString();
     m.toolCalls.clear();
     for (const QJsonValue &tcv : toolCalls) {
         const QJsonObject tc = tcv.toObject();
@@ -196,6 +202,7 @@ void MessageModel::loadFrom(const QJsonArray &json)
         m.content = o.value(QStringLiteral("content")).toString();
         m.toolCallId = o.value(QStringLiteral("toolCallId")).toString();
         m.toolName = o.value(QStringLiteral("toolName")).toString();
+        m.thinkingJson = o.value(QStringLiteral("thinkingJson")).toString();
         for (const QJsonValue &cv : o.value(QStringLiteral("toolCalls")).toArray()) {
             const QJsonObject co = cv.toObject();
             ToolCallEntry e;
@@ -228,6 +235,8 @@ QJsonArray MessageModel::toJson() const
             o.insert(QStringLiteral("toolCallId"), m.toolCallId);
         if (!m.toolName.isEmpty())
             o.insert(QStringLiteral("toolName"), m.toolName);
+        if (!m.thinkingJson.isEmpty())
+            o.insert(QStringLiteral("thinkingJson"), m.thinkingJson);
         if (!m.toolCalls.isEmpty()) {
             QJsonArray calls;
             for (const ToolCallEntry &c : m.toolCalls)
@@ -260,9 +269,11 @@ QJsonArray MessageModel::apiMessages(const QString &systemPrompt) const
             if (!m.toolCalls.isEmpty()) {
                 QJsonArray calls;
                 for (const ToolCallEntry &c : m.toolCalls) {
-                    // Only include calls that were actually run (not denied) so the
-                    // conversation the model sees stays consistent with tool results.
-                    if (c.status == QLatin1String("denied"))
+                    // Include every resolved call (done/error/denied) so each
+                    // one has a matching tool result; a denied call still gets
+                    // a result (the denial message). Pending calls are never
+                    // sent (we only submit once the round is resolved).
+                    if (c.status == QLatin1String("pending"))
                         continue;
                     calls.append(QJsonObject{
                         {QStringLiteral("id"), c.id}, {QStringLiteral("type"), QStringLiteral("function")},
@@ -272,6 +283,13 @@ QJsonArray MessageModel::apiMessages(const QString &systemPrompt) const
                 }
                 if (!calls.isEmpty())
                     o.insert(QStringLiteral("tool_calls"), calls);
+            }
+            // Raw thinking blocks to replay with this turn (Anthropic path only;
+            // the local OpenAI path ignores the field).
+            if (!m.thinkingJson.isEmpty()) {
+                const QJsonArray think = QJsonDocument::fromJson(m.thinkingJson.toUtf8()).array();
+                if (!think.isEmpty())
+                    o.insert(QStringLiteral("thinking"), think);
             }
             out.append(o);
         } else if (m.kind == QLatin1String("tool")) {

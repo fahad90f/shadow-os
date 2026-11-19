@@ -9,15 +9,19 @@
 
 namespace {
 
-// Default model mapping. These are the identifiers the user supplied; they may
-// not match a given NVIDIA account exactly, so they are written into the conf
-// template (with a comment) as editable defaults rather than compiled-in
-// constants used behind the user's back.
-const QString kDefaultBrain = QStringLiteral("nvidia/nemotron-3.5-super-vl-120b-a12b");
-const QString kDefaultPlanner = QStringLiteral("nvidia/nemotron-3-ultra-550b-a55b");
-const QString kDefaultFast = QStringLiteral("nvidia/nemotron-3.5-lightning-30b-a3b");
-const QString kDefaultOmni = QStringLiteral("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
-const QString kDefaultBaseUrl = QStringLiteral("https://integrate.api.nvidia.com/v1");
+// Default model mapping — the best current Claude models for a multitasking,
+// tool-using assistant. They are written into the conf template as editable
+// defaults rather than compiled-in constants used behind the user's back:
+//   brain/planner/omni  Claude Opus 5.5 — the most capable model (reasoning,
+//                       planning and vision), the default for real work.
+//   fast                Claude Haiku 5.5 — quick, low-cost replies.
+const QString kDefaultBrain = QStringLiteral("claude-opus-5-5");
+const QString kDefaultPlanner = QStringLiteral("claude-opus-5-5");
+const QString kDefaultFast = QStringLiteral("claude-haiku-5-5");
+const QString kDefaultOmni = QStringLiteral("claude-opus-5-5");
+const QString kDefaultBaseUrl = QStringLiteral("https://api.anthropic.com/v1");
+// Anthropic Messages API version pinned in the "anthropic-version" header.
+const QString kDefaultAnthropicVersion = QStringLiteral("2023-06-01");
 // Offline default: an OpenAI-compatible server on this machine. ollama's
 // default port is 11434; shadow-assistant-local sets it up and pulls a model.
 const QString kDefaultLocalBaseUrl = QStringLiteral("http://127.0.0.1:11434/v1");
@@ -69,9 +73,13 @@ void AssistantConfig::reload()
     m_apiKey.clear();
     m_apiKeySource.clear();
     const QByteArray envKey = qgetenv("SHADOW_ASSISTANT_API_KEY");
+    const QByteArray envKeyAnthropic = qgetenv("ANTHROPIC_API_KEY");
     if (!envKey.trimmed().isEmpty()) {
         m_apiKey = QString::fromUtf8(envKey).trimmed();
         m_apiKeySource = QStringLiteral("SHADOW_ASSISTANT_API_KEY environment variable");
+    } else if (!envKeyAnthropic.trimmed().isEmpty()) {
+        m_apiKey = QString::fromUtf8(envKeyAnthropic).trimmed();
+        m_apiKeySource = QStringLiteral("ANTHROPIC_API_KEY environment variable");
     } else {
         const QString k = ini.value(QStringLiteral("api/key")).toString().trimmed();
         if (!k.isEmpty()) {
@@ -80,7 +88,12 @@ void AssistantConfig::reload()
         }
     }
 
-    // --- base URL: dev override, then conf, then NVIDIA default. ---
+    // --- Anthropic API version header (cloud mode) ---
+    m_anthropicVersion = ini.value(QStringLiteral("api/anthropic_version"), kDefaultAnthropicVersion).toString().trimmed();
+    if (m_anthropicVersion.isEmpty())
+        m_anthropicVersion = kDefaultAnthropicVersion;
+
+    // --- base URL: dev override, then conf, then the Anthropic default. ---
     const QByteArray envUrl = qgetenv("SHADOW_ASSISTANT_BASE_URL");
     if (!envUrl.trimmed().isEmpty()) {
         m_baseUrl = QString::fromUtf8(envUrl).trimmed();
@@ -308,20 +321,23 @@ QString AssistantConfig::configTemplate() const
     // Shown verbatim in the setup state so the user can create the file.
     return QStringLiteral(
         "# ~/.config/shadow/assistant.conf  —  create with mode 0600 (chmod 600)\n"
-        "# SHADOW Assistant reads your NVIDIA API key from here (or from the\n"
-        "# SHADOW_ASSISTANT_API_KEY environment variable). The key is never\n"
-        "# stored in the application or the repository.\n"
+        "# SHADOW Assistant reads your Claude (Anthropic) API key from here (or\n"
+        "# from the SHADOW_ASSISTANT_API_KEY or ANTHROPIC_API_KEY environment\n"
+        "# variable). The key is never stored in the application or the repository.\n"
+        "# Get a key at https://console.anthropic.com/ (keys start with sk-ant-).\n"
         "\n"
         "[api]\n"
-        "key=nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n"
-        "# base_url=https://integrate.api.nvidia.com/v1   # usually leave unset\n"
+        "key=sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n"
+        "# base_url=https://api.anthropic.com/v1   # usually leave unset\n"
+        "# anthropic_version=2023-06-01            # Messages API version header\n"
         "# Offline: run a model on this computer instead of the cloud (no key\n"
         "# needed). Easiest setup:  shadow-assistant-local setup\n"
         "# local=true\n"
         "# local_base_url=http://127.0.0.1:11434/v1\n"
         "\n"
         "[models]\n"
-        "# Change these to the exact model IDs available on your NVIDIA account.\n"
+        "# Change these to other Claude model IDs if you prefer (e.g.\n"
+        "# claude-sonnet-5-5 for a cheaper planner). Defaults use the best models.\n"
         "brain=") + kDefaultBrain + QStringLiteral("\n"
         "planner=") + kDefaultPlanner + QStringLiteral("\n"
         "fast=") + kDefaultFast + QStringLiteral("\n"
@@ -348,7 +364,7 @@ QString AssistantConfig::configTemplate() const
         "tts_voice=                    # speechd/espeak voice name (e.g. en-us)\n"
         "piper_bin=piper               # piper executable (neural TTS, if installed)\n"
         "piper_model=                  # path to a piper .onnx voice model (required for piper)\n"
-        "stt_mode=auto                 # auto | nvidia (omni ASR) | pocketsphinx (offline)\n"
+        "stt_mode=auto                 # voice is transcribed offline with pocketsphinx (Claude has no speech-to-text)\n"
         "capture_tool=auto             # auto | parecord | pw-record | arecord\n"
         "input_device=                 # optional capture device (PulseAudio/PipeWire source)\n"
         "max_utterance_secs=12         # stop capturing a command after this long\n"

@@ -65,7 +65,7 @@ Item {
                     }
                     Text {
                         text: page.agent && page.agent.thinkHard
-                            ? qsTr("Deep reasoning (planner model)") : qsTr("Nemotron · ready")
+                            ? qsTr("Deep reasoning (planner model)") : qsTr("Claude · ready")
                         color: Theme.textMuted
                         font.family: Theme.fontUi
                         font.pixelSize: Theme.fontSizeCaption
@@ -194,7 +194,7 @@ Item {
                         TextArea {
                             id: input
                             placeholderText: page.agent && !page.agent.config.apiKeyConfigured
-                                ? qsTr("Add your NVIDIA API key in Settings to begin…")
+                                ? qsTr("Add your Claude API key in Settings to begin…")
                                 : qsTr("Message Shadow Assistant…   (Enter to send, Shift+Enter for a new line)")
                             enabled: page.agent && page.agent.canSend
                             wrapMode: TextArea.Wrap

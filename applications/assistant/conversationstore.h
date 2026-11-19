@@ -33,6 +33,10 @@ struct Message
     QList<ToolCallEntry> toolCalls; // assistant messages only
     QString toolCallId;             // tool messages: which call this answers
     QString toolName;               // tool messages
+    // Raw Anthropic "thinking" blocks for an assistant turn that made a tool
+    // call, serialised as a JSON array. Replayed verbatim on the next request
+    // so the Messages API's preserved-thinking check passes. Empty otherwise.
+    QString thinkingJson;
 };
 
 // The active conversation's messages, as a list model for the chat view and as
@@ -59,7 +63,8 @@ public:
     int appendUser(const QString &text);
     int appendAssistantStreaming();
     void appendDelta(int row, const QString &text);
-    void finishAssistant(int row, const QString &content, const QJsonArray &toolCalls, ToolRegistry *registry);
+    void finishAssistant(int row, const QString &content, const QJsonArray &toolCalls,
+                         const QJsonArray &thinking, ToolRegistry *registry);
     int appendToolResult(const QString &toolCallId, const QString &toolName, const QString &result);
     int appendError(const QString &text);
 

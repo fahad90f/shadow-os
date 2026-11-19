@@ -5,14 +5,14 @@ import QtQuick.Layouts
 import org.shadow.ui
 import "../components"
 
-// Shown when no NVIDIA API key is configured. Explains, honestly and without
+// Shown when no Claude API key is configured. Explains, honestly and without
 // blocking, exactly which file to create and what to put in it. Never crashes
 // or pretends to work.
 NxPage {
     id: setup
     property var controller
     title: qsTr("Welcome to Shadow Assistant")
-    subtitle: qsTr("One step before we begin: add your NVIDIA API key")
+    subtitle: qsTr("One step before we begin: add your Claude API key")
     maxContentWidth: 760
 
     NxCard {
@@ -30,7 +30,7 @@ NxPage {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.Wrap
-                text: qsTr("Shadow Assistant talks to NVIDIA's Nemotron models over their OpenAI-compatible API. Your key is read at run time and is never stored in the application.")
+                text: qsTr("Shadow Assistant talks to Anthropic's Claude models over the Claude API. Your key is read at run time and is never stored in the application.")
                 color: Theme.textSecondary
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSizeBody

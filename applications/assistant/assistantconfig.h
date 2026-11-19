@@ -10,14 +10,15 @@
 
 // Runtime configuration for SHADOW Assistant.
 //
-// The NVIDIA API key is NEVER stored in the repository or written by this
-// application. It is read at run time from, in order of precedence:
+// The Claude (Anthropic) API key is NEVER stored in the repository or written
+// by this application. It is read at run time from, in order of precedence:
 //   1. the environment variable  SHADOW_ASSISTANT_API_KEY
-//   2. ~/.config/shadow/assistant.conf   [api] key=...
+//   2. the environment variable  ANTHROPIC_API_KEY
+//   3. ~/.config/shadow/assistant.conf   [api] key=...
 //
 // Everything else (model mapping, autonomy, which tools are enabled) lives in
 // the same INI file and may be changed from the Settings page. The base URL
-// defaults to NVIDIA's OpenAI-compatible endpoint and can be overridden for
+// defaults to the Anthropic Messages API endpoint and can be overridden for
 // testing with the environment variable SHADOW_ASSISTANT_BASE_URL.
 class AssistantConfig : public QObject
 {
@@ -28,7 +29,7 @@ class AssistantConfig : public QObject
     Q_PROPERTY(QString baseUrl READ baseUrl NOTIFY changed)
     Q_PROPERTY(bool baseUrlOverridden READ baseUrlOverridden NOTIFY changed)
     // Local, offline model (an OpenAI-compatible server on this machine, e.g.
-    // ollama) instead of the NVIDIA cloud. Nothing leaves the computer.
+    // ollama) instead of the Claude cloud. Nothing leaves the computer.
     Q_PROPERTY(bool localMode READ localMode WRITE setLocalMode NOTIFY changed)
     Q_PROPERTY(QString localModel READ localModel NOTIFY changed)
     Q_PROPERTY(QString configPath READ configPath CONSTANT)
@@ -74,6 +75,8 @@ public:
     QString apiKey() const { return m_apiKey; }
     // The endpoint actually used: the local server in local mode, else the cloud.
     QString baseUrl() const { return m_localMode ? m_localBaseUrl : m_baseUrl; }
+    // Value for the Anthropic "anthropic-version" request header (cloud mode).
+    QString anthropicVersion() const { return m_anthropicVersion; }
     bool baseUrlOverridden() const { return m_baseUrlOverridden; }
     bool localMode() const { return m_localMode; }
     void setLocalMode(bool on);
@@ -132,6 +135,7 @@ private:
 
     QString m_apiKey, m_apiKeySource;
     QString m_baseUrl;
+    QString m_anthropicVersion;
     bool m_baseUrlOverridden = false;
     bool m_localMode = false;
     QString m_localBaseUrl;

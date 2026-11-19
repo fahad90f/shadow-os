@@ -11,7 +11,7 @@ NxPage {
     property var voice
     readonly property var config: controller ? controller.config : null
     title: qsTr("Settings")
-    subtitle: qsTr("Shadow Assistant · NVIDIA Nemotron")
+    subtitle: qsTr("Shadow Assistant · Claude")
     maxContentWidth: 820
 
     actions: [
@@ -54,7 +54,7 @@ NxPage {
 
     NxSection {
         title: qsTr("Models")
-        description: qsTr("Edit these in the configuration file to match the model IDs on your NVIDIA account. Normal chat uses brain; “Think hard” uses planner.")
+        description: qsTr("Edit these in the configuration file to use other Claude model IDs. Normal chat uses brain; “Think hard” uses planner.")
         NxRow { icon: "cpu"; title: qsTr("Brain (chat, tools, vision)"); value: settings.config ? settings.config.brainModel : ""; monoValue: true }
         NxRow { icon: "lab"; title: qsTr("Planner (deep reasoning)"); value: settings.config ? settings.config.plannerModel : ""; monoValue: true }
         NxRow { icon: "zap"; title: qsTr("Fast (background helpers)"); value: settings.config ? settings.config.fastModel : ""; monoValue: true }
@@ -63,14 +63,14 @@ NxPage {
 
     NxSection {
         title: qsTr("Offline model")
-        description: qsTr("Run the assistant on a model on this computer instead of the NVIDIA cloud — nothing you type or say leaves the machine. Needs a local model server (set it up in a terminal with: shadow-assistant-local setup). A capable GPU makes it usable.")
+        description: qsTr("Run the assistant on a model on this computer instead of the Claude cloud — nothing you type or say leaves the machine. Needs a local model server (set it up in a terminal with: shadow-assistant-local setup). A capable GPU makes it usable.")
         NxRow {
             icon: settings.config && settings.config.localMode ? "shield-check" : "globe"
             iconColor: settings.config && settings.config.localMode ? Theme.success : Theme.textMuted
             title: qsTr("Run offline (local model)")
             subtitle: settings.config && settings.config.localMode
                       ? qsTr("On — using %1 on this computer").arg(settings.config.localModel)
-                      : qsTr("Off — using the NVIDIA cloud")
+                      : qsTr("Off — using the Claude cloud")
             Switch {
                 anchors.verticalCenter: parent.verticalCenter
                 checked: settings.config ? settings.config.localMode : false
