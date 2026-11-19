@@ -180,9 +180,17 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
             body.insert(QStringLiteral("system"), system);
         body.insert(QStringLiteral("messages"), anthropicMessages);
         body.insert(QStringLiteral("stream"), true);
-        // No temperature / thinking parameter: the current Claude models reject
-        // a sampling parameter, and run adaptive thinking by default (it cannot
-        // be disabled on Opus), so tool_choice defaults to "auto" too.
+        // High effort + adaptive thinking: run the model at its most capable
+        // setting for multitasking and tool use. "effort" (GA, no beta header)
+        // controls reasoning depth; "adaptive" thinking lets the model decide
+        // when and how much to think and is required to turn thinking on for
+        // the Sonnet 4.6 default (it is already on by default on Opus). No
+        // temperature / sampling parameter: current Claude models reject those.
+        // tool_choice is left at its "auto" default.
+        body.insert(QStringLiteral("output_config"),
+                    QJsonObject{{QStringLiteral("effort"), QStringLiteral("high")}});
+        body.insert(QStringLiteral("thinking"),
+                    QJsonObject{{QStringLiteral("type"), QStringLiteral("adaptive")}});
         if (!tools.isEmpty())
             body.insert(QStringLiteral("tools"), toAnthropicTools(tools));
 

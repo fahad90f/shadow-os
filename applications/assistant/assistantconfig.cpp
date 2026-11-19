@@ -9,16 +9,17 @@
 
 namespace {
 
-// Default model mapping — the best current Claude models for a multitasking,
-// tool-using assistant. They are written into the conf template as editable
-// defaults rather than compiled-in constants used behind the user's back:
-//   brain/planner/omni  Claude Opus 5.5 — the most capable model (reasoning,
-//                       planning and vision), the default for real work.
-//   fast                Claude Haiku 5.5 — quick, low-cost replies.
-const QString kDefaultBrain = QStringLiteral("claude-opus-5-5");
-const QString kDefaultPlanner = QStringLiteral("claude-opus-5-5");
-const QString kDefaultFast = QStringLiteral("claude-haiku-5-5");
-const QString kDefaultOmni = QStringLiteral("claude-opus-5-5");
+// Default model mapping — a single Claude model serves every role. Claude
+// Sonnet 4.6 (1M context) run at high effort with adaptive thinking is a
+// strong all-rounder for multitasking, tool-using work, and using one model
+// everywhere keeps behaviour and the prompt cache consistent. These are
+// written into the conf template as editable defaults rather than
+// compiled-in constants used behind the user's back; change any role in the
+// conf file to use a different Claude model ID.
+const QString kDefaultBrain = QStringLiteral("claude-sonnet-4-6");
+const QString kDefaultPlanner = QStringLiteral("claude-sonnet-4-6");
+const QString kDefaultFast = QStringLiteral("claude-sonnet-4-6");
+const QString kDefaultOmni = QStringLiteral("claude-sonnet-4-6");
 const QString kDefaultBaseUrl = QStringLiteral("https://api.anthropic.com/v1");
 // Anthropic Messages API version pinned in the "anthropic-version" header.
 const QString kDefaultAnthropicVersion = QStringLiteral("2023-06-01");
@@ -336,8 +337,10 @@ QString AssistantConfig::configTemplate() const
         "# local_base_url=http://127.0.0.1:11434/v1\n"
         "\n"
         "[models]\n"
-        "# Change these to other Claude model IDs if you prefer (e.g.\n"
-        "# claude-sonnet-5-5 for a cheaper planner). Defaults use the best models.\n"
+        "# One Claude model serves every role by default (claude-sonnet-4-6,\n"
+        "# run at high effort with adaptive thinking). Change any role to a\n"
+        "# different Claude model ID if you prefer (e.g. claude-opus-5-5 for the\n"
+        "# brain, claude-haiku-5-5 for fast low-cost replies).\n"
         "brain=") + kDefaultBrain + QStringLiteral("\n"
         "planner=") + kDefaultPlanner + QStringLiteral("\n"
         "fast=") + kDefaultFast + QStringLiteral("\n"

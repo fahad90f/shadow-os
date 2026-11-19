@@ -12,10 +12,11 @@ spoken "shall I run it? say yes or no".
 - **Binary:** `shadow-assistant`
 - **Backend:** Anthropic **Claude** models via the native Messages API at
   `https://api.anthropic.com/v1` (`/messages`, SSE streaming, QtNetwork). The
-  defaults use the best current models — **Claude Opus 5.5** for chat, planning
-  and vision, **Claude Haiku 5.5** for fast background helpers. An
-  OpenAI-compatible local server (ollama) is still supported for fully offline
-  use (`[api] local=true`).
+  default is a single model for every role — **Claude Sonnet 4.6** (1M
+  context) run at **high effort** with adaptive thinking, a strong all-rounder
+  for chat, planning, vision and tool use. Any role can be pointed at a
+  different Claude model ID in the conf file. An OpenAI-compatible local server
+  (ollama) is still supported for fully offline use (`[api] local=true`).
 
 ## Configuration
 
@@ -35,10 +36,10 @@ key=sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 # anthropic_version=2023-06-01            # Messages API version header
 
 [models]
-brain=claude-opus-5-5      # chat, tools, vision — the default
-planner=claude-opus-5-5    # "Think hard" deep reasoning
-fast=claude-haiku-5-5      # quick background helpers
-omni=claude-opus-5-5       # voice & image
+brain=claude-sonnet-4-6    # chat, tools, vision — the default
+planner=claude-sonnet-4-6  # "Think hard" deep reasoning
+fast=claude-sonnet-4-6     # quick background helpers
+omni=claude-sonnet-4-6     # voice & image
 
 [behaviour]
 autonomy=autopilot        # autopilot (default) | ask_risky | ask_every
