@@ -5,6 +5,7 @@
 
 #include <QDir>
 #include <QJsonDocument>
+#include <QSet>
 #include <QStandardPaths>
 #include <QUuid>
 
@@ -256,6 +257,24 @@ QJsonArray MessageModel::toJson() const
 
 QJsonArray MessageModel::apiMessages(const QString &systemPrompt) const
 {
+    // The Messages API rejects any tool_use block without a matching tool_result
+    // immediately after it (and any tool_result without a tool_use). A call is
+    // only safe to send when it appears BOTH as an assistant tool call AND as a
+    // completed tool-result message. Anything else — a call still pending or
+    // running, or a result orphaned by an interrupted/crashed turn — must be
+    // dropped from the wire format, or the whole request 400s. Send only the
+    // intersection so every tool_use and tool_result is perfectly paired.
+    QSet<QString> calledIds, resultIds;
+    for (const Message &m : m_messages) {
+        for (const ToolCallEntry &c : m.toolCalls)
+            if (!c.id.isEmpty() && c.status != QLatin1String("pending"))
+                calledIds.insert(c.id);
+        if (m.kind == QLatin1String("tool") && !m.toolCallId.isEmpty())
+            resultIds.insert(m.toolCallId);
+    }
+    QSet<QString> sendableIds = calledIds;
+    sendableIds.intersect(resultIds);
+
     QJsonArray out;
     if (!systemPrompt.isEmpty())
         out.append(QJsonObject{{QStringLiteral("role"), QStringLiteral("system")}, {QStringLiteral("content"), systemPrompt}});
@@ -269,11 +288,8 @@ QJsonArray MessageModel::apiMessages(const QString &systemPrompt) const
             if (!m.toolCalls.isEmpty()) {
                 QJsonArray calls;
                 for (const ToolCallEntry &c : m.toolCalls) {
-                    // Include every resolved call (done/error/denied) so each
-                    // one has a matching tool result; a denied call still gets
-                    // a result (the denial message). Pending calls are never
-                    // sent (we only submit once the round is resolved).
-                    if (c.status == QLatin1String("pending"))
+                    // Only a call with a matching tool result (see above) is sent.
+                    if (!sendableIds.contains(c.id))
                         continue;
                     calls.append(QJsonObject{
                         {QStringLiteral("id"), c.id}, {QStringLiteral("type"), QStringLiteral("function")},
@@ -293,6 +309,10 @@ QJsonArray MessageModel::apiMessages(const QString &systemPrompt) const
             }
             out.append(o);
         } else if (m.kind == QLatin1String("tool")) {
+            // Drop a result whose call isn't being sent (orphaned / unpaired),
+            // so no tool_result goes out without its tool_use.
+            if (!sendableIds.contains(m.toolCallId))
+                continue;
             out.append(QJsonObject{
                 {QStringLiteral("role"), QStringLiteral("tool")},
                 {QStringLiteral("tool_call_id"), m.toolCallId},
