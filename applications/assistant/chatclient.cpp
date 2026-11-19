@@ -10,7 +10,12 @@
 #include <QUrl>
 
 namespace {
-constexpr int kTimeoutMs = 120000; // first-token + full stream budget
+// Inactivity timeout (Qt resets it on every chunk received), not a total-
+// transfer cap. High-effort adaptive thinking on a large conversation can take
+// minutes before the first streamed token, so keep this generous: a real
+// stream keeps bytes flowing well inside it, and only a genuinely stalled
+// connection trips it.
+constexpr int kTimeoutMs = 600000; // 10 min idle budget
 // Streaming, so a generous cap is safe (no HTTP timeout concern); replies are
 // usually short but tool-use turns need headroom.
 constexpr int kMaxTokens = 8192;
