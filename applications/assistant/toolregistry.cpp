@@ -5,6 +5,8 @@
 
 #include <command.h>
 
+#include <memory>
+
 #include <QDir>
 #include <QFileInfo>
 #include <QProcess>
@@ -969,8 +971,6 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
         const QString wordlist = wl.isEmpty()
             ? QStringLiteral("/usr/share/seclists/Discovery/Web-Content/common.txt") : wl;
 
-        // Run nikto first (best effort), then gobuster.
-        QString result;
         const bool hasNikto = Command::available(QStringLiteral("nikto"));
         const bool hasGobuster = Command::available(QStringLiteral("gobuster"));
         if (!hasNikto && !hasGobuster) {
@@ -978,21 +978,27 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
             return;
         }
 
-        // We chain the two runs using a shared lambda. gobuster runs after nikto.
-        auto runGobuster = [this, done, url, wordlist, &result](const QString &niktoOut) mutable {
-            result += QStringLiteral("=== Nikto ===\n") + niktoOut + QStringLiteral("\n\n");
+        // nikto runs first (best effort), then gobuster. The output accumulates
+        // across this ASYNCHRONOUS chain, so the buffer must outlive execute().
+        // It lives in a shared_ptr captured BY VALUE into every callback; a
+        // by-reference capture of a local QString dangled the instant execute()
+        // returned (the runs finish much later) and crashed the assistant with
+        // a use-after-free inside QString::append.
+        auto result = std::make_shared<QString>();
+        auto runGobuster = [this, done, url, wordlist, result](const QString &niktoOut) {
+            *result += QStringLiteral("=== Nikto ===\n") + niktoOut + QStringLiteral("\n\n");
             if (!Command::available(QStringLiteral("gobuster"))) {
-                done({true, result});
+                done({true, *result});
                 return;
             }
             QStringList gbArgs = {QStringLiteral("dir"), QStringLiteral("-u"), url,
                                   QStringLiteral("-w"), wordlist,
                                   QStringLiteral("-q"), QStringLiteral("--no-error"),
                                   QStringLiteral("-t"), QStringLiteral("20")};
-            Command::run(this, QStringLiteral("gobuster"), gbArgs, [done, result](const CommandResult &r2) mutable {
-                result += QStringLiteral("=== Gobuster ===\n") + r2.outText();
-                if (result.size() > 24000) result = result.left(24000) + QStringLiteral("\n…(truncated)");
-                done({true, result});
+            Command::run(this, QStringLiteral("gobuster"), gbArgs, [done, result](const CommandResult &r2) {
+                *result += QStringLiteral("=== Gobuster ===\n") + r2.outText();
+                if (result->size() > 24000) *result = result->left(24000) + QStringLiteral("\n…(truncated)");
+                done({true, *result});
             }, 180000);
         };
 
