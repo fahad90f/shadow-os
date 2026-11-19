@@ -1,6 +1,7 @@
-# SHADOW Assistant — a personal AI agent (chat + tool calling) backed by
-# NVIDIA's OpenAI-compatible Nemotron API. No API key is ever stored here; it
-# is read at run time from ~/.config/shadow/assistant.conf or the environment.
+# SHADOW Assistant — a personal AI agent (chat + tool calling) backed by the
+# Anthropic Claude Messages API (with an OpenAI-compatible local/offline mode).
+# No API key is ever stored here; it is read at run time from
+# ~/.config/shadow/assistant.conf or the environment.
 file(GLOB ASSISTANT_QML CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
      pages/*.qml components/*.qml)
 
