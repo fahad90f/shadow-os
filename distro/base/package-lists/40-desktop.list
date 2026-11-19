@@ -17,6 +17,12 @@ xdg-utils
 xdg-desktop-portal
 xdg-desktop-portal-kde
 xdg-desktop-portal-gtk
+# Screen sharing / screencast bridge for the KDE portal. kpipewire is only a
+# Recommends of xdg-desktop-portal-kde, so an image built without recommends
+# ships the portal with no ScreenCast interface — Discord, OBS and browsers
+# then get "No such interface org.freedesktop.impl.portal.ScreenCast" and
+# screen sharing silently does nothing. Pull it in explicitly.
+kpipewire
 
 # Compositor (pulled in by shadow-horizon as well; listed for clarity)
 kwin-wayland
