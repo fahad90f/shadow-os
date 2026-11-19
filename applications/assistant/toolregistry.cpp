@@ -360,11 +360,35 @@ bool ToolRegistry::toolRisky(const QString &name) const
     return s && s->risky;
 }
 
+// The offensive-security tools are only offered to the model in pentest mode.
+// Advertising a SQL-injection / password-cracking / service-brute-force toolset
+// on every ordinary request reads as a cyber-offense setup and makes the model
+// decline otherwise-benign requests, so in general mode they are withheld.
+static bool isPentestTool(const QString &name)
+{
+    static const QStringList kPentest = {
+        QStringLiteral("pentest_scan"), QStringLiteral("web_enum"),
+        QStringLiteral("search_exploits"), QStringLiteral("run_sqlmap"),
+        QStringLiteral("crack_hash"), QStringLiteral("brute_service"),
+        QStringLiteral("start_capture"),
+    };
+    return kPentest.contains(name);
+}
+
+bool ToolRegistry::toolAvailable(const ToolSpec &s) const
+{
+    if (!m_config->toolEnabled(s.name))
+        return false;
+    if (isPentestTool(s.name) && m_config->role() != QLatin1String("pentest"))
+        return false;
+    return true;
+}
+
 QJsonArray ToolRegistry::apiTools() const
 {
     QJsonArray out;
     for (const ToolSpec &s : m_specs) {
-        if (!m_config->toolEnabled(s.name))
+        if (!toolAvailable(s))
             continue;
         out.append(obj({
             {QStringLiteral("type"), QStringLiteral("function")},
@@ -381,7 +405,7 @@ QJsonArray ToolRegistry::apiTools() const
 bool ToolRegistry::hasEnabledTools() const
 {
     for (const ToolSpec &s : m_specs)
-        if (m_config->toolEnabled(s.name))
+        if (toolAvailable(s))
             return true;
     return false;
 }

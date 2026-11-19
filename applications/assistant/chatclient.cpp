@@ -14,6 +14,16 @@ constexpr int kTimeoutMs = 120000; // first-token + full stream budget
 // Streaming, so a generous cap is safe (no HTTP timeout concern); replies are
 // usually short but tool-use turns need headroom.
 constexpr int kMaxTokens = 8192;
+
+// Models that support the server-side refusal fallback (a safety decline is
+// automatically retried on another model instead of failing the request).
+bool supportsRefusalFallback(const QString &model)
+{
+    return model.contains(QLatin1String("opus-5"))
+        || model.contains(QLatin1String("sonnet-5-5"))
+        || model.contains(QLatin1String("fable-5"))
+        || model.contains(QLatin1String("mythos-5"));
+}
 } // namespace
 
 ChatClient::ChatClient(AssistantConfig *config, QObject *parent)
@@ -172,6 +182,12 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
 
         req.setRawHeader("x-api-key", m_config->apiKey().toUtf8());
         req.setRawHeader("anthropic-version", m_config->anthropicVersion().toUtf8());
+        // Server-side refusal fallback: if a safety classifier declines, the
+        // request is retried on another model automatically rather than failing.
+        if (supportsRefusalFallback(model)) {
+            body.insert(QStringLiteral("fallbacks"), QStringLiteral("default"));
+            req.setRawHeader("anthropic-beta", "server-side-fallback-2026-07-01");
+        }
     } else {
         // --- OpenAI-compatible local server (offline) ---
         body.insert(QStringLiteral("model"), model);
@@ -493,7 +509,8 @@ void ChatClient::onFinished()
         }
         if (m_finishReason == QLatin1String("refusal")) {
             Q_EMIT failed(QStringLiteral("refusal"),
-                          tr("Claude declined to answer this request."));
+                          tr("Claude declined this request. Try rephrasing it, or if you are in "
+                             "pentest mode, switch to general mode for everyday tasks."));
             return;
         }
         finishReason = m_finishReason == QLatin1String("tool_use") ? QStringLiteral("tool_calls")

@@ -73,6 +73,10 @@ public:
     UndoJournal *journal() { return &m_journal; }
 
 private:
+    // Whether a tool is offered to the model now: enabled, and (for the
+    // offensive-security tools) only when the assistant is in pentest mode.
+    bool toolAvailable(const ToolSpec &s) const;
+
     AssistantConfig *m_config;
     QList<ToolSpec> m_specs;
     UndoJournal m_journal;
