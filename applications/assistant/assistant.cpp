@@ -48,6 +48,9 @@ Assistant::Assistant(QObject *parent)
         // needs confirmation stays "pending" and the UI renders a card for it.
         const QVariantList vlist = m_messages->data(m_messages->index(row), MessageModel::ToolCallsRole).toList();
         bool anyPending = false;
+        // Defer any continuation until the whole round is dispatched, so a
+        // synchronously-completing tool does not trigger a second one.
+        m_dispatching = true;
         for (const QVariant &cv : vlist) {
             const QVariantMap cm = cv.toMap();
             ToolCallEntry e;
@@ -63,9 +66,10 @@ Assistant::Assistant(QObject *parent)
                 executeCall(row, e);
             }
         }
+        m_dispatching = false;
         if (anyPending)
             setPhase(QStringLiteral("awaiting"));
-        else if (m_executing == 0)
+        else
             maybeContinue(row);
     });
     connect(m_client, &ChatClient::failed, this, [this](const QString &code, const QString &message) {
@@ -356,6 +360,8 @@ void Assistant::executeCall(int row, const ToolCallEntry &call)
 
 void Assistant::maybeContinue(int row)
 {
+    if (m_dispatching)
+        return; // a tool finished mid-dispatch; the end-of-loop call continues
     if (m_executing > 0)
         return; // wait for the rest of this round
     // If any call in this row is still pending, we are waiting on the user.

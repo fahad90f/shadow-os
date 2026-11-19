@@ -133,9 +133,15 @@ QJsonArray ChatClient::toAnthropicMessages(const QJsonArray &messages, QString *
 void ChatClient::send(const QString &model, const QJsonArray &messages, const QJsonArray &tools)
 {
     if (m_reply) {
-        m_reply->abort();
-        m_reply->deleteLater();
+        // Tear the old reply down re-entrancy-safe: clear m_reply first and
+        // disconnect so abort()'s finished() signal cannot call back into
+        // onFinished() (which would null m_reply mid-teardown and leave this
+        // deleteLater() dereferencing a dangling pointer).
+        QNetworkReply *old = m_reply;
         m_reply = nullptr;
+        old->disconnect(this);
+        old->abort();
+        old->deleteLater();
     }
     m_buffer.clear();
     m_content.clear();

@@ -117,5 +117,10 @@ private:
     bool m_thinkHard = false;
     int m_executing = 0;   // tool calls currently running
     int m_toolRounds = 0;  // guard against runaway tool loops
+    // True while dispatching a round of tool calls. A tool that completes
+    // synchronously would otherwise call maybeContinue() mid-loop AND again at
+    // the end, firing two overlapping continuation requests; this defers the
+    // continuation until the whole round has been dispatched.
+    bool m_dispatching = false;
     QVariantList m_log;
 };
