@@ -33,6 +33,18 @@ export ELECTRON_OZONE_PLATFORM_HINT="auto"
 # and need this to lay out correctly under a non-reparenting window manager.
 export _JAVA_AWT_WM_NONREPARENTING="1"
 
+# Screen sharing. KWin gates privileged Wayland protocols — screen cast
+# (zkde_screencast_unstable_v1) and remote desktop — behind a per-application
+# allowlist (.desktop X-KDE-Wayland-Interfaces). On this standalone KWin
+# session (no Plasma session setup) the xdg-desktop-portal-kde screencast
+# backend is not on that list, so KWin hides the screencast global from it and
+# every screen-share attempt (Discord, OBS, browsers, the portal) finds no
+# screen to offer — the capture global exists but is invisible to the portal.
+# Turn the gate off so the portal can bind it. The portal's own "share this
+# screen?" consent prompt stays the real boundary, which is exactly how GNOME
+# and wlroots compositors already behave (they do not gate the bind at all).
+export KWIN_WAYLAND_NO_PERMISSION_CHECKS=1
+
 # Pointer theme and size: the user's saved choice (Control Center writes
 # kcminputrc), else the SHADOW defaults. The compositor prefers these
 # variables over its configuration, so they must carry the saved values.
