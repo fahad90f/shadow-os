@@ -171,6 +171,43 @@ Item {
                 ctx.fillStyle = pg
                 ctx.beginPath(); ctx.arc(p.x, p.y, pr * 3.2, 0, 2 * Math.PI); ctx.fill()
             }
+
+            // 6. Voice waveform halo — the "talking" visualizer. A closed loop
+            //    around the sphere whose radius wobbles like an audio waveform:
+            //    fast and deep while the assistant speaks, slower and gentler
+            //    while it listens, a faint steady breath otherwise. This is what
+            //    makes the orb read as a talking presence.
+            const talk = root.orbState === "speaking" ? 1.0
+                       : root.orbState === "wake" ? 0.85
+                       : root.orbState === "listening" ? 0.6
+                       : root.orbState === "thinking" ? 0.3 : 0.12
+            const wspeed = root.orbState === "speaking" ? 9.0
+                         : root.orbState === "listening" ? 4.5 : 6.0
+            const ringR = R * 1.24
+            const steps = 72
+            // Two concentric waveform rings for depth.
+            for (let ring = 0; ring < 2; ring++) {
+                const phase = ring === 0 ? 0 : 1.7
+                const rscale = ring === 0 ? 1.0 : 1.12
+                ctx.beginPath()
+                for (let i = 0; i <= steps; i++) {
+                    const a = (i / steps) * 2 * Math.PI
+                    // Layered sines → an organic, speech-like wobble.
+                    const wob = Math.sin(a * 6 + t * wspeed + phase) * 0.5
+                              + Math.sin(a * 11 - t * (wspeed * 0.8) + phase) * 0.3
+                              + Math.sin(a * 3 + t * (wspeed * 0.55)) * 0.22
+                    const env = 0.55 + 0.45 * Math.abs(Math.sin(t * (wspeed * 0.5) + ring))
+                    const amp = base * 0.16 * talk * env
+                    const rr = ringR * rscale + wob * amp
+                    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+                }
+                ctx.closePath()
+                ctx.lineWidth = Math.max(1.2, base * (ring === 0 ? 0.022 : 0.014))
+                ctx.strokeStyle = Theme.alpha(ring === 0 ? col1 : col2,
+                                              (ring === 0 ? 0.85 : 0.5) * talk * e)
+                ctx.stroke()
+            }
         }
     }
 

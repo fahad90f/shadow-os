@@ -125,7 +125,7 @@ Item {
                     AssistantOrb {
                         Layout.alignment: Qt.AlignHCenter
                         orbState: page.orbState
-                        implicitWidth: 180; implicitHeight: 180
+                        implicitWidth: 260; implicitHeight: 260
                     }
                     Text {
                         Layout.fillWidth: true
