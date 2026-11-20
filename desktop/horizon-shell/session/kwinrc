@@ -16,6 +16,12 @@ FocusPolicy=ClickToFocus
 RollOverDesktops=true
 
 [Plugins]
+# Screen sharing / recording: KWin's screencast plugin creates the
+# zkde_screencast Wayland global that the xdg-desktop-portal ScreenCast
+# interface (and thus Discord, OBS, browsers) captures from. On a bare KWin
+# session it must be enabled explicitly — without it KWin advertises no
+# screencast protocol and every app's screen-share list is empty.
+screencastEnabled=true
 # Window animations (KWin 6 effect ids). The scripted ones (fading popups,
 # dialog parent, maximize, frozen app, full screen, translucency, window
 # view) come from the kwin-common/kwin-data packages, which shadow-horizon
