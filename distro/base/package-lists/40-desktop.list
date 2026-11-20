@@ -59,6 +59,19 @@ pipewire-alsa
 wireplumber
 alsa-utils
 
+# Voice assistant engines (SHADOW Assistant hands-free "Shadow"). Without these
+# the voice subsystem reports "unavailable" and spoken commands do nothing:
+#   pocketsphinx       — offline speech-to-text + wake-word spotting (bundles
+#                        the en-us model in 5.x; Claude has no STT, so this runs
+#                        locally).
+#   espeak-ng          — always-available text-to-speech fallback.
+#   speech-dispatcher  — spd-say front-end (preferred TTS routing).
+# Capture (parecord/pw-record/arecord) already comes from pulseaudio-utils /
+# pipewire-pulse / alsa-utils above.
+pocketsphinx
+espeak-ng
+speech-dispatcher
+
 # Networking, Bluetooth, power, storage services used by the desktop
 network-manager
 wpasupplicant
