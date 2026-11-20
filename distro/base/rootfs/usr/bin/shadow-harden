@@ -53,16 +53,23 @@ DEFAULT_LEVEL = "hardened"
 LEVELS = {
     "standard": {
         "kernel.unprivileged_userns_clone": "1",   # browsers, Flatpak, containers
+        # Trixie also gates userns behind AppArmor; 0 lets Electron/Chromium
+        # (browsers, VSCodium, Discord, Vesktop) use their namespace sandbox
+        # instead of the setuid one. Without it the SUID chrome-sandbox path is
+        # used and apps abort unless chrome-sandbox is manually setuid-root.
+        "kernel.apparmor_restrict_unprivileged_userns": "0",
         "kernel.unprivileged_bpf_disabled": "0",   # profilers/tracers work
         "kernel.perf_event_paranoid":       "2",   # perf for non-root (limited)
     },
     "hardened": {
         "kernel.unprivileged_userns_clone": "1",   # kept ON so sandboxes work
+        "kernel.apparmor_restrict_unprivileged_userns": "0",  # ↑ Electron/browser sandboxes
         "kernel.unprivileged_bpf_disabled": "1",   # no unprivileged BPF
         "kernel.perf_event_paranoid":       "3",   # perf root-only
     },
     "paranoid": {
         "kernel.unprivileged_userns_clone": "0",   # BREAKS browser/Flatpak sandboxes
+        "kernel.apparmor_restrict_unprivileged_userns": "1",  # fully restrict userns too
         "kernel.unprivileged_bpf_disabled": "2",   # BPF fully off
         "kernel.perf_event_paranoid":       "4",   # perf fully off
     },
