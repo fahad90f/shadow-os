@@ -40,6 +40,9 @@
 #     port that no longer answers after a restart; Ghost Mode sends everything
 #     through Tor, which some networks block. -> stopped or repaired, with your
 #     say-so (or --yes); --keep-hide-me leaves Hide Me alone.
+#     Hide Me's random hostname was not added to /etc/hosts (its AppArmor
+#     profile did not allow it), so sudo says "unable to resolve host".
+#     -> the hostname is mapped to 127.0.1.1 again.
 #  4. A blocked Wi-Fi radio, Wi-Fi power saving, and (Realtek, MediaTek) chip
 #     power-saving that drops the connection. -> unblocked / switched off, one
 #     at a time, testing after each, keeping only what was needed.
@@ -99,6 +102,7 @@ RESOLV=$R/etc/resolv.conf
 RESOLV_ANON_BACKUP=$R/etc/resolv.conf.shadow-backup
 NM_RESOLV=/run/NetworkManager/resolv.conf
 MODPROBE_FIX=$R/etc/modprobe.d/shadow-wifi-fix.conf
+HOSTS=$R/etc/hosts
 SYS_NET=$R/sys/class/net
 PROC_SYS=$R/proc/sys
 # Two independent connectivity checks (the same ones Debian and Firefox use);
@@ -335,8 +339,19 @@ snapshot() {   # snapshot "title"
     for line in $(rfkill -n -o TYPE,SOFT,HARD 2>/dev/null | awk '$1 == "wlan" { print $2 "/" $3 }'); do rep "rfkill wlan soft/hard: $line"; done
     rep "dns: $(dns_check && echo works || echo fails)"
 }
+report_nm_log() {   # NetworkManager's last Wi-Fi / DHCP lines, hardware addresses masked
+    local ifc
+    rep ""
+    rep "---- NetworkManager log (Wi-Fi and DHCP, this run) ----"
+    for ifc in "${WIFI_IFS[@]}"; do
+        journalctl -b --since "$START_TIME" --no-pager -u NetworkManager 2>/dev/null |
+            grep -E "$ifc|dhcp4" | tail -n 60 |
+            sed -E 's/([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/XX:XX:XX:XX:XX:XX/g; s/(client-id|duid|iaid)[ =:]+[^ ,]+/\1=X/g' >>"$REPORT"
+    done
+}
 
 # ================================================================================
+START_TIME=$(date -d '-10 min' '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S')
 say "Shadow OS network fix - $(date '+%Y-%m-%d %H:%M')"
 say "Log: $LOG"
 rep "Shadow OS network fix report $TS"
@@ -496,7 +511,30 @@ if [ "$dns_lock" != 0 ]; then
     fi
 fi
 
-# 2e. Wi-Fi: a new random address at every connection -> one private address per network.
+# 2e. This computer's own name does not resolve (Hide Me's random hostname
+#     was never added to /etc/hosts): sudo warns at every use.
+HOSTNAME_NOW=$(hostname 2>/dev/null)
+if [ -n "$HOSTNAME_NOW" ] && ! getent hosts "$HOSTNAME_NOW" >/dev/null 2>&1; then
+    if [ "$REPORT_ONLY" = 1 ]; then
+        warn "the computer's name '$HOSTNAME_NOW' is not in /etc/hosts"
+    else
+        backup_file "$HOSTS"
+        tmp_hosts=$(mktemp)
+        if [ -f "$HOSTS" ] && grep -qE '^127\.0\.1\.1[[:space:]]' "$HOSTS"; then
+            sed -E "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1\t$HOSTNAME_NOW/" "$HOSTS" >"$tmp_hosts"
+        elif [ -f "$HOSTS" ] && grep -qE '^127\.0\.0\.1[[:space:]]' "$HOSTS"; then
+            awk -v h="$HOSTNAME_NOW" '{ print } !done && /^127\.0\.0\.1[[:space:]]/ { print "127.0.1.1\t" h; done = 1 }' "$HOSTS" >"$tmp_hosts"
+        else
+            { [ -f "$HOSTS" ] && cat "$HOSTS"; printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n' "$HOSTNAME_NOW"; } >"$tmp_hosts"
+        fi
+        cat "$tmp_hosts" >"$HOSTS"; rm -f "$tmp_hosts"
+        chmod 644 "$HOSTS"
+        ok "the computer's name '$HOSTNAME_NOW' resolves again (sudo stops saying \"unable to resolve host\")"
+        changed "/etc/hosts: 127.0.1.1 -> $HOSTNAME_NOW"
+    fi
+fi
+
+# 2f. Wi-Fi: a new random address at every connection -> one private address per network.
 if [ ${#WIFI_IFS[@]} -gt 0 ]; then
     if [ "$REPORT_ONLY" = 1 ]; then
         info "Wi-Fi address policy: $(grep -h '^wifi.cloned-mac-address' "$R"/usr/lib/NetworkManager/conf.d/*.conf "$R"/etc/NetworkManager/conf.d/*.conf 2>/dev/null | tail -n1)"
@@ -733,6 +771,7 @@ for r in "${RESULTS[@]}"; do case "$r" in "FAIL|Wi-Fi radio|"*) VERDICT=FAIL ;; 
 [ "$RESTART" = 1 ] && [ "$VERDICT" != PASS ] && VERDICT="RESTART NEEDED"
 for r in "${RESULTS[@]}"; do rep "result: $r"; done
 snapshot "after"
+[ "$VERDICT" = PASS ] || report_nm_log
 [ "$INVOKER" = root ] || chown "$INVOKER": "$LOG" "$REPORT" 2>/dev/null
 
 say ""
@@ -769,6 +808,16 @@ case "$VERDICT" in
         done
         [ "$dns_ok" = 0 ] && say "  - names cannot be looked up (DNS)"
         [ "$RECONNECT_FAILED" = 1 ] && say "  - Wi-Fi could not reconnect by itself: join your network again from the top bar, then run this again"
+        for ifc in "${WIFI_IFS[@]}"; do
+            if [ "${IF_RESULT[$ifc]:-}" = noaddr ]; then
+                say ""
+                say "The Wi-Fi network gives this computer no address, even with its real hardware"
+                say "address: the router has probably run out of addresses (every new random address"
+                say "used one up) or blocks this computer. Restart the router (power off 10 seconds;"
+                say "for a phone's hotspot: hotspot off and on), wait a minute, then run this again."
+                break
+            fi
+        done
         say "Send me this file (no passwords or hardware addresses in it): $REPORT"
         exit 1 ;;
 esac

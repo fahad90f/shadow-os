@@ -95,6 +95,10 @@
   /etc/systemd/system/shadow-anon-rotate.timer.d/   rw,
   /etc/systemd/system/shadow-anon-rotate.timer.d/** rw,
 
+  # A new random hostname is mapped to 127.0.1.1 here, or sudo and every
+  # local lookup of the machine's own name fail ("unable to resolve host").
+  /etc/hosts                        rw,
+
   # DNS: /etc/resolv.conf may be a link into /run.
   /etc/resolv.conf                  rw,
   /etc/resolv.conf.shadow-backup    rw,

@@ -115,6 +115,8 @@ def addr(st, dev):
             return None
         if sc == "macfilter" and m != "permanent":
             return None
+        if sc == "dhcpdead":
+            return None
         return "192.168.1.23/24"
     return "192.168.1.40/24"
 
@@ -397,6 +399,16 @@ def cmd_ping(st, a):
 
 
 def cmd_getent(st, a):
+    if a[0] == "hosts":
+        try:
+            with open(rpath("etc/hosts")) as f:
+                for line in f:
+                    if a[1] in line.split()[1:]:
+                        print(line.strip())
+                        return 0
+        except OSError:
+            pass
+        return 2
     if a[0] == "ahosts":
         if dns_ok(st):
             print(f"151.101.2.132   STREAM {a[1]}")
@@ -552,6 +564,9 @@ def main():
         "ss": cmd_ss, "modinfo": cmd_modinfo, "sysctl": cmd_sysctl, "chattr": cmd_chattr,
         "lsattr": cmd_lsattr, "shadow-anon": cmd_shadow_anon,
         "update-initramfs": lambda s, x: 0,
+        "hostname": lambda s, x: print(s.get("hostname", "shadow-3ebrpj3t")) or 0,
+        "journalctl": lambda s, x: print("NetworkManager[1]: <info> dhcp4 (wlo1): activation: beginning transaction\n"
+                                         "NetworkManager[1]: <info> device (wlan0): set-hw-addr: set MAC address to 3C:22:FB:11:22:33 (permanent)") or 0,
     }
     rc = handlers[name](st, list(args))
     save(st)
