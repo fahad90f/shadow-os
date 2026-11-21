@@ -37,6 +37,7 @@ the launcher, in QEMU). Nothing has run on real hardware.
 | [Updater](#updater) | `shadow-updater` | `shadow-updater` | yes |
 | [Arsenal](#arsenal-manager) | `shadow-arsenal` | `shadow-arsenal` | yes |
 | [Installer](#installer) | `shadow-installer` | `shadow-installer-gui` | yes (removed from the installed system) |
+| [Assistant](#assistant) | `shadow-assistant` | `shadow-assistant` | yes (listed in the desktop variant), with the voice engine data when the image was built with network access |
 | [Terminal](#terminal) | `shadow-terminal` | none yet | **no** |
 
 [In progress](#in-progress): Editor, Archive Manager, Disk Manager,
@@ -199,6 +200,26 @@ user guide in [../installation/installing.md](../installation/installing.md).
 | Limitations | English only; sizes are the engine's automatic choice; manual mode assigns existing partitions only and has no encryption |
 | Verified (per README) | every step and failure state rendered headless; the engine's real planner on synthetic probes; a keyboard-only walk-through with a simulated run; the bytes sent to the engine |
 | Not verified | a real installation through this front-end; pkexec with a running polkit daemon; "Restart now" |
+
+## Assistant
+
+[`applications/assistant/README.md`](../../applications/assistant/README.md) —
+the voice for users: [assistant-voice.md](assistant-voice.md); the voice
+engine's internals:
+[`applications/assistant/voice/README.md`](../../applications/assistant/voice/README.md).
+
+| | |
+|---|---|
+| Purpose | a personal AI agent: a streaming chat with Anthropic's Claude (or a local model through an OpenAI-compatible server) that carries out tasks on the computer through tools (shell commands, files, applications, the web, typing, screenshots), with an activity history and undo; hands-free by voice: "Shadow, …" |
+| Binary / package | `shadow-assistant` / `shadow-assistant`; the offline voice engine `shadow-voiced` (Python 3) in `/usr/lib/shadow-assistant/voice/`, its installer `shadow-voice-setup`; single instance |
+| Data sources | `~/.config/shadow/assistant.conf` (API key, models, autonomy, tools, voice); conversations in `~/.local/share/shadow/assistant/`; the voice engine data in `/var/lib/shadow-voice` (or per user in `~/.local/share/shadow/voice`) |
+| Command line | `shadow-assistant [--background]` (`--background`: no window, listens for the wake word; started at login), `--dump config\|models\|tools\|voice`, `--voice-selftest`, `--voice-session WAV` (headless voice loop for tests) |
+| Privileges | none of its own; tools that change the system ask for confirmation when the autonomy setting says so; the API key is never stored in the system |
+| Privacy (voice) | wake word, speech recognition and the voice run offline; nothing is recorded; the microphone is closed while muted; only what is said after "Shadow" is sent to Claude, as text ([assistant-voice.md](assistant-voice.md#privacy)) |
+| Limitations | English speech only; the voice engine runtime is x86-64 only (arm64 images get no engine data); the engine data (~700 MB) comes with the image or a download; the engine needs about 850 MB of memory while it runs |
+| Repair | `bash scripts/fix-assistant-voice.sh` from a source checkout: builds and installs the assistant, installs packages and engine data, repairs the settings file, checks microphone and speaker, restarts it ([assistant-voice.md](assistant-voice.md#the-one-shot-fix-scriptsfix-assistant-voicesh)) |
+| Verified | in the build chroot: the engine's 63 tests and a live run through PipeWire with a virtual microphone; 34 tests of the application's voice side; whole voice sessions with the real engine on recorded speech; the repair script end to end as a desktop user with sudo |
+| Not verified | a real microphone and speakers; the booted image; KWin raising the window on the wake word; the live Claude API (tested against a mock server) |
 
 ## Terminal
 

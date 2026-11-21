@@ -33,6 +33,8 @@ Most fixes below need a shell while the desktop is not usable.
 | Installer (installed system) | `sudo less /var/log/installer/install.log`, `/var/log/installer/plan.json` |
 | Package operations | `/var/log/apt/history.log`, `/var/log/apt/term.log`, `/var/log/dpkg.log` |
 | Audit events | `sudo ausearch -k <key>` ([../security/hardening.md](../security/hardening.md)) |
+| Shadow Assistant voice engine | `~/.local/state/shadow/voice.log` (rotated at 1 MB; no transcripts) |
+| Repair scripts (`scripts/fix-*.sh`) | `~/.local/state/shadow-fix-<name>/last-run.log` |
 | Previous boot | add `-b -1` to `journalctl` (the journal is persistent on installed systems) |
 
 When you report a problem, attach the relevant log and the output of
@@ -162,8 +164,11 @@ as the keys of the original layout. There is no recovery key.
 
 `wpctl status` shows the devices PipeWire sees. On recent laptops a missing
 "sof" firmware message in `dmesg` points at the audio DSP firmware
-(`firmware-sof-signed` is in the desktop image). Check that the output is
-not muted in the quick settings.
+(`firmware-sof-signed` is in the desktop image); their digital microphones
+also need the ALSA use-case profiles (`alsa-ucm-conf`, in the image as
+well). Check that the output is not muted in the quick settings. For the
+microphone: `wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0` unmutes the default
+input and `wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.8` sets its level.
 
 ### Something cannot connect *to* this computer
 
@@ -329,6 +334,31 @@ a StatusNotifierItem appear in the tray.
 
 `shadow-terminal` and `shadow-screenshot` are not part of the image yet ([../limitations.md](../limitations.md)). Install a terminal
 emulator from Debian in the meantime; it appears in the launcher.
+
+### The assistant does not react to "Shadow", or does not speak
+
+From a terminal inside the desktop, in your checkout of the Shadow OS
+sources, as your normal user:
+
+```sh
+bash scripts/fix-assistant-voice.sh
+```
+
+It builds and installs the assistant from the checkout, installs the Debian
+packages and the offline voice engine data it needs, repairs
+`~/.config/shadow/assistant.conf` (keeping a backup, never touching the API
+key line), checks that the default input is an unmuted microphone with a
+usable level, tests the speaker and your microphone, and restarts the
+assistant in the background. It ends with PASS or FAIL per check and the
+next step for each failure. Without a checkout: `sudo shadow-voice-setup
+--system` installs the engine data, and `shadow-assistant --dump voice`
+shows what the assistant finds. More:
+[../applications/assistant-voice.md](../applications/assistant-voice.md#troubleshooting).
+
+Laptops whose microphones sit behind the audio DSP (Intel SOF) show no
+microphone without `firmware-sof-signed` and `alsa-ucm-conf`; both are in
+the desktop image, and the script installs them if they are missing (a
+reboot is needed afterwards).
 
 ## Package problems
 

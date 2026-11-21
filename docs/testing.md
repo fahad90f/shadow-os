@@ -85,6 +85,7 @@ Found and fixed during these runs:
 | Shell in a nested KWin session (not a VM) | launcher, search, dock, context menu, session menu and global shortcuts verified with injected input and screenshots |
 | SHADOW kernel | `kernel/build.sh --configure-only` verified; a full build was started and **not completed** |
 | Applications and shell modules | each README states its own tests; most back-ends that need NetworkManager, BlueZ, UPower, logind or PackageKit were tested against the real daemon on a private bus where possible, otherwise against fixtures, and say which |
+| Assistant voice | in the build chroot, never with audio hardware: the engine's suite (63 tests) and a live run through a private PipeWire session with a virtual microphone; the app's voice suite (34 tests); `scripts/fix-assistant-voice.sh` end to end as a desktop user with sudo (first run, second run, corrupted settings, muted microphone, interactive answers); `build/iso/voice-data.sh` against a scratch image root ([applications/assistant-voice.md](applications/assistant-voice.md#what-has-been-verified)) |
 
 Per-component details: [applications/README.md](applications/README.md) and
 the READMEs it links.
@@ -263,6 +264,9 @@ that its "unavailable" states are sound — not that the back-ends work.
 ### 7. Component tests
 
 Kept next to the component and described in its README: for example
+`applications/assistant/voice/tests/run-tests.sh` (the voice engine; needs
+installed engine data), `applications/assistant/tests/voice_tests.py` (the
+assistant's voice side, with a stand-in engine),
 `applications/monitor/tests/`, `applications/network-center/tests/`,
 `applications/store/pkcommon/tools/overlay-tests/`,
 `desktop/horizon-shell/modules/*/tests/`, `desktop/themes/tests/`,
@@ -342,7 +346,7 @@ None of the following can be established in QEMU, and none of it has been:
 | Input | touchpads (gestures, tap-to-click), touchscreens, special keys (volume, brightness, media, microphone mute), keyboard layouts on real keyboards |
 | Networking | Wi-Fi: firmware loading, scanning, WPA2/WPA3, hidden and enterprise networks, MAC randomisation against real access points; Ethernet link changes; captive portals; VPNs |
 | Bluetooth | adapters, pairing, audio devices, rfkill |
-| Audio | real sound cards, SOF firmware, headphone jack detection, microphones, HDMI audio |
+| Audio | real sound cards, SOF firmware and digital microphones, headphone jack detection, microphones, HDMI audio; the assistant's wake word, speech recognition and voice with a real microphone and speakers |
 | Power | suspend and resume, hibernation, lid switch, battery reporting, power profiles, lock-on-resume |
 | Storage | NVMe and SATA on real controllers, USB sticks from different vendors, SD cards, real disk sizes and sector sizes (4K native), TRIM on LUKS |
 | Dual boot | Windows (fast startup, BitLocker), other distributions' boot loaders, shared ESPs |

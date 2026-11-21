@@ -40,6 +40,7 @@ verified end to end.
 | Shadow Horizon shell | partly verified | nested KWin session: launcher, search, dock, context menu, session menu, global shortcuts | real GPU, multiple screens, HiDPI |
 | Shell modules (notifications, tray, status) | implemented | each module's README lists its tests (nested session, fixtures) | the booted image; real hardware services |
 | Applications (Monitor, Files, Store, Updater, Network Center, Control Center, Arsenal manager) | implemented | each README lists its tests (build chroot; real daemons on a private bus where possible, otherwise fixtures) | polkit prompts, real hardware, most of them inside the booted image |
+| Shadow Assistant and its offline voice ("Shadow, …") | implemented | build chroot: the voice engine's and the app's test suites, a live run through PipeWire with a virtual microphone, the repair script `scripts/fix-assistant-voice.sh` end to end ([docs/applications/assistant-voice.md](docs/applications/assistant-voice.md)) | a real microphone and speakers, the booted image, a complete ISO build with the voice data |
 | Security baseline (`shadow-hardening`) | implemented | `shadow-firewall` functional test in an isolated network namespace | every other setting as a working whole on an installed system; real hardware |
 | SHADOW kernel | configuration only | `kernel/build.sh --configure-only` | a complete build; the image does not contain it |
 | Hosted package repository | does not exist | — | — |
@@ -54,7 +55,13 @@ The images were built on Ubuntu 24.04 (amd64, 4 vCPU, 15 GB RAM). A Debian
 or Ubuntu amd64 host is assumed; nothing else has been tried. You need root
 (the scripts create chroots and device nodes), free disk space under `build/`
 for two chroots, the image work tree and the outputs (not measured; the
-desktop ISO alone is about 1 GB), and network access to `deb.debian.org`.
+desktop ISO alone is about 1 GB, plus about 0.5 GB for the assistant's voice
+engine data), and network access to `deb.debian.org`. The desktop image also
+downloads the voice engine data (~700 MB, once; cached in
+`build/work/cache/voice-engine`) from `github.com` (k2-fsa/sherpa-onnx
+releases) and `files.pythonhosted.org`; without that access, or with
+`build/iso/build.sh --no-voice-data`, the image is built without it
+([docs/packaging/iso.md](docs/packaging/iso.md#voice-engine-data)).
 
 Install the host tools with the script provided:
 
@@ -192,7 +199,7 @@ Installation guide: [docs/installation/installing.md](docs/installation/installi
 | `arsenal/` | security tool profiles (manifests), their tools and docs, the Arsenal manager |
 | `assets/` | wallpapers, logos, boot themes and the generators that produce them (`assets/src`) |
 | `tests/` | QEMU boot, installation and desktop tests; GUI smoke test; test harness (`tests/lib`) |
-| `scripts/` | host set-up (`host-setup.sh`), developer loop (`dev.sh`) and generators (`gen-identity.sh`, `gen-apt-source.sh`, `gen-tokens.py`) |
+| `scripts/` | host set-up (`host-setup.sh`), developer loop (`dev.sh`), generators (`gen-identity.sh`, `gen-apt-source.sh`, `gen-tokens.py`) and one-shot repairs of a running system (`fix-screen-share.sh`, `fix-assistant-voice.sh`) |
 | `debian/` | the single source package `shadow-os` that builds every SHADOW binary package |
 | `cmake/`, `CMakeLists.txt` | CMake project of all compiled and data components |
 | `.github/workflows/` | CI workflow: build packages and the desktop ISO, boot-test it, upload it |

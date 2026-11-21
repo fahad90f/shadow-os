@@ -150,6 +150,16 @@ for hook in "$SHADOW_ROOT"/distro/base/hooks/[0-9]*.sh; do
         env "${IMG_ENV[@]}" /bin/bash -eu "/run/shadow-hooks/$(basename "$hook")"
 done
 
+# ---- offline voice engine data of the Shadow Assistant -----------------------
+# Not a hook: the ~700 MB download is cached on the build host between builds,
+# which a hook (it only sees the image) cannot do. Best effort: without network
+# the image is built without it and the assistant offers the download.
+if [ "${VOICE_DATA:-1}" = 1 ]; then
+    "$SHADOW_ROOT/build/iso/voice-data.sh" "$MERGED"
+else
+    log "voice engine data: not included (--no-voice-data / SHADOW_IMAGE_VOICE=0)"
+fi
+
 # ---- package manifest --------------------------------------------------------
 mkdir -p "$SHADOW_OUT/iso"
 run -- dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \

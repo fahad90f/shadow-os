@@ -2,7 +2,7 @@
 # Build a Shadow OS live/install ISO image.
 #
 #   build/iso/build.sh [--arch amd64|arm64] [--variant NAME] [--fresh]
-#                      [--comp zstd|xz] [--no-shadow-packages]
+#                      [--comp zstd|xz] [--no-shadow-packages] [--no-voice-data]
 #
 #   --arch      target architecture (default: host architecture)
 #   --variant   image variant from distro/base/variants/NAME.conf (default: desktop)
@@ -11,11 +11,18 @@
 #   --no-shadow-packages
 #               do not install packages from the local SHADOW repository
 #               (bring-up/debugging of the base image only)
+#   --no-voice-data
+#               do not bake the Shadow Assistant's offline voice engine data
+#               (~700 MB, /var/lib/shadow-voice) into the image; same as
+#               SHADOW_IMAGE_VOICE=0. Default: baked in whenever the image has
+#               shadow-assistant (amd64); the download is cached in
+#               $SHADOW_CACHE/voice-engine and a failed download only warns
+#               (build/iso/voice-data.sh)
 #
-# Pipeline (see docs/architecture/image-build.md):
+# Pipeline (see docs/packaging/iso.md):
 #   1. base layer   mmdebstrap of Debian <suite> + package lists     (cached)
 #   2. shadow layer  SHADOW packages from the local signed repo, rootfs
-#                   overlay, configuration hooks                     (overlayfs)
+#                   overlay, configuration hooks, voice engine data  (overlayfs)
 #   3. squashfs     live/filesystem.squashfs
 #   4. boot         signed shim + GRUB (UEFI), GRUB eltorito (BIOS on amd64)
 #   5. iso          hybrid ISO9660 via xorriso, checksums, manifest
@@ -29,6 +36,7 @@ VARIANT="desktop"
 FRESH=0
 COMP="zstd"
 WITH_SHADOW=1
+VOICE_DATA="${SHADOW_IMAGE_VOICE:-1}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --arch) ARCH="$2"; shift 2 ;;
@@ -36,10 +44,12 @@ while [ $# -gt 0 ]; do
         --fresh) FRESH=1; shift ;;
         --comp) COMP="$2"; shift 2 ;;
         --no-shadow-packages) WITH_SHADOW=0; shift ;;
-        -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+        --no-voice-data) VOICE_DATA=0; shift ;;
+        -h|--help) sed -n '2,31p' "$0"; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
+case "$VOICE_DATA" in 0|1) ;; *) die "SHADOW_IMAGE_VOICE must be 0 or 1 (not '$VOICE_DATA')" ;; esac
 
 need_root
 need_cmd mmdebstrap mksquashfs xorriso mcopy mformat mmd sha256sum unshare
@@ -145,7 +155,7 @@ if [ "$WITH_SHADOW" -eq 1 ] && [ -n "${VARIANT_SHADOW_PACKAGES:-}" ]; then
     SHADOW_PKGS="$VARIANT_SHADOW_PACKAGES"
 fi
 
-export ARCH VARIANT COMP IMG BASE STAGING REPO_DIR SHADOW_PKGS ISO_NAME
+export ARCH VARIANT COMP IMG BASE STAGING REPO_DIR SHADOW_PKGS ISO_NAME VOICE_DATA
 export SHADOW_NAME SHADOW_ID SHADOW_VERSION SHADOW_CODENAME SHADOW_CHANNEL SHADOW_DESKTOP \
        SHADOW_DEBIAN_SUITE SHADOW_DEBIAN_VERSION SHADOW_HOME_URL SHADOW_BUG_URL SHADOW_REPO_URL \
        SHADOW_VENDOR SHADOW_KERNEL_SERIES

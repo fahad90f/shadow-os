@@ -998,12 +998,23 @@ Description: SHADOW Terminal
 Package: shadow-assistant
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
- speech-dispatcher, espeak-ng, pocketsphinx, pocketsphinx-en-us, xdg-utils
-Recommends: pulseaudio-utils, pipewire-bin, wtype, xdotool, libgtk-3-bin
-Suggests: piper-tts
+ xdg-utils, python3 (>= 3.12), python3-numpy, espeak-ng,
+ pipewire-bin | pulseaudio-utils | alsa-utils, curl | wget, bzip2
+Recommends: pipewire-pulse, wireplumber, pulseaudio-utils, alsa-ucm-conf,
+ wtype, xdotool, libgtk-3-bin
 Description: Shadow Assistant
- A personal AI assistant for Shadow OS: a conversation that can answer
- questions and carry out tasks on the computer through NVIDIA Nemotron
- models. Actions that change the system or reach the network are shown and
- require explicit confirmation before they run. The NVIDIA API key is read
- from a private per-user configuration file and is never stored in the system.
+ A personal AI assistant for Shadow OS: a conversation with Anthropic's
+ Claude (or, offline, a local model behind an OpenAI-compatible server)
+ that answers questions and carries out tasks on the computer. Every
+ action is listed in its activity history, and actions that change the
+ system or reach the network can be set to require confirmation first. The
+ API key is read from a private per-user configuration file or the
+ environment and is never stored in the system.
+ .
+ Voice: say "Shadow" to talk to it hands-free; it speaks its replies. Wake
+ word, speech recognition and the voice run on this computer (shadow-voiced,
+ Python 3); no audio leaves it, nothing is recorded, and the microphone is
+ closed while muted. The neural engine data (about 700 MB: sherpa-onnx,
+ Silero VAD, Moonshine/Whisper, Kokoro) is not part of this package: Shadow
+ OS images include it, otherwise shadow-voice-setup downloads it. Without
+ it, replies are spoken with eSpeak NG and there is no speech recognition.

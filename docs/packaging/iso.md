@@ -6,7 +6,7 @@ SHADOW packages are built and published into `build/out/repo`
 
 ```
 sudo build/iso/build.sh [--arch amd64|arm64] [--variant NAME] [--fresh]
-                        [--comp zstd|xz] [--no-shadow-packages]
+                        [--comp zstd|xz] [--no-shadow-packages] [--no-voice-data]
 ```
 
 | Option | Effect |
@@ -16,9 +16,11 @@ sudo build/iso/build.sh [--arch amd64|arm64] [--variant NAME] [--fresh]
 | `--fresh` | ignore the cached Debian base layer and bootstrap again |
 | `--comp` | squashfs compressor: `zstd` (default; level 19, 1 MiB blocks) or `xz` (smaller, slower to boot) |
 | `--no-shadow-packages` | do not install SHADOW packages from the local repository (bring-up and debugging of the base image) |
+| `--no-voice-data` | do not include the Shadow Assistant's offline voice engine data ([below](#voice-engine-data)); same as `SHADOW_IMAGE_VOICE=0` |
 
 Environment: the variables of `build/lib/common.sh`, plus `SHADOW_KEEP_DOCS=1`
-to keep `/usr/share/doc`, `info` and `lintian` files in the image.
+to keep `/usr/share/doc`, `info` and `lintian` files in the image, and the
+`SHADOW_IMAGE_VOICE*` variables of the voice engine data.
 
 Output in `build/out/iso/`:
 
@@ -106,6 +108,46 @@ an upper directory that is recreated on every build.
 * `distro/base/rootfs/` is copied over the image as root-owned files
   (currently empty).
 * The hooks run in order.
+* The Shadow Assistant's voice engine data is installed
+  ([below](#voice-engine-data)).
+
+### Voice engine data
+
+The assistant's offline voice (wake word, speech recognition, the voice;
+[../applications/assistant-voice.md](../applications/assistant-voice.md))
+needs about 700 MB of pinned model files and runtime wheels that are not part
+of any package. `build/iso/voice-data.sh` puts them into the image's
+`/var/lib/shadow-voice`, the system data root that the engine looks up and
+that `sudo shadow-voice-setup --system` checks, updates and removes on the
+installed system; the installer copies it with the rest of the image.
+
+* It runs the image's own `shadow-voice-setup --dest /var/lib/shadow-voice`
+  (package `shadow-assistant`) inside the image, so the image's Python
+  unpacks the files and the engine's own self-test (it speaks a sentence and
+  must recognise it) runs before the data is kept.
+* The download goes into a cache on the build host that is kept between
+  builds: `SHADOW_IMAGE_VOICE_CACHE` (default `build/work/cache/voice-engine`).
+  Every file is checked against its pinned size and sha256, whether it was
+  downloaded or already in the cache. The download runs inside the image and
+  sees only the `http(s)_proxy`/`no_proxy` variables of the build
+  environment, not the host's CA store: behind a TLS-intercepting proxy, fill
+  the cache beforehand with the files of any `shadow-voice-setup
+  --keep-cache` run (from `~/.cache/shadow-voice` or
+  `/var/cache/shadow-voice`).
+* `SHADOW_IMAGE_VOICE_STT`: `both` (default: Moonshine and Whisper, 693 MB
+  installed) or `moonshine` / `whisper` alone (Moonshine only: 540 MB).
+* Off with `--no-voice-data` or `SHADOW_IMAGE_VOICE=0`. It is skipped with a
+  warning when the image has no `shadow-assistant` or is not amd64 (the
+  pinned runtime is x86-64 only).
+* **Best effort**: without network, with a checksum mismatch or a failed
+  self-test the build prints a warning, leaves nothing half-installed and
+  continues. Such an image has no neural voice: the assistant speaks with
+  eSpeak NG and offers the download in its settings.
+* Size: 693 MB uncompressed, 518 MB in the zstd-19 squashfs (measured), so
+  the desktop ISO grows by about half a gigabyte; the installed system needs
+  the 693 MB.
+
+Its log is `build/work/image-<arch>/voice-data.log`.
 
 ### Hooks
 

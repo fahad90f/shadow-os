@@ -171,6 +171,13 @@ In the image, with limits stated in their READMEs
 * **Monitor:** sensors, batteries, GPUs and services tested against
   synthetic data only; no GPU utilisation for Intel, nouveau or virtual
   GPUs.
+* **Assistant (voice):** English only; the offline voice engine needs about
+  700 MB of data (in the image only when it was built with network access,
+  otherwise `sudo shadow-voice-setup --system`) and about 850 MB of memory
+  while it runs; its runtime is x86-64 only, so arm64 has no speech
+  recognition or neural voice. Tested with a virtual microphone in the build
+  chroot, never with a real microphone or speakers
+  ([applications/assistant-voice.md](applications/assistant-voice.md)).
 
 ## Hardware and drivers
 

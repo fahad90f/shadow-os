@@ -64,18 +64,33 @@ pipewire-alsa
 wireplumber
 alsa-utils
 
-# Voice assistant engines (SHADOW Assistant hands-free "Shadow"). Without these
-# the voice subsystem reports "unavailable" and spoken commands do nothing:
-#   pocketsphinx       — offline speech-to-text + wake-word spotting (bundles
-#                        the en-us model in 5.x; Claude has no STT, so this runs
-#                        locally).
-#   espeak-ng          — always-available text-to-speech fallback.
-#   speech-dispatcher  — spd-say front-end (preferred TTS routing).
-# Capture (parecord/pw-record/arecord) already comes from pulseaudio-utils /
-# pipewire-pulse / alsa-utils above.
-pocketsphinx
+# Voice of the Shadow Assistant (hands-free "Shadow", spoken replies). Its
+# engine, shadow-voiced (package shadow-assistant), runs entirely offline from
+# /var/lib/shadow-voice, which the image build fills with the pinned neural
+# models (build/iso/voice-data.sh, ~700 MB, sha256-checked); on a system
+# without them: sudo shadow-voice-setup --system. The Debian side of it
+# (shadow-assistant depends on all of these except alsa-ucm-conf; listed for
+# clarity):
+#   python3-numpy  — the engine's array maths (otherwise shadow-voice-setup has
+#                    to add a pinned numpy wheel).
+#   espeak-ng      — pronounces words missing from the voice's lexicon, and is
+#                    the "basic voice" while the neural engine is not installed.
+#   pipewire-bin   — pw-record / pw-play: microphone capture and playback (also
+#                    pulled in by pipewire).
+#   alsa-ucm-conf  — ALSA use-case profiles. Laptops whose microphones are a
+#                    digital array behind the audio DSP (Intel SOF "DMIC", e.g.
+#                    Comet Lake and newer) show no microphone at all without
+#                    them. Only a Recommends of libasound2-data, so it must be
+#                    listed. The DSP firmware itself is firmware-sof-signed
+#                    (15-firmware.list).
+# pocketsphinx and speech-dispatcher are no longer used: trixie's pocketsphinx
+# is 0.8+5prealpha with 2015 models and no acoustic model at all unless the
+# pocketsphinx-en-us Recommends is installed; speech-dispatcher without its
+# espeak-ng module made every spoken reply hang for about 30 seconds.
+python3-numpy
 espeak-ng
-speech-dispatcher
+pipewire-bin
+alsa-ucm-conf
 
 # Networking, Bluetooth, power, storage services used by the desktop
 network-manager

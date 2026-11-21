@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+# Purging also removes the voice engine data that "shadow-voice-setup
+# --system" or the Shadow OS image build put into /var/lib/shadow-voice
+# (~700 MB; only a tree with that tool's manifest), and its download cache.
+# A plain remove keeps it, so reinstalling needs no new download. Per-user
+# copies (~/.local/share/shadow/voice) belong to their users and stay.
+if [ "$1" = "purge" ]; then
+    if [ -f /var/lib/shadow-voice/manifest.json ] \
+        && grep -q '"format": *1' /var/lib/shadow-voice/manifest.json; then
+        rm -rf /var/lib/shadow-voice
+    fi
+    rm -rf /var/lib/shadow-voice.new.* /var/lib/shadow-voice.old.* \
+        /var/lib/.shadow-voice-work.* /var/cache/shadow-voice
+fi
+#DEBHELPER#
+exit 0

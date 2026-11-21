@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+# Running the voice engine as root (the self-test of "shadow-voice-setup
+# --system") leaves Python byte code next to its modules. It belongs to no
+# package: remove it before dpkg removes or replaces the modules, so their
+# directory does not stay behind.
+case "$1" in
+    remove|upgrade|deconfigure|failed-upgrade)
+        rm -rf /usr/lib/shadow-assistant/voice/shadow_voice/__pycache__
+        ;;
+esac
+#DEBHELPER#
+exit 0
