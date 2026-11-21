@@ -218,7 +218,7 @@ engine's internals:
 | Privacy (voice) | wake word, speech recognition and the voice run offline; nothing is recorded; the microphone is closed while muted; only what is said after "Shadow" is sent to Claude, as text ([assistant-voice.md](assistant-voice.md#privacy)) |
 | Limitations | English speech only; the voice engine runtime is x86-64 only (arm64 images get no engine data); the engine data (~700 MB) comes with the image or a download; the engine needs about 850 MB of memory while it runs |
 | Repair | `bash scripts/fix-assistant-voice.sh` from a source checkout: builds and installs the assistant (build tools and `build/cmake` when missing), installs packages and engine data, repairs the settings file, checks microphone and speakers, tests your voice and the wake word, restarts it and has you talk to it; PASS only when it answered aloud ([assistant-voice.md](assistant-voice.md#the-one-shot-fix-scriptsfix-assistant-voicesh)) |
-| Verified | in the build chroot: the engine's 63 tests and a live run through PipeWire with a virtual microphone; 34 tests of the application's voice side; whole voice sessions with the real engine on recorded speech; the repair script end to end as a desktop user with sudo |
+| Verified | in the build chroot: the engine's 66 tests and a live run through PipeWire with a virtual microphone; 43 tests of the application's voice side; whole voice sessions with the real engine on recorded speech; the repair script end to end as a desktop user with sudo |
 | Not verified | a real microphone and speakers; the booted image; KWin raising the window on the wake word; the live Claude API (tested against a mock server) |
 
 ## Terminal

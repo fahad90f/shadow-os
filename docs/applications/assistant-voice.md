@@ -113,7 +113,7 @@ with a summary and one verdict:
 
 | Verdict | Meaning | Exit |
 |---|---|---|
-| **PASS** | every link was tested: your voice reached the engine and was understood, "Shadow" woke it, the API key reaches the assistant in the background and at login, and the restarted assistant answered aloud | 0 |
+| **PASS** | every link was tested: your voice reached the engine and was understood, "Shadow" woke it, the API key reaches the assistant in the background and at login, the restarted assistant answered aloud, and your session's autostart unit starts the new assistant at login | 0 |
 | **FAIL** | something does not work; each FAIL line says what to do next | 1 |
 | **NOT VERIFIED** | nothing failed, but a test was skipped (`s` at a prompt, `--no-calibrate`), or a switch of yours keeps the assistant from listening (its microphone mute, the wake word off) | 3 |
 
@@ -211,28 +211,45 @@ None of it on real audio hardware:
   files replaces nothing, other architectures are refused, and the
   microphone test's wake-word check on a misheard "Shadow") against a real
   installation in the Debian trixie build chroot;
-* the application side: 34 tests of the real `shadow-assistant` against a
-  stand-in engine, and whole sessions with the real engine on recorded speech;
-* `scripts/fix-assistant-voice.sh`, run exactly as a user runs it (`bash
-  scripts/fix-assistant-voice.sh` in `~/shadow-os-build`, answered through a
-  terminal) on the **root filesystem of the Shadow OS 0.2.0 image** with the
-  old 0.2.0 assistant package, a desktop user with sudo, a `systemd --user`
-  session with PipeWire and WirePlumber as user services, KWin Wayland, the
-  session's environment import and its autostart target, a virtual
-  microphone fed with synthetic speech in real time and a null-sink speaker,
-  and a stand-in for the Claude API (the network cut). 27 scenarios, among
-  them: a fresh checkout without a build directory and without build tools
-  with the old assistant running (build tools installed, `build/cmake`
-  created and built, PASS; after a simulated next login the autostarted
-  assistant answered too); a second run; the old settings template (key line
-  untouched, mode 600); every question answered; no microphone; a microphone
-  that hears no speech, one that is too quiet, an empty headset jack chosen
-  as input; a voice whose "Shadow" is misheard; a skipped test; no API key, a
-  key only in the shell (saved when allowed, otherwise a FAIL for the login);
-  the privacy mute on; muted speakers, no speakers; an assistant opened
-  during the test; Ctrl+C; passwords in URLs; a symlinked settings file; an
-  older copy first on `PATH`; root-owned build files; a wrong `--build-dir`;
-  no systemd user manager;
+* the application side: 43 tests of the real `shadow-assistant` against a
+  stand-in engine (`applications/assistant/tests/voice_tests.py`), and whole
+  sessions with the real engine on recorded speech;
+* `scripts/fix-assistant-voice.sh` in its current form, run exactly as a
+  user runs it (`bash scripts/fix-assistant-voice.sh` in `~/shadow-os-build`,
+  answered through a terminal) on the **root filesystem of the Shadow OS
+  0.2.0 image** with the old 0.2.0 assistant package, a desktop user with
+  sudo, a `systemd --user` session with PipeWire and WirePlumber as user
+  services, KWin Wayland, the session's environment import and its autostart
+  target, a virtual microphone fed with synthetic speech in real time, a
+  null-sink speaker whose output was recorded independently, and a stand-in
+  for the Claude API (the network cut). After each of the 11 runs that
+  passed, "Shadow, what time is it?" was said again to the assistant left
+  running, and in 8 of them also after a simulated next login to the one the
+  autostart started: it answered aloud every time (the stand-in API got the
+  request, the speaker recording has the reply). 15 scenarios, one of them
+  with the previous version of the script: `git pull` and the script with
+  Enter at every question while the old assistant is open (build tools
+  installed, `build/cmake` created and built, PASS) and a second run; a fresh `git
+  clone` without a build directory and without build tools, with `--yes`
+  (PASS in 6.5 minutes: build tools 14 s, configure 1 s, build 225 s with 2
+  jobs); the old settings template with `--yes` (the previous version of the
+  script switched the wake word off there, reproduced; now it stays on:
+  PASS), answering "n" to keeping the wake word (NOT VERIFIED, off
+  recorded), the privacy mute on (Enter: unmuted, PASS; `--yes`: left on,
+  NOT VERIFIED); the old template damaged, its key line with a comment, mode
+  644, the microphone muted at 10 % (`--yes`, then interactive: PASS, key
+  line untouched, mode 600); no microphone (FAIL with the next steps), then
+  the microphone back (PASS); the old package first on `PATH`, also in the
+  user manager, open and with the old wake-word autostart entry in
+  `/etc/xdg/autostart` (PASS with a WARN for the launcher's copy; at login
+  the new assistant starts), and `--no-build` in that state (it picks the
+  new copy: PASS). Earlier versions of the script also went through: a
+  microphone that hears no speech, one that is too quiet, an empty headset
+  jack chosen as input; a voice whose "Shadow" is misheard; a skipped test;
+  no API key, a key only in the shell (saved when allowed, otherwise a FAIL
+  for the login); muted speakers, no speakers; an assistant opened during
+  the test; Ctrl+C; passwords in URLs; a symlinked settings file;
+  root-owned build files; a wrong `--build-dir`; no systemd user manager;
 * the image step (`build/iso/voice-data.sh`) against a scratch image root,
   with and without network, and `SHADOW_IMAGE_VOICE=required`.
 

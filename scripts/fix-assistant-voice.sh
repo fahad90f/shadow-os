@@ -12,7 +12,8 @@
 # twice: a test sentence, then "Shadow, what time is it?" to the restarted
 # assistant. It ends with a summary and one verdict:
 #   PASS          every link was tested: your voice reached the engine, "Shadow"
-#                 woke it, and the restarted assistant answered aloud (exit 0)
+#                 woke it, the restarted assistant answered aloud, and your
+#                 session starts it at login (exit 0)
 #   FAIL          something does not work; each FAIL says what to do (exit 1)
 #   NOT VERIFIED  nothing failed, but a test was skipped, or a switch you set
 #                 (the assistant's mute, its wake word) keeps it from
@@ -98,8 +99,8 @@ GREETING="Hello, I'm Shadow. If you can hear me, my voice works."
 PACKAGES="python3 python3-numpy espeak-ng pipewire-bin pipewire-pulse wireplumber pulseaudio-utils alsa-ucm-conf curl bzip2"
 # What building the assistant needs on a Shadow OS (or Debian trixie) desktop:
 # qt6-base-dev and the Qt tools come with qt6-declarative-dev. Measured on the
-# 0.2.0 image: 67 packages (4 of them a libc point update that libc6-dev pins),
-# 62 MB to download, 292 MB on disk.
+# 0.2.0 image (2026-11-21): 67 packages (4 of them a libc point update that
+# libc6-dev pins), 57 MB to download, 261 MB on disk.
 BUILD_PACKAGES="cmake ninja-build g++ qt6-declarative-dev qt6-svg-dev"
 ENGINE_COMPONENTS="runtime vad kws stt-moonshine stt-whisper tts-kokoro"
 
@@ -114,7 +115,7 @@ while [ $# -gt 0 ]; do
         --no-calibrate) DO_CALIBRATE=0 ;;
         --build-dir) [ $# -ge 2 ] || { echo "--build-dir needs a directory" >&2; exit 2; }; BUILD_ARG=$2; shift ;;
         --build-dir=*) BUILD_ARG=${1#--build-dir=} ;;
-        -h|--help) sed -n '2,35p' "$SCRIPT"; exit 0 ;;
+        -h|--help) sed -n '2,36p' "$SCRIPT"; exit 0 ;;
         *) echo "unknown option '$1' (see --help)" >&2; exit 2 ;;
     esac
     shift
