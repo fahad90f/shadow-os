@@ -1,2 +1,7 @@
 # <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
 shadow-assistant
+# Voice v2 headless suite (fake voice helper + mock API, no audio, no network):
+# runs the shadow-assistant of the same build (found via LD_LIBRARY_PATH, which
+# scripts/dev.sh run points at <build>/lib) and prints SHADOW-SMOKE-OK when all
+# tests pass. scripts/dev.sh mounts the source tree at /src.
+python3 /src/applications/assistant/tests/voice_tests.py --smoke

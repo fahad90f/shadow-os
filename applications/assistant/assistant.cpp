@@ -35,6 +35,7 @@ Assistant::Assistant(QObject *parent)
         if (m_assistantRow >= 0) {
             setPhase(QStringLiteral("streaming"));
             m_messages->appendDelta(m_assistantRow, text);
+            Q_EMIT replyDelta(text);
         }
     });
     connect(m_client, &ChatClient::completed, this,
@@ -46,6 +47,7 @@ Assistant::Assistant(QObject *parent)
         m_messages->finishAssistant(row, content, toolCalls, thinking, m_registry);
         m_assistantRow = -1;
         saveActive();
+        Q_EMIT replySegmentFinished();
 
         if (toolCalls.isEmpty()) {
             setPhase(QStringLiteral("idle"));
@@ -295,8 +297,17 @@ void Assistant::startCompletion()
     const QJsonArray request = m_messages->apiMessages(systemPrompt());
     const QJsonArray tools = m_registry->hasEnabledTools() ? m_registry->apiTools() : QJsonArray{};
     m_assistantRow = m_messages->appendAssistantStreaming();
-    setPhase(QStringLiteral("thinking"));
+    // busy()/canSend() only change inside send() (the client becomes busy),
+    // so phaseChanged — their NOTIFY — must fire after send(), not before:
+    // fired first, QML would read busy=false/canSend=true and keep those
+    // stale values for the whole request. The phase is switched quietly
+    // first, so a synchronous failure inside send() (no key, bad URL) still
+    // moves it on (thinking → error → idle) and notifies by itself.
+    const bool changed = m_phase != QLatin1String("thinking");
+    m_phase = QStringLiteral("thinking");
     m_client->send(model, request, tools);
+    if (m_phase == QLatin1String("thinking") && (changed || m_client->busy()))
+        Q_EMIT phaseChanged();
 }
 
 int Assistant::rowOfCall(const QString &callId) const
@@ -385,6 +396,9 @@ void Assistant::executeCall(int row, const ToolCallEntry &call)
 
     m_registry->execute(inv, [this, row, call](const ToolOutcome &out) {
         --m_executing;
+        // busy() just changed (e.g. a tool that outlived a Stop): notify, or
+        // QML keeps busy=true and canSend=false until something else changes.
+        Q_EMIT phaseChanged();
         m_messages->setToolStatus(row, call.id, out.ok ? QStringLiteral("done") : QStringLiteral("error"), out.text);
         m_messages->appendToolResult(call.id, call.name, out.text);
         logCall(call.name, call.preview, out.ok ? QStringLiteral("done") : QStringLiteral("error"));
@@ -446,6 +460,7 @@ void Assistant::stop()
     saveActive();
     setPhase(m_config->apiKeyConfigured() ? QStringLiteral("idle") : QStringLiteral("setup"));
     Q_EMIT phaseChanged();
+    Q_EMIT stopped();
 }
 
 void Assistant::logCall(const QString &name, const QString &preview, const QString &status)

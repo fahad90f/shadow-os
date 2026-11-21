@@ -89,6 +89,15 @@ Q_SIGNALS:
     void errorMessage(const QString &text);
     // Voice integration: a final assistant answer is ready to be spoken.
     void assistantReplyReady(const QString &text);
+    // Voice integration: one streamed chunk of the assistant's text, as it
+    // arrives (spoken sentence by sentence during a voice turn).
+    void replyDelta(const QString &text);
+    // Voice integration: an assistant row finished streaming; tool calls may
+    // follow, then another row.
+    void replySegmentFinished();
+    // stop() was called (the Stop button): the reply is abandoned, so is
+    // whatever was being said for it.
+    void stopped();
     // A tool call is awaiting confirmation (for hands-free spoken approval); the
     // clickable Run/Deny card is shown regardless.
     void confirmationNeeded(const QString &summary, const QString &preview, const QString &callId);

@@ -45,25 +45,27 @@ class AssistantConfig : public QObject
     Q_PROPERTY(QStringList enabledTools READ enabledTools NOTIFY changed)
 
     // --- Voice (hands-free "Shadow") -------------------------------------
-    // Always-listening wake word is opt-in (off by default); the mic can be
-    // muted for privacy; replies may be spoken. Everything here is persisted
-    // to the [voice] section of the same conf file.
+    // Persisted in the [voice] section of the same conf file (spec voice v2
+    // §2.3). The wake word itself is fixed: "Shadow".
     Q_PROPERTY(bool wakeEnabled READ wakeEnabled WRITE setWakeEnabled NOTIFY changed)
-    Q_PROPERTY(QString wakePhrase READ wakePhrase NOTIFY changed)
-    Q_PROPERTY(double wakeThreshold READ wakeThreshold NOTIFY changed)
+    Q_PROPERTY(QString wakePhrase READ wakePhrase CONSTANT)
+    // Privacy mute: the microphone is never opened while true.
     Q_PROPERTY(bool micMuted READ micMuted WRITE setMicMuted NOTIFY changed)
     Q_PROPERTY(bool speakReplies READ speakReplies WRITE setSpeakReplies NOTIFY changed)
-    // "auto" | "piper" | "speechd" | "espeak"
+    // Neural voice id (Kokoro), default "af_heart".
+    Q_PROPERTY(QString voice READ voice WRITE setVoice NOTIFY changed)
+    // 0.7 … 1.4, default 1.0.
+    Q_PROPERTY(double speechRate READ speechRate WRITE setSpeechRate NOTIFY changed)
+    // "auto" | "moonshine" | "whisper"
+    Q_PROPERTY(QString sttModel READ sttModel WRITE setSttModel NOTIFY changed)
+    // "low" | "normal" | "high"
+    Q_PROPERTY(QString wakeSensitivity READ wakeSensitivity WRITE setWakeSensitivity NOTIFY changed)
+    // After a spoken reply, listen a few seconds for a follow-up without the wake word.
+    Q_PROPERTY(bool followUp READ followUp WRITE setFollowUp NOTIFY changed)
+    // Capture source (PipeWire/PulseAudio name); "" = the default input.
+    Q_PROPERTY(QString inputDevice READ inputDevice WRITE setInputDevice NOTIFY changed)
+    // "auto" | "neural" | "espeak"
     Q_PROPERTY(QString ttsEngine READ ttsEngine WRITE setTtsEngine NOTIFY changed)
-    Q_PROPERTY(QString ttsVoice READ ttsVoice NOTIFY changed)
-    Q_PROPERTY(QString piperBin READ piperBin NOTIFY changed)
-    Q_PROPERTY(QString piperModel READ piperModel NOTIFY changed)
-    // "auto" | "nvidia" | "pocketsphinx"
-    Q_PROPERTY(QString sttMode READ sttMode WRITE setSttMode NOTIFY changed)
-    Q_PROPERTY(QString captureTool READ captureTool NOTIFY changed)
-    Q_PROPERTY(QString inputDevice READ inputDevice NOTIFY changed)
-    Q_PROPERTY(int maxUtteranceSecs READ maxUtteranceSecs NOTIFY changed)
-    Q_PROPERTY(QString pocketsphinxModel READ pocketsphinxModel NOTIFY changed)
 
 public:
     explicit AssistantConfig(QObject *parent = nullptr);
@@ -103,23 +105,31 @@ public:
     // --- Voice accessors ---
     bool wakeEnabled() const { return m_wakeEnabled; }
     void setWakeEnabled(bool v);
-    QString wakePhrase() const { return m_wakePhrase; }
-    double wakeThreshold() const { return m_wakeThreshold; }
+    QString wakePhrase() const { return QStringLiteral("shadow"); }
     bool micMuted() const { return m_micMuted; }
     void setMicMuted(bool v);
     bool speakReplies() const { return m_speakReplies; }
     void setSpeakReplies(bool v);
+    QString voice() const { return m_voice; }
+    void setVoice(const QString &v);
+    double speechRate() const { return m_speechRate; }
+    void setSpeechRate(double v);
+    QString sttModel() const { return m_sttModel; }
+    void setSttModel(const QString &v);
+    QString wakeSensitivity() const { return m_wakeSensitivity; }
+    void setWakeSensitivity(const QString &v);
+    bool followUp() const { return m_followUp; }
+    void setFollowUp(bool v);
+    QString inputDevice() const { return m_inputDevice; }
+    void setInputDevice(const QString &v);
     QString ttsEngine() const { return m_ttsEngine; }
     void setTtsEngine(const QString &v);
-    QString ttsVoice() const { return m_ttsVoice; }
-    QString piperBin() const { return m_piperBin; }
-    QString piperModel() const { return m_piperModel; }
-    QString sttMode() const { return m_sttMode; }
-    void setSttMode(const QString &v);
-    QString captureTool() const { return m_captureTool; }
-    QString inputDevice() const { return m_inputDevice; }
-    int maxUtteranceSecs() const { return m_maxUtteranceSecs; }
-    QString pocketsphinxModel() const { return m_pocketsphinxModel; }
+
+    // How a value is read from the conf file: an inline "  # comment" or
+    // "  ; comment" is not part of it (earlier templates put comments on
+    // value lines, and QSettings keeps them: "muted=false  # …" read as
+    // true), surrounding blanks are not either. Public for the tests.
+    static QString sanitizeValue(const QString &raw);
 
     // Re-read everything from disk / environment.
     Q_INVOKABLE void reload();
@@ -148,18 +158,14 @@ private:
     QStringList m_disabledTools;
 
     // Voice
-    bool m_wakeEnabled = false;
-    QString m_wakePhrase;
-    double m_wakeThreshold = 1e-20;
+    bool m_wakeEnabled = true;
     bool m_micMuted = false;
     bool m_speakReplies = true;
-    QString m_ttsEngine;
-    QString m_ttsVoice;
-    QString m_piperBin;
-    QString m_piperModel;
-    QString m_sttMode;
-    QString m_captureTool;
+    QString m_voice;
+    double m_speechRate = 1.0;
+    QString m_sttModel;
+    QString m_wakeSensitivity;
+    bool m_followUp = true;
     QString m_inputDevice;
-    int m_maxUtteranceSecs = 12;
-    QString m_pocketsphinxModel;
+    QString m_ttsEngine;
 };

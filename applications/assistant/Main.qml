@@ -16,7 +16,9 @@ NxWindow {
     minimumHeight: 540
 
     Assistant { id: agent }
-    VoiceController { id: voice; config: agent.config }
+    // With 'agent' set the controller does the voice ⇄ agent wiring itself
+    // (transcripts sent, replies spoken, spoken yes/no, errors, Stop).
+    VoiceController { id: voice; config: agent.config; agent: agent }
 
     // "chat" | "settings". The setup state replaces the chat page when no key.
     property string view: "chat"
@@ -55,54 +57,25 @@ NxWindow {
         if (agent.testOrb !== "") return agent.testOrb
         if (voice.state === "speaking") return "speaking"
         if (voice.state === "listening" || voice.state === "transcribing") return "listening"
-        if (voice.state === "wake") return "wake"
         return agent.orbState
     }
 
-    // Push-to-talk: start (or cancel) a spoken command.
+    // Push-to-talk: the first click listens, the second one sends what was said.
     function toggleListen() {
-        if (voice.capturing || voice.state === "wake") {
-            voice.cancel()
-        } else {
-            voice.beginVoiceTurn()
-            voice.startCommandCapture()
-        }
+        voice.toggleListening()
     }
 
-    // ---- voice ⇄ agent wiring (the hands-free loop) ----
+    // ---- voice presentation (the wiring itself lives in VoiceController) ----
     Connections {
         target: voice
-        function onTranscriptReady(text) {
-            window.view = "chat"
-            if (agent.canSend)
-                agent.sendMessage(text)
-            else
-                window.toaster.show(qsTr("Heard: %1").arg(text), "info")
-        }
+        function onTranscriptReady(text) { window.view = "chat" }
+        function onHeard(text) { window.toaster.show(qsTr("Heard: %1").arg(text), "info") }
         function onWakeDetected() {
             window.view = "chat"
             window.present()
             window.toaster.show(qsTr("Shadow is listening…"), "info")
         }
-        function onYesNoResult(tag, yes) {
-            agent.confirmTool(-1, tag, yes)
-            if (!yes) voice.endVoiceTurn()
-        }
         function onUnavailable(reason) { window.toaster.show(reason, "warning") }
-    }
-    Connections {
-        target: agent
-        function onAssistantReplyReady(text) {
-            if (voice.voiceTurn) {
-                voice.speak(text)
-                voice.endVoiceTurn()
-            }
-        }
-        function onConfirmationNeeded(summary, preview, callId) {
-            if (voice.voiceTurn)
-                voice.confirmBySpeech(callId,
-                    qsTr("I'd like to %1: %2. Shall I run it? Say yes or no.").arg(summary).arg(preview))
-        }
     }
 
     Component.onCompleted: {
@@ -447,7 +420,6 @@ NxWindow {
         target: agent
         function onErrorMessage(text) {
             window.toaster.show(text.split("\n")[0], "danger")
-            voice.endVoiceTurn()
         }
     }
 }

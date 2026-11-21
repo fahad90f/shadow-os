@@ -6,7 +6,7 @@ the speech, carries out the task by calling tools, and speaks the result back.
 It also remains a full streaming text chat. By default it runs what you ask
 without stopping for approval (autonomy `autopilot`). Settings → Autonomy can
 turn confirmations back on: a clickable Run/Deny card **and**, hands-free, a
-spoken "shall I run it? say yes or no".
+spoken "I'd like to run a command. Shall I go ahead?" answered with yes or no.
 
 - **Application id:** `org.shadow.assistant`
 - **Binary:** `shadow-assistant`
@@ -30,39 +30,61 @@ repository. It is read at run time from, in order of precedence:
 Get a key at <https://console.anthropic.com/> (keys start with `sk-ant-`).
 
 ```ini
+; Comments start with ';' on a line of their own — never after a value.
 [api]
 key=sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-# base_url=https://api.anthropic.com/v1   # usually leave unset
-# anthropic_version=2023-06-01            # Messages API version header
+; Endpoint (usually leave unset) and Messages API version header:
+; base_url=https://api.anthropic.com/v1
+; anthropic_version=2023-06-01
 
 [models]
-brain=claude-sonnet-4-6    # chat, tools, vision — the default
-planner=claude-sonnet-4-6  # "Think hard" deep reasoning
-fast=claude-sonnet-4-6     # quick background helpers
-omni=claude-sonnet-4-6     # voice & image
+; brain: chat, tools, vision (the default) · planner: "Think hard"
+; fast: quick background helpers · omni: voice and image
+brain=claude-sonnet-4-6
+planner=claude-sonnet-4-6
+fast=claude-sonnet-4-6
+omni=claude-sonnet-4-6
 
 [behaviour]
-autonomy=autopilot        # autopilot (default) | ask_risky | ask_every
+; autopilot (default) | ask_risky | ask_every
+autonomy=autopilot
 
 [tools]
-disabled=                 # comma-separated tool names to turn off
+; Comma-separated tool names to turn off
+disabled=
 
 [voice]
-wake_word_enabled=true    # listen for the wake phrase (on; the toggle turns it off)
-wake_phrase=shadow        # word that wakes the assistant
-wake_threshold=1e-20      # keyphrase-spotting threshold, used only with pocketsphinx 5
-muted=false               # privacy mic mute — nothing is captured when true
-speak_replies=true        # speak answers aloud
-tts_engine=auto           # auto | piper | speechd | espeak
-tts_voice=                # speechd/espeak voice name (e.g. en-us)
-piper_bin=piper           # piper executable (neural TTS, if installed)
-piper_model=              # path to a piper .onnx voice model (required for piper)
-stt_mode=auto             # voice is transcribed offline (Claude has no speech-to-text)
-capture_tool=auto         # auto | parecord | pw-record | arecord
-input_device=             # optional capture device (PulseAudio/PipeWire source)
-max_utterance_secs=12     # give up waiting for a command after this long
-pocketsphinx_model=       # optional path to an acoustic model directory
+; Listen for the wake word "Shadow" (on by default; the toggle turns it off)
+wake_word_enabled=true
+; Privacy mute: the microphone is never opened while true
+muted=false
+; Speak answers to spoken requests aloud
+speak_replies=true
+; af_heart (Heart, default) | af_bella | af_sarah | bf_emma | af_nicole | af_sky
+voice=af_heart
+; Speaking rate, 0.7 … 1.4
+speech_rate=1.0
+; Speech recognition: auto | moonshine | whisper
+stt_model=auto
+; Wake word sensitivity: low | normal | high
+wake_sensitivity=normal
+; After a spoken reply, listen 5 s for a follow-up without the wake word
+follow_up=true
+; Microphone (PipeWire/PulseAudio source name); empty = the default input
+input_device=
+; Speech output: auto | neural | espeak
+tts_engine=auto
 ```
+
+Qt's INI reader knows only `;` comments: a `#` line becomes a key and a
+`# comment` after a value becomes part of the value. The assistant therefore
+reads every value leniently — an inline `  # comment` or `  ; comment` is
+ignored — so a file made from an older template (which put `#` comments after
+values: `muted=false   # …` then read as *true*) works again without editing,
+and the first saved setting rewrites it clean (stray `#` keys removed). Keys of the old pocketsphinx/piper voice (`wake_phrase`,
+`wake_threshold`, `tts_voice`, `piper_bin`, `piper_model`, `stt_mode`,
+`capture_tool`, `max_utterance_secs`, `pocketsphinx_model`) are ignored;
+`tts_engine=piper|speechd` reads as `auto`.
 
 If no key is configured the app shows a setup state (it never crashes). The
 endpoint can be overridden for development with `SHADOW_ASSISTANT_BASE_URL`.
@@ -71,23 +93,24 @@ endpoint can be overridden for development with `SHADOW_ASSISTANT_BASE_URL`.
 
 1. **Chat** — streaming SSE responses, Markdown, per-conversation history under
    `~/.local/share/shadow/assistant/<id>.json`.
-2. **Voice (hands-free "Shadow")** — wake word → listen → transcribe (shown as
-   the user message) → model understands and calls tools (with autonomy
-   `ask_risky`/`ask_every`, actions are first spoken and confirmed by voice
-   and by card) → a concise result is spoken.
-   A mic button gives push-to-talk; the wake toggle and a privacy mute live in
-   the sidebar and Settings. The orb shows idle → wake → listening → thinking →
-   speaking. Say it in one breath ("Shadow, open the terminal") or pause after
-   "Shadow" and then give the command; the command ends when you stop talking.
-   The listener transcribes each phrase **on this computer** with pocketsphinx
-   and drops every phrase without the wake word at once: **nothing is recorded,
-   stored or sent until after the wake word, and nothing runs while muted.**
-   The wake word is on by default and starts at login
+2. **Voice (hands-free "Shadow")** — say "Shadow, what's using my disk
+   space?" (or "Shadow", pause, then the request), or press the mic: the
+   speech is recognised **on this computer**, sent as the user message, and
+   the reply is spoken **while it streams in**, sentence by sentence, in a
+   natural female voice (Kokoro; Markdown is not read out: code blocks become
+   "code omitted", links their text, tables are skipped). Afterwards it
+   listens 5 s for a follow-up without the wake word. Push-to-talk: the first
+   click listens, the second sends what was said. With autonomy
+   `ask_risky`/`ask_every` an action is asked aloud ("I'd like to … Shall I go
+   ahead?") and a spoken yes/no answers the card (no answer: the card waits).
+   An error is announced briefly; Stop also stops the voice. Nothing heard
+   before the wake word is kept or sent, and nothing is captured while muted.
+   The wake word starts at login
    (`/etc/xdg/autostart/org.shadow.assistant-listen.desktop`, which runs
-   `shadow-assistant --background`: no window until you say "Shadow"); closing
-   the window keeps it listening. Switch the wake word off (sidebar or
+   `shadow-assistant --background`: no window until you say "Shadow"; it does
+   not stay in the background when the wake word cannot be heard — voice not
+   installed, no capture tool); closing the window keeps it listening. Switch the wake word off (sidebar or
    Settings) and the assistant stops listening and quits when closed.
-   `shadow-assistant --voice-listen 30` shows what the listener hears.
 3. **Tool calling** — a safe framework the model invokes; every call is argv
    (never a shell) and logged; with autonomy `ask_risky`/`ask_every` a call
    that changes the system or reaches the network is confirmed by click or
@@ -99,27 +122,47 @@ endpoint can be overridden for development with `SHADOW_ASSISTANT_BASE_URL`.
    Destructive targets (filesystem root, `$HOME`, bare top-level system dirs)
    are refused at every autonomy level.
 4. **Settings** — key status, model mapping, autonomy, per-tool switches, and a
-   full Voice panel (privacy mute, wake toggle, speak-replies, speech-engine
-   picker, detected-engine badges) plus an Activity log.
+   Voice panel (status, privacy mute, wake toggle, speak-replies, speech
+   output Auto/Natural/eSpeak, detected capabilities) plus an Activity log.
 
 ## Voice subsystem (design)
 
-The app links **no** extra Qt/native libraries for voice; it drives the verified
-runtime packages as subprocesses through `Shadow::Command` (argv, never a shell)
-and `QProcess`. Each engine is detected at run time and reported honestly when
-absent (an "unavailable" state with a reason — never a dead control):
+```
+ QML ──binds──▶ VoiceController (voicecontroller.cpp) ◀── wiring ──▶ Assistant
+                    │ VoiceEngine (voiceengine.cpp): QProcess, JSON lines on stdin/stdout
+                    ▼
+             shadow-voiced (voice/, Python 3, one long-running process)
+               mic → Silero VAD → wake word "Shadow" (KWS + transcript) → Moonshine/Whisper STT
+               text → Kokoro TTS (female voices) → speaker
+```
 
-| Role | Engine (runtime package) | Invocation |
-|------|--------------------------|------------|
-| Wake word | `pocketsphinx` + `pocketsphinx-en-us` | keyphrase spotting on the live mic; reports only a hit |
-| Mic capture | `parecord` / `pw-record` / `arecord` | 16 kHz mono WAV, bounded by `max_utterance_secs` |
-| Command STT | `pocketsphinx` (offline) | transcribes the captured WAV; works with no network |
-| Speak back | `piper` (neural) → `spd-say` (speech-dispatcher) → `espeak-ng` | first available, piper needs a `.onnx` voice model |
-| Typing | `wtype` (Wayland) → `xdotool` (X11) | `type_text` tool |
-
-**STT is offline-only.** Claude has no speech-to-text, so spoken commands are
-always transcribed **on this computer** with **pocketsphinx**; only the
-resulting text is sent to the model. There is no cloud ASR path.
+* **The helper** `shadow-voiced` owns the microphone and the speaker and runs
+  all speech models offline; its protocol is in `voice/`. It is installed with
+  the app (`<prefix>/lib/shadow-assistant/voice/`), its models (~550 MB) by
+  `shadow-voice-setup` (per user: `shadow-voice-setup --user`, or **Install**
+  in Settings).
+* **VoiceController** (QML type, `voice.agent = agent`) presents state, engine,
+  live mic/speech levels (≤ 30 Hz, smoothed), the partial transcript and
+  honest capability flags, and does the voice ⇄ agent wiring in C++: a final
+  transcript becomes a message (or answers a waiting card with yes/no), the
+  streamed reply is cut into sentences (`speechtext.cpp`) and spoken while it
+  arrives (`speak{more:true}` … `speak{more:false}`), confirmations are asked
+  aloud, errors and Stop end the voice turn, a follow-up listen runs after a
+  spoken reply.
+* **Lookup:** helper `$SHADOW_VOICED` (exclusively, when set) →
+  `<appdir>/../lib/shadow-assistant/voice/shadow-voiced` → `/usr/lib/…` →
+  `/usr/local/lib/…`; setup tool `$SHADOW_VOICE_SETUP` → `<appdir>/` →
+  `/usr/bin/` → `/usr/local/bin/`.
+* **Honesty and fallbacks:** `shadow-voiced --probe` is asked first; when the
+  helper, its models or its Python modules are missing the engine is
+  **basic** (replies spoken with `espeak-ng -v en-us+f3`, no listening) or
+  **missing**, and `engineMessage` names what is missing and the fix. A
+  helper that dies is restarted after 1, 2, 4, 8, 15, 30 s; after 3 failures
+  within 2 minutes the engine is **error** with its last stderr lines (refresh
+  restarts it). A microphone failure is reported ("Microphone not available:
+  …"). Nothing blocks the GUI thread; every listen has a watchdog.
+* **Privacy:** the mute (and the wake setting) reach the helper before it
+  opens the microphone; muting cancels a listen at once.
 
 ## Diagnostics
 
@@ -127,81 +170,79 @@ resulting text is sent to the model. There is no cloud ASR path.
 shadow-assistant --dump config    # key configured? endpoint, models, autonomy, voice (never the key)
 shadow-assistant --dump models    # the four model-role IDs + base URL
 shadow-assistant --dump tools     # enabled tools, changesSystem/risky flags
-shadow-assistant --dump voice     # detected engines, capture tool, resolved TTS, wake config, capabilities
+shadow-assistant --dump voice     # helper path + its --probe answer, eSpeak NG, setup tool, voice config;
+                                  # probe only: the engine is not started, the microphone not opened
 ```
 
-Headless engine hooks (used by `tests/voice_tests.sh`; honest JSON):
+Headless voice entry points (no window; never hand over to, or block, a
+running assistant):
 
 ```
-shadow-assistant --voice-detect-wake FILE.wav      # keyphrase spotting on a WAV
-shadow-assistant --voice-transcribe  FILE.wav      # offline STT of a WAV
-shadow-assistant --voice-synthesize "text" --voice-out OUT.wav   # TTS to a WAV
+shadow-assistant --voice-selftest            # the helper's own TTS → STT round trip, its JSON
+shadow-assistant --voice-session INPUT.wav [--voice-out DIR] [--voice-timeout S]
+    # the whole app-side loop: the helper hears INPUT.wav instead of the
+    # microphone and writes its speech to DIR; a real Assistant answers (point
+    # SHADOW_ASSISTANT_BASE_URL at tests/mock_api.py); one JSON event per line:
+    # wake, final, sent, speak (every chunk), speak_start/_end, reply,
+    # follow_up, confirm, yesno, error, done …
+    # --voice-actions "0.3:start;1.2:finish" drives push-to-talk etc. (tests)
+shadow-assistant --voice-speech-text FILE.md # how a Markdown reply is spoken (JSON)
 ```
+
+Test hooks for screenshots: `SHADOW_ASSISTANT_TEST_VIEW`, `_TEST_PROMPT`
+(sent as a voice turn), `_TEST_ORB`, `_TEST_PARTIAL` (a fake live
+transcript), `_TEST_LEVEL` (a fake mic/speech level 0..1);
+`SHADOW_VOICE_DEBUG=1` copies the helper's stderr to the app's.
 
 ## Runtime Debian dependencies
 
 Base: `libqt6network6` plus the Shadow UI runtime (Qt 6 Quick/QML,
 `org.shadow.ui`, `org.shadow.style`), `grep`, `gtk-launch` (`libgtk-3-bin`).
 
-Voice (install for the voice features; each degrades honestly if absent):
+Voice (each part degrades honestly when absent):
 
-- `pocketsphinx` + `pocketsphinx-en-us` — wake word + offline STT
-- `speech-dispatcher` + `espeak-ng` (and `python3-speechd`) — always-available TTS
-- `piper` **neural TTS is *not* the Debian `piper` package** (that is a
-  gaming-mouse configurator); provide the rhasspy/piper binary and a `.onnx`
-  voice model via `piper_bin` / `piper_model`, or leave it unset and use
-  speech-dispatcher/espeak-ng
+- `python3` — runs the `shadow-voiced` helper (models and runtime wheels are
+  fetched by `shadow-voice-setup`, sha256-verified)
+- capture/playback: `pipewire-bin` (`pw-record`/`pw-play`), or
+  `pulseaudio-utils` (`parec`/`pacat`), or `alsa-utils` (`arecord`/`aplay`)
+- `espeak-ng` — pronunciation of words missing from the voice's lexicon, and
+  the "basic voice" when the natural voice is not installed
 - `wtype` (Wayland) / `xdotool` (X11) — `type_text`
-- a capture tool: `pulseaudio-utils` (`parecord`) / `pipewire-bin` (`pw-record`) / `alsa-utils` (`arecord`)
-- an audio player for piper playback: `pulseaudio-utils` (`paplay`) / `alsa-utils` (`aplay`) / `pipewire-bin` (`pw-play`)
 - `shadow-terminal`, `shadow-editor`, `shadow-screenshot`, and `xdg-open`
   (`xdg-utils`) or `gio` (`libglib2.0-bin`) — used by the respective tools
 
-**Qt Multimedia note.** The brief suggested `QAudioSource`/`QMediaDevices`
-(`qt6-multimedia-dev` / `libqt6multimedia6`). Those build-dev packages are **not**
-in the current build chroot, so capture is done via the CLI capture tools above
-instead; no `Qt6::Multimedia` link is required.
+pocketsphinx, speech-dispatcher and piper are no longer used.
 
 ## Tested
 
-- Build: `SHADOW_JOBS=2 scripts/dev.sh build --dir assistant --only assistant` — **passes**.
-- Smoke (zero QML warnings): `tests/desktop/smoke.sh --dir assistant assistant` — **passes**.
-- `--dump config|models|tools|voice` verified; `--dump voice` reports the real
-  engine availability of the host.
-- The understand → tool → confirm loop was driven end to end against the bundled
-  mock server (`tests/mock_api.py`) with `SHADOW_ASSISTANT_BASE_URL`; screenshots
-  `assistant-voice-*` show the orb states (idle/listening/thinking/speaking), the
-  spoken-confirmation card, and the Voice settings.
-- `tests/voice_tests.sh` runs the real wake-word / STT / TTS engines on
-  espeak-generated WAVs via the `--voice-*` hooks. **It skips honestly in the
-  build chroot** (espeak-ng/pocketsphinx/piper are not installed there); run it
-  on the built image for live results.
+- Build: `SHADOW_JOBS=2 scripts/dev.sh build --dir assistant --only assistant`.
+- Smoke (zero QML warnings): `tests/desktop/smoke.sh --dir assistant assistant` —
+  runs the UI and `tests/voice_tests.py --smoke` (see `smoke-tests.list`).
+- `tests/voice_tests.py [--bin build/bin/shadow-assistant]` — headless voice
+  suite against the real binary with `tests/fake_voiced.py` (a deterministic
+  stand-in for the helper: no models, no audio) and `tests/mock_api.py`:
+  wake → reply spoken sentence by sentence → follow-up; push-to-talk finish,
+  toggle, cancel; spoken yes/no (yes, no, timeout, a later "Shadow, yes");
+  busy; API error; Stop; helper crash → backoff → error, crash → recovery;
+  helper/models/eSpeak missing; mute; microphone failure; in-app install;
+  Markdown for speech; the old corrupted conf templates; `--dump voice` is
+  probe-only; `--voice-selftest`.
+- The understand → tool → confirm loop is driven end to end against the
+  bundled mock server with `SHADOW_ASSISTANT_BASE_URL`.
 
 ## Limitations / not verified
 
-- **No audio hardware or voice packages in the build chroot**, so the live
-  microphone capture, real-time wake-word latency, STT accuracy, TTS playback
-  and barge-in could not be exercised here. The subprocess invocations and the
-  `--voice-*` hooks are real and correct in form; they need the user's image
-  (with the packages above) and a microphone to verify end to end.
-- **Cloud ASR** is not available with Claude (it has no speech-to-text); the
-  offline pocketsphinx path is the implemented STT.
-- The live Claude Messages endpoint was never reached (no outbound network in
-  the chroot); streaming/tool-calls are verified against the mock only.
-- The exact pocketsphinx CLI flags target the classic `pocketsphinx_continuous`
-  and the 5.x `pocketsphinx` binaries; the resolved binary is auto-detected but
-  the precise flags/model layout should be confirmed on the image.
+- Live microphone capture, wake-word latency, recognition accuracy and
+  playback depend on the user's audio hardware; the app side is tested with
+  the fake helper, the helper itself in `voice/`.
+- The live Claude Messages endpoint was never reached from the test
+  environment; streaming/tool-calls are verified against the mock only.
 
 ## Changes needed outside this directory
 
-- **Runtime package dependencies** to add to `debian/control` for the voice
-  features (verified present in the archive except where noted): `pocketsphinx`,
-  `pocketsphinx-en-us`, `speech-dispatcher`, `espeak-ng`, `python3-speechd`,
-  `wtype`, `xdotool`, plus a capture tool (`pulseaudio-utils` **or**
-  `pipewire-bin` **or** `alsa-utils`) and `xdg-utils`. Piper neural TTS has no
-  suitable Debian package (the `piper` package is unrelated) — ship the
-  rhasspy/piper binary + a voice model separately, or rely on speech-dispatcher.
-- No `Qt6::Multimedia` build-dep is required by this implementation.
+- `debian/control` (shadow-assistant): drop `pocketsphinx`, `pocketsphinx-en-us`,
+  `speech-dispatcher`, `python3-speechd`; depend on `python3`, `espeak-ng` and a
+  capture/playback tool (`pipewire-bin | pulseaudio-utils | alsa-utils`); refresh
+  the description (it still mentions NVIDIA models).
 - An application icon for `org.shadow.assistant` in the icon theme (the launcher
   references `Icon=org.shadow.assistant`). No `Nx*` glyph is missing.
-</content>

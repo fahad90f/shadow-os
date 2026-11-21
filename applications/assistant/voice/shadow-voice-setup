@@ -1,0 +1,851 @@
+#!/bin/bash
+# shadow-voice-setup — install the offline voice engine data of Shadow Assistant.
+#
+# Downloads pinned, sha256-verified artifacts (sherpa-onnx runtime wheels, Silero
+# VAD, the "Shadow" keyword spotter, Moonshine / Whisper speech recognition, the
+# Kokoro voice), unpacks only the files the engine loads into a staging directory
+# next to the destination, writes manifest.json and moves the result into place
+# atomically, then runs `shadow-voiced --selftest`. Network is only used here;
+# the engine itself runs fully offline.
+#
+#   shadow-voice-setup                 per user  ~/.local/share/shadow/voice (default when not root)
+#   sudo shadow-voice-setup --system   system    /var/lib/shadow-voice       (default for root)
+#   shadow-voice-setup --dest DIR      any root, e.g. <chroot>/usr/share/shadow-voice for an ISO
+#
+# Run `shadow-voice-setup --help` for every option and the exit codes.
+set -euo pipefail
+shopt -s nullglob
+
+SETUP_VERSION=2.0.0
+# Bump when the installed layout changes: an installed component is only re-used (hard
+# linked instead of unpacked again) when it was installed with the same layout.
+LAYOUT=2
+PROG=${0##*/}
+
+# ---- exit codes (also listed in --help) ------------------------------------------------
+E_OK=0 E_FAIL=1 E_USAGE=2 E_DEPS=3 E_DOWNLOAD=4 E_CHECKSUM=5 E_SPACE=6 E_PERM=7 E_INSTALL=8
+E_SELFTEST=9 E_CHECK=10 E_NOTINSTALLED=11 E_LOCKED=12 E_INTERRUPTED=130
+
+# ---- pinned artifacts ------------------------------------------------------------------
+# component|file|bytes|sha256|unpacked bytes (estimate, for the space check)|url
+# Wheels: PyPI's own sha256 digests. Models: the k2-fsa/sherpa-onnx GitHub releases.
+GH=https://github.com/k2-fsa/sherpa-onnx/releases/download
+PYPI=https://files.pythonhosted.org/packages
+ARTIFACTS="\
+runtime|sherpa_onnx-2.0.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl|4629803|94e495e0a604e5e1e764cb837c1805dcb58855cb3fa3eb82bfa1fe625e4a90e8|12300000|$PYPI/42/6a/cb2c7b75ef120ea9f51e78efefafaffba334c9505abd91eac47cb4e630e8/sherpa_onnx-2.0.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+runtime|sherpa_onnx-2.0.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl|4629721|47375cbb646f9514fb352c0c68154d787d7d4a3cefd4a90c3bc2918a35eba8fb|6800000|$PYPI/91/2f/7a7d02059f0646255b89a3c23b094f28c86b1cdd2af009738cfba3a6da9e/sherpa_onnx-2.0.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+runtime|sherpa_onnx_core-2.0.2-py3-none-manylinux2014_x86_64.whl|10930299|ce8ebd70fa5fe887991bccaacaa86fc21ae64c843b7db4e76c7950695265895e|33100000|$PYPI/ac/b1/74a7a5eea77de5d9c2d5a508b27e6d1cc16ff188c31554d014c191f883d2/sherpa_onnx_core-2.0.2-py3-none-manylinux2014_x86_64.whl
+numpy-cp313|numpy-2.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl|16718044|6ffa07666f8da0eef81d149934a626d0d95fbd6838432a33e66245423a9062c0|60000000|$PYPI/da/24/3bd070f3269dc609d8f26b2643f62ef91bb415841c0b294805aaf7fe06da/numpy-2.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+numpy-cp312|numpy-2.5.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl|16727283|fbde6962867ee75b48b0ee29b2b9372ec5d617799dbaf38e82dc0596f2f7738a|60000000|$PYPI/43/a3/c799c62e19c337e6d3770b08e475887fb30ce8477d3c09efca6b2f0228a6/numpy-2.5.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+vad|silero_vad.onnx|643854|9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6|643854|$GH/asr-models/silero_vad.onnx
+kws|sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2|17626723|f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a|5300000|$GH/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2
+stt-moonshine|sherpa-onnx-moonshine-base-en-quantized-2026-02-27.tar.bz2|111266225|43232c1d13013d37317163baec3135bd771a186a4356f28c889bab453bb0e891|141400000|$GH/asr-models/sherpa-onnx-moonshine-base-en-quantized-2026-02-27.tar.bz2
+stt-whisper|sherpa-onnx-whisper-base.en.tar.bz2|208576005|475bc7052ce299c007f6d5d5407ba8601f819a2867f6eecee510ed17df581542|160700000|$GH/asr-models/sherpa-onnx-whisper-base.en.tar.bz2
+tts-kokoro|kokoro-multi-lang-v1_0.tar.bz2|349886476|60703707bc05ccd48d60e1eb723f38b07d6e474795a0b6a588d7220400e0f7a4|366100000|$GH/tts-models/kokoro-multi-lang-v1_0.tar.bz2"
+
+# Files taken out of each archive, each pinned too (defence in depth; also what --check verifies).
+# component|member in the archive|installed path|bytes|sha256
+K=sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
+M=sherpa-onnx-moonshine-base-en-quantized-2026-02-27
+W=sherpa-onnx-whisper-base.en
+T=kokoro-multi-lang-v1_0
+MEMBERS="\
+vad|silero_vad.onnx|models/vad/silero_vad.onnx|643854|9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6
+kws|$K/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx|models/kws/encoder.int8.onnx|4807159|1e721676515bcd42a186979733981213c66c80db680e1cc582dfedf3be76e678
+kws|$K/decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx|models/kws/decoder.int8.onnx|277985|e40ff43297abe815e8898494c17e71bba2152d9d40fa3eb803f75d0f7533329a
+kws|$K/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx|models/kws/joiner.int8.onnx|163380|eae9da0c7e1e6c6a3f4cc42d167899c388f6c6701b94cb96320e4f55df79624c
+kws|$K/tokens.txt|models/kws/tokens.txt|5006|fd2ded4050a55d2b1578870ba8697d02371980217806b7558bd0a5cc60f3ba53
+kws|$K/README.md|licenses/kws/README.md|726|74e42d37d63acd2366b042151d576fcc0c4917a41de339414a37f1e79f4e80e2
+stt-moonshine|$M/encoder_model.ort|models/stt/moonshine/encoder_model.ort|31326816|7c66495948d0d08ec1af454cd4b5514862ae6511e94712a60e6d83eaec8dc8cf
+stt-moonshine|$M/decoder_model_merged.ort|models/stt/moonshine/decoder_model_merged.ort|109424400|d9d7b333af34bc552580576ddcf248a1c6c839e0d3b43b09afb9376ed009899d
+stt-moonshine|$M/tokens.txt|models/stt/moonshine/tokens.txt|549350|2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049
+stt-moonshine|$M/LICENSE|licenses/moonshine/LICENSE|13344|6148d7574a6554b7379b633cfd4c4fe5840c3f548d13bc83e00b52dc6fa00abd
+stt-whisper|$W/base.en-encoder.int8.onnx|models/stt/whisper/encoder.int8.onnx|29120534|ef6b936f4c9b1d90a3b68634b60c4ed8576b26172b33c2535ec0e933c9edb823
+stt-whisper|$W/base.en-decoder.int8.onnx|models/stt/whisper/decoder.int8.onnx|130669978|f7162ad6db2dbef16cfaeaa7f945b9d7dd9c1b8d472f6aca82f2273d185e4d41
+stt-whisper|$W/base.en-tokens.txt|models/stt/whisper/tokens.txt|835554|306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930
+tts-kokoro|$T/model.onnx|models/tts/kokoro/model.onnx|325560556|b40f62b166ac8164b0627ef48a0b358eda0985e272fb03ef5252e7206305da11
+tts-kokoro|$T/voices.bin|models/tts/kokoro/voices.bin|28200960|1c5a5b983d3d50d8586d437a51f3faa2da7919ce76a013c081e65671a3447c29
+tts-kokoro|$T/tokens.txt|models/tts/kokoro/tokens.txt|687|6ebb6bb288f20f3ae8d004d3c2ca27697da27c037d75e81a60e2a6a663f95425
+tts-kokoro|$T/lexicon-us-en.txt|models/tts/kokoro/lexicon-us-en.txt|5956885|7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14
+tts-kokoro|$T/lexicon-gb-en.txt|models/tts/kokoro/lexicon-gb-en.txt|6366635|c4cbb37316f62210dff52718a7afcaae24f50c032cc75ab47ae67b831d1049e7
+tts-kokoro|$T/LICENSE|licenses/kokoro/LICENSE|11358|cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+
+# The BPE pieces of "SHADOW" for the gigaspeech keyword spotter (U+2581 = word start).
+KEYWORDS=$'\xe2\x96\x81SHA D OW @SHADOW'
+
+declare -A VERSION_OF=([runtime]="sherpa-onnx 2.0.2" [numpy]="numpy 2.5.4" [vad]="silero-vad v4"
+    [kws]="kws-zipformer-gigaspeech-3.3M-2024-01-01" [stt-moonshine]="moonshine-base-en-v2-quantized-2026-02-27"
+    [stt-whisper]="whisper-base.en-int8" [tts-kokoro]="kokoro-82m-v1.0-fp32")
+
+# ---- options ---------------------------------------------------------------------------
+MODE="" DEST="" STT=both CACHE="" OFFLINE="" PROGRESS=0 ACTION=install YES=0 INSTALL_DEPS=0
+SELFTEST=1 KEEP_CACHE=0 NUMPY=auto PY=python3
+
+usage() {
+    cat <<EOF
+Usage: $PROG [--user | --system | --dest DIR] [options]
+
+Installs the offline voice engine data for Shadow Assistant (~700 MB download).
+
+Where:
+  --user              ~/.local/share/shadow/voice (\$XDG_DATA_HOME) — default when not root
+  --system            /var/lib/shadow-voice — default for root
+  --dest DIR          any data root (e.g. a chroot's /usr/share/shadow-voice for an ISO)
+What:
+  --stt MODEL         moonshine | whisper | both (default both: --calibrate can then pick
+                      the model that understands you best)
+  --numpy MODE        auto (default: the numpy wheel only when Debian's python3-numpy is
+                      not importable) | system (never) | wheel (always)
+  --python PATH       Python used to unpack wheels and to pick the numpy wheel (default python3)
+Downloads:
+  --cache DIR         download cache (default ~/.cache/shadow-voice, /var/cache/shadow-voice as root)
+  --offline-cache DIR take every artifact from DIR (file names as published); no network
+  --keep-cache        keep the downloaded archives after a successful install
+Other actions:
+  --check             verify the installed files against manifest.json (sha256)
+  --uninstall         remove the installed data (and the download cache)
+Behaviour:
+  --yes               do not ask for confirmation
+  --install-deps      apt-get install missing Debian packages (python3-numpy, espeak-ng, a
+                      capture/playback tool, curl, bzip2) with sudo, non-interactively
+  --no-selftest       skip "shadow-voiced --selftest" after installing
+  --progress-json     one JSON line per step on stdout: {"step","progress":0..1,"message"}
+  -h, --help          this help;  --version  print the version
+
+Exit codes: 0 ok, 1 unexpected error, 2 usage, 3 missing dependency, 4 download failed,
+5 checksum/size mismatch, 6 not enough disk space, 7 permission denied, 8 unpack/install
+failed, 9 installed but the selftest failed, 10 --check found problems, 11 nothing
+installed, 12 another setup is running, 130 interrupted.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --user) MODE=user ;;
+        --system) MODE=system ;;
+        --dest) [ $# -ge 2 ] || { echo "$PROG: --dest needs a directory" >&2; exit $E_USAGE; }; MODE=dest; DEST=$2; shift ;;
+        --dest=*) MODE=dest; DEST=${1#--dest=} ;;
+        --stt) [ $# -ge 2 ] || { echo "$PROG: --stt needs moonshine, whisper or both" >&2; exit $E_USAGE; }; STT=$2; shift ;;
+        --stt=*) STT=${1#--stt=} ;;
+        --cache) [ $# -ge 2 ] || { echo "$PROG: --cache needs a directory" >&2; exit $E_USAGE; }; CACHE=$2; shift ;;
+        --cache=*) CACHE=${1#--cache=} ;;
+        --offline-cache) [ $# -ge 2 ] || { echo "$PROG: --offline-cache needs a directory" >&2; exit $E_USAGE; }; OFFLINE=$2; shift ;;
+        --offline-cache=*) OFFLINE=${1#--offline-cache=} ;;
+        --numpy) [ $# -ge 2 ] || { echo "$PROG: --numpy needs auto, system or wheel" >&2; exit $E_USAGE; }; NUMPY=$2; shift ;;
+        --numpy=*) NUMPY=${1#--numpy=} ;;
+        --python) [ $# -ge 2 ] || { echo "$PROG: --python needs a path" >&2; exit $E_USAGE; }; PY=$2; shift ;;
+        --python=*) PY=${1#--python=} ;;
+        --progress-json) PROGRESS=1 ;;
+        --check) ACTION=check ;;
+        --uninstall) ACTION=uninstall ;;
+        --yes|-y) YES=1 ;;
+        --install-deps) INSTALL_DEPS=1 ;;
+        --no-selftest) SELFTEST=0 ;;
+        --keep-cache) KEEP_CACHE=1 ;;
+        -h|--help) usage; exit $E_OK ;;
+        --version) echo "shadow-voice-setup $SETUP_VERSION"; exit $E_OK ;;
+        *) echo "$PROG: unknown option '$1' (see --help)" >&2; exit $E_USAGE ;;
+    esac
+    shift
+done
+case "$STT" in moonshine|whisper|both) ;; *) echo "$PROG: --stt must be moonshine, whisper or both" >&2; exit $E_USAGE ;; esac
+case "$NUMPY" in auto|system|wheel) ;; *) echo "$PROG: --numpy must be auto, system or wheel" >&2; exit $E_USAGE ;; esac
+
+IS_ROOT=0; [ "$(id -u)" -eq 0 ] && IS_ROOT=1
+[ -n "$MODE" ] || { if [ "$IS_ROOT" = 1 ]; then MODE=system; else MODE=user; fi; }
+case "$MODE" in
+    user) DEST="${XDG_DATA_HOME:-$HOME/.local/share}/shadow/voice"
+          [ -n "$CACHE" ] || CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/shadow-voice" ;;
+    system) DEST=/var/lib/shadow-voice
+            [ -n "$CACHE" ] || CACHE=/var/cache/shadow-voice ;;
+    dest) [ -n "$DEST" ] || { echo "$PROG: --dest needs a directory" >&2; exit $E_USAGE; }
+          [ -n "$CACHE" ] || { if [ "$IS_ROOT" = 1 ]; then CACHE=/var/cache/shadow-voice; else CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/shadow-voice"; fi; } ;;
+esac
+DEST=$(realpath -m -- "$DEST")
+DEST=${DEST%/}
+if [ -z "$DEST" ] || [ "$DEST" = "/" ]; then echo "$PROG: refusing to use / as the data root" >&2; exit $E_USAGE; fi
+CACHE=$(realpath -m -- "$CACHE")
+[ -z "$OFFLINE" ] || OFFLINE=$(realpath -m -- "$OFFLINE")
+
+# ---- output helpers --------------------------------------------------------------------
+STEP=start
+PROGRESS_VALUE=0
+
+json_str() {   # JSON string literal of $1
+    local s=$1
+    s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/\\n}; s=${s//$'\r'/}; s=${s//$'\t'/ }
+    printf '"%s"' "$s"
+}
+
+progress() {   # step fraction message
+    STEP=$1; PROGRESS_VALUE=$2
+    if [ "$PROGRESS" = 1 ]; then
+        printf '{"step":%s,"progress":%s,"message":%s}\n' "$(json_str "$1")" "$2" "$(json_str "$3")"
+    else
+        printf '%s: %s\n' "$PROG" "$3" >&2
+    fi
+}
+
+say() { printf '%s: %s\n' "$PROG" "$*" >&2; }
+warn() { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
+
+die() {   # code message
+    local code=$1; shift
+    if [ "$PROGRESS" = 1 ]; then
+        printf '{"step":"error","progress":%s,"message":%s,"code":%s,"failed_step":%s}\n' \
+            "$PROGRESS_VALUE" "$(json_str "$*")" "$code" "$(json_str "$STEP")"
+    fi
+    printf '%s: error: %s\n' "$PROG" "$*" >&2
+    exit "$code"
+}
+
+human() {   # bytes -> "1.2 GB"
+    awk -v b="$1" 'BEGIN { if (b >= 1e9) printf "%.1f GB", b/1e9; else if (b >= 1e6) printf "%.0f MB", b/1e6; else printf "%.0f kB", b/1e3 }'
+}
+
+fraction() {   # lo hi done total -> lo + (hi-lo)*done/total, 3 decimals
+    awk -v lo="$1" -v hi="$2" -v d="$3" -v t="$4" 'BEGIN { if (t <= 0) t = 1; f = lo + (hi - lo) * d / t; if (f > hi) f = hi; printf "%.3f", f }'
+}
+
+# ---- cleanup / signals -----------------------------------------------------------------
+STAGING="" OLD_TREE="" BG_PID="" WORK=""
+# shellcheck disable=SC2317  # cleanup and on_signal are only called through trap
+cleanup() {
+    local rc=$?
+    if [ -n "$BG_PID" ] && kill -0 "$BG_PID" 2>/dev/null; then kill "$BG_PID" 2>/dev/null || true; wait "$BG_PID" 2>/dev/null || true; fi
+    [ -z "$STAGING" ] || rm -rf -- "$STAGING"
+    [ -z "$WORK" ] || rm -rf -- "$WORK"
+    if [ -n "$OLD_TREE" ] && [ -d "$OLD_TREE" ]; then
+        # the swap was interrupted half way: put the previous installation back
+        if [ ! -e "$DEST" ]; then mv -- "$OLD_TREE" "$DEST" 2>/dev/null || true; else rm -rf -- "$OLD_TREE"; fi
+    fi
+    return "$rc"
+}
+# shellcheck disable=SC2317
+on_signal() { trap - INT TERM; die "$E_INTERRUPTED" "interrupted"; }
+trap cleanup EXIT
+trap on_signal INT TERM
+
+# ---- helpers ---------------------------------------------------------------------------
+sha256_of() { sha256sum -- "$1" | cut -d' ' -f1; }
+size_of() { stat -L -c %s -- "$1"; }    # -L: an offline cache may hold symlinks
+free_bytes() {   # free bytes on the filesystem holding $1 (nearest existing parent)
+    local d=$1
+    while [ ! -d "$d" ]; do d=$(dirname -- "$d"); done
+    df -P -B1 -- "$d" | awk 'NR == 2 { print $4 }'
+}
+fs_id() { local d=$1; while [ ! -d "$d" ]; do d=$(dirname -- "$d"); done; stat -c %d -- "$d"; }
+
+confirm() {   # question -> 0 yes / 1 no (no prompt without a terminal or with --yes)
+    [ "$YES" = 1 ] && return 0
+    [ -t 0 ] && [ -t 2 ] || return 0
+    local a
+    printf '%s: %s [Y/n] ' "$PROG" "$1" >&2
+    read -r a || a=n
+    case "$a" in ""|y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+
+find_helper() {
+    local here c
+    if [ -n "${SHADOW_VOICED:-}" ] && [ -x "$SHADOW_VOICED" ]; then echo "$SHADOW_VOICED"; return 0; fi
+    here=$(dirname -- "$(readlink -f -- "$0")")
+    for c in "$here/shadow-voiced" "$here/../lib/shadow-assistant/voice/shadow-voiced" \
+             /usr/lib/shadow-assistant/voice/shadow-voiced /usr/local/lib/shadow-assistant/voice/shadow-voiced; do
+        if [ -x "$c" ]; then readlink -f -- "$c"; return 0; fi
+    done
+    return 1
+}
+
+lock_dest() {   # one setup per data root at a time (flock on the destination's parent directory)
+    local parent
+    parent=$(dirname -- "$DEST")
+    mkdir -p -- "$parent" 2>/dev/null || die $E_PERM "cannot create $parent (permission denied?)"
+    exec 9<"$parent"
+    flock -n 9 || die $E_LOCKED "another shadow-voice-setup is working on $DEST; wait for it to finish"
+}
+
+is_our_root() { [ -f "$DEST/manifest.json" ] && grep -q '"format": *1' "$DEST/manifest.json"; }
+
+# ---- --check -------------------------------------------------------------------------------
+do_check() {
+    is_our_root || die $E_NOTINSTALLED "no voice engine data at $DEST (manifest.json missing)"
+    progress check 0.05 "Verifying $DEST"
+    local rc=0
+    "$PY" -I - "$DEST" "$PROGRESS" <<'PY' || rc=$?
+import hashlib, json, os, sys
+root, as_json = sys.argv[1], sys.argv[2] == "1"
+m = json.load(open(os.path.join(root, "manifest.json"), encoding="utf-8"))
+items = [(c, rel, meta) for c, info in sorted(m.get("installed", {}).items())
+         for rel, meta in sorted((info.get("files") or {}).items())]
+total = sum(meta.get("size", 0) for _, _, meta in items) or 1
+done, bad, last = 0, [], -1.0
+for comp, rel, meta in items:
+    p = os.path.join(root, rel)
+    try:
+        h = hashlib.sha256()
+        with open(p, "rb") as f:
+            for blk in iter(lambda: f.read(1 << 20), b""):
+                h.update(blk)
+        if os.path.getsize(p) != meta.get("size"):
+            bad.append(f"{rel}: size {os.path.getsize(p)} != {meta.get('size')}")
+        elif h.hexdigest() != meta.get("sha256"):
+            bad.append(f"{rel}: sha256 mismatch")
+    except OSError as e:
+        bad.append(f"{rel}: {e.strerror}")
+    done += meta.get("size", 0)
+    frac = 0.05 + 0.9 * done / total
+    if as_json and frac - last >= 0.05:
+        last = frac
+        print(json.dumps({"step": "check", "progress": round(frac, 3), "message": f"Verifying {comp}"}), flush=True)
+for b in bad:
+    print(f"shadow-voice-setup: BAD {b}", file=sys.stderr)
+msg = (f"all {len(items)} files OK" if not bad else f"{len(bad)} of {len(items)} files are missing or damaged")
+comps = ", ".join(sorted(m.get("installed", {})))
+if as_json:
+    print(json.dumps({"step": "check" if not bad else "error", "progress": 1, "message": f"{msg} ({comps})",
+                      "bad": bad, **({"code": 10} if bad else {})}), flush=True)
+else:
+    print(f"shadow-voice-setup: {root}: {msg} ({comps})", file=sys.stderr)
+sys.exit(10 if bad else 0)
+PY
+    if [ "$rc" = 10 ]; then STEP="done"; exit $E_CHECK; fi
+    [ "$rc" = 0 ] || die $E_FAIL "the check itself failed (exit $rc)"
+    STEP="done"
+    exit $E_OK
+}
+
+# ---- --uninstall -----------------------------------------------------------------------------
+do_uninstall() {
+    if [ "$MODE" = system ] && [ "$IS_ROOT" != 1 ]; then die $E_PERM "--system --uninstall needs root: sudo $PROG --system --uninstall"; fi
+    local have=0
+    is_our_root && have=1
+    [ "$have" = 1 ] || [ -d "$CACHE" ] || die $E_NOTINSTALLED "nothing to remove: no voice engine data at $DEST"
+    if [ "$have" = 0 ] && [ -e "$DEST" ]; then
+        warn "$DEST exists but has no shadow-voice manifest.json: leaving it alone"
+    fi
+    confirm "Remove the voice engine data in $DEST and the download cache $CACHE?" || die $E_FAIL "cancelled"
+    lock_dest
+    progress uninstall 0.2 "Removing $DEST"
+    if [ "$have" = 1 ]; then
+        rm -rf -- "$DEST" || die $E_PERM "cannot remove $DEST"
+    fi
+    rm -rf -- "$DEST".new.* "$DEST".old.* 2>/dev/null || true
+    if [ -d "$CACHE" ]; then
+        local f
+        while IFS='|' read -r _c f _s _h _u _url; do
+            rm -f -- "$CACHE/$f" "$CACHE/$f.part"
+        done <<<"$ARTIFACTS"
+        rmdir -- "$CACHE" 2>/dev/null || true
+    fi
+    local parent; parent=$(dirname -- "$DEST")
+    if [ "$MODE" = user ]; then rmdir -- "$parent" 2>/dev/null || true; fi
+    progress "done" 1 "Voice engine data removed"
+    exit $E_OK
+}
+
+# ---- dependency check ------------------------------------------------------------------------
+PY_TAG="" PY_VER="" NEED_NUMPY_WHEEL=0 DL_TOOL=""
+APT_MISSING=()
+
+check_deps() {
+    progress check 0.01 "Checking dependencies"
+    local missing_hard=() notes=()
+    if ! command -v "$PY" >/dev/null 2>&1; then
+        APT_MISSING+=(python3)
+        missing_hard+=("python3")
+    else
+        PY_VER=$("$PY" -I -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)
+        case "$PY_VER" in
+            3.12) PY_TAG=cp312 ;;
+            3.13) PY_TAG=cp313 ;;
+            *) die $E_DEPS "Python ${PY_VER:-?} ($PY) is not supported by the pinned sherpa-onnx 2.0.2 wheels (Python 3.12 or 3.13 needed)" ;;
+        esac
+        if ! "$PY" -I -c 'import numpy; numpy.zeros(1)' >/dev/null 2>&1; then
+            if [ "$NUMPY" = system ]; then
+                APT_MISSING+=(python3-numpy); missing_hard+=("python3-numpy")
+            elif [ "$INSTALL_DEPS" = 1 ] && [ "$MODE" != dest ]; then
+                APT_MISSING+=(python3-numpy)
+            else
+                NEED_NUMPY_WHEEL=1
+                notes+=("Debian's python3-numpy is not installed: using the pinned numpy wheel instead (preferred: sudo apt install python3-numpy)")
+            fi
+        fi
+        [ "$NUMPY" = wheel ] && NEED_NUMPY_WHEEL=1
+    fi
+    if ! command -v espeak-ng >/dev/null 2>&1; then
+        APT_MISSING+=(espeak-ng)
+        notes+=("espeak-ng is missing: words outside the voice lexicon will be spelled out (sudo apt install espeak-ng)")
+    fi
+    if ! command -v pw-record >/dev/null 2>&1 && ! command -v parec >/dev/null 2>&1 && ! command -v arecord >/dev/null 2>&1; then
+        APT_MISSING+=(pipewire-bin)
+        notes+=("no microphone capture tool (pw-record/parec/arecord): sudo apt install pipewire-bin")
+    fi
+    if ! command -v pw-play >/dev/null 2>&1 && ! command -v pacat >/dev/null 2>&1 && ! command -v aplay >/dev/null 2>&1; then
+        case " ${APT_MISSING[*]} " in *" pipewire-bin "*) ;; *) APT_MISSING+=(pipewire-bin) ;; esac
+        notes+=("no playback tool (pw-play/pacat/aplay): sudo apt install pipewire-bin")
+    fi
+    if [ -z "$OFFLINE" ]; then
+        if command -v curl >/dev/null 2>&1; then DL_TOOL=curl
+        elif command -v wget >/dev/null 2>&1; then DL_TOOL=wget
+        else APT_MISSING+=(curl); missing_hard+=("curl (or wget)"); fi
+    fi
+    command -v bzip2 >/dev/null 2>&1 || { APT_MISSING+=(bzip2); missing_hard+=("bzip2"); }
+    for t in tar sha256sum df flock stat awk; do
+        command -v "$t" >/dev/null 2>&1 || missing_hard+=("$t")
+    done
+
+    if [ "${#APT_MISSING[@]}" -gt 0 ] && [ "$INSTALL_DEPS" = 1 ]; then
+        if [ "$MODE" = dest ]; then
+            warn "--install-deps does not apply to --dest (install the packages into the target system yourself)"
+        else
+            install_deps
+            missing_hard=(); NEED_NUMPY_WHEEL=0
+            [ "$NUMPY" = wheel ] && NEED_NUMPY_WHEEL=1
+            "$PY" -I -c 'import numpy; numpy.zeros(1)' >/dev/null 2>&1 || NEED_NUMPY_WHEEL=1
+            if [ -z "$OFFLINE" ] && [ -z "$DL_TOOL" ]; then command -v curl >/dev/null 2>&1 && DL_TOOL=curl; fi
+            notes=()
+        fi
+    fi
+    local n
+    for n in "${notes[@]}"; do warn "$n"; done
+    if [ "${#missing_hard[@]}" -gt 0 ]; then
+        local pkgs=() p
+        for p in "${APT_MISSING[@]}"; do case "$p" in python3|python3-numpy|curl|bzip2) pkgs+=("$p") ;; esac; done
+        die $E_DEPS "missing: ${missing_hard[*]}. Install with: sudo apt install ${pkgs[*]:-${missing_hard[*]}} (or re-run with --install-deps)"
+    fi
+}
+
+install_deps() {
+    local sudo=()
+    if [ "$IS_ROOT" != 1 ]; then
+        command -v sudo >/dev/null 2>&1 || die $E_DEPS "need root to install ${APT_MISSING[*]}: sudo is not available"
+        sudo=(sudo)
+        [ -t 0 ] || sudo=(sudo -n)
+    fi
+    progress deps 0.02 "Installing Debian packages: ${APT_MISSING[*]}"
+    if ! "${sudo[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            -o DPkg::Lock::Timeout=300 "${APT_MISSING[@]}" >&2; then
+        die $E_DEPS "apt-get install ${APT_MISSING[*]} failed (run it yourself: sudo apt install ${APT_MISSING[*]})"
+    fi
+}
+
+# ---- selection -------------------------------------------------------------------------------
+COMPONENTS=()
+select_components() {
+    COMPONENTS=(runtime)
+    [ "$NEED_NUMPY_WHEEL" = 1 ] && COMPONENTS+=("numpy-$PY_TAG")
+    COMPONENTS+=(vad kws)
+    case "$STT" in
+        moonshine) COMPONENTS+=(stt-moonshine) ;;
+        whisper) COMPONENTS+=(stt-whisper) ;;
+        both) COMPONENTS+=(stt-moonshine stt-whisper) ;;
+    esac
+    COMPONENTS+=(tts-kokoro)
+}
+
+wanted() { local c; for c in "${COMPONENTS[@]}"; do [ "$c" = "$1" ] && return 0; done; return 1; }
+
+# ---- fetch -----------------------------------------------------------------------------------
+SRC_DIR=""      # where verified artifacts are read from (cache or offline cache)
+DL_TOTAL=0 DL_DONE=0
+
+fetch_all() {
+    local comp f size sha _unp url need=0 have
+    if [ -n "$OFFLINE" ]; then
+        SRC_DIR=$OFFLINE
+        local missing=()
+        while IFS='|' read -r comp f size sha _unp url; do
+            wanted "$comp" || continue
+            [ -f "$OFFLINE/$f" ] || missing+=("$f ($url)")
+        done <<<"$ARTIFACTS"
+        [ "${#missing[@]}" -eq 0 ] || die $E_DOWNLOAD "not in the offline cache $OFFLINE: ${missing[*]}"
+        return 0
+    fi
+    SRC_DIR=$CACHE
+    mkdir -p -- "$CACHE" || die $E_PERM "cannot create the download cache $CACHE"
+    while IFS='|' read -r comp f size sha _unp url; do
+        wanted "$comp" || continue
+        have=0
+        [ -f "$CACHE/$f" ] && [ "$(size_of "$CACHE/$f")" = "$size" ] && have=1
+        [ "$have" = 1 ] || need=$((need + size))
+    done <<<"$ARTIFACTS"
+    DL_TOTAL=$need
+    DL_DONE=0
+    while IFS='|' read -r comp f size sha _unp url; do
+        wanted "$comp" || continue
+        download "$f" "$size" "$sha" "$url"
+    done <<<"$ARTIFACTS"
+}
+
+download() {   # file size sha url
+    local f=$1 size=$2 sha=$3 url=$4 part try rc start now got
+    if [ -f "$CACHE/$f" ] && [ "$(size_of "$CACHE/$f")" = "$size" ]; then
+        return 0     # verified with every other artifact in verify_all
+    fi
+    part="$CACHE/$f.part"
+    for try in 1 2; do
+        if [ -f "$part" ] && [ "$(size_of "$part")" -gt "$size" ]; then rm -f -- "$part"; fi
+        start=$(size_of "$part" 2>/dev/null || echo 0)
+        [ "$start" -gt 0 ] && say "resuming $f at $(human "$start")"
+        if [ "$DL_TOOL" = curl ]; then
+            curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 --speed-time 60 --speed-limit 1000 \
+                 -sS -C - -o "$part" -- "$url" &
+        else
+            wget -q -c --tries=3 --timeout=60 -O "$part" -- "$url" &
+        fi
+        BG_PID=$!
+        while kill -0 "$BG_PID" 2>/dev/null; do
+            sleep 0.5
+            got=$(size_of "$part" 2>/dev/null || echo 0)
+            now=$((DL_DONE + got))
+            progress download "$(fraction 0.03 0.70 "$now" "$DL_TOTAL")" "Downloading $f ($(human "$got") of $(human "$size"))"
+        done
+        rc=0; wait "$BG_PID" || rc=$?
+        BG_PID=""
+        if [ "$rc" = 0 ] && [ -f "$part" ] && [ "$(size_of "$part")" = "$size" ]; then
+            if [ "$(sha256_of "$part")" = "$sha" ]; then
+                mv -f -- "$part" "$CACHE/$f"
+                DL_DONE=$((DL_DONE + size))
+                return 0
+            fi
+            rm -f -- "$part"
+            [ "$try" = 2 ] && die $E_CHECKSUM "$f: sha256 mismatch after download (expected $sha). The file on the server changed or was corrupted in transit."
+            warn "$f: checksum mismatch, downloading again"
+            continue
+        fi
+        if [ "$rc" = 33 ] || [ "$rc" = 36 ]; then rm -f -- "$part"; continue; fi    # bad resume range
+        [ "$try" = 2 ] && die $E_DOWNLOAD "downloading $url failed ($DL_TOOL exit $rc). Check the network and run $PROG again: finished parts are kept and resumed."
+        warn "download of $f failed ($DL_TOOL exit $rc); retrying"
+    done
+}
+
+verify_all() {
+    local comp f size sha _unp url n=0 total=0 got
+    while IFS='|' read -r comp f size sha _unp url; do wanted "$comp" && total=$((total + 1)); done <<<"$ARTIFACTS"
+    while IFS='|' read -r comp f size sha _unp url; do
+        wanted "$comp" || continue
+        n=$((n + 1))
+        progress verify "$(fraction 0.70 0.74 "$n" "$total")" "Verifying $f"
+        got=$(size_of "$SRC_DIR/$f")
+        [ "$got" = "$size" ] || die $E_CHECKSUM "$SRC_DIR/$f: size $got, expected $size (pinned). Delete it and run $PROG again."
+        [ "$(sha256_of "$SRC_DIR/$f")" = "$sha" ] || die $E_CHECKSUM "$SRC_DIR/$f: sha256 does not match the pinned $sha. Delete it and run $PROG again."
+    done <<<"$ARTIFACTS"
+}
+
+# ---- unpack ----------------------------------------------------------------------------------
+member_check() {   # file expected_size expected_sha
+    [ -f "$1" ] || die $E_INSTALL "unpacking failed: ${1#"$WORK"/} is missing from the archive"
+    [ "$(size_of "$1")" = "$2" ] || die $E_CHECKSUM "${1#"$WORK"/}: size $(size_of "$1") differs from the pinned $2"
+    [ "$(sha256_of "$1")" = "$3" ] || die $E_CHECKSUM "${1#"$WORK"/}: sha256 differs from the pinned $3"
+}
+
+place() {   # src rel   (move a verified file into the staging tree)
+    mkdir -p -- "$(dirname -- "$STAGING/$2")"
+    mv -f -- "$1" "$STAGING/$2" || die $E_INSTALL "cannot move $2 into $STAGING"
+}
+
+unpack_wheel() {   # wheel-file component
+    local whl=$1 comp=$2 d
+    d=$(mktemp -d "$WORK/whl.XXXXXX")
+    "$PY" -I -m zipfile -e "$SRC_DIR/$whl" "$d/" || die $E_INSTALL "cannot unpack $whl"
+    mkdir -p -- "$STAGING/runtime"
+    local top lic
+    for top in "$d"/*; do
+        case "${top##*/}" in
+            *.dist-info)
+                for lic in "$top"/licenses/* "$top"/LICENSE*; do
+                    [ -f "$lic" ] || continue
+                    mkdir -p -- "$STAGING/licenses/$comp"
+                    cp -f -- "$lic" "$STAGING/licenses/$comp/"
+                done ;;
+            *) cp -a -- "$top" "$STAGING/runtime/" || die $E_INSTALL "cannot copy ${top##*/} from $whl" ;;
+        esac
+    done
+    rm -rf -- "$d" "$STAGING/runtime/sherpa_onnx/include" "$STAGING/runtime/bin"
+    find "$STAGING/runtime" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+}
+
+unpack_tar() {   # component archive lo hi
+    local comp=$1 arc=$2 lo=$3 hi=$4 d members=() c mem rel size sha watch="" target=0
+    d=$(mktemp -d "$WORK/tar.XXXXXX")
+    while IFS='|' read -r c mem rel size sha; do
+        [ "$c" = "$comp" ] || continue
+        members+=("$mem")
+        target=$((target + size))
+        [ -n "$watch" ] || watch="$d/$mem"
+    done <<<"$MEMBERS"
+    tar -xjf "$SRC_DIR/$arc" -C "$d" --no-same-owner --no-same-permissions -- "${members[@]}" &
+    BG_PID=$!
+    local got
+    while kill -0 "$BG_PID" 2>/dev/null; do
+        sleep 0.5
+        got=$(du -sb -- "$d" 2>/dev/null | cut -f1 || echo 0)
+        progress unpack "$(fraction "$lo" "$hi" "${got:-0}" "$target")" "Unpacking $comp ($(human "${got:-0}") of $(human "$target"))"
+    done
+    local rc=0; wait "$BG_PID" || rc=$?
+    BG_PID=""
+    [ "$rc" = 0 ] || die $E_INSTALL "tar could not unpack $arc (exit $rc)"
+    while IFS='|' read -r c mem rel size sha; do
+        [ "$c" = "$comp" ] || continue
+        member_check "$d/$mem" "$size" "$sha"
+        place "$d/$mem" "$rel"
+    done <<<"$MEMBERS"
+    rm -rf -- "$d"
+}
+
+reuse_component() {   # comp -> 0 when the installed copy matches the pinned artifact (hard-linked)
+    local comp=$1
+    [ -f "$DEST/manifest.json" ] || return 1
+    local shas
+    shas=$(grep "^$comp|" <<<"$ARTIFACTS" | cut -d'|' -f4 | sort | tr '\n' ' ')
+    "$PY" -I - "$DEST" "$STAGING" "${comp%%-cp*}" "$shas" "$LAYOUT" <<'PY'
+import hashlib, json, os, sys
+root, staging, comp, shas, layout = sys.argv[1], sys.argv[2], sys.argv[3], sorted(sys.argv[4].split()), sys.argv[5]
+try:
+    m = json.load(open(os.path.join(root, "manifest.json"), encoding="utf-8"))
+    info = m["installed"][comp]
+except (OSError, ValueError, KeyError):
+    sys.exit(1)
+if str(m.get("layout")) != layout:
+    sys.exit(1)
+if sorted(a.get("sha256", "") for a in info.get("artifacts", [])) != shas:
+    sys.exit(1)
+files = info.get("files") or {}
+for rel, meta in files.items():
+    p = os.path.join(root, rel)
+    if not os.path.isfile(p) or os.path.getsize(p) != meta.get("size"):
+        sys.exit(1)
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    if h.hexdigest() != meta.get("sha256"):
+        sys.exit(1)
+for rel in files:
+    dst = os.path.join(staging, rel)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    try:
+        os.link(os.path.join(root, rel), dst)
+    except OSError:
+        import shutil
+        shutil.copy2(os.path.join(root, rel), dst)
+sys.exit(0)
+PY
+}
+
+stage_all() {
+    local parent; parent=$(dirname -- "$DEST")
+    mkdir -p -- "$parent" || die $E_PERM "cannot create $parent"
+    STAGING=$(mktemp -d "$DEST.new.XXXXXX") || die $E_PERM "cannot write to $parent (permission denied?)"
+    WORK=$(mktemp -d "$parent/.shadow-voice-work.XXXXXX") || die $E_PERM "cannot write to $parent"
+    local total=0 done=0 comp c f size sha unp url
+    while IFS='|' read -r comp f size sha unp url; do wanted "$comp" && total=$((total + unp)); done <<<"$ARTIFACTS"
+    for comp in "${COMPONENTS[@]}"; do
+        local comp_unp=0
+        while IFS='|' read -r c f size sha unp url; do [ "$c" = "$comp" ] && comp_unp=$((comp_unp + unp)); done <<<"$ARTIFACTS"
+        local lo hi
+        lo=$(fraction 0.74 0.94 "$done" "$total"); hi=$(fraction 0.74 0.94 "$((done + comp_unp))" "$total")
+        if reuse_component "$comp"; then
+            progress unpack "$hi" "Keeping the installed $comp (unchanged)"
+        else
+            progress unpack "$lo" "Unpacking $comp"
+            case "$comp" in
+                runtime|numpy-*)
+                    local lic=sherpa-onnx; [ "$comp" = runtime ] || lic=numpy
+                    while IFS='|' read -r c f size sha unp url; do
+                        if [ "$c" = "$comp" ]; then unpack_wheel "$f" "$lic"; fi
+                    done <<<"$ARTIFACTS" ;;
+                vad)
+                    cp -f -- "$SRC_DIR/silero_vad.onnx" "$WORK/silero_vad.onnx"
+                    member_check "$WORK/silero_vad.onnx" 643854 9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6
+                    place "$WORK/silero_vad.onnx" models/vad/silero_vad.onnx ;;
+                *)
+                    f=$(grep "^$comp|" <<<"$ARTIFACTS" | cut -d'|' -f2)
+                    unpack_tar "$comp" "$f" "$lo" "$hi"
+                    if [ "$comp" = kws ]; then printf '%s\n' "$KEYWORDS" > "$STAGING/models/kws/keywords.txt"; fi ;;
+            esac
+        fi
+        done=$((done + comp_unp))
+    done
+    write_notices
+    chmod -R u+rwX,go+rX,go-w -- "$STAGING" || die $E_INSTALL "cannot set permissions in $STAGING"
+}
+
+write_notices() {
+    mkdir -p -- "$STAGING/licenses"
+    cat > "$STAGING/licenses/README" <<'EOF'
+Third-party components of the Shadow Assistant voice engine data (see THIRD-PARTY.md in the
+Shadow OS source, applications/assistant/voice/):
+  runtime/sherpa_onnx      sherpa-onnx 2.0.2 (k2-fsa), Apache-2.0; bundles ONNX Runtime (MIT)
+                           and libasound (alsa-lib, LGPL-2.1-or-later)
+  runtime/numpy (if any)   numpy 2.5.4, BSD-3-Clause (+ bundled OpenBLAS BSD-3-Clause, libgfortran
+                           GPL-3.0 with the GCC runtime library exception)
+  models/vad               Silero VAD (snakers4/silero-vad), MIT
+  models/kws               icefall zipformer keyword spotter (k2-fsa), Apache-2.0
+  models/stt/moonshine     Moonshine base (Useful Sensors / Moonshine AI), MIT (English models)
+  models/stt/whisper       Whisper base.en (OpenAI), MIT; converted to ONNX by k2-fsa, Apache-2.0
+  models/tts/kokoro        Kokoro-82M v1.0 (hexgrad), Apache-2.0; lexicons derived from misaki, Apache-2.0
+EOF
+}
+
+# ---- manifest + swap ---------------------------------------------------------------------------
+write_manifest() {
+    progress manifest 0.95 "Writing manifest.json"
+    local sel=""
+    local comp f size sha unp url
+    while IFS='|' read -r comp f size sha unp url; do
+        wanted "$comp" && sel+="$comp|$f|$size|$sha|$url"$'\n'
+    done <<<"$ARTIFACTS"
+    local versions=""
+    for comp in "${!VERSION_OF[@]}"; do versions+="$comp|${VERSION_OF[$comp]}"$'\n'; done
+    local source=download; [ -n "$OFFLINE" ] && source=offline-cache
+    "$PY" -I - "$STAGING" "$SETUP_VERSION" "$source" "$PY_VER" "$LAYOUT" <<PY || die $E_INSTALL "cannot write manifest.json"
+import hashlib, json, os, sys, time
+staging, setup_version, source, pyver, layout = sys.argv[1:6]
+sel = [l.split("|") for l in """$sel""".strip().splitlines()]
+members = [l.split("|") for l in """$MEMBERS""".strip().splitlines()]
+versions = dict(l.split("|", 1) for l in """$versions""".strip().splitlines())
+def digest(p):
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+installed = {}
+for comp, fname, size, sha, url in sel:
+    key = "numpy" if comp.startswith("numpy-") else comp
+    e = installed.setdefault(key, {"version": versions.get(key, "?"), "sha256": sha, "artifacts": [], "files": {}})
+    e["artifacts"].append({"file": fname, "size": int(size), "sha256": sha, "url": url})
+def add(comp, rel):
+    p = os.path.join(staging, rel)
+    installed[comp]["files"][rel] = {"size": os.path.getsize(p), "sha256": digest(p)}
+for comp, _mem, rel, _size, _sha in members:
+    if comp in installed:
+        add(comp, rel)
+if "kws" in installed:
+    add("kws", "models/kws/keywords.txt")
+for comp, sub in (("runtime", "runtime/sherpa_onnx"), ("runtime", "runtime/sherpa_onnx.libs"),
+                  ("runtime", "licenses/sherpa-onnx"), ("numpy", "runtime/numpy"), ("numpy", "runtime/numpy.libs"),
+                  ("numpy", "licenses/numpy")):
+    if comp not in installed:
+        continue
+    for d, _dirs, files in os.walk(os.path.join(staging, sub)):
+        for fn in files:
+            add(comp, os.path.relpath(os.path.join(d, fn), staging))
+stt = [s for s in ("moonshine", "whisper") if "stt-" + s in installed]
+m = {"format": 1, "layout": int(layout), "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+     "setup_version": setup_version,
+     "source": source, "python": pyver, "python_abis": ["cp312", "cp313"],
+     "stt_default": stt[0] if stt else None, "installed": installed}
+tmp = os.path.join(staging, "manifest.json.tmp")
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(m, f, indent=1, sort_keys=True)
+    f.write("\n")
+os.replace(tmp, os.path.join(staging, "manifest.json"))
+PY
+    chmod 0644 -- "$STAGING/manifest.json"
+}
+
+swap_into_place() {
+    progress install 0.96 "Moving the new files into $DEST"
+    if [ -e "$DEST" ] && [ ! -d "$DEST" ]; then die $E_INSTALL "$DEST exists and is not a directory"; fi
+    if [ -d "$DEST" ] && ! is_our_root && [ -n "$(ls -A -- "$DEST" 2>/dev/null)" ]; then
+        die $E_INSTALL "$DEST is not empty and was not created by $PROG: refusing to replace it"
+    fi
+    if [ -d "$DEST" ]; then
+        if mv --exchange -- "$STAGING" "$DEST" 2>/dev/null; then
+            OLD_TREE=""
+            rm -rf -- "$STAGING"            # now holds the previous installation
+        else
+            OLD_TREE="$DEST.old.$$"
+            mv -- "$DEST" "$OLD_TREE" || die $E_INSTALL "cannot move the old $DEST aside"
+            mv -- "$STAGING" "$DEST" || die $E_INSTALL "cannot move the new files to $DEST"
+            rm -rf -- "$OLD_TREE"; OLD_TREE=""
+        fi
+    else
+        mv -- "$STAGING" "$DEST" || die $E_INSTALL "cannot move the new files to $DEST"
+    fi
+    STAGING=""
+}
+
+run_selftest() {
+    [ "$SELFTEST" = 1 ] || { say "selftest skipped (--no-selftest)"; return 0; }
+    local helper out rc=0
+    if ! helper=$(find_helper); then
+        warn "shadow-voiced not found (install shadow-assistant): selftest skipped"
+        return 0
+    fi
+    progress selftest 0.97 "Testing the engine (speak, then listen to itself)"
+    out=$("$helper" --selftest --data "$DEST" --no-log-file 2>"$WORK/selftest.err") || rc=$?
+    if [ "$rc" != 0 ]; then
+        tail -n 5 "$WORK/selftest.err" >&2 || true
+        die $E_SELFTEST "installed, but the selftest failed (exit $rc): $(printf '%s' "$out" | tail -n 1 | cut -c1-400)"
+    fi
+    SELFTEST_RESULT=$(printf '%s' "$out" | tail -n 1)
+}
+
+# ---- main --------------------------------------------------------------------------------------
+case "$ACTION" in
+    check) do_check ;;
+    uninstall) do_uninstall ;;
+esac
+
+if [ "$MODE" = system ] && [ "$IS_ROOT" != 1 ]; then
+    die $E_PERM "--system installs into /var/lib/shadow-voice and needs root: sudo $PROG --system"
+fi
+check_deps
+select_components
+lock_dest
+
+# space: downloads (cache) + unpacked files (destination, staged next to it)
+need_dl=0 need_inst=0
+while IFS='|' read -r comp f size sha unp url; do
+    wanted "$comp" || continue
+    need_inst=$((need_inst + unp))
+    if [ -z "$OFFLINE" ] && ! { [ -f "$CACHE/$f" ] && [ "$(size_of "$CACHE/$f")" = "$size" ]; }; then
+        part=$(size_of "$CACHE/$f.part" 2>/dev/null || echo 0)
+        need_dl=$((need_dl + size - part))
+    fi
+done <<<"$ARTIFACTS"
+margin=$((64 * 1024 * 1024))
+free_dest=$(free_bytes "$DEST")
+if [ -z "$OFFLINE" ] && [ "$(fs_id "$CACHE")" = "$(fs_id "$DEST")" ]; then
+    [ "$free_dest" -ge $((need_inst + need_dl + margin)) ] || die $E_SPACE "not enough disk space on $(dirname -- "$DEST"): need $(human $((need_inst + need_dl + margin))), have $(human "$free_dest")"
+else
+    [ "$free_dest" -ge $((need_inst + margin)) ] || die $E_SPACE "not enough disk space for $DEST: need $(human $((need_inst + margin))), have $(human "$free_dest")"
+    if [ -z "$OFFLINE" ]; then
+        free_cache=$(free_bytes "$CACHE")
+        [ "$free_cache" -ge $((need_dl + margin)) ] || die $E_SPACE "not enough disk space for the download cache $CACHE: need $(human $((need_dl + margin))), have $(human "$free_cache")"
+    fi
+fi
+
+if [ -n "$OFFLINE" ]; then
+    what="Install the voice engine (${COMPONENTS[*]}) from $OFFLINE into $DEST ($(human "$need_inst"))?"
+else
+    what="Download $(human "$need_dl") and install the voice engine (${COMPONENTS[*]}) into $DEST ($(human "$need_inst"))?"
+fi
+confirm "$what" || die $E_FAIL "cancelled"
+
+fetch_all
+verify_all
+stage_all
+write_manifest
+swap_into_place
+if [ -z "$OFFLINE" ] && [ "$KEEP_CACHE" = 0 ]; then
+    while IFS='|' read -r comp f size sha unp url; do
+        wanted "$comp" && rm -f -- "$CACHE/$f"
+    done <<<"$ARTIFACTS"
+    rmdir -- "$CACHE" 2>/dev/null || true
+fi
+SELFTEST_RESULT=""
+run_selftest
+STEP="done"
+summary="Voice engine installed in $DEST ($(du -sh -- "$DEST" | cut -f1); ${COMPONENTS[*]})"
+[ -z "$SELFTEST_RESULT" ] || summary+="; selftest passed"
+if [ "$PROGRESS" = 1 ]; then
+    printf '{"step":"done","progress":1,"message":%s,"data":%s,"components":%s%s}\n' "$(json_str "$summary")" \
+        "$(json_str "$DEST")" "$(json_str "${COMPONENTS[*]}")" "${SELFTEST_RESULT:+,\"selftest\":$SELFTEST_RESULT}"
+else
+    say "$summary"
+fi
+exit $E_OK

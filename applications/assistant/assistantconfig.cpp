@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
 
@@ -47,7 +48,88 @@ const QStringList kAllTools = {
     QStringLiteral("start_capture"),
 };
 
+// Voice defaults (spec voice v2 §2.3).
+const QString kDefaultVoice = QStringLiteral("af_heart");
+const QStringList kSttModels = {QStringLiteral("auto"), QStringLiteral("moonshine"), QStringLiteral("whisper")};
+const QStringList kWakeSensitivities = {QStringLiteral("low"), QStringLiteral("normal"), QStringLiteral("high")};
+const QStringList kTtsEngines = {QStringLiteral("auto"), QStringLiteral("neural"), QStringLiteral("espeak")};
+constexpr double kMinSpeechRate = 0.7;
+constexpr double kMaxSpeechRate = 1.4;
+
+// QSettings hands back a QStringList when an INI value contains a comma
+// ("brain=x  # chat, tools, vision" from an old template); the value as
+// written in the file is that list joined again.
+QString rawString(const QVariant &v)
+{
+    if (v.metaType().id() == QMetaType::QStringList)
+        return v.toStringList().join(QStringLiteral(", "));
+    return v.toString();
+}
+
+// One sanitized value of the conf file; 'fallback' when the key is absent.
+QString readString(const QSettings &ini, const QString &key, const QString &fallback = QString())
+{
+    if (!ini.contains(key))
+        return fallback;
+    return AssistantConfig::sanitizeValue(rawString(ini.value(key)));
+}
+
+bool readBool(const QSettings &ini, const QString &key, bool fallback)
+{
+    const QString v = readString(ini, key).toLower();
+    if (v == QLatin1String("true") || v == QLatin1String("1") || v == QLatin1String("yes") || v == QLatin1String("on"))
+        return true;
+    if (v == QLatin1String("false") || v == QLatin1String("0") || v == QLatin1String("no") || v == QLatin1String("off"))
+        return false;
+    return fallback;
+}
+
+// A comma-separated list value ([tools] disabled=a, b).
+QStringList readList(const QSettings &ini, const QString &key)
+{
+    QStringList out;
+    const QStringList parts = readString(ini, key).split(u',');
+    for (const QString &p : parts) {
+        const QString t = p.trimmed();
+        if (!t.isEmpty() && !out.contains(t))
+            out << t;
+    }
+    return out;
+}
+
+QString oneOf(const QString &value, const QStringList &allowed, const QString &fallback)
+{
+    const QString v = value.trimmed().toLower();
+    return allowed.contains(v) ? v : fallback;
+}
+
+// A Kokoro voice id such as "af_heart" or "bf_emma".
+bool isVoiceId(const QString &v)
+{
+    static const QRegularExpression re(QStringLiteral("^[a-z]{1,3}_[a-z0-9]{1,32}$"));
+    return re.match(v).hasMatch();
+}
+
+double clampRate(double v)
+{
+    if (!(v > 0.0)) // also NaN
+        return 1.0;
+    return qBound(kMinSpeechRate, v, kMaxSpeechRate);
+}
+
 } // namespace
+
+QString AssistantConfig::sanitizeValue(const QString &raw)
+{
+    // A comment starts at '#' or ';' at the start of the value or after a
+    // blank. No value this file holds (model ids, tool names, voice ids,
+    // device names, URLs, keys) contains " #" or " ;".
+    static const QRegularExpression inlineComment(QStringLiteral("(?:^|\\s)[#;].*$"),
+                                                  QRegularExpression::DotMatchesEverythingOption);
+    QString v = raw;
+    v.remove(inlineComment);
+    return v.trimmed();
+}
 
 AssistantConfig::AssistantConfig(QObject *parent)
     : QObject(parent)
@@ -82,7 +164,7 @@ void AssistantConfig::reload()
         m_apiKey = QString::fromUtf8(envKeyAnthropic).trimmed();
         m_apiKeySource = QStringLiteral("ANTHROPIC_API_KEY environment variable");
     } else {
-        const QString k = ini.value(QStringLiteral("api/key")).toString().trimmed();
+        const QString k = readString(ini, QStringLiteral("api/key"));
         if (!k.isEmpty()) {
             m_apiKey = k;
             m_apiKeySource = iniPath();
@@ -90,7 +172,7 @@ void AssistantConfig::reload()
     }
 
     // --- Anthropic API version header (cloud mode) ---
-    m_anthropicVersion = ini.value(QStringLiteral("api/anthropic_version"), kDefaultAnthropicVersion).toString().trimmed();
+    m_anthropicVersion = readString(ini, QStringLiteral("api/anthropic_version"), kDefaultAnthropicVersion);
     if (m_anthropicVersion.isEmpty())
         m_anthropicVersion = kDefaultAnthropicVersion;
 
@@ -100,7 +182,7 @@ void AssistantConfig::reload()
         m_baseUrl = QString::fromUtf8(envUrl).trimmed();
         m_baseUrlOverridden = true;
     } else {
-        m_baseUrl = ini.value(QStringLiteral("api/base_url"), kDefaultBaseUrl).toString().trimmed();
+        m_baseUrl = readString(ini, QStringLiteral("api/base_url"), kDefaultBaseUrl);
         if (m_baseUrl.isEmpty())
             m_baseUrl = kDefaultBaseUrl;
         m_baseUrlOverridden = false;
@@ -109,39 +191,38 @@ void AssistantConfig::reload()
         m_baseUrl.chop(1);
 
     // --- local (offline) model ---
-    m_localMode = ini.value(QStringLiteral("api/local"), false).toBool();
-    m_localBaseUrl = ini.value(QStringLiteral("api/local_base_url"), kDefaultLocalBaseUrl).toString().trimmed();
+    m_localMode = readBool(ini, QStringLiteral("api/local"), false);
+    m_localBaseUrl = readString(ini, QStringLiteral("api/local_base_url"), kDefaultLocalBaseUrl);
     if (m_localBaseUrl.isEmpty())
         m_localBaseUrl = kDefaultLocalBaseUrl;
     while (m_localBaseUrl.endsWith(QLatin1Char('/')))
         m_localBaseUrl.chop(1);
-    m_localModel = ini.value(QStringLiteral("models/local"), kDefaultLocalModel).toString().trimmed();
+    m_localModel = readString(ini, QStringLiteral("models/local"), kDefaultLocalModel);
     if (m_localModel.isEmpty())
         m_localModel = kDefaultLocalModel;
 
     // --- model mapping ---
-    m_brain = ini.value(QStringLiteral("models/brain"), kDefaultBrain).toString().trimmed();
-    m_planner = ini.value(QStringLiteral("models/planner"), kDefaultPlanner).toString().trimmed();
-    m_fast = ini.value(QStringLiteral("models/fast"), kDefaultFast).toString().trimmed();
-    m_omni = ini.value(QStringLiteral("models/omni"), kDefaultOmni).toString().trimmed();
+    m_brain = readString(ini, QStringLiteral("models/brain"), kDefaultBrain);
+    m_planner = readString(ini, QStringLiteral("models/planner"), kDefaultPlanner);
+    m_fast = readString(ini, QStringLiteral("models/fast"), kDefaultFast);
+    m_omni = readString(ini, QStringLiteral("models/omni"), kDefaultOmni);
     if (m_brain.isEmpty()) m_brain = kDefaultBrain;
     if (m_planner.isEmpty()) m_planner = kDefaultPlanner;
     if (m_fast.isEmpty()) m_fast = kDefaultFast;
     if (m_omni.isEmpty()) m_omni = kDefaultOmni;
 
     // --- autonomy ---
-    m_autonomy = ini.value(QStringLiteral("behaviour/autonomy"), QStringLiteral("autopilot")).toString().trimmed();
+    m_autonomy = readString(ini, QStringLiteral("behaviour/autonomy"), QStringLiteral("autopilot"));
     if (m_autonomy != QLatin1String("ask_every") && m_autonomy != QLatin1String("ask_risky"))
         m_autonomy = QStringLiteral("autopilot");
 
     // --- role ---
-    m_role = ini.value(QStringLiteral("behaviour/role"), QStringLiteral("general")).toString().trimmed();
+    m_role = readString(ini, QStringLiteral("behaviour/role"), QStringLiteral("general"));
     if (m_role != QLatin1String("pentest"))
         m_role = QStringLiteral("general");
 
     // --- disabled tools ---
-    m_disabledTools = ini.value(QStringLiteral("tools/disabled")).toStringList();
-    m_disabledTools.removeAll(QString());
+    m_disabledTools = readList(ini, QStringLiteral("tools/disabled"));
     m_enabledTools.clear();
     for (const QString &t : kAllTools)
         if (!m_disabledTools.contains(t))
@@ -153,35 +234,29 @@ void AssistantConfig::reload()
     // turns it off. Earlier versions wrote wake_word_enabled=false into every
     // saved configuration without the user choosing it, so the stored value
     // counts only once the user has switched it themselves (wake_word_chosen).
-    m_wakeEnabled = ini.value(QStringLiteral("voice/wake_word_chosen"), false).toBool()
-        ? ini.value(QStringLiteral("voice/wake_word_enabled"), true).toBool()
+    // Every value is sanitized (see sanitizeValue()): a conf written from the
+    // old template ("muted=false   # privacy …") reads correctly again.
+    // Keys of the old pocketsphinx/piper voice (wake_phrase, wake_threshold,
+    // tts_voice, piper_bin, piper_model, stt_mode, capture_tool,
+    // max_utterance_secs, pocketsphinx_model) are ignored if present.
+    m_wakeEnabled = readBool(ini, QStringLiteral("voice/wake_word_chosen"), false)
+        ? readBool(ini, QStringLiteral("voice/wake_word_enabled"), true)
         : true;
-    m_wakePhrase = ini.value(QStringLiteral("voice/wake_phrase"), QStringLiteral("shadow")).toString().trimmed().toLower();
-    if (m_wakePhrase.isEmpty())
-        m_wakePhrase = QStringLiteral("shadow");
-    bool okT = false;
-    m_wakeThreshold = ini.value(QStringLiteral("voice/wake_threshold"), QStringLiteral("1e-20")).toString().toDouble(&okT);
-    if (!okT || m_wakeThreshold <= 0.0)
-        m_wakeThreshold = 1e-20;
-    m_micMuted = ini.value(QStringLiteral("voice/muted"), false).toBool();
-    m_speakReplies = ini.value(QStringLiteral("voice/speak_replies"), true).toBool();
-    m_ttsEngine = ini.value(QStringLiteral("voice/tts_engine"), QStringLiteral("auto")).toString().trimmed().toLower();
-    if (!QStringList({QStringLiteral("auto"), QStringLiteral("piper"), QStringLiteral("speechd"), QStringLiteral("espeak")}).contains(m_ttsEngine))
-        m_ttsEngine = QStringLiteral("auto");
-    m_ttsVoice = ini.value(QStringLiteral("voice/tts_voice")).toString().trimmed();
-    m_piperBin = ini.value(QStringLiteral("voice/piper_bin"), QStringLiteral("piper")).toString().trimmed();
-    if (m_piperBin.isEmpty())
-        m_piperBin = QStringLiteral("piper");
-    m_piperModel = ini.value(QStringLiteral("voice/piper_model")).toString().trimmed();
-    m_sttMode = ini.value(QStringLiteral("voice/stt_mode"), QStringLiteral("auto")).toString().trimmed().toLower();
-    if (!QStringList({QStringLiteral("auto"), QStringLiteral("nvidia"), QStringLiteral("pocketsphinx")}).contains(m_sttMode))
-        m_sttMode = QStringLiteral("auto");
-    m_captureTool = ini.value(QStringLiteral("voice/capture_tool"), QStringLiteral("auto")).toString().trimmed().toLower();
-    m_inputDevice = ini.value(QStringLiteral("voice/input_device")).toString().trimmed();
-    m_maxUtteranceSecs = ini.value(QStringLiteral("voice/max_utterance_secs"), 12).toInt();
-    if (m_maxUtteranceSecs < 2 || m_maxUtteranceSecs > 60)
-        m_maxUtteranceSecs = 12;
-    m_pocketsphinxModel = ini.value(QStringLiteral("voice/pocketsphinx_model")).toString().trimmed();
+    m_micMuted = readBool(ini, QStringLiteral("voice/muted"), false);
+    m_speakReplies = readBool(ini, QStringLiteral("voice/speak_replies"), true);
+    m_voice = readString(ini, QStringLiteral("voice/voice"), kDefaultVoice).toLower();
+    if (!isVoiceId(m_voice))
+        m_voice = kDefaultVoice;
+    bool rateOk = false;
+    const double rate = readString(ini, QStringLiteral("voice/speech_rate"), QStringLiteral("1.0")).toDouble(&rateOk);
+    m_speechRate = rateOk ? clampRate(rate) : 1.0;
+    m_sttModel = oneOf(readString(ini, QStringLiteral("voice/stt_model")), kSttModels, QStringLiteral("auto"));
+    m_wakeSensitivity = oneOf(readString(ini, QStringLiteral("voice/wake_sensitivity")), kWakeSensitivities,
+                              QStringLiteral("normal"));
+    m_followUp = readBool(ini, QStringLiteral("voice/follow_up"), true);
+    m_inputDevice = readString(ini, QStringLiteral("voice/input_device"));
+    // "piper" / "speechd" from the old voice → auto.
+    m_ttsEngine = oneOf(readString(ini, QStringLiteral("voice/tts_engine")), kTtsEngines, QStringLiteral("auto"));
 
     Q_EMIT changed();
 }
@@ -192,12 +267,33 @@ void AssistantConfig::save()
     ini.setValue(QStringLiteral("behaviour/autonomy"), m_autonomy);
     ini.setValue(QStringLiteral("behaviour/role"), m_role);
     ini.setValue(QStringLiteral("tools/disabled"), m_disabledTools);
-    // Voice toggles/engine the UI can change (paths/voices stay file-edited).
+    // Every voice setting the UI can change, clean (this also replaces values
+    // an old template left with an inline comment).
     ini.setValue(QStringLiteral("voice/wake_word_enabled"), m_wakeEnabled);
     ini.setValue(QStringLiteral("voice/muted"), m_micMuted);
     ini.setValue(QStringLiteral("voice/speak_replies"), m_speakReplies);
+    ini.setValue(QStringLiteral("voice/voice"), m_voice);
+    ini.setValue(QStringLiteral("voice/speech_rate"), m_speechRate);
+    ini.setValue(QStringLiteral("voice/stt_model"), m_sttModel);
+    ini.setValue(QStringLiteral("voice/wake_sensitivity"), m_wakeSensitivity);
+    ini.setValue(QStringLiteral("voice/follow_up"), m_followUp);
+    ini.setValue(QStringLiteral("voice/input_device"), m_inputDevice);
     ini.setValue(QStringLiteral("voice/tts_engine"), m_ttsEngine);
-    ini.setValue(QStringLiteral("voice/stt_mode"), m_sttMode);
+    // Heal files written from older templates. Their "# …" comment lines
+    // are not comments to QSettings ('#' is an ordinary character in its INI
+    // format; only ';' starts a comment): a "# base_url=…" line was read as a
+    // key named "# base_url" and is written back as "%23%20base_url=…".
+    // Drop those, and the keys of the old pocketsphinx/piper voice.
+    for (const QString &group : ini.childGroups()) {
+        ini.beginGroup(group);
+        for (const QString &key : ini.childKeys())
+            if (key.startsWith(u'#'))
+                ini.remove(key);
+        ini.endGroup();
+    }
+    for (const char *dead : {"wake_phrase", "wake_threshold", "tts_voice", "piper_bin", "piper_model", "stt_mode",
+                             "capture_tool", "max_utterance_secs", "pocketsphinx_model"})
+        ini.remove(QStringLiteral("voice/") + QLatin1String(dead));
     // We deliberately never write api/key.
     ini.sync();
 }
@@ -295,24 +391,71 @@ void AssistantConfig::setSpeakReplies(bool v)
     Q_EMIT changed();
 }
 
-void AssistantConfig::setTtsEngine(const QString &v)
+void AssistantConfig::setVoice(const QString &v)
 {
     const QString n = v.trimmed().toLower();
-    if (!QStringList({QStringLiteral("auto"), QStringLiteral("piper"), QStringLiteral("speechd"), QStringLiteral("espeak")}).contains(n))
+    if (!isVoiceId(n) || n == m_voice)
         return;
-    if (n == m_ttsEngine) return;
-    m_ttsEngine = n;
+    m_voice = n;
     save();
     Q_EMIT changed();
 }
 
-void AssistantConfig::setSttMode(const QString &v)
+void AssistantConfig::setSpeechRate(double v)
 {
-    const QString n = v.trimmed().toLower();
-    if (!QStringList({QStringLiteral("auto"), QStringLiteral("nvidia"), QStringLiteral("pocketsphinx")}).contains(n))
+    const double n = clampRate(v);
+    if (qFuzzyCompare(n, m_speechRate))
         return;
-    if (n == m_sttMode) return;
-    m_sttMode = n;
+    m_speechRate = n;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setSttModel(const QString &v)
+{
+    const QString n = oneOf(v, kSttModels, QString());
+    if (n.isEmpty() || n == m_sttModel)
+        return;
+    m_sttModel = n;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setWakeSensitivity(const QString &v)
+{
+    const QString n = oneOf(v, kWakeSensitivities, QString());
+    if (n.isEmpty() || n == m_wakeSensitivity)
+        return;
+    m_wakeSensitivity = n;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setFollowUp(bool v)
+{
+    if (v == m_followUp)
+        return;
+    m_followUp = v;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setInputDevice(const QString &v)
+{
+    const QString n = sanitizeValue(v);
+    if (n == m_inputDevice)
+        return;
+    m_inputDevice = n;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setTtsEngine(const QString &v)
+{
+    const QString n = oneOf(v, kTtsEngines, QString());
+    if (n.isEmpty() || n == m_ttsEngine)
+        return;
+    m_ttsEngine = n;
     save();
     Q_EMIT changed();
 }
@@ -320,58 +463,72 @@ void AssistantConfig::setSttMode(const QString &v)
 QString AssistantConfig::configTemplate() const
 {
     // Shown verbatim in the setup state so the user can create the file.
+    // Comments start with ';' and stay on lines of their own: QSettings
+    // treats only ';' as a comment ('#' lines become keys) and would read a
+    // comment after a value as part of the value.
     return QStringLiteral(
-        "# ~/.config/shadow/assistant.conf  —  create with mode 0600 (chmod 600)\n"
-        "# SHADOW Assistant reads your Claude (Anthropic) API key from here (or\n"
-        "# from the SHADOW_ASSISTANT_API_KEY or ANTHROPIC_API_KEY environment\n"
-        "# variable). The key is never stored in the application or the repository.\n"
-        "# Get a key at https://console.anthropic.com/ (keys start with sk-ant-).\n"
+        "; ~/.config/shadow/assistant.conf  —  create with mode 0600 (chmod 600)\n"
+        "; SHADOW Assistant reads your Claude (Anthropic) API key from here (or\n"
+        "; from the SHADOW_ASSISTANT_API_KEY or ANTHROPIC_API_KEY environment\n"
+        "; variable). The key is never stored in the application or the repository.\n"
+        "; Get a key at https://console.anthropic.com/ (keys start with sk-ant-).\n"
+        "; Comments start with ';' on a line of their own, never after a value.\n"
         "\n"
         "[api]\n"
         "key=sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n"
-        "# base_url=https://api.anthropic.com/v1   # usually leave unset\n"
-        "# anthropic_version=2023-06-01            # Messages API version header\n"
-        "# Offline: run a model on this computer instead of the cloud (no key\n"
-        "# needed). Easiest setup:  shadow-assistant-local setup\n"
-        "# local=true\n"
-        "# local_base_url=http://127.0.0.1:11434/v1\n"
+        "; Endpoint (usually leave unset):\n"
+        "; base_url=https://api.anthropic.com/v1\n"
+        "; Messages API version header:\n"
+        "; anthropic_version=2023-06-01\n"
+        "; Offline: run a model on this computer instead of the cloud (no key\n"
+        "; needed). Easiest setup:  shadow-assistant-local setup\n"
+        "; local=true\n"
+        "; local_base_url=http://127.0.0.1:11434/v1\n"
         "\n"
         "[models]\n"
-        "# One Claude model serves every role by default (claude-sonnet-4-6,\n"
-        "# run at high effort with adaptive thinking). Change any role to a\n"
-        "# different Claude model ID if you prefer (e.g. claude-opus-5-5 for the\n"
-        "# brain, claude-haiku-5-5 for fast low-cost replies).\n"
+        "; One Claude model serves every role by default (claude-sonnet-4-6,\n"
+        "; run at high effort with adaptive thinking). Change any role to a\n"
+        "; different Claude model ID if you prefer (e.g. claude-opus-5-5 for the\n"
+        "; brain, claude-haiku-5-5 for fast low-cost replies).\n"
         "brain=") + kDefaultBrain + QStringLiteral("\n"
         "planner=") + kDefaultPlanner + QStringLiteral("\n"
         "fast=") + kDefaultFast + QStringLiteral("\n"
         "omni=") + kDefaultOmni + QStringLiteral("\n"
-        "# local=llama3.1:8b   # model used when [api] local=true\n"
+        "; Model used when [api] local=true:\n"
+        "; local=llama3.1:8b\n"
         "\n"
         "[behaviour]\n"
-        "# autonomy = autopilot (run everything without asking; the default) |\n"
-        "#            ask_risky (ask before changing the system) | ask_every (ask every time)\n"
+        "; autopilot: run everything without asking (the default)\n"
+        "; ask_risky: ask before changing the system   ask_every: ask every time\n"
         "autonomy=autopilot\n"
         "\n"
         "[tools]\n"
-        "# disabled = comma-separated tool names to turn off, e.g. run_shell_command\n"
+        "; Comma-separated tool names to turn off, e.g. run_shell_command\n"
         "disabled=\n"
         "\n"
         "[voice]\n"
-        "# Hands-free voice assistant \"Shadow\". Always-listening is OPT-IN.\n"
-        "wake_word_enabled=false       # listen continuously for the wake word\n"
-        "wake_phrase=shadow            # keyphrase that wakes the assistant\n"
-        "wake_threshold=1e-20          # pocketsphinx kws threshold (smaller = stricter)\n"
-        "muted=false                   # privacy mic mute (nothing is captured when true)\n"
-        "speak_replies=true            # speak answers aloud\n"
-        "tts_engine=auto               # auto | piper | speechd | espeak\n"
-        "tts_voice=                    # speechd/espeak voice name (e.g. en-us)\n"
-        "piper_bin=piper               # piper executable (neural TTS, if installed)\n"
-        "piper_model=                  # path to a piper .onnx voice model (required for piper)\n"
-        "stt_mode=auto                 # voice is transcribed offline with pocketsphinx (Claude has no speech-to-text)\n"
-        "capture_tool=auto             # auto | parecord | pw-record | arecord\n"
-        "input_device=                 # optional capture device (PulseAudio/PipeWire source)\n"
-        "max_utterance_secs=12         # stop capturing a command after this long\n"
-        "pocketsphinx_model=           # optional path to an acoustic model directory\n");
+        "; Hands-free voice: say \"Shadow\", speak, hear the reply. Speech is\n"
+        "; recognised on this computer. Install the voice with: shadow-voice-setup\n"
+        "; Listen for the wake word \"Shadow\" (true or false):\n"
+        "wake_word_enabled=true\n"
+        "; Privacy mute: the microphone is never opened while true:\n"
+        "muted=false\n"
+        "; Speak answers to spoken requests aloud:\n"
+        "speak_replies=true\n"
+        "; Voice: af_heart, af_bella, af_sarah, bf_emma, af_nicole or af_sky:\n"
+        "voice=af_heart\n"
+        "; Speaking rate, 0.7 (slower) to 1.4 (faster):\n"
+        "speech_rate=1.0\n"
+        "; Speech recognition: auto, moonshine or whisper:\n"
+        "stt_model=auto\n"
+        "; Wake word sensitivity: low, normal or high:\n"
+        "wake_sensitivity=normal\n"
+        "; After a spoken reply, listen 5 s for a follow-up without the wake word:\n"
+        "follow_up=true\n"
+        "; Microphone (PipeWire/PulseAudio source name); empty = the default input:\n"
+        "input_device=\n"
+        "; Speech output: auto, neural or espeak:\n"
+        "tts_engine=auto\n");
 }
 
 QJsonObject AssistantConfig::toJson() const
@@ -382,6 +539,8 @@ QJsonObject AssistantConfig::toJson() const
         {QStringLiteral("baseUrl"), m_baseUrl},
         {QStringLiteral("baseUrlOverridden"), m_baseUrlOverridden},
         {QStringLiteral("configPath"), iniPath()},
+        // What the setup page offers to paste (a placeholder key, never the real one).
+        {QStringLiteral("configTemplate"), configTemplate()},
         {QStringLiteral("models"), QJsonObject{
             {QStringLiteral("brain"), m_brain},
             {QStringLiteral("planner"), m_planner},
@@ -393,19 +552,16 @@ QJsonObject AssistantConfig::toJson() const
         {QStringLiteral("disabledTools"), QJsonArray::fromStringList(m_disabledTools)},
         {QStringLiteral("voice"), QJsonObject{
             {QStringLiteral("wakeEnabled"), m_wakeEnabled},
-            {QStringLiteral("wakePhrase"), m_wakePhrase},
-            {QStringLiteral("wakeThreshold"), m_wakeThreshold},
+            {QStringLiteral("wakePhrase"), wakePhrase()},
             {QStringLiteral("micMuted"), m_micMuted},
             {QStringLiteral("speakReplies"), m_speakReplies},
-            {QStringLiteral("ttsEngine"), m_ttsEngine},
-            {QStringLiteral("ttsVoice"), m_ttsVoice},
-            {QStringLiteral("piperBin"), m_piperBin},
-            {QStringLiteral("piperModel"), m_piperModel},
-            {QStringLiteral("sttMode"), m_sttMode},
-            {QStringLiteral("captureTool"), m_captureTool},
+            {QStringLiteral("voice"), m_voice},
+            {QStringLiteral("speechRate"), m_speechRate},
+            {QStringLiteral("sttModel"), m_sttModel},
+            {QStringLiteral("wakeSensitivity"), m_wakeSensitivity},
+            {QStringLiteral("followUp"), m_followUp},
             {QStringLiteral("inputDevice"), m_inputDevice},
-            {QStringLiteral("maxUtteranceSecs"), m_maxUtteranceSecs},
-            {QStringLiteral("pocketsphinxModel"), m_pocketsphinxModel},
+            {QStringLiteral("ttsEngine"), m_ttsEngine},
         }},
     };
 }

@@ -1,69 +1,246 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "voicecontroller.h"
 
+#include "assistant.h"
 #include "assistantconfig.h"
+#include "voiceengine.h"
 
-#include <command.h>
-
-#include <QDateTime>
-#include <QDir>
-#include <QFile>
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMetaEnum>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>
 
-using Shadow::Command;
-using Shadow::CommandResult;
+#include <cmath>
 
 namespace {
 
-// Candidate acoustic-model directories for pocketsphinx (en-us), probed in
-// order. The package pocketsphinx-en-us installs under /usr/share/pocketsphinx.
-const QStringList kModelProbe = {
-    QStringLiteral("/usr/share/pocketsphinx/model/en-us/en-us"),
-    QStringLiteral("/usr/share/pocketsphinx/model/en-us"),
-    QStringLiteral("/usr/local/share/pocketsphinx/model/en-us/en-us"),
-    QStringLiteral("/usr/local/share/pocketsphinx/model/en-us"),
+constexpr int kLevelIntervalMs = 33;     // level notifications: at most ~30 Hz
+constexpr qint64 kLevelStaleMs = 220;    // a raw level older than this counts as silence
+constexpr double kCommandTimeoutS = 8;   // push-to-talk: seconds until speech must start
+constexpr double kYesNoTimeoutS = 8;
+constexpr double kFollowUpTimeoutS = 5;  // spec: listen 5 s for a follow-up
+// A listen must end in "final" or "timeout"; if the helper says neither
+// within its timeout plus this margin (an utterance may run ~15 s and then be
+// transcribed), the listen is abandoned instead of hanging.
+constexpr int kListenGraceMs = 30000;
+// eSpeak NG's own default rate; speech_rate scales it.
+constexpr int kEspeakWpm = 175;
+
+struct CuratedVoice
+{
+    const char *id;
+    const char *name;
+    const char *accent;
+    const char *description;
 };
 
-QString tmpWav(const QString &stem)
+// The female voices offered in the app (Kokoro v1.0 voice ids).
+const CuratedVoice kVoices[] = {
+    {"af_heart", QT_TRANSLATE_NOOP("VoiceController", "Heart"), QT_TRANSLATE_NOOP("VoiceController", "American"),
+     QT_TRANSLATE_NOOP("VoiceController", "Warm — the default voice")},
+    {"af_bella", QT_TRANSLATE_NOOP("VoiceController", "Bella"), QT_TRANSLATE_NOOP("VoiceController", "American"),
+     QT_TRANSLATE_NOOP("VoiceController", "Bright")},
+    {"af_sarah", QT_TRANSLATE_NOOP("VoiceController", "Sarah"), QT_TRANSLATE_NOOP("VoiceController", "American"),
+     QT_TRANSLATE_NOOP("VoiceController", "Lively")},
+    {"bf_emma", QT_TRANSLATE_NOOP("VoiceController", "Emma"), QT_TRANSLATE_NOOP("VoiceController", "British"),
+     QT_TRANSLATE_NOOP("VoiceController", "Elegant")},
+    {"af_nicole", QT_TRANSLATE_NOOP("VoiceController", "Nicole"), QT_TRANSLATE_NOOP("VoiceController", "American"),
+     QT_TRANSLATE_NOOP("VoiceController", "Soft and whispery")},
+    {"af_sky", QT_TRANSLATE_NOOP("VoiceController", "Sky"), QT_TRANSLATE_NOOP("VoiceController", "American"),
+     QT_TRANSLATE_NOOP("VoiceController", "Calm")},
+};
+
+QString tr2(const char *s)
 {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    return dir + QStringLiteral("/shadow-assistant-%1-%2.wav")
-                     .arg(stem)
-                     .arg(QDateTime::currentMSecsSinceEpoch());
+    return QCoreApplication::translate("VoiceController", s);
 }
 
-// Interpret a transcript hypothesis as a yes/no answer.
-bool looksLikeYes(const QString &text)
+QString voiceName(const QString &id)
 {
-    const QString t = text.toLower();
-    static const QStringList yes = {QStringLiteral("yes"), QStringLiteral("yeah"), QStringLiteral("yep"),
-                                    QStringLiteral("sure"), QStringLiteral("okay"), QStringLiteral("ok"),
-                                    QStringLiteral("do it"), QStringLiteral("go ahead"), QStringLiteral("run it"),
-                                    QStringLiteral("affirmative"), QStringLiteral("confirm")};
-    for (const QString &w : yes)
-        if (t.contains(w))
-            return true;
-    return false;
+    for (const CuratedVoice &v : kVoices)
+        if (id == QLatin1String(v.id))
+            return tr2(v.name);
+    return id;
+}
+
+// "Run a command" → "run a command" (but "URL …" stays as it is).
+QString lowerFirst(QString s)
+{
+    if (s.size() >= 2 && s.at(0).isUpper() && !s.at(1).isUpper())
+        s[0] = s.at(0).toLower();
+    return s;
+}
+
+enum class Answer { Yes, No, Unclear };
+
+// A spoken yes/no. The first decisive word wins, so "yes, no problem" is a
+// yes and "no, don't run it" a no; anything else is unclear (the on-screen
+// card then decides — an unclear answer must never approve an action).
+Answer parseYesNo(const QString &text)
+{
+    static const QStringList yesPhrases = {QStringLiteral("go ahead"), QStringLiteral("do it"),
+                                           QStringLiteral("run it"), QStringLiteral("please do"),
+                                           QStringLiteral("of course"), QStringLiteral("sounds good")};
+    static const QStringList noPhrases = {QStringLiteral("do not"), QStringLiteral("no way"),
+                                          QStringLiteral("not now"), QStringLiteral("never mind")};
+    static const QSet<QString> yesWords = {
+        QStringLiteral("yes"), QStringLiteral("yeah"), QStringLiteral("yep"), QStringLiteral("yup"),
+        QStringLiteral("sure"), QStringLiteral("okay"), QStringLiteral("ok"), QStringLiteral("affirmative"),
+        QStringLiteral("confirm"), QStringLiteral("confirmed"), QStringLiteral("absolutely"),
+        QStringLiteral("correct"), QStringLiteral("proceed")};
+    static const QSet<QString> noWords = {
+        QStringLiteral("no"), QStringLiteral("nope"), QStringLiteral("nah"), QStringLiteral("negative"),
+        QStringLiteral("cancel"), QStringLiteral("stop"), QStringLiteral("deny"), QStringLiteral("don't"),
+        QStringLiteral("dont"), QStringLiteral("not"), QStringLiteral("abort")};
+    static const QRegularExpression nonWord(QStringLiteral("[^a-z']+"));
+    QString t = text.toLower();
+    t.replace(QChar(0x2019), u'\'');
+    const QStringList words = t.split(nonWord, Qt::SkipEmptyParts);
+    for (qsizetype i = 0; i < words.size(); ++i) {
+        if (i + 1 < words.size()) {
+            const QString two = words.at(i) + u' ' + words.at(i + 1);
+            if (yesPhrases.contains(two))
+                return Answer::Yes;
+            if (noPhrases.contains(two))
+                return Answer::No;
+        }
+        if (noWords.contains(words.at(i)))
+            return Answer::No;
+        if (yesWords.contains(words.at(i)))
+            return Answer::Yes;
+    }
+    return Answer::Unclear;
+}
+
+QJsonArray toJsonArray(const QStringList &l)
+{
+    return QJsonArray::fromStringList(l);
 }
 
 } // namespace
 
+// --- construction ---------------------------------------------------------------
+
 VoiceController::VoiceController(QObject *parent)
     : QObject(parent)
 {
-    refresh();
+    m_clock.start();
+    m_engine = new VoiceEngine(this);
+    connect(m_engine, &VoiceEngine::statusChanged, this, &VoiceController::onEngineStatus);
+    connect(m_engine, &VoiceEngine::event, this, &VoiceController::onEngineEvent);
+    connect(m_engine, &VoiceEngine::processStarted, this, [this]() {
+        // Sent before the models have even loaded: the helper must know about
+        // a privacy mute (and an off wake word) before it opens the microphone.
+        m_lastConfigSent = {};
+        m_lastMuteSent = -1;
+        syncHelperConfig(true);
+    });
+
+    m_listenWatchdog = new QTimer(this);
+    m_listenWatchdog->setSingleShot(true);
+    connect(m_listenWatchdog, &QTimer::timeout, this, [this]() {
+        if (!m_listenActive)
+            return;
+        const bool command = m_listenMode == QLatin1String("command");
+        m_engine->send({{QStringLiteral("cmd"), QStringLiteral("cancel")}});
+        clearListen();
+        setPartial({});
+        if (command) {
+            endVoiceTurn();
+            Q_EMIT unavailable(tr("The voice engine stopped responding while listening."));
+        }
+        updateState();
+    });
+
+    m_levelTimer = new QTimer(this);
+    m_levelTimer->setInterval(kLevelIntervalMs);
+    connect(m_levelTimer, &QTimer::timeout, this, &VoiceController::tickLevels);
+
+    // Screenshot/test hooks: realistic live values without a microphone.
+    const QString partial = qEnvironmentVariable("SHADOW_ASSISTANT_TEST_PARTIAL");
+    if (!partial.isEmpty()) {
+        m_partial = partial;
+        m_testPartial = true;
+    }
+    bool ok = false;
+    const double level = qEnvironmentVariable("SHADOW_ASSISTANT_TEST_LEVEL").toDouble(&ok);
+    if (ok) {
+        m_testLevel = true;
+        m_micLevel = m_speechLevel = qBound(0.0, level, 1.0);
+    }
+
+    detectTools();
+    updateEngine();
+    updateState();
 }
 
 VoiceController::~VoiceController()
 {
-    stopWakeListener();
-    if (m_capture) { m_capture->kill(); m_capture->waitForFinished(500); }
-    if (m_speak) { m_speak->kill(); m_speak->waitForFinished(500); }
+    if (m_agent)
+        disconnect(m_agent, nullptr, this, nullptr);
+    // Application exit: no eSpeak or installer is left running behind us.
+    for (QProcess *p : {m_espeak, m_install}) {
+        if (!p)
+            continue;
+        p->disconnect(this);
+        p->kill();
+        p->waitForFinished(300);
+    }
+}
+
+void VoiceController::componentComplete()
+{
+    start();
+}
+
+void VoiceController::start()
+{
+    if (m_started)
+        return;
+    m_started = true;
+    m_engine->start();
+    updateEngine();
+    updateState();
+}
+
+void VoiceController::detectTools()
+{
+    m_espeakBin = QStandardPaths::findExecutable(QStringLiteral("espeak-ng"));
+    m_wtype = !QStandardPaths::findExecutable(QStringLiteral("wtype")).isEmpty();
+    m_xdotool = !QStandardPaths::findExecutable(QStringLiteral("xdotool")).isEmpty();
+}
+
+QString VoiceController::locateSetupTool(QString *why)
+{
+    const QString env = qEnvironmentVariable("SHADOW_VOICE_SETUP");
+    if (!env.isEmpty()) {
+        const QFileInfo fi(env);
+        if (fi.isFile() && fi.isExecutable())
+            return env;
+        if (why)
+            *why = tr("SHADOW_VOICE_SETUP points to %1, which is not an executable file.").arg(env);
+        return {};
+    }
+    QStringList candidates;
+    const QString appDir = QCoreApplication::applicationDirPath();
+    if (!appDir.isEmpty())
+        candidates << appDir + QStringLiteral("/shadow-voice-setup");
+    candidates << QStringLiteral("/usr/bin/shadow-voice-setup") << QStringLiteral("/usr/local/bin/shadow-voice-setup");
+    candidates.removeDuplicates();
+    for (const QString &c : std::as_const(candidates)) {
+        const QFileInfo fi(c);
+        if (fi.isFile() && fi.isExecutable())
+            return c;
+    }
+    if (why)
+        *why = tr("The voice setup tool (shadow-voice-setup) is not installed — looked in %1.")
+                   .arg(candidates.join(QStringLiteral(", ")));
+    return {};
 }
 
 void VoiceController::setConfig(AssistantConfig *c)
@@ -79,778 +256,1311 @@ void VoiceController::setConfig(AssistantConfig *c)
     onConfigChanged();
 }
 
+void VoiceController::setAgent(Assistant *a)
+{
+    if (m_agent == a)
+        return;
+    if (m_agent)
+        disconnect(m_agent, nullptr, this, nullptr);
+    m_agent = a;
+    if (a) {
+        connect(a, &Assistant::replyDelta, this, &VoiceController::onReplyDelta);
+        connect(a, &Assistant::replySegmentFinished, this, &VoiceController::onReplySegmentFinished);
+        connect(a, &Assistant::assistantReplyReady, this, &VoiceController::onAssistantReplyReady);
+        connect(a, &Assistant::confirmationNeeded, this, &VoiceController::onConfirmationNeeded);
+        connect(a, &Assistant::errorMessage, this, &VoiceController::onAgentError);
+        connect(a, &Assistant::stopped, this, &VoiceController::onAgentStopped);
+        connect(a, &Assistant::phaseChanged, this, &VoiceController::onAgentPhaseChanged);
+        if (!m_config)
+            setConfig(a->config());
+    }
+    Q_EMIT agentChanged();
+}
+
+// --- engine status and events -------------------------------------------------
+
+void VoiceController::onEngineStatus()
+{
+    if (!m_engine->isReady()) {
+        // Whatever the helper was doing is gone with it.
+        m_helperState.clear();
+        m_micStatus.clear();
+        m_micMessage.clear();
+        if (m_listenActive) {
+            const bool command = m_listenMode == QLatin1String("command");
+            clearListen();
+            setPartial({});
+            if (command) {
+                endVoiceTurn();
+                Q_EMIT unavailable(tr("The voice engine stopped while listening."));
+            }
+        }
+        // Speech queued in the helper will never report its end: run what
+        // waited for it as interrupted (a yes/no prompt leaves the card).
+        const QSet<QString> lost = m_helperSpeech;
+        m_helperSpeech.clear();
+        for (const QString &id : lost)
+            onSpeechEnded(id, true);
+        m_captureTool = m_engine->probeResult().value(QStringLiteral("capture")).toString();
+    } else {
+        m_captureTool = m_engine->readyInfo().value(QStringLiteral("capture")).toString();
+        syncHelperConfig(true);
+    }
+    updateEngine();
+    updateState();
+    Q_EMIT capabilitiesChanged();
+}
+
+void VoiceController::onEngineEvent(const QJsonObject &ev)
+{
+    const QString e = ev.value(QStringLiteral("event")).toString();
+    if (e == QLatin1String("level")) {
+        noteLevel(ev.value(QStringLiteral("source")).toString(), ev.value(QStringLiteral("rms")).toDouble());
+    } else if (e == QLatin1String("state")) {
+        m_helperState = ev.value(QStringLiteral("value")).toString();
+        updateState();
+    } else if (e == QLatin1String("partial")) {
+        setPartial(ev.value(QStringLiteral("text")).toString());
+    } else if (e == QLatin1String("final")) {
+        handleFinal(ev);
+    } else if (e == QLatin1String("timeout")) {
+        handleTimeout(ev);
+    } else if (e == QLatin1String("wake")) {
+        // "kws" is only an early acoustic hit; the transcript confirms it.
+        if (ev.value(QStringLiteral("via")).toString() == QLatin1String("stt"))
+            Q_EMIT wakeDetected();
+    } else if (e == QLatin1String("wake_rejected")) {
+        setPartial({});
+    } else if (e == QLatin1String("speak_end")) {
+        const QString id = ev.value(QStringLiteral("id")).toString();
+        m_helperSpeech.remove(id);
+        onSpeechEnded(id, ev.value(QStringLiteral("interrupted")).toBool());
+    } else if (e == QLatin1String("mic")) {
+        handleMic(ev);
+    } else if (e == QLatin1String("error")) {
+        if (ev.value(QStringLiteral("fatal")).toBool())
+            return; // the helper exits; VoiceEngine reports and restarts it
+        const QString msg = ev.value(QStringLiteral("message")).toString();
+        const qint64 now = m_clock.elapsed();
+        if (msg == m_lastErrorText && now - m_lastErrorAt < 10000)
+            return; // the same complaint again: one toast is enough
+        m_lastErrorText = msg;
+        m_lastErrorAt = now;
+        Q_EMIT unavailable(tr("Voice engine: %1").arg(msg));
+    }
+}
+
+void VoiceController::handleMic(const QJsonObject &ev)
+{
+    const QString status = ev.value(QStringLiteral("status")).toString();
+    const QString tool = ev.value(QStringLiteral("tool")).toString();
+    const QString before = m_micStatus;
+    m_micStatus = status;
+    m_micMessage = ev.value(QStringLiteral("message")).toString();
+    if (!tool.isEmpty())
+        m_captureTool = tool;
+    if (status == QLatin1String("error") && before != QLatin1String("error")) {
+        if (m_listenActive) {
+            const bool command = m_listenMode == QLatin1String("command");
+            m_engine->send({{QStringLiteral("cmd"), QStringLiteral("cancel")}});
+            clearListen();
+            setPartial({});
+            if (command)
+                endVoiceTurn();
+        }
+        Q_EMIT unavailable(tr("Microphone not available: %1")
+                               .arg(m_micMessage.isEmpty() ? tool : m_micMessage));
+    }
+    updateState();
+    Q_EMIT capabilitiesChanged();
+}
+
 void VoiceController::onConfigChanged()
 {
-    syncWakeListener();
-    // Muted/engine changes affect the resting state and capability summary.
-    if (m_state == QLatin1String("idle") || m_state == QLatin1String("muted")
-        || m_state == QLatin1String("unavailable"))
-        setState(m_config && m_config->micMuted() ? QStringLiteral("muted")
-                 : anyEngine() || captureAvailable() ? QStringLiteral("idle")
-                 : QStringLiteral("unavailable"));
+    const bool muted = m_config && m_config->micMuted();
+    if (muted && m_listenActive) {
+        // Privacy first: a mute ends any listen at once (the helper also
+        // stops its capture when it gets the mute command).
+        const bool command = m_listenMode == QLatin1String("command");
+        m_engine->send({{QStringLiteral("cmd"), QStringLiteral("cancel")}});
+        clearListen();
+        setPartial({});
+        m_yesNoTag.clear();
+        if (command)
+            endVoiceTurn();
+    }
+    syncHelperConfig(false);
+    updateEngine();
+    updateState();
     Q_EMIT capabilitiesChanged();
 }
 
-void VoiceController::refresh()
+void VoiceController::syncHelperConfig(bool force)
 {
-    m_piper = Command::available(QStringLiteral("piper"));
-    m_speechd = Command::available(QStringLiteral("spd-say"));
-    m_espeak = Command::available(QStringLiteral("espeak-ng")) || Command::available(QStringLiteral("espeak"));
-    m_wtype = Command::available(QStringLiteral("wtype"));
-    m_xdotool = Command::available(QStringLiteral("xdotool"));
+    if (!m_config || !m_engine->isRunning())
+        return;
+    const bool muted = m_config->micMuted();
+    if (force || m_lastMuteSent != int(muted)) {
+        m_engine->send({{QStringLiteral("cmd"), QStringLiteral("mute")}, {QStringLiteral("value"), muted}});
+        m_lastMuteSent = int(muted);
+    }
+    const QJsonObject cfg{
+        {QStringLiteral("cmd"), QStringLiteral("config")},
+        {QStringLiteral("voice"), m_config->voice()},
+        {QStringLiteral("speed"), m_config->speechRate()},
+        {QStringLiteral("wake"), m_config->wakeEnabled()},
+        {QStringLiteral("wake_sensitivity"), m_config->wakeSensitivity()},
+        {QStringLiteral("stt"), m_config->sttModel()},
+        {QStringLiteral("input_device"), m_config->inputDevice()},
+        {QStringLiteral("muted"), muted},
+        {QStringLiteral("follow_up_secs"), m_config->followUp() ? kFollowUpTimeoutS : 0.0},
+    };
+    if (!force && cfg == m_lastConfigSent)
+        return;
+    if (m_engine->send(cfg))
+        m_lastConfigSent = cfg;
+}
 
-    m_pocketsphinxBin.clear();
-    if (Command::available(QStringLiteral("pocketsphinx_continuous")))
-        m_pocketsphinxBin = QStringLiteral("pocketsphinx_continuous");
-    else if (Command::available(QStringLiteral("pocketsphinx")))
-        m_pocketsphinxBin = QStringLiteral("pocketsphinx");
-    m_sttPocketsphinx = !m_pocketsphinxBin.isEmpty() && !modelDir().isEmpty();
-    m_wakePocketsphinx = !m_pocketsphinxBin.isEmpty();
-
-    // Resolve the capture tool (config override, then availability).
-    m_captureTool.clear();
-    const QString want = m_config ? m_config->captureTool() : QStringLiteral("auto");
-    auto pick = [&](const QString &t) { return Command::available(t) ? t : QString(); };
-    if (want != QLatin1String("auto") && !want.isEmpty())
-        m_captureTool = pick(want);
-    if (m_captureTool.isEmpty()) {
-        for (const QString &t : {QStringLiteral("parecord"), QStringLiteral("pw-record"), QStringLiteral("arecord")}) {
-            m_captureTool = pick(t);
-            if (!m_captureTool.isEmpty())
-                break;
+void VoiceController::updateEngine()
+{
+    using S = VoiceEngine::Status;
+    QString name;
+    QString msg;
+    const S st = m_engine->status();
+    const bool espeak = !m_espeakBin.isEmpty();
+    const QString installHint = tr("To install it, run: shadow-voice-setup — or use Install in Settings.");
+    if (st == S::Ready) {
+        name = QStringLiteral("neural");
+    } else if (m_installing) {
+        name = QStringLiteral("installing");
+        msg = m_installStatus.isEmpty() ? tr("Installing the natural voice…") : m_installStatus;
+    } else {
+        switch (st) {
+        case S::Stopped:
+        case S::Probing:
+        case S::Starting:
+        case S::Restarting:
+            name = QStringLiteral("starting");
+            msg = m_engine->message().isEmpty() ? tr("Starting the natural voice…") : m_engine->message();
+            break;
+        case S::Unavailable: {
+            name = espeak ? QStringLiteral("basic") : QStringLiteral("missing");
+            const bool helperMissing = m_engine->unavailableKind() == QLatin1String("helper");
+            QString fix = helperMissing
+                ? tr("Reinstall Shadow Assistant (it ships the voice helper), then run: shadow-voice-setup.")
+                : installHint;
+            if (!helperMissing && m_engine->message().contains(QLatin1String("shadow-voice-setup")))
+                fix.clear(); // the helper's own reason already names the fix
+            fix = fix.trimmed();
+            msg = (espeak
+                ? tr("Basic voice: replies are spoken with eSpeak NG; listening and the wake word need the "
+                     "natural voice. %1 %2").arg(m_engine->message(), fix)
+                : tr("No voice is available: %1 eSpeak NG (espeak-ng) is not installed either. %2")
+                      .arg(m_engine->message(), fix)).trimmed();
+            break;
+        }
+        case S::Failed:
+            name = QStringLiteral("error");
+            msg = m_engine->message() + QStringLiteral("\n")
+                + tr("Check the voice engine again (refresh) to restart it.");
+            break;
+        case S::Ready:
+            break;
         }
     }
-    onConfigChanged();
+    if (!m_started && st == S::Stopped)
+        msg = tr("The voice engine has not been started yet.");
+    if (name == m_engineName && msg == m_engineMessage)
+        return;
+    m_engineName = name;
+    m_engineMessage = msg;
+    Q_EMIT engineChanged();
     Q_EMIT capabilitiesChanged();
 }
 
-QString VoiceController::modelDir() const
+void VoiceController::updateState()
 {
-    if (m_config && !m_config->pocketsphinxModel().isEmpty()
-        && QFileInfo::exists(m_config->pocketsphinxModel()))
-        return m_config->pocketsphinxModel();
-    for (const QString &d : kModelProbe)
-        if (QFileInfo(d).isDir() && QFileInfo::exists(d + QStringLiteral("/means")))
-            return d;
-    // Fall back to the first that merely exists as a directory.
-    for (const QString &d : kModelProbe)
-        if (QFileInfo(d).isDir())
-            return d;
-    return {};
+    const bool muted = m_config && m_config->micMuted();
+    const bool neural = m_engineName == QLatin1String("neural");
+    QString s;
+    if (m_helperState == QLatin1String("speaking") || m_espeak || !m_espeakOpen.isEmpty())
+        s = QStringLiteral("speaking");
+    else if (neural && (m_helperState == QLatin1String("listening") || m_helperState == QLatin1String("transcribing")))
+        s = m_helperState;
+    else if (muted)
+        s = QStringLiteral("muted");
+    else if (neural)
+        s = QStringLiteral("idle");
+    else if (m_engineName == QLatin1String("starting") || m_engineName == QLatin1String("installing"))
+        s = QStringLiteral("starting");
+    else if (m_engineName == QLatin1String("basic") || (m_engineName == QLatin1String("error") && !m_espeakBin.isEmpty()))
+        s = QStringLiteral("idle"); // eSpeak can still speak
+    else
+        s = QStringLiteral("unavailable");
+    if (s == m_state)
+        return;
+    m_state = s;
+    Q_EMIT stateChanged();
+    if ((capturing() || speaking()) && !m_levelTimer->isActive() && !m_testLevel)
+        m_levelTimer->start();
+}
+
+// --- capability flags ---------------------------------------------------------------
+
+QStringList VoiceController::sttModels() const
+{
+    if (m_engine->status() == VoiceEngine::Status::Unavailable)
+        return {}; // nothing usable is installed
+    QStringList out;
+    auto collect = [&out](const QJsonValue &v) {
+        if (v.isArray()) {
+            const QJsonArray a = v.toArray();
+            for (const QJsonValue &x : a)
+                out << x.toString();
+        } else if (v.isString()) {
+            out << v.toString();
+        }
+    };
+    collect(m_engine->probeResult().value(QStringLiteral("stt")));
+    if (out.isEmpty())
+        collect(m_engine->readyInfo().value(QStringLiteral("stt_models")));
+    if (out.isEmpty())
+        collect(m_engine->readyInfo().value(QStringLiteral("stt")));
+    out.removeAll(QString());
+    out.removeDuplicates();
+    return out;
+}
+
+bool VoiceController::sttAvailable() const
+{
+    return m_engine->isReady() && !sttModels().isEmpty();
+}
+
+bool VoiceController::wakeAvailable() const
+{
+    return m_engine->isReady() && (m_engine->readyInfo().value(QStringLiteral("kws")).toBool() || sttAvailable());
+}
+
+bool VoiceController::captureAvailable() const
+{
+    return m_engine->isReady() && !m_captureTool.isEmpty() && m_micStatus != QLatin1String("error");
+}
+
+bool VoiceController::armed() const
+{
+    return m_engineName == QLatin1String("neural") && m_config && m_config->wakeEnabled()
+        && !m_config->micMuted() && wakeAvailable() && m_micStatus != QLatin1String("error");
 }
 
 QString VoiceController::resolvedTtsEngine() const
 {
-    const QString want = m_config ? m_config->ttsEngine() : QStringLiteral("auto");
-    auto ok = [&](const QString &e) {
-        return (e == QLatin1String("piper") && m_piper && m_config && !m_config->piperModel().isEmpty())
-            || (e == QLatin1String("speechd") && m_speechd)
-            || (e == QLatin1String("espeak") && m_espeak);
-    };
-    if (want != QLatin1String("auto") && ok(want))
-        return want;
-    // auto (or an unavailable forced choice): best available, piper first.
-    if (m_piper && m_config && !m_config->piperModel().isEmpty())
-        return QStringLiteral("piper");
-    if (m_speechd)
-        return QStringLiteral("speechd");
-    if (m_espeak)
-        return QStringLiteral("espeak");
-    return QString();
+    const QString pref = m_config ? m_config->ttsEngine() : QStringLiteral("auto");
+    const bool neural = m_engine->isReady();
+    const bool espeak = !m_espeakBin.isEmpty();
+    if (pref == QLatin1String("espeak"))
+        return espeak ? QStringLiteral("espeak") : QString();
+    if (pref == QLatin1String("neural"))
+        return neural ? QStringLiteral("kokoro") : QString();
+    if (neural)
+        return QStringLiteral("kokoro");
+    return espeak ? QStringLiteral("espeak") : QString();
+}
+
+QVariantList VoiceController::voices() const
+{
+    QSet<QString> installed;
+    const QJsonArray have = m_engine->readyInfo().value(QStringLiteral("voices")).toArray();
+    for (const QJsonValue &v : have)
+        installed.insert(v.toString());
+    const bool ready = m_engine->isReady();
+    QVariantList out;
+    for (const CuratedVoice &v : kVoices) {
+        const QString id = QString::fromLatin1(v.id);
+        out << QVariantMap{
+            {QStringLiteral("id"), id},
+            {QStringLiteral("name"), tr2(v.name)},
+            {QStringLiteral("accent"), tr2(v.accent)},
+            {QStringLiteral("description"), tr2(v.description)},
+            {QStringLiteral("available"), ready && (installed.isEmpty() || installed.contains(id))},
+        };
+    }
+    return out;
 }
 
 QString VoiceController::statusText() const
 {
+    if (m_installing)
+        return tr("Installing the natural voice… %1 %").arg(qRound(m_installProgress * 100));
+    const bool muted = m_config && m_config->micMuted();
+    if (m_engineName == QLatin1String("neural")) {
+        QStringList parts;
+        if (resolvedTtsEngine() == QLatin1String("espeak"))
+            parts << tr("Natural voice ready") << tr("speaking with eSpeak NG");
+        else
+            parts << tr("Natural voice ready") << voiceName(m_config ? m_config->voice() : QStringLiteral("af_heart"));
+        if (muted)
+            parts << tr("microphone muted");
+        else if (m_micStatus == QLatin1String("error"))
+            parts << tr("microphone unavailable");
+        else if (armed())
+            parts << tr("listening for “Shadow”");
+        else if (m_config && !m_config->wakeEnabled())
+            parts << tr("wake word off");
+        return parts.join(QStringLiteral(" · "));
+    }
+    if (m_engineName == QLatin1String("starting"))
+        return tr("Starting the natural voice…");
+    if (m_engineName == QLatin1String("error"))
+        return tr("The voice engine failed · see details");
+    // basic / missing: what is missing, and the fix.
+    const bool helperMissing = m_engine->unavailableKind() == QLatin1String("helper");
+    const QString what = helperMissing ? tr("voice helper not installed — reinstall Shadow Assistant")
+                                       : tr("natural voice not installed — run shadow-voice-setup or use Install");
+    if (m_engineName == QLatin1String("basic"))
+        return tr("Basic voice (eSpeak NG) · %1").arg(what);
+    return tr("No voice · %1").arg(what);
+}
+
+// --- listening ----------------------------------------------------------------------
+
+QString VoiceController::newId(const QString &prefix)
+{
+    return prefix + QString::number(++m_seq);
+}
+
+QString VoiceController::listenBlocker() const
+{
     if (m_config && m_config->micMuted())
-        return tr("Microphone muted");
-    QStringList parts;
-    const QString tts = resolvedTtsEngine();
-    parts << (tts.isEmpty() ? tr("speech output unavailable")
-                            : tr("speaks via %1").arg(tts == QLatin1String("speechd") ? QStringLiteral("speech-dispatcher") : tts));
-    parts << (m_sttPocketsphinx ? tr("offline STT ready") : tr("STT engine not installed"));
-    if (wakeAvailable())
-        parts << tr("wake word ready");
-    else if (!captureAvailable())
-        parts << tr("no microphone capture tool");
-    return parts.join(QStringLiteral(" · "));
-}
-
-void VoiceController::setState(const QString &s)
-{
-    if (s == m_state)
-        return;
-    // The microphone still hears the end of the assistant's own speech (and
-    // the listener reports a phrase only after a short silence): ignore what
-    // it hears for a moment after speaking, so a reply that mentions "Shadow"
-    // can never wake it or answer its own question.
-    if (m_state == QLatin1String("speaking"))
-        m_quietUntil = QDateTime::currentMSecsSinceEpoch() + 1200;
-    m_state = s;
-    Q_EMIT stateChanged();
-}
-
-void VoiceController::beginVoiceTurn()
-{
-    if (m_voiceTurn)
-        return;
-    m_voiceTurn = true;
-    Q_EMIT voiceTurnChanged();
-}
-
-void VoiceController::endVoiceTurn()
-{
-    if (!m_voiceTurn)
-        return;
-    m_voiceTurn = false;
-    Q_EMIT voiceTurnChanged();
-}
-
-// --- capture + transcription -------------------------------------------------
-
-QStringList VoiceController::captureArgv(const QString &outWav, int seconds) const
-{
-    const QString dev = m_config ? m_config->inputDevice() : QString();
-    if (m_captureTool == QLatin1String("parecord")) {
-        QStringList a{QStringLiteral("--rate=16000"), QStringLiteral("--channels=1"),
-                      QStringLiteral("--format=s16le"), QStringLiteral("--file-format=wav")};
-        if (!dev.isEmpty())
-            a << QStringLiteral("--device=") + dev;
-        a << outWav;
-        return a;
-    }
-    if (m_captureTool == QLatin1String("pw-record")) {
-        QStringList a{QStringLiteral("--rate"), QStringLiteral("16000"),
-                      QStringLiteral("--channels"), QStringLiteral("1"),
-                      QStringLiteral("--format"), QStringLiteral("s16")};
-        if (!dev.isEmpty())
-            a << QStringLiteral("--target") << dev;
-        a << outWav;
-        return a;
-    }
-    if (m_captureTool == QLatin1String("arecord")) {
-        QStringList a{QStringLiteral("-f"), QStringLiteral("S16_LE"), QStringLiteral("-r"), QStringLiteral("16000"),
-                      QStringLiteral("-c"), QStringLiteral("1"), QStringLiteral("-t"), QStringLiteral("wav"),
-                      QStringLiteral("-d"), QString::number(seconds)};
-        if (!dev.isEmpty())
-            a << QStringLiteral("-D") << dev;
-        a << outWav;
-        return a;
-    }
+        return tr("The microphone is muted.");
+    if (m_engineName == QLatin1String("installing") || (m_installing && !m_engine->isReady()))
+        return tr("The natural voice is being installed — try again when it is ready.");
+    if (m_engineName == QLatin1String("starting"))
+        return tr("The voice engine is still starting — try again in a moment.");
+    if (m_engineName == QLatin1String("basic") || m_engineName == QLatin1String("missing"))
+        return tr("Speech recognition is not installed. Run: shadow-voice-setup — or use Install in Settings.");
+    if (m_engineName == QLatin1String("error"))
+        return tr("The voice engine failed: %1").arg(m_engineMessage.section(u'\n', 0, 0));
+    if (!sttAvailable())
+        return tr("No speech recognition model is installed. Run: shadow-voice-setup");
+    if (m_micStatus == QLatin1String("error"))
+        return tr("Microphone not available: %1").arg(m_micMessage);
+    if (m_captureTool.isEmpty())
+        return tr("Microphone not available: no capture tool (pw-record, parec or arecord) was found.");
     return {};
 }
 
-void VoiceController::startCommandCapture()
+void VoiceController::startListen(const QString &mode, double timeoutSecs)
 {
-    if (m_config && m_config->micMuted()) {
-        Q_EMIT unavailable(tr("The microphone is muted."));
+    const QString prefix = mode == QLatin1String("yesno") ? QStringLiteral("yn")
+        : mode == QLatin1String("followup")               ? QStringLiteral("f")
+                                                           : QStringLiteral("l");
+    const QString id = newId(prefix);
+    if (!m_engine->send({{QStringLiteral("cmd"), QStringLiteral("listen")},
+                         {QStringLiteral("id"), id},
+                         {QStringLiteral("mode"), mode},
+                         {QStringLiteral("timeout"), timeoutSecs}}))
+        return;
+    m_listenActive = true;
+    m_listenId = id;
+    m_listenMode = mode;
+    m_listenWatchdog->start(int(timeoutSecs * 1000) + kListenGraceMs);
+}
+
+void VoiceController::clearListen()
+{
+    m_listenActive = false;
+    m_listenId.clear();
+    m_listenMode.clear();
+    m_listenWatchdog->stop();
+}
+
+void VoiceController::startListening()
+{
+    const QString why = listenBlocker();
+    if (!why.isEmpty()) {
+        Q_EMIT unavailable(why); // voiceTurn is left as it was (never switched on here)
         return;
     }
-    if (!captureAvailable()) {
-        Q_EMIT unavailable(tr("No microphone capture tool (parecord / pw-record / arecord) is available."));
+    if (m_listenActive)
         return;
-    }
-    if (!m_sttPocketsphinx) {
-        Q_EMIT unavailable(tr("No speech-to-text engine is installed (pocketsphinx + an en-us model)."));
-        return;
-    }
-    if (m_capture || m_listenerCommand)
-        return; // already capturing
-    stopSpeaking();                 // barge-in: stop any reply first
-    if (listenerTranscribes()) {
-        // The running listener hears the command and knows when it ends.
-        awaitCommandFromListener();
-        return;
-    }
-    const int secs = m_config ? m_config->maxUtteranceSecs() : 12;
-    m_captureWav = tmpWav(QStringLiteral("cmd"));
-    const QStringList argv = captureArgv(m_captureWav, secs);
-    m_capture = new QProcess(this);
-    connect(m_capture, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
-        const QString wav = m_captureWav;
-        m_capture->deleteLater();
-        m_capture = nullptr;
-        transcribeCapturedFile(wav);
-    });
-    setState(QStringLiteral("listening"));
-    m_capture->start(argv.first(), argv.mid(1));
-    // Stop capturing after the max utterance window (parecord/pw-record have no
-    // built-in duration; arecord self-terminates with -d but we still guard).
-    QTimer::singleShot(secs * 1000 + 300, this, [this]() {
-        if (m_capture && m_capture->state() != QProcess::NotRunning)
-            m_capture->terminate();
-    });
-}
-
-void VoiceController::transcribeCapturedFile(const QString &wavPath)
-{
-    setState(QStringLiteral("transcribing"));
-    QProcess *p = new QProcess(this);
-    const QStringList argv = pocketsphinxTranscribeArgv(wavPath);
-    const bool yesNo = m_awaitingYesNo;
-    const QString tag = m_pendingTag;
-    connect(p, &QProcess::finished, this, [this, p, wavPath, yesNo, tag](int, QProcess::ExitStatus) {
-        QString out = QString::fromUtf8(p->readAllStandardOutput());
-        p->deleteLater();
-        QFile::remove(wavPath);
-        // pocketsphinx 5.x may print JSON; classic prints the plain hypothesis.
-        QString text = out.trimmed();
-        if (text.startsWith(QLatin1Char('{')) || text.startsWith(QLatin1Char('['))) {
-            // Extract any "w" word tokens or a top-level hypothesis field.
-            QStringList words;
-            for (const QString &line : text.split(QLatin1Char('\n'))) {
-                QJsonParseError e{};
-                const QJsonDocument d = QJsonDocument::fromJson(line.toUtf8(), &e);
-                if (e.error != QJsonParseError::NoError)
-                    continue;
-                const QJsonObject o = d.object();
-                if (o.contains(QStringLiteral("t")))
-                    words << o.value(QStringLiteral("t")).toString();
-                else if (o.contains(QStringLiteral("hypothesis")))
-                    words << o.value(QStringLiteral("hypothesis")).toString();
-            }
-            if (!words.isEmpty())
-                text = words.join(QLatin1Char(' '));
-        }
-        text = text.simplified();
-        setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
-        if (yesNo) {
-            m_awaitingYesNo = false;
-            m_pendingTag.clear();
-            Q_EMIT yesNoResult(tag, looksLikeYes(text));
-            return;
-        }
-        if (text.isEmpty())
-            Q_EMIT unavailable(tr("I didn't catch that."));
-        else
-            Q_EMIT transcriptReady(text);
-    });
-    p->start(argv.first(), argv.mid(1));
-}
-
-QStringList VoiceController::pocketsphinxTranscribeArgv(const QString &wavPath) const
-{
-    const QString md = modelDir();
-    if (m_pocketsphinxBin == QLatin1String("pocketsphinx_continuous")) {
-        QStringList a{QStringLiteral("-infile"), wavPath, QStringLiteral("-logfn"), QStringLiteral("/dev/null")};
-        if (!md.isEmpty())
-            a << QStringLiteral("-hmm") << md;
-        return QStringList{m_pocketsphinxBin} << a;
-    }
-    // pocketsphinx 5.x: `pocketsphinx single WAV`.
-    QStringList a{QStringLiteral("single"), wavPath};
-    if (!md.isEmpty())
-        a << QStringLiteral("-hmm") << md;
-    return QStringList{m_pocketsphinxBin} << a;
-}
-
-QString VoiceController::transcribeWavSync(const QString &wavPath, QString *error) const
-{
-    if (m_pocketsphinxBin.isEmpty()) {
-        if (error) *error = tr("pocketsphinx is not installed");
-        return {};
-    }
-    if (!QFileInfo::exists(wavPath)) {
-        if (error) *error = tr("no such file: %1").arg(wavPath);
-        return {};
-    }
-    const QStringList argv = pocketsphinxTranscribeArgv(wavPath);
-    const CommandResult r = Command::runSync(argv.first(), argv.mid(1), 60000);
-    if (r.exitCode != 0 && r.outText().trimmed().isEmpty()) {
-        if (error) *error = r.errText().isEmpty() ? tr("exit code %1").arg(r.exitCode) : r.errText();
-        return {};
-    }
-    QString text = r.outText().trimmed();
-    if (text.startsWith(QLatin1Char('{'))) {
-        QStringList words;
-        for (const QString &line : text.split(QLatin1Char('\n'))) {
-            const QJsonObject o = QJsonDocument::fromJson(line.toUtf8()).object();
-            if (o.contains(QStringLiteral("t")))
-                words << o.value(QStringLiteral("t")).toString();
-        }
-        if (!words.isEmpty())
-            text = words.join(QLatin1Char(' '));
-    }
-    return text.simplified();
-}
-
-bool VoiceController::wakePhraseInWavSync(const QString &wavPath, const QString &phrase,
-                                          double threshold, QString *error) const
-{
-    if (m_pocketsphinxBin.isEmpty()) {
-        if (error) *error = tr("pocketsphinx is not installed");
-        return false;
-    }
-    const QString md = modelDir();
-    QStringList argv;
-    if (m_pocketsphinxBin == QLatin1String("pocketsphinx_continuous")) {
-        argv << m_pocketsphinxBin << QStringLiteral("-infile") << wavPath
-             << QStringLiteral("-keyphrase") << phrase
-             << QStringLiteral("-kws_threshold") << QString::number(threshold, 'g', 3)
-             << QStringLiteral("-logfn") << QStringLiteral("/dev/null");
-        if (!md.isEmpty())
-            argv << QStringLiteral("-hmm") << md;
-    } else {
-        argv << m_pocketsphinxBin << QStringLiteral("-keyphrase") << phrase
-             << QStringLiteral("single") << wavPath;
-        if (!md.isEmpty())
-            argv << QStringLiteral("-hmm") << md;
-    }
-    const CommandResult r = Command::runSync(argv.first(), argv.mid(1), 60000);
-    const QString hay = (r.outText() + QLatin1Char('\n') + r.errText()).toLower();
-    return hay.contains(phrase.toLower());
-}
-
-// --- wake listener -----------------------------------------------------------
-
-QStringList VoiceController::pocketsphinxKeyphraseLiveArgv() const
-{
-    const QString phrase = m_config ? m_config->wakePhrase() : QStringLiteral("shadow");
-    const double thr = m_config ? m_config->wakeThreshold() : 1e-20;
-    const QString md = modelDir();
-    QStringList argv;
-    if (m_pocketsphinxBin == QLatin1String("pocketsphinx_continuous")) {
-        // Transcribe every phrase (with the general English language model)
-        // rather than spot the keyphrase alone: the words after "Shadow" are
-        // the command, and the end of a phrase is where the user stops
-        // talking. Keyphrase spotting reported "shadow" only at the end of the
-        // whole sentence, by which time the command had already been said.
-        Q_UNUSED(phrase);
-        Q_UNUSED(thr);
-        argv << m_pocketsphinxBin << QStringLiteral("-inmic") << QStringLiteral("yes")
-             << QStringLiteral("-logfn") << QStringLiteral("/dev/null");
-        if (!md.isEmpty())
-            argv << QStringLiteral("-hmm") << md;
-        const QString dev = m_config ? m_config->inputDevice() : QString();
-        if (!dev.isEmpty())
-            argv << QStringLiteral("-adcdev") << dev;
-    } else {
-        argv << m_pocketsphinxBin << QStringLiteral("-keyphrase") << phrase << QStringLiteral("live");
-        if (!md.isEmpty())
-            argv << QStringLiteral("-hmm") << md;
-    }
-    return argv;
-}
-
-void VoiceController::listenNow()
-{
-    m_forceListen = true;
-    syncWakeListener();
-}
-
-bool VoiceController::listenerTranscribes() const
-{
-    return m_wake && m_wake->state() == QProcess::Running
-        && m_pocketsphinxBin == QLatin1String("pocketsphinx_continuous");
-}
-
-QString VoiceController::wakeRemainder(const QString &utterance, const QString &phrase, bool *hit)
-{
-    *hit = false;
-    const QString text = utterance.toLower().simplified();
-    QStringList words = phrase.toLower().simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
-    if (words.isEmpty() || text.isEmpty())
-        return {};
-    for (QString &w : words)
-        w = QRegularExpression::escape(w);
-    // "shadow", "hey shadow", "ok shadow", "shadow's"/"shadows" (how the
-    // recogniser sometimes hears it), as whole words anywhere in the phrase.
-    const QRegularExpression re(QStringLiteral("(?:^|\\s)(?:(?:hey|hi|ok|okay)\\s+)?%1(?:'s|s)?(?=\\s|$)")
-                                    .arg(words.join(QStringLiteral("\\s+"))));
-    const QRegularExpressionMatch m = re.match(text);
-    if (!m.hasMatch())
-        return {};
-    *hit = true;
-    return text.mid(m.capturedEnd()).trimmed();
-}
-
-void VoiceController::onListenerLine(const QString &line)
-{
-    const QString text = line.toLower().simplified();
-    if (text.isEmpty() || (m_config && m_config->micMuted()))
-        return;
-    if (m_state == QLatin1String("speaking") || QDateTime::currentMSecsSinceEpoch() < m_quietUntil)
-        return;
-    const QString phrase = m_config ? m_config->wakePhrase() : QStringLiteral("shadow");
-    bool hit = false;
-    const QString rest = wakeRemainder(text, phrase, &hit);
-
-    if (m_listenerCommand) {
-        // The command after a bare "Shadow" (or push-to-talk); a repeated wake
-        // word in front of it is dropped, a wake word alone keeps waiting.
-        if (hit && rest.isEmpty())
-            return;
-        finishListenerCommand(hit ? rest : text);
-        return;
-    }
-    if (!hit || m_state != QLatin1String("idle"))
-        return;
-    Q_EMIT wakeDetected();
+    stopSpeech(true); // barge-in: the user wants to talk, not to listen
+    const bool turnWasOn = m_voiceTurn;
     beginVoiceTurn();
-    if (!listenerTranscribes()) {
-        // Keyphrase spotting only: record the command separately.
-        setState(QStringLiteral("wake"));
-        startCommandCapture();
-        return;
+    startListen(QStringLiteral("command"), kCommandTimeoutS);
+    if (!m_listenActive) {
+        if (!turnWasOn)
+            endVoiceTurn();
+        Q_EMIT unavailable(tr("The voice engine is not running."));
+    } else {
+        m_turnByListen = !turnWasOn;
     }
-    if (!rest.isEmpty()) {
-        Q_EMIT transcriptReady(rest);   // "Shadow, open the terminal"
-        return;
-    }
-    setState(QStringLiteral("wake"));
-    awaitCommandFromListener();         // "Shadow" … "open the terminal"
+    updateState();
 }
 
-void VoiceController::awaitCommandFromListener()
+void VoiceController::finishListening()
 {
-    m_listenerCommand = true;
-    setState(QStringLiteral("listening"));
-    if (!m_commandTimer) {
-        m_commandTimer = new QTimer(this);
-        m_commandTimer->setSingleShot(true);
-        connect(m_commandTimer, &QTimer::timeout, this, [this]() {
-            if (!m_listenerCommand)
-                return;
-            m_listenerCommand = false;
-            setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
-            if (m_awaitingYesNo) {
-                // No spoken answer: the on-screen card decides.
-                m_awaitingYesNo = false;
-                m_pendingTag.clear();
-                return;
-            }
+    // Also ends a listen the helper started itself after a bare "Shadow".
+    if (m_listenActive || capturing())
+        m_engine->send({{QStringLiteral("cmd"), QStringLiteral("finish")}});
+}
+
+void VoiceController::toggleListening()
+{
+    if (m_listenActive || capturing())
+        finishListening();
+    else
+        startListening();
+}
+
+void VoiceController::cancel()
+{
+    if (m_listenActive || capturing())
+        m_engine->send({{QStringLiteral("cmd"), QStringLiteral("cancel")}});
+    clearListen();
+    m_yesNoTag.clear();
+    stopSpeech(true);
+    setPartial({});
+    endVoiceTurn();
+    updateState();
+}
+
+void VoiceController::handleFinal(const QJsonObject &ev)
+{
+    const QString text = ev.value(QStringLiteral("text")).toString().trimmed();
+    const QString id = ev.value(QStringLiteral("id")).toString();
+    const bool mine = m_listenActive && id == m_listenId;
+    const QString mode = mine ? m_listenMode : ev.value(QStringLiteral("mode")).toString();
+    if (mine)
+        clearListen();
+    setPartial({});
+    if (!text.isEmpty() && text != m_lastHeard) {
+        m_lastHeard = text;
+        notifyLevels();
+    }
+    if (mode == QLatin1String("yesno")) {
+        // The helper classifies the answer itself ("answer": "yes"/"no"/null);
+        // without that (older helper) the text is classified here, same rules.
+        const QString answer = ev.value(QStringLiteral("answer")).toString();
+        handleYesNoAnswer(answer == QLatin1String("yes") || answer == QLatin1String("no") ? answer : text);
+        updateState();
+        return;
+    }
+    if (text.isEmpty()) {
+        if (mode == QLatin1String("command") && mine) {
             endVoiceTurn();
             Q_EMIT unavailable(tr("I didn't catch that."));
+        }
+        updateState();
+        return;
+    }
+    routeTranscript(text);
+    updateState();
+}
+
+void VoiceController::handleTimeout(const QJsonObject &ev)
+{
+    const QString id = ev.value(QStringLiteral("id")).toString();
+    setPartial({});
+    if (!m_listenActive || id != m_listenId)
+        return; // e.g. the helper's own listen after a bare "Shadow"
+    const QString mode = m_listenMode;
+    clearListen();
+    if (mode == QLatin1String("command")) {
+        endVoiceTurn();
+        Q_EMIT unavailable(tr("I didn't catch that."));
+    } else if (mode == QLatin1String("yesno")) {
+        m_yesNoTag.clear(); // no answer: the card decides, nothing is said
+    }
+    updateState();
+}
+
+void VoiceController::routeTranscript(const QString &text)
+{
+    if (!m_agent) {
+        // No agent wiring: QML routes the transcript.
+        beginVoiceTurn();
+        Q_EMIT transcriptReady(text);
+        return;
+    }
+    if (m_agent->canSend()) {
+        beginVoiceTurn();
+        m_turnByListen = false;
+        m_replySuppressed = false;
+        m_replyId.clear();
+        m_stream.reset();
+        Q_EMIT transcriptReady(text);
+        m_agent->sendMessage(text);
+        return;
+    }
+    if (m_agent->hasPending()) {
+        // "yes" / "no" while a card waits: answer it.
+        const Answer a = parseYesNo(text);
+        if (a != Answer::Unclear) {
+            beginVoiceTurn();
+            m_turnByListen = false;
+            m_agent->confirmAll(a == Answer::Yes);
+            return;
+        }
+    }
+    // Not taken: a push-to-talk must not turn the running (typed) request
+    // into a spoken one.
+    if (m_turnByListen) {
+        m_turnByListen = false;
+        endVoiceTurn();
+    }
+    Q_EMIT heard(text);
+    if (m_agent->config() && !m_agent->config()->apiKeyConfigured())
+        Q_EMIT unavailable(tr("Add your Claude API key in Settings first."));
+    else
+        Q_EMIT unavailable(tr("I'm still working on the last request."));
+}
+
+void VoiceController::handleYesNoAnswer(const QString &text)
+{
+    const QString tag = m_yesNoTag;
+    m_yesNoTag.clear();
+    if (tag.isEmpty())
+        return;
+    const Answer a = parseYesNo(text);
+    if (a == Answer::Unclear) {
+        if (!text.isEmpty())
+            Q_EMIT unavailable(tr("I didn't catch a yes or no — use the buttons on the card."));
+        return;
+    }
+    const bool yes = a == Answer::Yes;
+    Q_EMIT yesNoResult(tag, yes);
+    if (m_agent)
+        m_agent->confirmTool(-1, tag, yes);
+}
+
+// --- speaking -----------------------------------------------------------------------
+
+void VoiceController::afterSpeech(const QString &id, std::function<void(bool)> then)
+{
+    m_afterSpeech.insert(id, std::move(then));
+}
+
+void VoiceController::onSpeechEnded(const QString &id, bool interrupted)
+{
+    const auto it = m_afterSpeech.find(id);
+    if (it != m_afterSpeech.end()) {
+        const std::function<void(bool)> then = it.value();
+        m_afterSpeech.erase(it);
+        then(interrupted);
+    }
+    updateState();
+}
+
+void VoiceController::queueSpeech(const QString &id, const QString &text, bool more)
+{
+    const QString tts = resolvedTtsEngine();
+    if (tts == QLatin1String("kokoro")
+        && m_engine->send({{QStringLiteral("cmd"), QStringLiteral("speak")},
+                           {QStringLiteral("id"), id},
+                           {QStringLiteral("text"), text},
+                           {QStringLiteral("more"), more}})) {
+        m_helperSpeech.insert(id);
+        return;
+    }
+    if (!m_espeakBin.isEmpty() && !tts.isEmpty()) {
+        // eSpeak NG ("basic voice"), also when the helper vanished just now.
+        m_espeakOpen.insert(id);
+        m_espeakQueue.append({id, text, more});
+        pumpEspeak();
+        updateState();
+        return;
+    }
+    // Nothing can speak: the reply stays on screen; what waits for the end of
+    // this speech still runs (on the next turn of the event loop).
+    if (!more)
+        QTimer::singleShot(0, this, [this, id]() { onSpeechEnded(id, false); });
+}
+
+void VoiceController::pumpEspeak()
+{
+    if (m_espeak)
+        return;
+    while (!m_espeakQueue.isEmpty()) {
+        const EspeakItem item = m_espeakQueue.takeFirst();
+        if (item.text.trimmed().isEmpty()) {
+            if (!item.more) {
+                m_espeakOpen.remove(item.id);
+                onSpeechEnded(item.id, false);
+            }
+            continue;
+        }
+        m_espeakCurrent = item;
+        m_espeak = new QProcess(this);
+        m_espeak->setStandardOutputFile(QProcess::nullDevice());
+        m_espeak->setStandardErrorFile(QProcess::nullDevice());
+        const double rate = m_config ? m_config->speechRate() : 1.0;
+        const int wpm = qBound(80, int(std::lround(kEspeakWpm * rate)), 450);
+        connect(m_espeak, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+            QProcess *p = m_espeak;
+            m_espeak = nullptr;
+            if (p)
+                p->deleteLater();
+            const EspeakItem done = m_espeakCurrent;
+            m_espeakCurrent = {};
+            if (!done.more) {
+                m_espeakOpen.remove(done.id);
+                onSpeechEnded(done.id, false);
+            }
+            pumpEspeak();
+            updateState();
         });
-    }
-    // Time to start talking plus the longest command.
-    const int secs = m_config ? m_config->maxUtteranceSecs() : 12;
-    m_commandTimer->start((secs + 6) * 1000);
-}
-
-void VoiceController::finishListenerCommand(const QString &text)
-{
-    m_listenerCommand = false;
-    if (m_commandTimer)
-        m_commandTimer->stop();
-    setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
-    if (m_awaitingYesNo) {
-        const QString tag = m_pendingTag;
-        m_awaitingYesNo = false;
-        m_pendingTag.clear();
-        Q_EMIT yesNoResult(tag, looksLikeYes(text));
-        return;
-    }
-    Q_EMIT transcriptReady(text);
-}
-
-void VoiceController::syncWakeListener()
-{
-    const bool want = m_config && (m_config->wakeEnabled() || m_forceListen) && !m_config->micMuted() && wakeAvailable();
-    if (want && !m_wake)
-        startWakeListener();
-    else if (!want && m_wake)
-        stopWakeListener();
-}
-
-void VoiceController::startWakeListener()
-{
-    if (m_wake || !wakeAvailable())
-        return;
-    const QStringList argv = pocketsphinxKeyphraseLiveArgv();
-    m_wake = new QProcess(this);
-    // Only the recognised phrases (stdout); diagnostics go nowhere.
-    m_wake->setProcessChannelMode(QProcess::SeparateChannels);
-    m_wake->setStandardErrorFile(QProcess::nullDevice());
-    m_wakeBuffer.clear();
-    connect(m_wake, &QProcess::readyReadStandardOutput, this, [this]() {
-        if (!m_wake)
-            return;
-        m_wakeBuffer += m_wake->readAllStandardOutput();
-        int nl;
-        while ((nl = m_wakeBuffer.indexOf('\n')) >= 0) {
-            const QString line = QString::fromUtf8(m_wakeBuffer.left(nl));
-            m_wakeBuffer.remove(0, nl + 1);
-            onListenerLine(line);
-            if (!m_wake)
+        connect(m_espeak, &QProcess::errorOccurred, this, [this](QProcess::ProcessError err) {
+            if (err != QProcess::FailedToStart || !m_espeak)
                 return;
-        }
-    });
-    connect(m_wake, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
-        if (!m_wake)
-            return;
-        // The microphone went away (or was not there yet at login), or the
-        // engine stopped: start it again, waiting longer while it keeps failing.
-        const bool ranLong = m_wakeRunning.isValid() && m_wakeRunning.elapsed() > 60000;
-        m_wake->deleteLater();
-        m_wake = nullptr;
-        if (m_listenerCommand) {
-            m_listenerCommand = false;
-            if (m_commandTimer)
-                m_commandTimer->stop();
-            setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
-        }
-        m_wakeRestartDelay = ranLong || m_wakeRestartDelay == 0 ? 2000 : qMin(m_wakeRestartDelay * 2, 15000);
-        QTimer::singleShot(m_wakeRestartDelay, this, &VoiceController::syncWakeListener);
-    });
-    m_wakeRunning.start();
-    m_wake->start(argv.first(), argv.mid(1));
-}
-
-void VoiceController::stopWakeListener()
-{
-    if (!m_wake)
+            // No finished() follows a failed start.
+            const QString why = m_espeak->errorString();
+            m_espeak->deleteLater();
+            m_espeak = nullptr;
+            const EspeakItem failed = m_espeakCurrent;
+            m_espeakCurrent = {};
+            m_espeakQueue.clear();
+            m_espeakOpen.clear();
+            detectTools();
+            Q_EMIT unavailable(tr("eSpeak NG could not be started: %1").arg(why));
+            onSpeechEnded(failed.id, true);
+            updateEngine();
+            updateState();
+        });
+        m_espeak->start(m_espeakBin, {QStringLiteral("-v"), QStringLiteral("en-us+f3"), QStringLiteral("-s"),
+                                      QString::number(wpm), QStringLiteral("--"), item.text});
+        if (!m_testLevel && !m_levelTimer->isActive())
+            m_levelTimer->start();
         return;
-    QProcess *w = m_wake;
-    m_wake = nullptr;
-    disconnect(w, nullptr, this, nullptr);
-    if (m_listenerCommand) {
-        m_listenerCommand = false;
-        if (m_commandTimer)
-            m_commandTimer->stop();
-        setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
     }
-    w->terminate();
-    if (!w->waitForFinished(500))
-        w->kill();
-    w->deleteLater();
 }
 
-// --- speaking ---------------------------------------------------------------
-
-QStringList VoiceController::ttsSpeakArgv(const QString &engine, const QString &text) const
+void VoiceController::stopSpeech(bool suppressReply)
 {
-    if (engine == QLatin1String("speechd")) {
-        QStringList a{QStringLiteral("-w")}; // -w: wait until spoken
-        const QString v = m_config ? m_config->ttsVoice() : QString();
-        if (!v.isEmpty())
-            a << QStringLiteral("-y") << v;
-        a << QStringLiteral("--") << text;
-        return QStringList{QStringLiteral("spd-say")} << a;
+    if (!m_helperSpeech.isEmpty() || m_helperState == QLatin1String("speaking"))
+        m_engine->send({{QStringLiteral("cmd"), QStringLiteral("stop")}});
+    m_helperSpeech.clear();
+    m_espeakQueue.clear();
+    m_espeakOpen.clear();
+    if (m_espeak) {
+        m_espeakCurrent.more = true; // its finished() must not report a normal end
+        m_espeak->kill();            // finished() cleans up
     }
-    if (engine == QLatin1String("espeak")) {
-        const QString bin = Command::available(QStringLiteral("espeak-ng")) ? QStringLiteral("espeak-ng")
-                                                                            : QStringLiteral("espeak");
-        QStringList a;
-        const QString v = m_config ? m_config->ttsVoice() : QString();
-        if (!v.isEmpty())
-            a << QStringLiteral("-v") << v;
-        a << QStringLiteral("--") << text;
-        return QStringList{bin} << a;
+    // Everything that waited for this speech learns it was interrupted
+    // (a yes/no prompt then leaves the decision to the card).
+    const auto pending = m_afterSpeech;
+    m_afterSpeech.clear();
+    for (auto it = pending.cbegin(); it != pending.cend(); ++it)
+        it.value()(true);
+    if (suppressReply) {
+        m_replySuppressed = true;
+        m_replyId.clear();
+        m_stream.reset();
     }
-    // piper is handled separately (needs a pipe + playback); never argv-only.
-    return {};
 }
 
 void VoiceController::speak(const QString &text)
 {
     if (!m_config || !m_config->speakReplies())
         return;
-    const QString t = text.trimmed();
+    const QString t = SpeechText::forSpeech(text);
     if (t.isEmpty())
         return;
-    const QString engine = resolvedTtsEngine();
-    if (engine.isEmpty()) {
-        Q_EMIT unavailable(tr("No speech engine (piper / speech-dispatcher / espeak-ng) is available."));
+    if (!ttsAvailable()) {
+        Q_EMIT unavailable(m_engineMessage.isEmpty() ? tr("No voice is available to speak with.") : m_engineMessage);
         return;
     }
-    stopSpeaking();
-    setState(QStringLiteral("speaking"));
-
-    if (engine == QLatin1String("piper")) {
-        // piper reads text on stdin, writes a WAV, which we then play. Use a
-        // shell-free two-step via QProcess: synth to temp WAV, then play.
-        const QString wav = tmpWav(QStringLiteral("say"));
-        QString err;
-        if (!synthesizeToWavSync(t, wav, &err)) {
-            setState(QStringLiteral("idle"));
-            Q_EMIT unavailable(tr("piper failed: %1").arg(err));
-            return;
-        }
-        QString player;
-        for (const QString &p : {QStringLiteral("paplay"), QStringLiteral("aplay"), QStringLiteral("pw-play")})
-            if (Command::available(p)) { player = p; break; }
-        if (player.isEmpty()) {
-            QFile::remove(wav);
-            setState(QStringLiteral("idle"));
-            Q_EMIT unavailable(tr("No audio player (paplay / aplay / pw-play) to play speech."));
-            return;
-        }
-        m_speak = new QProcess(this);
-        connect(m_speak, &QProcess::finished, this, [this, wav](int, QProcess::ExitStatus) {
-            QFile::remove(wav);
-            if (m_speak) { m_speak->deleteLater(); m_speak = nullptr; }
-            if (m_state == QLatin1String("speaking"))
-                setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
-        });
-        m_speak->start(player, {wav});
-        return;
-    }
-
-    const QStringList argv = ttsSpeakArgv(engine, t);
-    m_speak = new QProcess(this);
-    connect(m_speak, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
-        if (m_speak) { m_speak->deleteLater(); m_speak = nullptr; }
-        if (m_state == QLatin1String("speaking"))
-            setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
-    });
-    m_speak->start(argv.first(), argv.mid(1));
-}
-
-bool VoiceController::synthesizeToWavSync(const QString &text, const QString &outWav, QString *error) const
-{
-    const QString engine = resolvedTtsEngine();
-    if (engine == QLatin1String("piper")) {
-        const QString bin = m_config ? m_config->piperBin() : QStringLiteral("piper");
-        const QString model = m_config ? m_config->piperModel() : QString();
-        if (model.isEmpty() || !QFileInfo::exists(model)) {
-            if (error) *error = tr("no piper voice model configured");
-            return false;
-        }
-        QProcess p;
-        p.start(bin, {QStringLiteral("--model"), model, QStringLiteral("--output_file"), outWav});
-        if (!p.waitForStarted(3000)) {
-            if (error) *error = tr("could not start piper");
-            return false;
-        }
-        p.write(text.toUtf8());
-        p.closeWriteChannel();
-        p.waitForFinished(30000);
-        if (QFileInfo(outWav).size() > 44)
-            return true;
-        if (error) *error = p.readAllStandardError().isEmpty() ? tr("piper produced no audio")
-                                                               : QString::fromUtf8(p.readAllStandardError());
-        return false;
-    }
-    if (engine == QLatin1String("espeak")) {
-        const QString bin = Command::available(QStringLiteral("espeak-ng")) ? QStringLiteral("espeak-ng")
-                                                                            : QStringLiteral("espeak");
-        QStringList a;
-        const QString v = m_config ? m_config->ttsVoice() : QString();
-        if (!v.isEmpty())
-            a << QStringLiteral("-v") << v;
-        a << QStringLiteral("-w") << outWav << QStringLiteral("--") << text;
-        const CommandResult r = Command::runSync(bin, a, 30000);
-        if (r.exitCode == 0 && QFileInfo(outWav).size() > 44)
-            return true;
-        if (error) *error = r.errText().isEmpty() ? tr("espeak produced no audio") : r.errText();
-        return false;
-    }
-    if (engine == QLatin1String("speechd")) {
-        // spd-say speaks directly; synthesising to a file needs espeak/piper.
-        if (error) *error = tr("speech-dispatcher speaks directly and cannot render to a WAV");
-        return false;
-    }
-    if (error) *error = tr("no TTS engine available");
-    return false;
+    stopSpeech(true);
+    queueSpeech(newId(QStringLiteral("s")), t, false);
+    updateState();
 }
 
 void VoiceController::stopSpeaking()
 {
-    if (m_speak) {
-        QProcess *s = m_speak;
-        m_speak = nullptr;
-        disconnect(s, nullptr, this, nullptr);
-        s->terminate();
-        if (!s->waitForFinished(300))
-            s->kill();
-        s->deleteLater();
+    stopSpeech(true);
+    updateState();
+}
+
+void VoiceController::previewVoice(const QString &id)
+{
+    if (!m_engine->isReady()) {
+        Q_EMIT unavailable(tr("The natural voices need the natural voice engine. Run: shadow-voice-setup — or "
+                              "use Install in Settings."));
+        return;
     }
-    if (m_state == QLatin1String("speaking"))
-        setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
+    stopSpeech(true);
+    QJsonObject cmd{{QStringLiteral("cmd"), QStringLiteral("preview")}, {QStringLiteral("voice"), id}};
+    const QString name = voiceName(id);
+    if (name != id)
+        cmd.insert(QStringLiteral("text"), tr("Hi, I'm %1. This is how I sound as your Shadow assistant.").arg(name));
+    if (m_engine->send(cmd))
+        m_helperSpeech.insert(QStringLiteral("preview"));
+}
+
+void VoiceController::beginVoiceTurn()
+{
+    if (m_voiceTurn)
+        return;
+    if (!m_agent || !m_agent->busy()) {
+        // A new turn starts: nothing of an earlier reply is pending.
+        m_replySuppressed = false;
+        m_replyId.clear();
+        m_stream.reset();
+    }
+    m_voiceTurn = true;
+    Q_EMIT voiceTurnChanged();
+}
+
+void VoiceController::endVoiceTurn()
+{
+    m_turnByListen = false;
+    if (!m_voiceTurn)
+        return;
+    if (!m_replyId.isEmpty()) {
+        // Ended from outside (QML) while a reply was being spoken: close its
+        // speech so the voice does not wait for text that will never come.
+        const QString id = m_replyId;
+        m_replyId.clear();
+        m_stream.reset();
+        queueSpeech(id, QString(), false);
+    }
+    m_voiceTurn = false;
+    Q_EMIT voiceTurnChanged();
 }
 
 void VoiceController::confirmBySpeech(const QString &tag, const QString &prompt)
 {
-    // Speak the prompt; when done, capture a short yes/no answer. If capture is
-    // unavailable we still speak, and fall back to the on-screen card.
-    m_pendingTag = tag;
-    m_awaitingYesNo = true;
-    if (m_config && m_config->speakReplies() && !resolvedTtsEngine().isEmpty()) {
-        // Speak synchronously-ish: start capture after the speak process ends.
-        const QString engine = resolvedTtsEngine();
-        if (engine != QLatin1String("piper")) {
-            const QStringList argv = ttsSpeakArgv(engine, prompt);
-            setState(QStringLiteral("speaking"));
-            QProcess *s = new QProcess(this);
-            connect(s, &QProcess::finished, this, [this, s](int, QProcess::ExitStatus) {
-                s->deleteLater();
-                if (!m_config || m_config->micMuted() || !captureAvailable() || !m_sttPocketsphinx) {
-                    // Can't listen for the answer; leave the on-screen card to decide.
-                    m_awaitingYesNo = false;
-                    setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
-                    return;
-                }
-                startCommandCapture();
-            });
-            s->start(argv.first(), argv.mid(1));
-            return;
+    m_yesNoTag = tag;
+    const QString text = SpeechText::forSpeech(prompt);
+    if (!m_config || !m_config->speakReplies() || !ttsAvailable() || text.isEmpty()) {
+        // Without a spoken question there is no spoken answer: the card decides.
+        m_yesNoTag.clear();
+        return;
+    }
+    // The question closes the reply stream that announced the tool call, so
+    // it is heard after whatever was said before it.
+    QString id = m_replySuppressed ? QString() : m_replyId;
+    m_replyId.clear();
+    const QStringList rest = m_stream.flush();
+    if (!m_replySuppressed) {
+        for (const QString &s : rest) {
+            if (id.isEmpty())
+                id = newId(QStringLiteral("r"));
+            queueSpeech(id, s, true);
         }
     }
-    // No speech available: just try to capture the answer, or give up to the card.
-    if (m_config && !m_config->micMuted() && captureAvailable() && m_sttPocketsphinx)
-        startCommandCapture();
-    else
-        m_awaitingYesNo = false;
+    if (id.isEmpty())
+        id = newId(QStringLiteral("c"));
+    afterSpeech(id, [this, tag](bool interrupted) {
+        if (m_yesNoTag != tag)
+            return; // answered or abandoned meanwhile
+        if (interrupted || m_listenActive || !listenBlocker().isEmpty()) {
+            m_yesNoTag.clear(); // cannot listen for the answer: the card decides
+            return;
+        }
+        startListen(QStringLiteral("yesno"), kYesNoTimeoutS);
+        if (!m_listenActive)
+            m_yesNoTag.clear();
+        updateState();
+    });
+    queueSpeech(id, text, false);
+    updateState();
 }
 
-void VoiceController::cancel()
+// --- agent wiring (spec §2.4) ---------------------------------------------------------
+
+bool VoiceController::replySpeechWanted() const
 {
-    stopSpeaking();
-    if (m_capture) {
-        QProcess *c = m_capture;
-        m_capture = nullptr;
-        disconnect(c, nullptr, this, nullptr);
-        c->terminate();
-        if (!c->waitForFinished(300))
-            c->kill();
-        c->deleteLater();
-        if (!m_captureWav.isEmpty())
-            QFile::remove(m_captureWav);
-    }
-    m_listenerCommand = false;
-    if (m_commandTimer)
-        m_commandTimer->stop();
-    m_awaitingYesNo = false;
-    m_pendingTag.clear();
-    setState(m_config && m_config->micMuted() ? QStringLiteral("muted") : QStringLiteral("idle"));
+    return m_voiceTurn && m_config && m_config->speakReplies() && !m_replySuppressed && ttsAvailable();
 }
+
+void VoiceController::onReplyDelta(const QString &chunk)
+{
+    if (!replySpeechWanted())
+        return;
+    const QStringList sentences = m_stream.push(chunk);
+    for (const QString &s : sentences) {
+        if (m_replyId.isEmpty())
+            m_replyId = newId(QStringLiteral("r"));
+        queueSpeech(m_replyId, s, true);
+    }
+}
+
+void VoiceController::onReplySegmentFinished()
+{
+    if (!replySpeechWanted()) {
+        m_stream.reset();
+        return;
+    }
+    // A tool call may follow: say the rest of this part now.
+    const QStringList rest = m_stream.flush();
+    for (const QString &s : rest) {
+        if (m_replyId.isEmpty())
+            m_replyId = newId(QStringLiteral("r"));
+        queueSpeech(m_replyId, s, true);
+    }
+}
+
+void VoiceController::onAssistantReplyReady(const QString &text)
+{
+    Q_UNUSED(text); // spoken as it streamed (replyDelta)
+    if (m_voiceTurn)
+        finishVoiceReply(true);
+}
+
+void VoiceController::finishVoiceReply(bool followUp)
+{
+    const bool wanted = replySpeechWanted();
+    QStringList rest = m_stream.flush();
+    if (wanted && (!m_replyId.isEmpty() || !rest.isEmpty())) {
+        const QString id = m_replyId.isEmpty() ? newId(QStringLiteral("r")) : m_replyId;
+        const QString last = rest.isEmpty() ? QString() : rest.takeLast();
+        for (const QString &s : std::as_const(rest))
+            queueSpeech(id, s, true);
+        if (followUp)
+            afterSpeech(id, [this](bool interrupted) {
+                if (!interrupted)
+                    maybeFollowUp();
+            });
+        queueSpeech(id, last, false); // more:false — the end of this reply
+    }
+    m_replyId.clear();
+    m_replySuppressed = false;
+    endVoiceTurn();
+    updateState();
+}
+
+void VoiceController::maybeFollowUp()
+{
+    if (!m_config || !m_config->followUp())
+        return;
+    if (m_voiceTurn || m_listenActive || !m_yesNoTag.isEmpty())
+        return; // something else already started
+    if (!listenBlocker().isEmpty())
+        return; // muted, no speech recognition, no microphone: just don't
+    if (m_agent && !m_agent->canSend())
+        return;
+    startListen(QStringLiteral("followup"), kFollowUpTimeoutS);
+    updateState();
+}
+
+void VoiceController::onConfirmationNeeded(const QString &summary, const QString &preview, const QString &callId)
+{
+    Q_UNUSED(preview); // shown on the card; a command line read aloud helps nobody
+    if (!m_voiceTurn)
+        return;
+    confirmBySpeech(callId, tr("I'd like to %1. Shall I go ahead?").arg(lowerFirst(summary)));
+}
+
+void VoiceController::onAgentError(const QString &text)
+{
+    Q_UNUSED(text); // the UI shows it
+    if (!m_voiceTurn)
+        return;
+    stopSpeech(true);
+    if (m_listenActive) {
+        m_engine->send({{QStringLiteral("cmd"), QStringLiteral("cancel")}});
+        clearListen();
+        setPartial({});
+    }
+    m_yesNoTag.clear();
+    if (m_config && m_config->speakReplies())
+        queueSpeech(newId(QStringLiteral("e")), tr("Sorry, that didn't work."), false);
+    m_replySuppressed = false;
+    endVoiceTurn();
+    updateState();
+}
+
+void VoiceController::onAgentStopped()
+{
+    // The Stop button: the reply is abandoned, so is its speech.
+    stopSpeech(true);
+    if (m_listenActive && m_listenMode != QLatin1String("command")) {
+        m_engine->send({{QStringLiteral("cmd"), QStringLiteral("cancel")}});
+        clearListen();
+        setPartial({});
+    }
+    m_yesNoTag.clear();
+    m_replySuppressed = false;
+    if (!m_listenActive) // a push-to-talk in progress is a new turn: keep it
+        endVoiceTurn();
+    updateState();
+}
+
+void VoiceController::onAgentPhaseChanged()
+{
+    if (!m_voiceTurn || !m_agent)
+        return;
+    // A turn can end without assistantReplyReady (an empty final answer, the
+    // tool-round limit). When the agent has settled, close the turn — on the
+    // next event-loop turn, so a reply signal emitted right after the phase
+    // change is handled first.
+    QTimer::singleShot(0, this, [this]() {
+        if (!m_voiceTurn || !m_agent || m_listenActive)
+            return;
+        const QString phase = m_agent->phase();
+        const bool settled = !m_agent->busy() && !m_agent->hasPending()
+            && (phase == QLatin1String("idle") || phase == QLatin1String("setup"));
+        if (settled)
+            finishVoiceReply(false);
+    });
+}
+
+// --- levels ---------------------------------------------------------------------------
+
+void VoiceController::notifyLevels()
+{
+    // partialText/lastHeard share the NOTIFY of the levels: while the level
+    // timer runs they go out with its next tick, so QML is never notified
+    // more than ~30 times a second.
+    if (m_levelTimer->isActive())
+        m_levelsDirty = true;
+    else
+        Q_EMIT levelsChanged();
+}
+
+void VoiceController::setPartial(const QString &text)
+{
+    if (m_testPartial || m_partial == text)
+        return;
+    m_partial = text;
+    notifyLevels();
+}
+
+void VoiceController::noteLevel(const QString &source, double rms)
+{
+    if (m_testLevel)
+        return;
+    const qint64 now = m_clock.elapsed();
+    const double v = qBound(0.0, rms, 1.0);
+    const bool tts = source == QLatin1String("tts");
+    if (tts) {
+        m_ttsRaw = v;
+        m_ttsAt = now;
+    } else {
+        m_micRaw = v;
+        m_micAt = now;
+    }
+    // While the wake word is armed the helper reports the microphone level
+    // continuously; it is only shown while capturing, so idle levels must not
+    // keep a 30 Hz timer running. (updateState() starts it when needed.)
+    if (!m_levelTimer->isActive() && (tts ? speaking() : capturing()))
+        m_levelTimer->start();
+}
+
+void VoiceController::tickLevels()
+{
+    const qint64 now = m_clock.elapsed();
+    const double micTarget = capturing() && now - m_micAt < kLevelStaleMs ? m_micRaw : 0.0;
+    double ttsTarget = 0.0;
+    if (m_helperState == QLatin1String("speaking") && now - m_ttsAt < kLevelStaleMs) {
+        ttsTarget = m_ttsRaw;
+    } else if (m_espeak) {
+        // eSpeak NG plays by itself, so there is no real envelope to show:
+        // a calm synthetic one keeps the presence alive while it talks.
+        const double t = double(now);
+        ttsTarget = 0.28 + 0.22 * std::abs(std::sin(t / 95.0)) * (0.6 + 0.4 * std::sin(t / 410.0));
+    }
+    // Fast attack, slower release: speech looks lively, silence settles smoothly.
+    auto approach = [](qreal current, double target) {
+        const double k = target > current ? 0.55 : 0.2;
+        double v = current + (target - current) * k;
+        if (target <= 0.0 && v < 0.004)
+            v = 0.0;
+        if (std::abs(v - current) < 0.002 && target > 0.0)
+            v = current; // not worth a notification
+        return qreal(v);
+    };
+    const qreal mic = approach(m_micLevel, micTarget);
+    const qreal tts = approach(m_speechLevel, ttsTarget);
+    const bool changed = mic != m_micLevel || tts != m_speechLevel || m_levelsDirty;
+    m_micLevel = mic;
+    m_speechLevel = tts;
+    m_levelsDirty = false;
+    if (changed)
+        Q_EMIT levelsChanged();
+    if (mic == 0.0 && tts == 0.0 && micTarget == 0.0 && ttsTarget == 0.0)
+        m_levelTimer->stop();
+}
+
+// --- refresh and install -----------------------------------------------------------------
+
+void VoiceController::refresh()
+{
+    detectTools();
+    m_micStatus.clear();
+    m_micMessage.clear();
+    m_started = true;
+    m_engine->restart();
+    updateEngine();
+    updateState();
+    Q_EMIT capabilitiesChanged();
+}
+
+void VoiceController::installEngine()
+{
+    if (m_installing)
+        return;
+    QString why;
+    const QString tool = locateSetupTool(&why);
+    if (tool.isEmpty()) {
+        m_installStatus = why;
+        Q_EMIT installChanged();
+        Q_EMIT unavailable(why);
+        return;
+    }
+    m_install = new QProcess(this);
+    m_install->setProcessChannelMode(QProcess::SeparateChannels);
+    m_installBuf.clear();
+    connect(m_install, &QProcess::readyReadStandardOutput, this, &VoiceController::onInstallOutput);
+    connect(m_install, &QProcess::finished, this, [this](int code, QProcess::ExitStatus st) {
+        onInstallFinished(st == QProcess::NormalExit ? code : -1, QString());
+    });
+    connect(m_install, &QProcess::errorOccurred, this, [this](QProcess::ProcessError err) {
+        if (err == QProcess::FailedToStart && m_install)
+            onInstallFinished(-1, m_install->errorString());
+    });
+    m_installing = true;
+    m_installCancelled = false;
+    m_installProgress = 0;
+    m_installError.clear();
+    m_installStatus = tr("Starting the installer…");
+    Q_EMIT installChanged();
+    updateEngine();
+    updateState();
+    Q_EMIT capabilitiesChanged();
+    m_install->start(tool, {QStringLiteral("--user"), QStringLiteral("--progress-json")});
+    m_install->closeWriteChannel();
+}
+
+void VoiceController::cancelInstall()
+{
+    if (!m_install)
+        return;
+    m_installCancelled = true;
+    m_install->terminate();
+    QTimer::singleShot(3000, this, [p = QPointer<QProcess>(m_install)]() {
+        if (p && p->state() != QProcess::NotRunning)
+            p->kill();
+    });
+}
+
+void VoiceController::onInstallOutput()
+{
+    if (!m_install)
+        return;
+    m_installBuf += m_install->readAllStandardOutput();
+    bool changed = false;
+    qsizetype nl;
+    while ((nl = m_installBuf.indexOf('\n')) >= 0) {
+        const QByteArray line = m_installBuf.left(nl).trimmed();
+        m_installBuf.remove(0, nl + 1);
+        if (!line.startsWith('{'))
+            continue;
+        QJsonParseError perr{};
+        const QJsonObject o = QJsonDocument::fromJson(line, &perr).object();
+        if (perr.error != QJsonParseError::NoError)
+            continue;
+        // Progress as a fraction, a percentage or bytes done/total — whatever
+        // the line carries; the status text from message/status/stage.
+        double p = -1;
+        if (o.value(QStringLiteral("progress")).isDouble())
+            p = o.value(QStringLiteral("progress")).toDouble();
+        else if (o.value(QStringLiteral("fraction")).isDouble())
+            p = o.value(QStringLiteral("fraction")).toDouble();
+        else if (o.value(QStringLiteral("percent")).isDouble())
+            p = o.value(QStringLiteral("percent")).toDouble() / 100.0;
+        else if (o.value(QStringLiteral("total")).toDouble() > 0)
+            p = o.value(QStringLiteral("done")).toDouble() / o.value(QStringLiteral("total")).toDouble();
+        if (p > 1.0 && p <= 100.0 && !o.contains(QStringLiteral("percent")))
+            p /= 100.0; // a percentage in "progress"
+        if (p >= 0) {
+            p = qBound(0.0, p, 1.0);
+            if (std::abs(p - m_installProgress) >= 0.002) {
+                m_installProgress = p;
+                changed = true;
+            }
+        }
+        QString text = o.value(QStringLiteral("message")).toString();
+        if (text.isEmpty())
+            text = o.value(QStringLiteral("status")).toString();
+        if (text.isEmpty())
+            text = o.value(QStringLiteral("stage")).toString();
+        // The phase is called "event" or "step" ({"step":"error","code":N,…}).
+        QString ev = o.value(QStringLiteral("event")).toString();
+        if (ev.isEmpty())
+            ev = o.value(QStringLiteral("step")).toString();
+        const bool isError = ev == QLatin1String("error") || o.value(QStringLiteral("error")).isString()
+            || (o.contains(QStringLiteral("ok")) && !o.value(QStringLiteral("ok")).toBool());
+        if (isError) {
+            const QString err = o.value(QStringLiteral("error")).toString();
+            m_installError = !text.isEmpty() ? text : !err.isEmpty() ? err : tr("The installer reported an error.");
+        }
+        if (!text.isEmpty() && text != m_installStatus) {
+            m_installStatus = text;
+            changed = true;
+        }
+    }
+    if (changed) {
+        Q_EMIT installChanged();
+        Q_EMIT capabilitiesChanged(); // statusText shows the percentage
+        if (m_engineName == QLatin1String("installing"))
+            updateEngine();
+    }
+}
+
+void VoiceController::onInstallFinished(int exitCode, const QString &failure)
+{
+    if (!m_install)
+        return;
+    // The last progress lines (an error line may lack its newline).
+    m_installBuf += m_install->readAllStandardOutput();
+    if (!m_installBuf.isEmpty() && !m_installBuf.endsWith('\n'))
+        m_installBuf += '\n';
+    onInstallOutput();
+    QProcess *p = m_install;
+    m_install = nullptr;
+    p->disconnect(this);
+    const QString err = QString::fromUtf8(p->readAllStandardError()).trimmed();
+    p->deleteLater();
+    m_installing = false;
+    if (m_installCancelled) {
+        m_installStatus = tr("Installation cancelled.");
+    } else if (exitCode == 0 && failure.isEmpty()) {
+        m_installProgress = 1;
+        m_installStatus = tr("The natural voice is installed.");
+    } else {
+        m_installStatus = !failure.isEmpty() ? tr("The installer could not be started: %1").arg(failure)
+            : !m_installError.isEmpty()      ? m_installError
+                                             : tr("The installer failed (exit %1). %2")
+                                                   .arg(exitCode)
+                                                   .arg(err.section(u'\n', -1).trimmed());
+        Q_EMIT unavailable(m_installStatus);
+    }
+    m_installBuf.clear();
+    Q_EMIT installChanged();
+    // Whatever happened, look again: the engine may be complete now.
+    refresh();
+}
+
+// --- diagnostics ------------------------------------------------------------------------
 
 QJsonObject VoiceController::diagnostics() const
 {
-    return QJsonObject{
-        {QStringLiteral("engines"), QJsonObject{
-            {QStringLiteral("piper"), m_piper},
-            {QStringLiteral("speechDispatcher"), m_speechd},
-            {QStringLiteral("espeakNg"), m_espeak},
-            {QStringLiteral("pocketsphinxBin"), m_pocketsphinxBin},
-            {QStringLiteral("sttAvailable"), m_sttPocketsphinx},
-            {QStringLiteral("wtype"), m_wtype},
-            {QStringLiteral("xdotool"), m_xdotool},
-        }},
-        {QStringLiteral("capture"), QJsonObject{
-            {QStringLiteral("tool"), m_captureTool},
-            {QStringLiteral("available"), captureAvailable()},
-        }},
-        {QStringLiteral("resolved"), QJsonObject{
-            {QStringLiteral("ttsEngine"), resolvedTtsEngine()},
-            {QStringLiteral("modelDir"), modelDir()},
-        }},
-        {QStringLiteral("capabilities"), QJsonObject{
-            {QStringLiteral("tts"), ttsAvailable()},
-            {QStringLiteral("stt"), sttAvailable()},
-            {QStringLiteral("wake"), wakeAvailable()},
-            {QStringLiteral("listenerRunning"), m_wake != nullptr},
-            {QStringLiteral("typeText"), typeAvailable()},
-        }},
-        {QStringLiteral("config"), m_config ? QJsonObject{
+    const QMetaEnum statusEnum = QMetaEnum::fromType<VoiceEngine::Status>();
+    QJsonObject config;
+    if (m_config) {
+        config = QJsonObject{
             {QStringLiteral("wakeEnabled"), m_config->wakeEnabled()},
-            {QStringLiteral("wakePhrase"), m_config->wakePhrase()},
-            {QStringLiteral("wakeThreshold"), m_config->wakeThreshold()},
             {QStringLiteral("micMuted"), m_config->micMuted()},
             {QStringLiteral("speakReplies"), m_config->speakReplies()},
+            {QStringLiteral("voice"), m_config->voice()},
+            {QStringLiteral("speechRate"), m_config->speechRate()},
+            {QStringLiteral("sttModel"), m_config->sttModel()},
+            {QStringLiteral("wakeSensitivity"), m_config->wakeSensitivity()},
+            {QStringLiteral("followUp"), m_config->followUp()},
+            {QStringLiteral("inputDevice"), m_config->inputDevice()},
             {QStringLiteral("ttsEngine"), m_config->ttsEngine()},
-            {QStringLiteral("sttMode"), m_config->sttMode()},
-            {QStringLiteral("maxUtteranceSecs"), m_config->maxUtteranceSecs()},
-        } : QJsonObject{}},
+        };
+    }
+    return QJsonObject{
+        {QStringLiteral("engine"), m_engineName},
+        {QStringLiteral("engineMessage"), m_engineMessage},
+        {QStringLiteral("state"), m_state},
+        {QStringLiteral("statusText"), statusText()},
+        {QStringLiteral("helper"), QJsonObject{
+             {QStringLiteral("program"), m_engine->program()},
+             {QStringLiteral("status"), QString::fromLatin1(statusEnum.valueToKey(int(m_engine->status())))},
+             {QStringLiteral("state"), m_helperState},
+             {QStringLiteral("probe"), m_engine->probeResult()},
+             {QStringLiteral("probeExit"), m_engine->probeExitCode()},
+             {QStringLiteral("ready"), m_engine->readyInfo()},
+             {QStringLiteral("recentFailures"), m_engine->recentFailures()},
+             {QStringLiteral("stderrTail"), toJsonArray(m_engine->stderrTail(12))},
+         }},
+        {QStringLiteral("capture"), QJsonObject{
+             {QStringLiteral("tool"), m_captureTool},
+             {QStringLiteral("micStatus"), m_micStatus},
+             {QStringLiteral("micMessage"), m_micMessage},
+         }},
+        {QStringLiteral("capabilities"), QJsonObject{
+             {QStringLiteral("tts"), ttsAvailable()},
+             {QStringLiteral("stt"), sttAvailable()},
+             {QStringLiteral("wake"), wakeAvailable()},
+             {QStringLiteral("capture"), captureAvailable()},
+             {QStringLiteral("typeText"), typeAvailable()},
+             {QStringLiteral("armed"), armed()},
+             {QStringLiteral("resolvedTtsEngine"), resolvedTtsEngine()},
+             {QStringLiteral("sttModels"), toJsonArray(sttModels())},
+         }},
+        {QStringLiteral("tools"), QJsonObject{
+             {QStringLiteral("espeakNg"), m_espeakBin},
+             {QStringLiteral("setup"), locateSetupTool()},
+             {QStringLiteral("wtype"), m_wtype},
+             {QStringLiteral("xdotool"), m_xdotool},
+         }},
+        {QStringLiteral("voiceTurn"), m_voiceTurn},
+        {QStringLiteral("listen"), QJsonObject{
+             {QStringLiteral("active"), m_listenActive},
+             {QStringLiteral("id"), m_listenId},
+             {QStringLiteral("mode"), m_listenMode},
+         }},
+        {QStringLiteral("install"), QJsonObject{
+             {QStringLiteral("installing"), m_installing},
+             {QStringLiteral("progress"), m_installProgress},
+             {QStringLiteral("status"), m_installStatus},
+         }},
+        {QStringLiteral("config"), config},
     };
+}
+
+QJsonObject VoiceController::probeDiagnostics(AssistantConfig *config)
+{
+    QString helperWhy;
+    const QString helper = VoiceEngine::locateHelper(&helperWhy);
+    QJsonObject probe;
+    int exitCode = -1;
+    QString probeError;
+    if (!helper.isEmpty())
+        probe = VoiceEngine::probeSync(helper, &exitCode, &probeError);
+    const QString espeak = QStandardPaths::findExecutable(QStringLiteral("espeak-ng"));
+    QString setupWhy;
+    const QString setup = locateSetupTool(&setupWhy);
+    const bool usable = !helper.isEmpty() && (exitCode == 0 || exitCode == 5);
+    const QString engine = usable ? QStringLiteral("neural")
+        : espeak.isEmpty()        ? QStringLiteral("missing")
+                                  : QStringLiteral("basic");
+    QJsonObject out{
+        {QStringLiteral("probeOnly"), true}, // the helper was not started; no microphone was opened
+        {QStringLiteral("engine"), engine},
+        {QStringLiteral("helper"), helper},
+        {QStringLiteral("probe"), probe},
+        {QStringLiteral("probeExit"), exitCode},
+        {QStringLiteral("espeakNg"), espeak},
+        {QStringLiteral("setupTool"), setup},
+        {QStringLiteral("typeTools"), QJsonObject{
+             {QStringLiteral("wtype"), !QStandardPaths::findExecutable(QStringLiteral("wtype")).isEmpty()},
+             {QStringLiteral("xdotool"), !QStandardPaths::findExecutable(QStringLiteral("xdotool")).isEmpty()},
+         }},
+    };
+    if (helper.isEmpty())
+        out.insert(QStringLiteral("helperMissing"), helperWhy);
+    if (!probeError.isEmpty())
+        out.insert(QStringLiteral("probeError"), probeError);
+    if (setup.isEmpty())
+        out.insert(QStringLiteral("setupMissing"), setupWhy);
+    if (config) {
+        out.insert(QStringLiteral("config"), QJsonObject{
+            {QStringLiteral("wakeEnabled"), config->wakeEnabled()},
+            {QStringLiteral("micMuted"), config->micMuted()},
+            {QStringLiteral("speakReplies"), config->speakReplies()},
+            {QStringLiteral("voice"), config->voice()},
+            {QStringLiteral("speechRate"), config->speechRate()},
+            {QStringLiteral("sttModel"), config->sttModel()},
+            {QStringLiteral("wakeSensitivity"), config->wakeSensitivity()},
+            {QStringLiteral("followUp"), config->followUp()},
+            {QStringLiteral("inputDevice"), config->inputDevice()},
+            {QStringLiteral("ttsEngine"), config->ttsEngine()},
+        });
+    }
+    return out;
 }

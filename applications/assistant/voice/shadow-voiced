@@ -1,0 +1,26 @@
+#!/usr/bin/python3 -I
+"""shadow-voiced — offline voice engine helper for Shadow Assistant.
+
+Installed as <prefix>/lib/shadow-assistant/voice/shadow-voiced next to the
+shadow_voice/ package. Python runs isolated (-I): PYTHONPATH, user site-packages
+and the current directory are ignored, so nothing on the user's system can
+shadow the pinned runtime; the package directory is added explicitly below.
+See README.md (next to this file in the source tree) for the protocol.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+from shadow_voice.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    code = main()
+    # Leave without interpreter finalisation: worker threads may sit inside
+    # onnxruntime calls, and tearing Python down under them can abort(). Every
+    # child process was already stopped and every log line flushed by main().
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    finally:
+        os._exit(code if isinstance(code, int) else 1)

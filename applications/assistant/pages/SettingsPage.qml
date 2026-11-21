@@ -159,8 +159,8 @@ NxPage {
             icon: "signal"
             title: qsTr("Always-listening wake word")
             subtitle: settings.voice && !settings.voice.wakeAvailable
-                      ? qsTr("Needs pocketsphinx + an en-us model and a capture tool. Off until available.")
-                      : qsTr("Opt-in. Listens locally for “%1”.").arg(settings.config ? settings.config.wakePhrase : "shadow")
+                      ? qsTr("Needs the natural voice engine (shadow-voice-setup) and a microphone. Off until available.")
+                      : qsTr("Listens locally for “%1”.").arg(settings.config ? settings.config.wakePhrase : "shadow")
             Switch {
                 enabled: settings.config && !settings.config.micMuted && settings.voice && settings.voice.wakeAvailable
                 checked: settings.config ? settings.config.wakeEnabled : false
@@ -183,25 +183,24 @@ NxPage {
                 ? qsTr("Resolved: %1").arg(settings.voice.resolvedTtsEngine === "" ? qsTr("none installed") : settings.voice.resolvedTtsEngine)
                 : ""
             NxSegmented {
-                model: ["Auto", "Piper", "Speech-dispatcher", "eSpeak"]
+                model: ["Auto", "Natural", "eSpeak"]
                 currentIndex: {
                     if (!settings.config) return 0
                     switch (settings.config.ttsEngine) {
-                    case "piper": return 1
-                    case "speechd": return 2
-                    case "espeak": return 3
+                    case "neural": return 1
+                    case "espeak": return 2
                     default: return 0
                     }
                 }
                 onActivated: (index) => settings.config.ttsEngine =
-                    ["auto", "piper", "speechd", "espeak"][index]
+                    ["auto", "neural", "espeak"][index]
             }
         }
 
         NxRow {
             icon: "info"
             title: qsTr("Engines detected")
-            subtitle: qsTr("Speech-to-text (pocketsphinx), text-to-speech, wake word, and keyboard typing.")
+            subtitle: qsTr("Speech-to-text, text-to-speech, wake word, and keyboard typing.")
         }
         RowLayout {
             Layout.fillWidth: true
@@ -219,7 +218,7 @@ NxPage {
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spaceLg
             wrapMode: Text.Wrap
-            text: qsTr("Engine paths, the piper voice model, the wake phrase/threshold and the capture device are set in the [voice] section of the configuration file.")
+            text: qsTr("The voice, speaking rate, speech recognition model, wake word sensitivity and microphone are set in the [voice] section of the configuration file.")
             color: Theme.textMuted
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontSizeSmall

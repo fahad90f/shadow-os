@@ -15,7 +15,10 @@ shadow_add_app(shadow-assistant
         conversationstore.cpp conversationstore.h
         toolregistry.cpp toolregistry.h
         undojournal.cpp undojournal.h
+        speechtext.cpp speechtext.h
         voicecontroller.cpp voicecontroller.h
+        voiceengine.cpp voiceengine.h
+        voicesession.cpp voicesession.h
     QML Main.qml ${ASSISTANT_QML}
     DESKTOP org.shadow.assistant.desktop
     LIBS Qt6::Network
