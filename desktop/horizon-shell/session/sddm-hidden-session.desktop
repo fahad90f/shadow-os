@@ -1,0 +1,9 @@
+[Desktop Entry]
+# Installed as /usr/share/shadow/sddm/wayland-sessions/plasma.desktop and
+# /usr/share/shadow/sddm/xsessions/plasmax11.desktop. SDDM looks in
+# /usr/share/shadow/sddm first (SessionDir in 10-shadow.conf) and uses the
+# first file of a name it finds, so these hide the Plasma sessions that
+# plasma-workspace installs (it is there only for the portal's dialogs).
+Type=Application
+Name=Plasma
+Hidden=true

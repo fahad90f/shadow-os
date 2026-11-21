@@ -195,7 +195,8 @@ Depends: ${shlibs:Depends}, ${misc:Depends},
  plasma-integration, breeze-icon-theme, breeze-cursor-theme, hicolor-icon-theme,
  libkf6service-bin, kio6,
  dbus-user-session, polkitd, pkexec,
- xdg-desktop-portal, xdg-desktop-portal-kde, xdg-user-dirs, xdg-utils,
+ xdg-desktop-portal, xdg-desktop-portal-kde, plasma-workspace, qml6-module-org-kde-pipewire,
+ xdg-user-dirs, xdg-utils,
  shared-mime-info, desktop-file-utils
 Recommends: xdg-desktop-portal-gtk, sddm, pipewire, pipewire-pulse, wireplumber,
  network-manager, bluez, upower, power-profiles-daemon, udisks2, accountsservice

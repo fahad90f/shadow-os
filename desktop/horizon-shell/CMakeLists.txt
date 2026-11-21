@@ -87,9 +87,30 @@ install(FILES session/shadow-horizon.desktop DESTINATION ${CMAKE_INSTALL_DATADIR
 install(FILES session/org.shadow.horizon.shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES session/shadow-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
 install(FILES session/shadow-horizon-session.target DESTINATION lib/systemd/user)
+# The KDE portal back-end serves screen sharing only with XDG_CURRENT_DESKTOP=KDE.
+install(FILES session/plasma-xdg-desktop-portal-kde.conf
+        DESTINATION lib/systemd/user/plasma-xdg-desktop-portal-kde.service.d
+        RENAME 50-shadow.conf)
 # System-wide defaults; a user's own files in ~/.config take precedence.
 install(FILES session/shadow-applications.menu DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/menus)
-install(FILES session/kwinrc session/kscreenlockerrc session/shadow-mimeapps.list DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg)
+# Also the menu of programs started without XDG_MENU_PREFIX. The application
+# database (ksycoca) is one file per data path and locale, whatever the prefix,
+# and Debian ships no applications.menu, so a rebuild without the Shadow prefix
+# would drop every application, and KWin would stop granting the shell and the
+# screen-sharing portal their restricted protocols (it finds them by their
+# desktop entries in that database).
+install(FILES session/shadow-applications.menu DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/menus
+        RENAME applications.menu)
+install(FILES session/kwinrc session/kscreenlockerrc session/shadow-mimeapps.list
+              session/kactivitymanagerd-pluginsrc
+        DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg)
+# plasma-workspace (for the portal's dialogs) also brings Plasma's login
+# sessions; SDDM reads these hidden entries first (10-shadow.conf, SessionDir),
+# so the login screen keeps offering only Shadow Horizon.
+install(FILES session/sddm-hidden-session.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/shadow/sddm/wayland-sessions RENAME plasma.desktop)
+install(FILES session/sddm-hidden-session.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/shadow/sddm/xsessions RENAME plasmax11.desktop)
 # The Alt+Tab window switcher ([TabBox] LayoutName=shadow in kwinrc).
 install(DIRECTORY session/tabbox/shadow DESTINATION ${CMAKE_INSTALL_DATADIR}/kwin/tabbox)
 

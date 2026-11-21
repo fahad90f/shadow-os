@@ -101,6 +101,28 @@ def _run_body(vm, args, shots, t0):
                         check=False)
         report("session services on the bus", "org.kde.KWin" in out and "org.kde.kglobalaccel" in out, out.strip())
 
+        # Screen sharing: the KDE back-end serves ScreenCast only with its
+        # XDG_CURRENT_DESKTOP=KDE drop-in, and the front-end offers screens and
+        # windows (3) only when it was (re)started with the session environment.
+        _, out = vm.run("export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus; "
+                        "gdbus introspect --session --dest org.freedesktop.impl.portal.desktop.kde "
+                        "--object-path /org/freedesktop/portal/desktop | grep -c 'interface org.freedesktop.impl.portal.ScreenCast {'; "
+                        "busctl --user get-property org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop "
+                        "org.freedesktop.portal.ScreenCast AvailableSourceTypes",
+                        check=False)
+        lines = out.strip().splitlines()
+        report("screen-sharing portal (KDE back-end ScreenCast, front-end sources)",
+               len(lines) >= 2 and lines[0].strip() == "1" and lines[1].strip() == "u 3",
+               " | ".join(lines))
+
+        # KWin's per-program permission check must stay on (no global bypass).
+        _, out = vm.run("export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus; "
+                        "{ systemctl --user show-environment; cat /etc/environment; } 2>/dev/null "
+                        "| grep -c 'KWIN_[A-Z]*_NO_PERMISSION_CHECKS' || true",
+                        check=False)
+        count = out.strip().splitlines()[-1] if out.strip() else "?"
+        report("KWin permission checks not switched off", count == "0", f"matches: {count}")
+
         _, out = vm.run("systemctl --failed --no-legend | head; systemctl --user --failed --no-legend | head; echo END", check=False)
         failed = [l for l in out.strip().splitlines() if l.strip() and l.strip() != "END"]
         report("no failed units (system and user)", not failed, " | ".join(failed) or "none")

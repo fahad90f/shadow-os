@@ -11,9 +11,11 @@
 # and window manager; the shell, session and settings on top are SHADOW's own
 # (docs/desktop/architecture.md).
 
-# Desktop identity. "SHADOW" comes first; "KDE" lets software that only knows
-# the established desktops (portal back-ends, KDE Frameworks applications,
-# xdg-utils) pick its KDE behaviour.
+# Desktop identity. "SHADOW" comes first (the portal front-end finds
+# shadow-portals.conf through it); "KDE" lets software that only knows the
+# established desktops (KDE Frameworks applications, xdg-utils) pick its KDE
+# behaviour. xdg-desktop-portal-kde needs exactly "KDE" and gets it from its
+# own drop-in (plasma-xdg-desktop-portal-kde.service.d/50-shadow.conf).
 export XDG_CURRENT_DESKTOP="SHADOW:KDE"
 export XDG_SESSION_DESKTOP="shadow"
 export XDG_SESSION_TYPE="wayland"
@@ -33,17 +35,15 @@ export ELECTRON_OZONE_PLATFORM_HINT="auto"
 # and need this to lay out correctly under a non-reparenting window manager.
 export _JAVA_AWT_WM_NONREPARENTING="1"
 
-# Screen sharing. KWin gates privileged Wayland protocols — screen cast
-# (zkde_screencast_unstable_v1) and remote desktop — behind a per-application
-# allowlist (.desktop X-KDE-Wayland-Interfaces). On this standalone KWin
-# session (no Plasma session setup) the xdg-desktop-portal-kde screencast
-# backend is not on that list, so KWin hides the screencast global from it and
-# every screen-share attempt (Discord, OBS, browsers, the portal) finds no
-# screen to offer — the capture global exists but is invisible to the portal.
-# Turn the gate off so the portal can bind it. The portal's own "share this
-# screen?" consent prompt stays the real boundary, which is exactly how GNOME
-# and wlroots compositors already behave (they do not gate the bind at all).
-export KWIN_WAYLAND_NO_PERMISSION_CHECKS=1
+# KWin grants its restricted Wayland protocols (input injection, screen
+# capture, the window list, windows above the lock screen) per program, from
+# the X-KDE-Wayland-Interfaces line of the program's desktop file; the screen
+# sharing portal (xdg-desktop-portal-kde) is on that list through its own
+# desktop file. Never start KWin with that check off, whatever
+# /etc/environment, ~/.pam_environment or a login script says: any program,
+# sandboxed ones included, could then type into other windows or record the
+# screen without asking.
+unset KWIN_WAYLAND_NO_PERMISSION_CHECKS KWIN_SCREENSHOT_NO_PERMISSION_CHECKS
 
 # Pointer theme and size: the user's saved choice (Control Center writes
 # kcminputrc), else the SHADOW defaults. The compositor prefers these

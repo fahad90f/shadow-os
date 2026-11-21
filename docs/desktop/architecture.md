@@ -23,7 +23,12 @@ Sources: `desktop/horizon-shell/` (shell and session), `desktop/ui/`
 | KScreenLocker (`kscreenlocker_greet`) | Debian `libkscreenlocker6` | lock screen process, started by KWin |
 | xdg-desktop-portal with the KDE and GTK back-ends | Debian | portals (file chooser, screenshots, screen sharing, settings) |
 
-Shadow Horizon does not run `plasmashell` or any other Plasma process.
+Shadow Horizon does not run `plasmashell` or a Plasma session. The
+`plasma-workspace` package is installed only because the KDE portal's dialogs
+(the screen-sharing picker, screenshot and access prompts) import its QML
+modules; its Plasma login sessions are hidden (see below), and the activity
+manager that KWin starts from it keeps no history
+(`/etc/xdg/kactivitymanagerd-pluginsrc`).
 
 ## Session files
 
@@ -35,9 +40,12 @@ Installed by `desktop/horizon-shell/CMakeLists.txt`:
 | `/usr/bin/shadow-horizon-session` | sets the environment, chooses the rendering mode, starts KWin |
 | `/usr/libexec/shadow/horizon-session-leader` | started by KWin; publishes the environment, starts the session target, supervises the shell |
 | `/usr/lib/systemd/user/shadow-horizon-session.target` | binds `graphical-session.target`; wants `graphical-session-pre.target` and `xdg-desktop-autostart.target` |
+| `/usr/lib/systemd/user/plasma-xdg-desktop-portal-kde.service.d/50-shadow.conf` | gives only the KDE portal back-end `XDG_CURRENT_DESKTOP=KDE`: it offers ScreenCast, Screenshot, RemoteDesktop, GlobalShortcuts, Background and InputCapture only when the value is exactly `KDE` |
 | `/usr/share/applications/org.shadow.horizon.shell.desktop` | hidden entry of the shell; its `X-KDE-Wayland-Interfaces` line is what makes KWin grant the shell the restricted protocols listed below |
-| `/usr/share/xdg-desktop-portal/shadow-portals.conf` | portal back-ends for `XDG_CURRENT_DESKTOP=SHADOW`: `kde`, then `gtk` |
+| `/usr/share/xdg-desktop-portal/shadow-portals.conf` | portal back-ends for `XDG_CURRENT_DESKTOP=SHADOW`: `kde`, then `gtk`; GlobalShortcuts, RemoteDesktop and InputCapture switched off (`none`) |
 | `/etc/xdg/menus/shadow-applications.menu` | the application menu (flat: every installed application); selected with `XDG_MENU_PREFIX=shadow-` |
+| `/etc/xdg/menus/applications.menu` | the same menu for programs started without `XDG_MENU_PREFIX`, so a rebuild of the application database by them keeps every application (KWin finds the restricted-protocol permissions of the shell and the portal there) |
+| `/usr/share/shadow/sddm/{wayland-sessions,xsessions}/plasma*.desktop` | hidden entries that keep the Plasma sessions of `plasma-workspace` off the login screen (SDDM reads this directory first, `SessionDir` in `10-shadow.conf`) |
 | `/etc/xdg/kwinrc` | compositor defaults |
 | `/etc/xdg/kscreenlockerrc` | lock-screen defaults |
 
@@ -45,7 +53,7 @@ Installed by `desktop/horizon-shell/CMakeLists.txt`:
 
 | Variable | Value | Why |
 |---|---|---|
-| `XDG_CURRENT_DESKTOP` | `SHADOW:KDE` | SHADOW first; `KDE` makes portal back-ends, KDE Frameworks applications and xdg-utils choose their KDE behaviour |
+| `XDG_CURRENT_DESKTOP` | `SHADOW:KDE` | SHADOW first (the portal front-end finds `shadow-portals.conf` through it); `KDE` makes KDE Frameworks applications and xdg-utils choose their KDE behaviour. xdg-desktop-portal-kde needs exactly `KDE` and gets it from its drop-in (above) |
 | `XDG_SESSION_DESKTOP`, `XDG_SESSION_TYPE` | `shadow`, `wayland` | |
 | `XDG_MENU_PREFIX` | `shadow-` | selects `shadow-applications.menu` |
 | `KDE_FULL_SESSION`, `KDE_SESSION_VERSION` | `true`, `6` | KDE Frameworks integration |
@@ -73,7 +81,12 @@ exec kwin_wayland_wrapper --xwayland --exit-with-session=/usr/libexec/shadow/hor
 2. Publishes the display and desktop variables with
    `dbus-update-activation-environment` (with `--systemd` when the systemd
    user manager runs), so D-Bus-activated services, portals and autostart
-   entries see the display.
+   entries see the display. Then it stops the portal services and starts
+   them again: KWin's own start-up already starts the portal front-end, and a
+   portal keeps the environment it started with (without it the front-end
+   finds no `shadow-portals.conf` and offers no screen sharing). They are
+   started explicitly because a D-Bus start that the stop interrupted would
+   keep every portal call waiting for up to two minutes.
 3. Runs `kbuildsycoca6`, so the application database exists before the
    launcher opens.
 4. Starts `shadow-horizon-session.target` (XDG autostart applications).

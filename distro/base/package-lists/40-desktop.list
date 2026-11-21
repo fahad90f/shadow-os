@@ -17,12 +17,17 @@ xdg-utils
 xdg-desktop-portal
 xdg-desktop-portal-kde
 xdg-desktop-portal-gtk
-# Screen sharing / screencast bridge for the KDE portal. Without the
-# libkpipewire runtime, xdg-desktop-portal-kde exposes no ScreenCast interface
-# and Discord, OBS and browsers get "No such interface
-# org.freedesktop.impl.portal.ScreenCast" — screen sharing silently does
-# nothing. These are not pulled in by the portal on a no-recommends image, so
-# list them explicitly (the QML module backs the screen-picker dialog).
+# The KDE portal's dialogs (the screen-sharing picker, screenshot and access
+# prompts) are QML that imports org.kde.plasma.workspace.dialogs and
+# org.kde.taskmanager, which only plasma-workspace ships; without it every
+# screen share is silently cancelled. It is there for those modules: Shadow
+# starts no Plasma session (also a dependency of shadow-horizon; listed for
+# clarity).
+plasma-workspace
+# The picker's live previews (PipeWireDelegate.qml imports org.kde.pipewire);
+# the portal itself does not depend on it. The libraries come with it and are
+# listed for clarity. Whether the portal offers ScreenCast at all depends on
+# XDG_CURRENT_DESKTOP (desktop/horizon-shell/session/plasma-xdg-desktop-portal-kde.conf).
 libkpipewire6
 libkpipewire-data
 libkpipewiredmabuf6

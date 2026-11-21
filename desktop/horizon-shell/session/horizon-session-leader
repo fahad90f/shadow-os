@@ -3,7 +3,8 @@
 #
 # Started by the compositor (see shadow-horizon-session) once it is ready. It
 #   1. publishes the session environment to systemd and D-Bus activation, so
-#      user services, portals and XDG autostart entries see the display;
+#      user services, portals and XDG autostart entries see the display, and
+#      restarts the portals that were started before that;
 #   2. starts the session target (which pulls in XDG autostart applications);
 #   3. runs the shell and restarts it if it crashes;
 #   4. ends the session when the shell exits normally (that is "log out").
@@ -46,6 +47,25 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
     else
         dbus-update-activation-environment $ENV_VARS
     fi
+fi
+
+# Portals started before the lines above keep the environment they started
+# with for the whole session. KWin's own start-up already asks the portal
+# front-end a question, so one runs without XDG_CURRENT_DESKTOP: it finds no
+# shadow-portals.conf and offers no ScreenCast ("No such interface
+# org.freedesktop.portal.ScreenCast"), and a back-end started that early has
+# no display. The front-end also reads the back-ends' capabilities only when
+# it starts. Stop them, then start them again with the session environment.
+# Start them explicitly: a D-Bus start that the stop interrupted stays pending
+# in the bus for up to two minutes, and every portal call would wait behind
+# it; a start through systemd answers it at once.
+if have_systemd_user; then
+    systemctl --user stop xdg-desktop-portal.service plasma-xdg-desktop-portal-kde.service \
+        xdg-desktop-portal-gtk.service 2>/dev/null
+    systemctl --user reset-failed xdg-desktop-portal.service plasma-xdg-desktop-portal-kde.service \
+        xdg-desktop-portal-gtk.service 2>/dev/null
+    systemctl --user --no-block start plasma-xdg-desktop-portal-kde.service \
+        xdg-desktop-portal-gtk.service xdg-desktop-portal.service 2>/dev/null
 fi
 
 # The application database must exist before the launcher is first opened.

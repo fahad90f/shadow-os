@@ -1,0 +1,8 @@
+# Shadow OS default, installed as /etc/xdg/kactivitymanagerd-pluginsrc; a
+# user's ~/.config/kactivitymanagerd-pluginsrc overrides it.
+# The KDE activity manager comes with plasma-workspace (needed for the screen
+# sharing picker) and KWin starts it at login. By default it keeps a history
+# of the files and applications you use; Shadow keeps none.
+# what-to-remember: 0 = everything, 1 = listed applications only, 2 = nothing
+[Plugin-org.kde.ActivityManager.Resources.Scoring]
+what-to-remember=2
