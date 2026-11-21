@@ -14,7 +14,9 @@
 #   --no-voice-data
 #               do not bake the Shadow Assistant's offline voice engine data
 #               (~700 MB, /var/lib/shadow-voice) into the image; same as
-#               SHADOW_IMAGE_VOICE=0. Default: baked in whenever the image has
+#               SHADOW_IMAGE_VOICE=0. SHADOW_IMAGE_VOICE=required makes a
+#               missing or failed voice data step fatal (release builds).
+#               Default: baked in whenever the image has
 #               shadow-assistant (amd64); the download is cached in
 #               $SHADOW_CACHE/voice-engine and a failed download only warns
 #               (build/iso/voice-data.sh)
@@ -49,7 +51,7 @@ while [ $# -gt 0 ]; do
         *) die "unknown argument: $1" ;;
     esac
 done
-case "$VOICE_DATA" in 0|1) ;; *) die "SHADOW_IMAGE_VOICE must be 0 or 1 (not '$VOICE_DATA')" ;; esac
+case "$VOICE_DATA" in 0|1|required) ;; *) die "SHADOW_IMAGE_VOICE must be 0, 1 or required (not '$VOICE_DATA')" ;; esac
 
 need_root
 need_cmd mmdebstrap mksquashfs xorriso mcopy mformat mmd sha256sum unshare

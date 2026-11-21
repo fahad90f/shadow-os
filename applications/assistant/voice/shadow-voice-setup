@@ -4,9 +4,14 @@
 # Downloads pinned, sha256-verified artifacts (sherpa-onnx runtime wheels, Silero
 # VAD, the "Shadow" keyword spotter, Moonshine / Whisper speech recognition, the
 # Kokoro voice), unpacks only the files the engine loads into a staging directory
-# next to the destination, writes manifest.json and moves the result into place
-# atomically, then runs `shadow-voiced --selftest`. Network is only used here;
-# the engine itself runs fully offline.
+# next to the destination, writes manifest.json, runs `shadow-voiced --selftest`
+# on the staged tree and only then moves it into place atomically. Components
+# that are already installed and still match their pinned artifacts and the
+# manifest's sha256 are hard-linked into the new tree instead of being
+# downloaded and unpacked again (a repair only fetches what is damaged or
+# missing). curl or wget is only needed when something has to be downloaded.
+# The pinned runtime is built for x86_64: other machines are refused up front.
+# Network is only used here; the engine itself runs fully offline.
 #
 #   shadow-voice-setup                 per user  ~/.local/share/shadow/voice (default when not root)
 #   sudo shadow-voice-setup --system   system    /var/lib/shadow-voice       (default for root)
@@ -24,7 +29,7 @@ PROG=${0##*/}
 
 # ---- exit codes (also listed in --help) ------------------------------------------------
 E_OK=0 E_FAIL=1 E_USAGE=2 E_DEPS=3 E_DOWNLOAD=4 E_CHECKSUM=5 E_SPACE=6 E_PERM=7 E_INSTALL=8
-E_SELFTEST=9 E_CHECK=10 E_NOTINSTALLED=11 E_LOCKED=12 E_INTERRUPTED=130
+E_SELFTEST=9 E_CHECK=10 E_NOTINSTALLED=11 E_LOCKED=12 E_ARCH=13 E_INTERRUPTED=130
 
 # ---- pinned artifacts ------------------------------------------------------------------
 # component|file|bytes|sha256|unpacked bytes (estimate, for the space check)|url
@@ -108,14 +113,16 @@ Behaviour:
   --yes               do not ask for confirmation
   --install-deps      apt-get install missing Debian packages (python3-numpy, espeak-ng, a
                       capture/playback tool, curl, bzip2) with sudo, non-interactively
-  --no-selftest       skip "shadow-voiced --selftest" after installing
+  --no-selftest       skip "shadow-voiced --selftest" of the new files (run before they
+                      replace an installation)
   --progress-json     one JSON line per step on stdout: {"step","progress":0..1,"message"}
   -h, --help          this help;  --version  print the version
 
 Exit codes: 0 ok, 1 unexpected error, 2 usage, 3 missing dependency, 4 download failed,
 5 checksum/size mismatch, 6 not enough disk space, 7 permission denied, 8 unpack/install
-failed, 9 installed but the selftest failed, 10 --check found problems, 11 nothing
-installed, 12 another setup is running, 130 interrupted.
+failed, 9 the selftest of the new files failed (nothing was replaced), 10 --check found
+problems, 11 nothing installed, 12 another setup is running, 13 not an x86_64 machine,
+130 interrupted.
 EOF
 }
 
@@ -384,11 +391,10 @@ check_deps() {
         case " ${APT_MISSING[*]} " in *" pipewire-bin "*) ;; *) APT_MISSING+=(pipewire-bin) ;; esac
         notes+=("no playback tool (pw-play/pacat/aplay): sudo apt install pipewire-bin")
     fi
-    if [ -z "$OFFLINE" ]; then
-        if command -v curl >/dev/null 2>&1; then DL_TOOL=curl
-        elif command -v wget >/dev/null 2>&1; then DL_TOOL=wget
-        else APT_MISSING+=(curl); missing_hard+=("curl (or wget)"); fi
-    fi
+    # curl/wget: only required once it is known that something must be downloaded
+    # (need_download, after the installed components have been checked).
+    if command -v curl >/dev/null 2>&1; then DL_TOOL=curl
+    elif command -v wget >/dev/null 2>&1; then DL_TOOL=wget; fi
     command -v bzip2 >/dev/null 2>&1 || { APT_MISSING+=(bzip2); missing_hard+=("bzip2"); }
     for t in tar sha256sum df flock stat awk; do
         command -v "$t" >/dev/null 2>&1 || missing_hard+=("$t")
@@ -402,7 +408,6 @@ check_deps() {
             missing_hard=(); NEED_NUMPY_WHEEL=0
             [ "$NUMPY" = wheel ] && NEED_NUMPY_WHEEL=1
             "$PY" -I -c 'import numpy; numpy.zeros(1)' >/dev/null 2>&1 || NEED_NUMPY_WHEEL=1
-            if [ -z "$OFFLINE" ] && [ -z "$DL_TOOL" ]; then command -v curl >/dev/null 2>&1 && DL_TOOL=curl; fi
             notes=()
         fi
     fi
@@ -444,6 +449,8 @@ select_components() {
 }
 
 wanted() { local c; for c in "${COMPONENTS[@]}"; do [ "$c" = "$1" ] && return 0; done; return 1; }
+# wanted and not taken over from the installation: its artifact must be fetched and unpacked
+fetch_wanted() { wanted "$1" && [ -z "${REUSE[$1]:-}" ]; }
 
 # ---- fetch -----------------------------------------------------------------------------------
 SRC_DIR=""      # where verified artifacts are read from (cache or offline cache)
@@ -455,7 +462,7 @@ fetch_all() {
         SRC_DIR=$OFFLINE
         local missing=()
         while IFS='|' read -r comp f size sha _unp url; do
-            wanted "$comp" || continue
+            fetch_wanted "$comp" || continue
             [ -f "$OFFLINE/$f" ] || missing+=("$f ($url)")
         done <<<"$ARTIFACTS"
         [ "${#missing[@]}" -eq 0 ] || die $E_DOWNLOAD "not in the offline cache $OFFLINE: ${missing[*]}"
@@ -464,7 +471,7 @@ fetch_all() {
     SRC_DIR=$CACHE
     mkdir -p -- "$CACHE" || die $E_PERM "cannot create the download cache $CACHE"
     while IFS='|' read -r comp f size sha _unp url; do
-        wanted "$comp" || continue
+        fetch_wanted "$comp" || continue
         have=0
         [ -f "$CACHE/$f" ] && [ "$(size_of "$CACHE/$f")" = "$size" ] && have=1
         [ "$have" = 1 ] || need=$((need + size))
@@ -472,7 +479,7 @@ fetch_all() {
     DL_TOTAL=$need
     DL_DONE=0
     while IFS='|' read -r comp f size sha _unp url; do
-        wanted "$comp" || continue
+        fetch_wanted "$comp" || continue
         download "$f" "$size" "$sha" "$url"
     done <<<"$ARTIFACTS"
 }
@@ -521,9 +528,9 @@ download() {   # file size sha url
 
 verify_all() {
     local comp f size sha _unp url n=0 total=0 got
-    while IFS='|' read -r comp f size sha _unp url; do wanted "$comp" && total=$((total + 1)); done <<<"$ARTIFACTS"
+    while IFS='|' read -r comp f size sha _unp url; do fetch_wanted "$comp" && total=$((total + 1)); done <<<"$ARTIFACTS"
     while IFS='|' read -r comp f size sha _unp url; do
-        wanted "$comp" || continue
+        fetch_wanted "$comp" || continue
         n=$((n + 1))
         progress verify "$(fraction 0.70 0.74 "$n" "$total")" "Verifying $f"
         got=$(size_of "$SRC_DIR/$f")
@@ -593,14 +600,28 @@ unpack_tar() {   # component archive lo hi
     rm -rf -- "$d"
 }
 
-reuse_component() {   # comp -> 0 when the installed copy matches the pinned artifact (hard-linked)
+# Installed components that can be kept: decided BEFORE anything is downloaded, so a
+# repair only fetches what is damaged or missing (and needs no download tool when
+# nothing is). REUSE[comp]=1: hard-link the installed files into the new tree.
+declare -A REUSE=()
+plan_reuse() {
+    [ -f "$DEST/manifest.json" ] || return 0
+    local comp n=0
+    for comp in "${COMPONENTS[@]}"; do
+        n=$((n + 1))
+        progress check "$(fraction 0.01 0.03 "$n" "${#COMPONENTS[@]}")" "Checking the installed $comp"
+        if reusable_component "$comp"; then REUSE[$comp]=1; fi
+    done
+    return 0
+}
+
+reusable_component() {   # comp -> 0 when the installed copy matches the pinned artifact and its manifest
     local comp=$1
-    [ -f "$DEST/manifest.json" ] || return 1
     local shas
     shas=$(grep "^$comp|" <<<"$ARTIFACTS" | cut -d'|' -f4 | sort | tr '\n' ' ')
-    "$PY" -I - "$DEST" "$STAGING" "${comp%%-cp*}" "$shas" "$LAYOUT" <<'PY'
+    "$PY" -I - "$DEST" "${comp%%-cp*}" "$shas" "$LAYOUT" <<'PY'
 import hashlib, json, os, sys
-root, staging, comp, shas, layout = sys.argv[1], sys.argv[2], sys.argv[3], sorted(sys.argv[4].split()), sys.argv[5]
+root, comp, shas, layout = sys.argv[1], sys.argv[2], sorted(sys.argv[3].split()), sys.argv[4]
 try:
     m = json.load(open(os.path.join(root, "manifest.json"), encoding="utf-8"))
     info = m["installed"][comp]
@@ -621,15 +642,24 @@ for rel, meta in files.items():
             h.update(b)
     if h.hexdigest() != meta.get("sha256"):
         sys.exit(1)
-for rel in files:
-    dst = os.path.join(staging, rel)
+sys.exit(0 if files else 1)
+PY
+}
+
+link_component() {   # comp: hard-link (or copy) its installed files into the staging tree
+    "$PY" -I - "$DEST" "$STAGING" "${1%%-cp*}" <<'PY' || die $E_INSTALL "cannot take the installed $1 over into $STAGING"
+import json, os, shutil, sys
+root, staging, comp = sys.argv[1:4]
+files = json.load(open(os.path.join(root, "manifest.json"), encoding="utf-8"))["installed"][comp]["files"]
+for rel, meta in files.items():
+    src, dst = os.path.join(root, rel), os.path.join(staging, rel)
+    if os.path.getsize(src) != meta.get("size"):
+        sys.exit(f"{rel} changed while installing")
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     try:
-        os.link(os.path.join(root, rel), dst)
+        os.link(src, dst)
     except OSError:
-        import shutil
-        shutil.copy2(os.path.join(root, rel), dst)
-sys.exit(0)
+        shutil.copy2(src, dst)
 PY
 }
 
@@ -645,7 +675,8 @@ stage_all() {
         while IFS='|' read -r c f size sha unp url; do [ "$c" = "$comp" ] && comp_unp=$((comp_unp + unp)); done <<<"$ARTIFACTS"
         local lo hi
         lo=$(fraction 0.74 0.94 "$done" "$total"); hi=$(fraction 0.74 0.94 "$((done + comp_unp))" "$total")
-        if reuse_component "$comp"; then
+        if [ -n "${REUSE[$comp]:-}" ]; then
+            link_component "$comp"
             progress unpack "$hi" "Keeping the installed $comp (unchanged)"
         else
             progress unpack "$lo" "Unpacking $comp"
@@ -747,7 +778,7 @@ PY
 }
 
 swap_into_place() {
-    progress install 0.96 "Moving the new files into $DEST"
+    progress install 0.98 "Moving the new files into $DEST"
     if [ -e "$DEST" ] && [ ! -d "$DEST" ]; then die $E_INSTALL "$DEST exists and is not a directory"; fi
     if [ -d "$DEST" ] && ! is_our_root && [ -n "$(ls -A -- "$DEST" 2>/dev/null)" ]; then
         die $E_INSTALL "$DEST is not empty and was not created by $PROG: refusing to replace it"
@@ -768,18 +799,18 @@ swap_into_place() {
     STAGING=""
 }
 
-run_selftest() {
+run_selftest() {   # the engine must work with the NEW files before they replace anything
     [ "$SELFTEST" = 1 ] || { say "selftest skipped (--no-selftest)"; return 0; }
     local helper out rc=0
     if ! helper=$(find_helper); then
         warn "shadow-voiced not found (install shadow-assistant): selftest skipped"
         return 0
     fi
-    progress selftest 0.97 "Testing the engine (speak, then listen to itself)"
-    out=$("$helper" --selftest --data "$DEST" --no-log-file 2>"$WORK/selftest.err") || rc=$?
+    progress selftest 0.96 "Testing the engine (speak, then listen to itself)"
+    out=$("$helper" --selftest --data "$STAGING" --no-log-file 2>"$WORK/selftest.err") || rc=$?
     if [ "$rc" != 0 ]; then
         tail -n 5 "$WORK/selftest.err" >&2 || true
-        die $E_SELFTEST "installed, but the selftest failed (exit $rc): $(printf '%s' "$out" | tail -n 1 | cut -c1-400)"
+        die $E_SELFTEST "the engine failed its selftest with the new files (exit $rc), so they were not installed (an earlier installation is unchanged; the downloads are kept): $(printf '%s' "$out" | tail -n 1 | cut -c1-400)"
     fi
     SELFTEST_RESULT=$(printf '%s' "$out" | tail -n 1)
 }
@@ -790,17 +821,25 @@ case "$ACTION" in
     uninstall) do_uninstall ;;
 esac
 
+# The pinned runtime (sherpa-onnx, numpy, onnxruntime inside them) is built for x86_64:
+# anything else would download ~700 MB and install a runtime that cannot load.
+case "$(uname -m)" in
+    x86_64|amd64) ;;
+    *) die $E_ARCH "the pinned voice engine runtime exists for x86_64 only (this machine: $(uname -m)); nothing was downloaded" ;;
+esac
 if [ "$MODE" = system ] && [ "$IS_ROOT" != 1 ]; then
     die $E_PERM "--system installs into /var/lib/shadow-voice and needs root: sudo $PROG --system"
 fi
 check_deps
 select_components
 lock_dest
+plan_reuse
 
-# space: downloads (cache) + unpacked files (destination, staged next to it)
+# space: downloads (cache) + unpacked files (destination, staged next to it); components
+# taken over from the installation are hard links and need neither
 need_dl=0 need_inst=0
 while IFS='|' read -r comp f size sha unp url; do
-    wanted "$comp" || continue
+    fetch_wanted "$comp" || continue
     need_inst=$((need_inst + unp))
     if [ -z "$OFFLINE" ] && ! { [ -f "$CACHE/$f" ] && [ "$(size_of "$CACHE/$f")" = "$size" ]; }; then
         part=$(size_of "$CACHE/$f.part" 2>/dev/null || echo 0)
@@ -819,10 +858,24 @@ else
     fi
 fi
 
+# A download tool only when something is really missing from the cache.
+if [ -z "$OFFLINE" ] && [ "$need_dl" -gt 0 ] && [ -z "$DL_TOOL" ]; then
+    if [ "$INSTALL_DEPS" = 1 ] && [ "$MODE" != dest ]; then
+        APT_MISSING=(curl)
+        install_deps
+        command -v curl >/dev/null 2>&1 && DL_TOOL=curl
+    fi
+    [ -n "$DL_TOOL" ] || die $E_DEPS "missing: curl (or wget) to download $(human "$need_dl"). Install with: sudo apt install curl (or re-run with --install-deps)"
+fi
+keep=""
+for comp in "${COMPONENTS[@]}"; do [ -n "${REUSE[$comp]:-}" ] && keep+=" $comp"; done
+[ -z "$keep" ] || say "already installed and intact (kept, not downloaded again):$keep"
 if [ -n "$OFFLINE" ]; then
     what="Install the voice engine (${COMPONENTS[*]}) from $OFFLINE into $DEST ($(human "$need_inst"))?"
-else
+elif [ "$need_dl" -gt 0 ]; then
     what="Download $(human "$need_dl") and install the voice engine (${COMPONENTS[*]}) into $DEST ($(human "$need_inst"))?"
+else
+    what="Install the voice engine (${COMPONENTS[*]}) into $DEST ($(human "$need_inst")); nothing needs to be downloaded?"
 fi
 confirm "$what" || die $E_FAIL "cancelled"
 
@@ -830,15 +883,15 @@ fetch_all
 verify_all
 stage_all
 write_manifest
+SELFTEST_RESULT=""
+run_selftest
 swap_into_place
 if [ -z "$OFFLINE" ] && [ "$KEEP_CACHE" = 0 ]; then
     while IFS='|' read -r comp f size sha unp url; do
-        wanted "$comp" && rm -f -- "$CACHE/$f"
+        fetch_wanted "$comp" && rm -f -- "$CACHE/$f"
     done <<<"$ARTIFACTS"
     rmdir -- "$CACHE" 2>/dev/null || true
 fi
-SELFTEST_RESULT=""
-run_selftest
 STEP="done"
 summary="Voice engine installed in $DEST ($(du -sh -- "$DEST" | cut -f1); ${COMPONENTS[*]})"
 [ -z "$SELFTEST_RESULT" ] || summary+="; selftest passed"

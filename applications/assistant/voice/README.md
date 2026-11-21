@@ -22,7 +22,7 @@ talks to in newline-delimited JSON. Nothing leaves the machine; network is only 
 
 | Path | What |
 |---|---|
-| `shadow-voiced` | entry point (`#!/usr/bin/python3 -I`), installed to `<prefix>/lib/shadow-assistant/voice/` |
+| `shadow-voiced` | entry point (`#!/usr/bin/python3 -IB`: isolated, and no byte code, so a run as root leaves no `__pycache__` the user cannot delete), installed to `<prefix>/lib/shadow-assistant/voice/` |
 | `shadow_voice/datadir.py` | data-root lookup, manifest, `--probe` (imports no model) |
 | `shadow_voice/audio.py` | capture/playback tools, device mapping, WAV I/O, level meters |
 | `shadow_voice/listener.py` | VAD + keyword spotter + STT state machine (wake / listen / finish / cancel) |
@@ -44,8 +44,19 @@ shadow-voiced --probe                     one JSON line, < 1 s, exit 0 usable / 
 shadow-voiced --selftest                  TTS → VAD/KWS/wake/STT round trip without audio devices, one JSON line
 shadow-voiced --transcribe WAV [--stt moonshine|whisper]
 shadow-voiced --say TEXT --out WAV [--voice af_heart] [--speed 1.0]
-shadow-voiced --calibrate SECONDS --expect TEXT [--input-wav WAV] [--input-device DEV]
+shadow-voiced --calibrate SECONDS --expect TEXT [--input-wav WAV] [--input-device DEV] [--wake-sensitivity S]
 ```
+
+`--calibrate` records the microphone (one JSON line): level statistics (`mic`: peak, RMS,
+noise floor, clipping, digital silence), seconds of speech, and per installed STT model what
+it heard and its word error rate on the **command words** (TEXT without its leading wake
+word, `command`). `wake` is the wake-word check: the whole recording goes through the real
+listener (Silero VAD + keyword spotter + wake policy + an STT model) at `--wake-sensitivity`,
+as in use; `wake.ok` is true only when that produced `final{id:"wake"}`. If it did not, the
+same audio is tried at `high`: `wake.needs_high` says that only that setting works for this
+voice. `recommended` is the model with the lowest command WER (Moonshine on a tie), unless a
+model at most 12 points worse is the only one that hears "Shadow". Exit 0 recommended, 1 no
+speech, 2 no microphone.
 
 Useful options: `--voice`, `--speed`, `--stt auto|moonshine|whisper`, `--wake-sensitivity
 low|normal|high`, `--no-wake`, `--muted`, `--input-device`, `--output-device`, `--capture`,
@@ -192,16 +203,22 @@ shadow-voice-setup --dest DIR          any root, e.g. a chroot's /usr/share/shad
 ```
 
 Every artifact is pinned (URL, size, sha256; wheels with PyPI's digests); every file taken
-out of an archive is pinned too. Downloads resume (`curl -C -` / `wget -c`); the new tree is
-staged next to the destination and swapped in atomically (`mv --exchange`, or two renames);
-components that are already installed and unchanged are hard-linked instead of unpacked
-again; `manifest.json` records the sha256 of every installed file (`--check` verifies them).
+out of an archive is pinned too. The pinned runtime is x86-64 only: on any other machine the
+setup stops before downloading anything (exit 13). Before anything is downloaded, every
+installed component is checked (its pinned artifacts and the sha256 of each of its files):
+the intact ones are hard-linked into the new tree and neither downloaded nor unpacked again,
+so a repair fetches only what is damaged or missing, and `curl`/`wget` is only required when
+something must be downloaded (a full `--cache` needs neither). Downloads resume (`curl -C -`
+/ `wget -c`); the new tree is staged next to the destination, the engine's selftest runs
+against the staged tree, and only then is it swapped in atomically (`mv --exchange`, or two
+renames): a failing selftest leaves the previous installation and the downloads as they
+were. `manifest.json` records the sha256 of every installed file (`--check` verifies them).
 `--progress-json` prints `{"step","progress","message"}` lines (steps: check, deps, download,
 verify, unpack, manifest, install, selftest, done, error{code,failed_step}) for the in-app
 installer. Exit codes: 0 ok, 1 unexpected, 2 usage, 3 missing dependency, 4 download failed,
-5 checksum mismatch, 6 disk space, 7 permission, 8 unpack/install, 9 installed but selftest
-failed, 10 `--check` found problems, 11 nothing installed, 12 another setup running, 130
-interrupted. Missing Debian packages are named with the exact `sudo apt install …` command;
+5 checksum mismatch, 6 disk space, 7 permission, 8 unpack/install, 9 the selftest of the new
+files failed (nothing was replaced), 10 `--check` found problems, 11 nothing installed, 12
+another setup running, 13 not an x86-64 machine, 130 interrupted. Missing Debian packages are named with the exact `sudo apt install …` command;
 `--install-deps` installs them (`sudo apt-get install -y --no-install-recommends`).
 
 ## Logging
@@ -209,8 +226,8 @@ interrupted. Missing Debian packages are named with the exact `sudo apt install 
 Everything the helper writes to stderr — its own log lines and native messages from
 onnxruntime/sherpa-onnx — goes to the app (QProcess stderr) **and** to
 `$XDG_STATE_HOME/shadow/voice.log` (default `~/.local/state/shadow/voice.log`, rotated at
-1 MB, one `voice.log.1`). A tiny tee process does the copying so the last lines before a
-crash are never lost. Transcripts are only logged with `--debug`.
+1 MB, one `voice.log.1`). A tiny tee process (`python3 -I -B logtee.py`) does the copying so
+the last lines before a crash are never lost. Transcripts are only logged with `--debug`.
 
 ## Troubleshooting
 
@@ -221,7 +238,7 @@ crash are never lost. Transcripts are only logged with `--debug`.
 | `--probe` exit 5 | no recorder: `sudo apt install pipewire-bin` (or pulseaudio-utils / alsa-utils) |
 | "The microphone is silent …" | the input is muted or the wrong source is selected: `wpctl status`, `pactl list short sources`; set `input_device` to a source name |
 | mic errors with "Retrying in …" | the message carries the recorder's own error; check that PipeWire runs: `systemctl --user status pipewire wireplumber` |
-| wake word not recognised | `shadow-voiced --calibrate 6 --expect "Shadow, open the terminal"` compares both STT models on your voice and checks the input level; try `wake_sensitivity` high |
+| wake word not recognised | `shadow-voiced --calibrate 6 --expect "Shadow, open the terminal"` compares both STT models on your voice, checks the input level and runs the real wake-word check on it (`wake.ok`; `wake.needs_high`: it works with `wake_sensitivity=high`) |
 | words skipped when speaking | `sudo apt install espeak-ng` (pronounces words missing from the voice lexicon) |
 | anything else | `~/.local/state/shadow/voice.log`, `shadow-voiced --selftest`, `shadow-voice-setup --check` |
 

@@ -21,6 +21,9 @@
 #                             "shadow-voice-setup --keep-cache" run (they are
 #                             verified against the pinned sha256 here anyway).
 #   SHADOW_IMAGE_VOICE_STT    both (default) | moonshine | whisper
+#   SHADOW_IMAGE_VOICE_REQUIRED=1  a failure stops the build (exit 1) instead of
+#                             a warning: release images must not ship without
+#                             the voice (build.sh: SHADOW_IMAGE_VOICE=required)
 #
 # Best effort, like the image's other downloads (distro/base/hooks/45-dev-ides.sh):
 # when the data cannot be installed (offline, checksum mismatch, shadow-assistant
@@ -46,6 +49,9 @@ SETUP=/usr/bin/shadow-voice-setup
 LOGF=${IMG:-$SHADOW_WORK}/voice-data.log
 
 skip() {
+    if [ "${SHADOW_IMAGE_VOICE_REQUIRED:-0}" = 1 ]; then
+        die "voice engine data NOT included in the image: $* (SHADOW_IMAGE_VOICE=required)"
+    fi
     warn "voice engine data NOT included in the image: $*"
     warn "the assistant will speak with eSpeak NG and offer the download (sudo shadow-voice-setup --system)"
     exit 0

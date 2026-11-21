@@ -369,15 +369,18 @@ sources, as your normal user:
 bash scripts/fix-assistant-voice.sh
 ```
 
-It builds and installs the assistant from the checkout, installs the Debian
-packages and the offline voice engine data it needs, repairs
+It builds and installs the assistant from the checkout (installing the
+build tools and creating `build/cmake` when there is none), installs the
+Debian packages and the offline voice engine data it needs, repairs
 `~/.config/shadow/assistant.conf` (keeping a backup, never touching the API
-key line), checks that the default input is an unmuted microphone with a
-usable level, tests the speaker and your microphone, and restarts the
-assistant in the background. It ends with PASS or FAIL per check and the
-next step for each failure. Without a checkout: `sudo shadow-voice-setup
---system` installs the engine data, and `shadow-assistant --dump voice`
-shows what the assistant finds. More:
+key line), checks the default input and output, tests the speakers and your
+voice (including the wake word), restarts the assistant in the background
+and has you say "Shadow, what time is it?" to it. It ends with PASS only
+when the assistant really heard you and answered aloud; otherwise FAIL (with
+the next step for each failure) or NOT VERIFIED (a test was skipped, or a
+switch of yours keeps it from listening). Without a checkout: `sudo
+shadow-voice-setup --system` installs the engine data, and
+`shadow-assistant --dump voice` shows what the assistant finds. More:
 [../applications/assistant-voice.md](../applications/assistant-voice.md#troubleshooting).
 
 Laptops whose microphones sit behind the audio DSP (Intel SOF) show no

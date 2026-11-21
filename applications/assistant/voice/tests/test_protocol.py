@@ -214,6 +214,9 @@ class Speech(unittest.TestCase):
             self.assertTrue(h.named("level", source="tts"))
             wav = os.path.join(out, "speak-s1.wav")
             self.assertGreater(wav_seconds(wav), 2.5)
+            # The engine reports speak_end first and only then that it stopped speaking
+            # (state back to "muted"): wait for that event instead of racing it.
+            h.wait("state", start=end["_index"], value="muted", timeout=10)
             states = [e["value"] for e in h.named("state")]
             self.assertEqual(states[:3], ["muted", "speaking", "muted"])
 
@@ -590,6 +593,11 @@ class Cli(unittest.TestCase):
             self.assertIn(k, out["mic"])
         self.assertFalse(out["mic"]["silence"])
         self.assertEqual(out["models"][out["recommended"]]["wer"], 0.0, out)
+        # the wake word went through the real listener (VAD + keyword spotter + policy)
+        self.assertEqual(out["command"], "open the terminal")
+        self.assertTrue(out["wake"]["ok"], out["wake"])
+        self.assertEqual(out["wake"]["command"], "open the terminal", out["wake"])
+        self.assertFalse(out["wake"]["needs_high"], out["wake"])
         # a silent recording: no recommendation, and advice that names the problem
         silent = os.path.join(TMP, "silent.wav")
         import wave
@@ -600,6 +608,18 @@ class Cli(unittest.TestCase):
         self.assertIsNone(out["recommended"])
         self.assertTrue(out["mic"]["silence"])
         self.assertTrue(any("silence" in a for a in out["advice"]))
+
+    def test_calibrate_wake_word_misheard(self):
+        """A first word that is not "Shadow" is the wake check's failure, not a word error:
+        the command words are still scored right, and wake.ok is false at every sensitivity."""
+        wav, _ = session("cal-meadow", [0.6, ("Meadow, open the terminal.", "af_heart"), 1.0])
+        code, out = self.run_json("--calibrate", "5", "--expect", "Shadow, open the terminal", "--input-wav", wav,
+                                  "--data", DATA)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out["models"][out["recommended"]]["wer"], 0.0, out)
+        self.assertFalse(out["wake"]["ok"], out["wake"])
+        self.assertFalse(out["wake"]["needs_high"], out["wake"])
+        self.assertIn("eadow", out["wake"]["heard"], out["wake"])
 
 
 if __name__ == "__main__":

@@ -175,8 +175,9 @@ In the image, with limits stated in their READMEs
   700 MB of data (in the image only when it was built with network access,
   otherwise `sudo shadow-voice-setup --system`) and about 850 MB of memory
   while it runs; its runtime is x86-64 only, so arm64 has no speech
-  recognition or neural voice. Tested with a virtual microphone in the build
-  chroot, never with a real microphone or speakers
+  recognition or neural voice. Tested with a virtual microphone (in the build
+  chroot and on the 0.2.0 image's root filesystem) and a stand-in for the
+  Claude API, never with a real microphone, speakers or the real API
   ([applications/assistant-voice.md](applications/assistant-voice.md)).
 
 ## Hardware and drivers

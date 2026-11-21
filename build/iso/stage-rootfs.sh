@@ -8,7 +8,7 @@
 
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-[ -n "${BASE:-}" ] && [ -n "${IMG:-}" ] && [ -n "${STAGING:-}" ] || die "stage-rootfs.sh must be started by build.sh"
+if [ -z "${BASE:-}" ] || [ -z "${IMG:-}" ] || [ -z "${STAGING:-}" ]; then die "stage-rootfs.sh must be started by build.sh"; fi
 
 MERGED="$IMG/merged"
 mount -t overlay shadow-rootfs \
@@ -59,6 +59,7 @@ EOF
     # diagnosis. NOTE: apt-get is redirected (not piped) so its real exit
     # status is tested, not tee's.
     # shellcheck disable=SC2086
+    # shellcheck disable=SC2016  # expanded by the bash inside the image
     run --bind "$REPO_DIR:/run/shadow-repo:ro" -- bash -eu -c '
         ulimit -n 1048576 2>/dev/null || ulimit -n 65536 2>/dev/null || true
         echo "space/inodes before SHADOW install:"; df -h / || true; df -i / || true
@@ -136,6 +137,7 @@ fi
 # A large SHADOW/arsenal install can leave the overlay's account databases
 # unopenable for writing (see the install block above); the hooks below call
 # passwd, so repair the databases first — harmless when they are already fine.
+# shellcheck disable=SC2016  # expanded by the bash inside the image
 run -- bash -eu -c '
     for f in passwd shadow group gshadow subuid subgid; do
         [ -e "/etc/$f" ] || continue
@@ -153,15 +155,18 @@ done
 # ---- offline voice engine data of the Shadow Assistant -----------------------
 # Not a hook: the ~700 MB download is cached on the build host between builds,
 # which a hook (it only sees the image) cannot do. Best effort: without network
-# the image is built without it and the assistant offers the download.
-if [ "${VOICE_DATA:-1}" = 1 ]; then
-    "$SHADOW_ROOT/build/iso/voice-data.sh" "$MERGED"
+# the image is built without it and the assistant offers the download; with
+# SHADOW_IMAGE_VOICE=required (release builds) that stops the build instead.
+if [ "${VOICE_DATA:-1}" != 0 ]; then
+    SHADOW_IMAGE_VOICE_REQUIRED=$([ "${VOICE_DATA:-1}" = required ] && echo 1 || echo 0) \
+        "$SHADOW_ROOT/build/iso/voice-data.sh" "$MERGED"
 else
     log "voice engine data: not included (--no-voice-data / SHADOW_IMAGE_VOICE=0)"
 fi
 
 # ---- package manifest --------------------------------------------------------
 mkdir -p "$SHADOW_OUT/iso"
+# shellcheck disable=SC2016  # a dpkg-query format, not shell
 run -- dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
     | sort > "$SHADOW_OUT/iso/$ISO_NAME.manifest"
 log "image contains $(wc -l < "$SHADOW_OUT/iso/$ISO_NAME.manifest") packages"

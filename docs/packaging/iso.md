@@ -16,7 +16,7 @@ sudo build/iso/build.sh [--arch amd64|arm64] [--variant NAME] [--fresh]
 | `--fresh` | ignore the cached Debian base layer and bootstrap again |
 | `--comp` | squashfs compressor: `zstd` (default; level 19, 1 MiB blocks) or `xz` (smaller, slower to boot) |
 | `--no-shadow-packages` | do not install SHADOW packages from the local repository (bring-up and debugging of the base image) |
-| `--no-voice-data` | do not include the Shadow Assistant's offline voice engine data ([below](#voice-engine-data)); same as `SHADOW_IMAGE_VOICE=0` |
+| `--no-voice-data` | do not include the Shadow Assistant's offline voice engine data ([below](#voice-engine-data)); same as `SHADOW_IMAGE_VOICE=0` (`SHADOW_IMAGE_VOICE=required`: a build without it fails) |
 
 Environment: the variables of `build/lib/common.sh`, plus `SHADOW_KEEP_DOCS=1`
 to keep `/usr/share/doc`, `info` and `lintian` files in the image, and the
@@ -138,10 +138,16 @@ installed system; the installer copies it with the rest of the image.
   installed) or `moonshine` / `whisper` alone (Moonshine only: 540 MB).
 * Off with `--no-voice-data` or `SHADOW_IMAGE_VOICE=0`. It is skipped with a
   warning when the image has no `shadow-assistant` or is not amd64 (the
-  pinned runtime is x86-64 only).
-* **Best effort**: without network, with a checksum mismatch or a failed
-  self-test the build prints a warning, leaves nothing half-installed and
-  continues. Such an image has no neural voice: the assistant speaks with
+  pinned runtime is x86-64 only). `SHADOW_IMAGE_VOICE=required` turns every
+  such skip and every failure below into a build error (release builds).
+* CI (`.github/workflows/build.yml`) keeps the download cache between runs
+  with `actions/cache`, keyed on a hash of the pinned artifact list in
+  `shadow-voice-setup`, so the ~700 MB are downloaded once per change of that
+  list; pull-request builds leave the voice data out (`SHADOW_IMAGE_VOICE=0`)
+  and release tags (`v*`) require it.
+* **Best effort** (unless required): without network, with a checksum
+  mismatch or a failed self-test the build prints a warning, leaves nothing
+  half-installed and continues. Such an image has no neural voice: the assistant speaks with
   eSpeak NG and offers the download in its settings.
 * Size: 693 MB uncompressed, 518 MB in the zstd-19 squashfs (measured), so
   the desktop ISO grows by about half a gigabyte; the installed system needs

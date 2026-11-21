@@ -91,7 +91,27 @@ jobs:
       - name: Publish repository
         run: sudo -E build/packages/repo.sh
 
+      # The Shadow Assistant's offline voice engine data (~700 MB of pinned,
+      # sha256-checked downloads, build/iso/voice-data.sh) is cached between
+      # runs, keyed on the pinned artifact list, so it is downloaded once per
+      # change of that list. Pull requests build the image without it.
+      - name: Voice engine cache key
+        id: voicekey
+        run: |
+          key=$(sed -n '/^ARTIFACTS="/,/"$/p' applications/assistant/voice/shadow-voice-setup | sha256sum | cut -c1-16)
+          echo "key=voice-engine-$key" >> "$GITHUB_OUTPUT"
+
+      - name: Voice engine download cache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache@v4
+        with:
+          path: build/work/cache/voice-engine
+          key: ${{ steps.voicekey.outputs.key }}
+
       - name: Build desktop ISO
+        env:
+          # pull requests: without the voice data; release tags: it must be in the image
+          SHADOW_IMAGE_VOICE: ${{ github.event_name == 'pull_request' && '0' || (startsWith(github.ref, 'refs/tags/v') && 'required' || '1') }}
         run: sudo -E build/iso/build.sh --variant desktop
 
       - name: Verify ISO checksum

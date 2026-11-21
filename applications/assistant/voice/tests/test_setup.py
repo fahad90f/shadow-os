@@ -142,6 +142,95 @@ class OfflineCache(unittest.TestCase):
             holder.wait()
 
 
+def bindir_without(*names, extra=None):
+    """A PATH directory with every tool of /usr/bin and /bin except NAMES (+ EXTRA {name: script})."""
+    bindir = tempfile.mkdtemp(dir=TMP)
+    for d in ("/usr/bin", "/bin"):
+        for n in os.listdir(d):
+            if n in names or os.path.exists(os.path.join(bindir, n)):
+                continue
+            os.symlink(os.path.join(d, n), os.path.join(bindir, n))
+    for n, body in (extra or {}).items():
+        with open(os.path.join(bindir, n), "w") as f:
+            f.write(body)
+        os.chmod(os.path.join(bindir, n), 0o755)
+    return bindir
+
+
+class Architecture(unittest.TestCase):
+    def test_refuses_other_architectures(self):
+        """The pinned runtime is x86_64: elsewhere nothing is downloaded or installed."""
+        bindir = bindir_without("uname", extra={"uname": "#!/bin/sh\n[ \"$1\" = -m ] && echo aarch64 || echo Linux\n"})
+        dest = os.path.join(tempfile.mkdtemp(dir=TMP), "voice")
+        cache = os.path.join(TMP, "arch-cache")
+        code, out, err = run("--dest", dest, "--cache", cache, "--yes", "--progress-json", env={"PATH": bindir})
+        self.assertEqual(code, 13, err)
+        self.assertIn("x86_64 only", err)
+        self.assertIn("aarch64", err)
+        self.assertEqual(json.loads(out.strip().splitlines()[-1])["code"], 13)
+        self.assertFalse(os.path.exists(dest))
+        self.assertFalse(os.path.exists(cache), "nothing may be downloaded")
+
+
+@unittest.skipUnless(CACHE, "set SHADOW_VOICE_TEST_CACHE to an offline cache with the pinned artifacts")
+class Reinstall(unittest.TestCase):
+    """A full cache needs no download tool; a repair downloads only the damaged component;
+    a selftest failure of the new files leaves the installation as it was."""
+
+    def test_cache_repair_and_selftest_gate(self):
+        dest = os.path.join(tempfile.mkdtemp(dir=TMP), "voice")
+        cache = tempfile.mkdtemp(dir=TMP)
+        for n in os.listdir(CACHE):
+            os.symlink(os.path.join(CACHE, n), os.path.join(cache, n))
+        nodl = bindir_without("curl", "wget")
+        code, out, err = run("--dest", dest, "--cache", cache, "--stt", "moonshine", "--numpy", "system", "--yes",
+                             "--no-selftest", env={"PATH": nodl}, timeout=900)
+        if code == 3 and "numpy" in err:
+            self.skipTest("python3-numpy missing here")
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("curl", err)
+        code, _, err = run("--check", "--dest", dest)
+        self.assertEqual(code, 0, err)
+
+        # one damaged file: only its component is fetched again, by a download tool that logs URLs
+        vad = os.path.join(dest, "models", "vad", "silero_vad.onnx")
+        os.chmod(vad, 0o644)
+        with open(vad, "r+b") as f:
+            f.seek(1000)
+            f.write(b"\xff\xff")
+        urls = os.path.join(TMP, "fetched-urls.txt")
+        fake_curl = ("#!/bin/sh\nout=\"\"; url=\"\"\nwhile [ $# -gt 0 ]; do case \"$1\" in -o) out=$2; shift ;; "
+                     "--) url=$2; shift ;; esac; shift; done\n"
+                     f"echo \"$url\" >> {urls}\ncp \"{CACHE}/${{url##*/}}\" \"$out\"\n")
+        dl = bindir_without("curl", "wget", extra={"curl": fake_curl})
+        empty = tempfile.mkdtemp(dir=TMP)
+        code, out, err = run("--dest", dest, "--cache", empty, "--stt", "moonshine", "--numpy", "system", "--yes",
+                             "--no-selftest", env={"PATH": dl}, timeout=900)
+        self.assertEqual(code, 0, err)
+        with open(urls) as f:
+            fetched = f.read().split()
+        self.assertEqual([u.rsplit("/", 1)[-1] for u in fetched], ["silero_vad.onnx"], fetched)
+        self.assertIn("already installed and intact", err)
+        code, _, err = run("--check", "--dest", dest)
+        self.assertEqual(code, 0, err)
+
+        # the new files fail the engine's selftest: nothing is replaced, nothing is left behind
+        with open(os.path.join(dest, "manifest.json")) as f:
+            before = f.read()
+        bad = os.path.join(TMP, "failing-voiced")
+        with open(bad, "w") as f:
+            f.write("#!/bin/sh\necho '{\"ok\": false}'\nexit 1\n")
+        os.chmod(bad, 0o755)
+        code, out, err = run("--dest", dest, "--cache", empty, "--stt", "moonshine", "--numpy", "system", "--yes",
+                             env={"PATH": nodl, "SHADOW_VOICED": bad}, timeout=900)
+        self.assertEqual(code, 9, err)
+        self.assertIn("were not installed", err)
+        with open(os.path.join(dest, "manifest.json")) as f:
+            self.assertEqual(f.read(), before)
+        parent = os.path.dirname(dest)
+        self.assertEqual(sorted(os.listdir(parent)), ["voice"], "no staging or work directory may be left")
+
+
 class Deps(unittest.TestCase):
     def test_install_deps_uses_apt(self):
         """espeak-ng 'missing' + --install-deps -> sudo apt-get install -y --no-install-recommends espeak-ng"""

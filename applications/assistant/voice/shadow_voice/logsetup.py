@@ -43,7 +43,7 @@ def start_tee(path, tag):
     r, w = os.pipe()
     orig = os.dup(2)
     try:
-        child = subprocess.Popen([sys.executable, "-I", tee_py, path, str(MAX_LOG_BYTES), tag],
+        child = subprocess.Popen([sys.executable, "-I", "-B", tee_py, path, str(MAX_LOG_BYTES), tag],
                                  stdin=r, stdout=orig, stderr=subprocess.DEVNULL, close_fds=True)
     except OSError:
         os.close(r)

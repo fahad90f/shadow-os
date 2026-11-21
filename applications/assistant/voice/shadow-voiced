@@ -1,15 +1,20 @@
-#!/usr/bin/python3 -I
+#!/usr/bin/python3 -IB
 """shadow-voiced — offline voice engine helper for Shadow Assistant.
 
 Installed as <prefix>/lib/shadow-assistant/voice/shadow-voiced next to the
 shadow_voice/ package. Python runs isolated (-I): PYTHONPATH, user site-packages
 and the current directory are ignored, so nothing on the user's system can
 shadow the pinned runtime; the package directory is added explicitly below.
+It writes no byte code (-B, and sys.dont_write_bytecode for "python3
+shadow-voiced"): a run as root (the setup's selftest, an image build) must not
+leave root-owned __pycache__ directories next to packaged files or in a source
+checkout, where the user could not delete them.
 See README.md (next to this file in the source tree) for the protocol.
 """
 import os
 import sys
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 from shadow_voice.cli import main  # noqa: E402
