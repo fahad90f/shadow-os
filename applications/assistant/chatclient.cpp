@@ -31,13 +31,53 @@ bool supportsRefusalFallback(const QString &model)
 }
 } // namespace
 
-ChatClient::ChatClient(AssistantConfig *config, QObject *parent)
-    : QObject(parent), m_config(config)
+ChatClient::ChatClient(AssistantConfig *config, QObject *parent, QNetworkAccessManager *net)
+    : QObject(parent), m_config(config), m_net(net)
 {
-    m_net = new QNetworkAccessManager(this);
-    m_net->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
-    m_net->setTransferTimeout(kTimeoutMs);
+    if (!m_net) {
+        m_net = new QNetworkAccessManager(this);
+        m_net->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
+    }
 }
+
+namespace {
+// Does a request body carry an image (an OpenAI "image_url" content part)?
+bool hasImages(const QJsonArray &messages)
+{
+    for (const QJsonValue &mv : messages) {
+        const QJsonValue content = mv.toObject().value(QStringLiteral("content"));
+        if (!content.isArray())
+            continue;
+        for (const QJsonValue &part : content.toArray())
+            if (part.toObject().value(QStringLiteral("type")).toString() == QLatin1String("image_url"))
+                return true;
+    }
+    return false;
+}
+
+// What an error body says, whichever of the shapes in use it has.
+QString errorText(const QByteArray &body)
+{
+    const QJsonDocument doc = QJsonDocument::fromJson(body);
+    if (doc.isObject()) {
+        const QJsonObject o = doc.object();
+        const QJsonValue e = o.value(QStringLiteral("error"));
+        if (e.isObject() && !e.toObject().value(QStringLiteral("message")).toString().isEmpty())
+            return e.toObject().value(QStringLiteral("message")).toString();
+        if (e.isString())
+            return e.toString();
+        for (const char *k : {"message", "detail", "title"}) {
+            const QJsonValue v = o.value(QLatin1String(k));
+            if (v.isString() && !v.toString().isEmpty())
+                return v.toString();
+        }
+        return {};
+    }
+    // NVIDIA answers some errors with a bare sentence ("Unauthorized access").
+    const QString text = QString::fromUtf8(body).trimmed();
+    return text.size() <= 300 && !text.startsWith(u'<') ? text : QString();
+}
+} // namespace
 
 ChatClient::~ChatClient()
 {
@@ -137,6 +177,11 @@ QJsonArray ChatClient::toAnthropicMessages(const QJsonArray &messages, QString *
 
 void ChatClient::send(const QString &model, const QJsonArray &messages, const QJsonArray &tools)
 {
+    send(model, messages, tools, Options{});
+}
+
+void ChatClient::send(const QString &model, const QJsonArray &messages, const QJsonArray &tools, const Options &options)
+{
     if (m_reply) {
         // Tear the old reply down re-entrancy-safe: clear m_reply first and
         // disconnect so abort()'s finished() signal cannot call back into
@@ -155,10 +200,13 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
     m_finishReason.clear();
     m_sawData = false;
     m_failed = false;
-    m_anthropic = !m_config->localMode();
+    m_anthropic = m_config->anthropic();
+    m_model = model;
+    m_sentTools = !tools.isEmpty();
+    m_sentImages = !m_anthropic && hasImages(messages);
 
     if (!m_config->apiKeyConfigured()) {
-        Q_EMIT failed(QStringLiteral("no_key"), tr("No Claude API key is configured."));
+        Q_EMIT failed(QStringLiteral("no_key"), tr("No API key is set. Add one in Settings."));
         return;
     }
 
@@ -173,6 +221,7 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setRawHeader("Accept", "text/event-stream");
+    req.setTransferTimeout(options.idleTimeoutMs > 0 ? options.idleTimeoutMs : kTimeoutMs);
 
     QJsonObject body;
     if (m_anthropic) {
@@ -180,7 +229,7 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
         QString system;
         const QJsonArray anthropicMessages = toAnthropicMessages(messages, &system);
         body.insert(QStringLiteral("model"), model);
-        body.insert(QStringLiteral("max_tokens"), kMaxTokens);
+        body.insert(QStringLiteral("max_tokens"), options.maxTokens > 0 ? options.maxTokens : kMaxTokens);
         if (!system.isEmpty())
             body.insert(QStringLiteral("system"), system);
         body.insert(QStringLiteral("messages"), anthropicMessages);
@@ -208,11 +257,17 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
             req.setRawHeader("anthropic-beta", "server-side-fallback-2026-07-01");
         }
     } else {
-        // --- OpenAI-compatible local server (offline) ---
+        // --- OpenAI-compatible: NVIDIA's hosted models, or a local server ---
         body.insert(QStringLiteral("model"), model);
         body.insert(QStringLiteral("messages"), messages);
         body.insert(QStringLiteral("stream"), true);
-        body.insert(QStringLiteral("temperature"), 0.6);
+        body.insert(QStringLiteral("temperature"), options.temperature >= 0 ? options.temperature : 0.6);
+        // A hosted model needs a limit (the service's default is small); a
+        // local server is left to its own.
+        if (options.maxTokens > 0)
+            body.insert(QStringLiteral("max_tokens"), options.maxTokens);
+        else if (m_config->nvidia())
+            body.insert(QStringLiteral("max_tokens"), kMaxTokens);
         if (!tools.isEmpty()) {
             body.insert(QStringLiteral("tools"), tools);
             body.insert(QStringLiteral("tool_choice"), QStringLiteral("auto"));
@@ -223,8 +278,8 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
     }
 
     m_reply = m_net->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    connect(m_reply, &QNetworkReply::readyRead, this, &ChatClient::onReadyRead);
-    connect(m_reply, &QNetworkReply::finished, this, &ChatClient::onFinished);
+    connect(m_reply.data(), &QNetworkReply::readyRead, this, &ChatClient::onReadyRead);
+    connect(m_reply.data(), &QNetworkReply::finished, this, &ChatClient::onFinished);
     Q_EMIT started();
 }
 
@@ -353,11 +408,22 @@ void ChatClient::processEvent(const QByteArray &event)
             continue;
         m_sawData = true;
         const QJsonObject o = doc.object();
+        // A failure reported inside the stream.
+        if (o.contains(QStringLiteral("error")) && !o.contains(QStringLiteral("choices"))) {
+            const QString msg = errorText(payload);
+            m_failed = true;
+            Q_EMIT failed(QStringLiteral("server"), msg.isEmpty() ? tr("The service reported an error while answering.") : msg);
+            return;
+        }
         const QJsonArray choices = o.value(QStringLiteral("choices")).toArray();
         if (choices.isEmpty())
             continue;
         const QJsonObject choice = choices.first().toObject();
-        const QJsonObject delta = choice.value(QStringLiteral("delta")).toObject();
+        // "delta" while streaming; "message" when a server answers in one piece.
+        const QJsonObject delta = choice.contains(QStringLiteral("delta")) ? choice.value(QStringLiteral("delta")).toObject()
+                                                                           : choice.value(QStringLiteral("message")).toObject();
+        // Reasoning models stream their thinking as "reasoning_content": it is
+        // not part of the answer and is not shown.
 
         const QString text = delta.value(QStringLiteral("content")).toString();
         if (!text.isEmpty()) {
@@ -388,52 +454,73 @@ void ChatClient::processEvent(const QByteArray &event)
 void ChatClient::emitHttpError(QNetworkReply *reply)
 {
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    const QByteArray body = reply->readAll();
-    QString apiMessage;
-    const QJsonDocument doc = QJsonDocument::fromJson(body);
-    if (doc.isObject()) {
-        const QJsonValue e = doc.object().value(QStringLiteral("error"));
-        if (e.isObject())
-            apiMessage = e.toObject().value(QStringLiteral("message")).toString();
-        else if (e.isString())
-            apiMessage = e.toString();
-        if (apiMessage.isEmpty())
-            apiMessage = doc.object().value(QStringLiteral("message")).toString();
-        if (apiMessage.isEmpty())
-            apiMessage = doc.object().value(QStringLiteral("detail")).toString();
+    const QString apiMessage = errorText(reply->readAll());
+    const QString service = m_config->localMode() ? tr("The local model server")
+                          : m_anthropic ? tr("The Claude API") : tr("NVIDIA");
+    const QString name = m_model.section(u'/', -1);
+
+    // A model that cannot take what the request carried says so in words; the
+    // caller then asks it differently (or asks another model).
+    const QString lower = apiMessage.toLower();
+    const bool capability = status == 400 || status == 404 || status == 422 || status == 501;
+    if (!m_anthropic && capability && m_sentTools
+        && (lower.contains(QLatin1String("tool")) || lower.contains(QLatin1String("function")))) {
+        Q_EMIT failed(QStringLiteral("no_tools"),
+                      tr("%1 cannot use tools (HTTP %2).").arg(name).arg(status) + QStringLiteral("\n") + apiMessage);
+        return;
+    }
+    if (!m_anthropic && capability && m_sentImages
+        && (lower.contains(QLatin1String("image")) || lower.contains(QLatin1String("vision"))
+            || lower.contains(QLatin1String("multimodal")) || lower.contains(QLatin1String("content")))) {
+        Q_EMIT failed(QStringLiteral("no_images"),
+                      tr("%1 cannot look at images (HTTP %2).").arg(name).arg(status) + QStringLiteral("\n") + apiMessage);
+        return;
     }
 
     QString code, message;
     switch (status) {
     case 400:
+    case 422:
         code = QStringLiteral("bad_response");
-        message = tr("The Claude API rejected the request (HTTP 400). Check the model ID in Settings.");
+        message = tr("%1 rejected the request to %2 (HTTP %3).").arg(service, name).arg(status);
         break;
     case 401:
         code = QStringLiteral("auth");
-        message = tr("The Claude API rejected the key (HTTP 401). Check the key in your assistant.conf.");
+        message = tr("%1 did not accept the API key (HTTP 401). Check the key in Settings.").arg(service);
+        break;
+    case 402:
+        code = QStringLiteral("auth");
+        message = tr("%1: the key's credits are used up (HTTP 402).").arg(service);
         break;
     case 403:
-        code = QStringLiteral("auth");
-        message = tr("The Claude API refused this request (HTTP 403). The key may be invalid or lack access "
-                     "to the selected model. Check the model IDs in Settings and the key in assistant.conf.");
+        // NVIDIA answers a key it does not know with 403 "Authorization
+        // failed" (seen from the real service, 2026-11-21): that is the key,
+        // not this model, so no other model is worth trying.
+        if (lower.contains(QLatin1String("authoriz")) || lower.contains(QLatin1String("api key"))
+            || lower.contains(QLatin1String("unauthor")) || lower.contains(QLatin1String("credential"))) {
+            code = QStringLiteral("auth");
+            message = tr("%1 did not accept the API key (HTTP 403). Check the key in Settings.").arg(service);
+        } else {
+            code = QStringLiteral("forbidden");
+            message = tr("%1 refused this request (HTTP 403). The key may not have access to %2.").arg(service, name);
+        }
         break;
     case 404:
         code = QStringLiteral("not_found");
-        message = tr("The model or endpoint was not found (HTTP 404). Check the model IDs in Settings.");
+        message = tr("%1 does not offer the model %2 (HTTP 404).").arg(service, name);
         break;
     case 429:
         code = QStringLiteral("rate_limit");
-        message = tr("Rate limited by the API (HTTP 429). Wait a moment and try again.");
+        message = tr("%1 is limiting requests right now (HTTP 429). Wait a moment and try again.").arg(service);
         break;
     case 529:
         code = QStringLiteral("server");
-        message = tr("The Claude API is temporarily overloaded (HTTP 529). Try again shortly.");
+        message = tr("%1 is temporarily overloaded (HTTP 529). Try again shortly.").arg(service);
         break;
     default:
         if (status >= 500) {
             code = QStringLiteral("server");
-            message = tr("The API returned a server error (HTTP %1).").arg(status);
+            message = tr("%1 returned a server error (HTTP %2).").arg(service).arg(status);
         } else {
             code = QStringLiteral("network");
             message = reply->error() == QNetworkReply::OperationCanceledError
@@ -476,14 +563,19 @@ void ChatClient::onFinished()
         return;
     }
 
-    // Drain any trailing buffered event.
+    // Drain any trailing buffered event. A server that ignored "stream" and
+    // answered with one JSON document is read as a single event too.
     if (!m_buffer.trimmed().isEmpty()) {
         if (m_anthropic)
             processAnthropicEvent(m_buffer);
+        else if (m_buffer.trimmed().startsWith('{'))
+            processEvent("data: " + m_buffer.trimmed().replace('\n', ' '));
         else
             processEvent(m_buffer);
     }
     m_buffer.clear();
+    if (m_failed) // an error arrived in the last event
+        return;
 
     if (!m_sawData) {
         Q_EMIT failed(QStringLiteral("bad_response"), tr("The API returned no data."));

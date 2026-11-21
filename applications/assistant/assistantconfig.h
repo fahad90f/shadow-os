@@ -10,22 +10,42 @@
 
 // Runtime configuration for SHADOW Assistant.
 //
-// The Claude (Anthropic) API key is NEVER stored in the repository or written
-// by this application. It is read at run time from, in order of precedence:
+// The API key is NEVER stored in the repository. It is read at run time from,
+// in order of precedence:
 //   1. the environment variable  SHADOW_ASSISTANT_API_KEY
-//   2. the environment variable  ANTHROPIC_API_KEY
-//   3. ~/.config/shadow/assistant.conf   [api] key=...
+//   2. the environment variable  NVIDIA_API_KEY
+//   3. the key saved from Settings:  ~/.config/shadow/assistant.key  (0600)
+//   4. ~/.config/shadow/assistant.conf   [api] key=...   (optional)
+//   5. the environment variable  ANTHROPIC_API_KEY
+// The key is write-only for the UI: saveApiKey() stores it, nothing hands it
+// back to QML (only whether one is set, where it comes from and its last
+// four characters).
 //
-// Everything else (model mapping, autonomy, which tools are enabled) lives in
-// the same INI file and may be changed from the Settings page. The base URL
-// defaults to the Anthropic Messages API endpoint and can be overridden for
-// testing with the environment variable SHADOW_ASSISTANT_BASE_URL.
+// The service is NVIDIA's hosted models (OpenAI-compatible API at
+// integrate.api.nvidia.com) unless the key is an Anthropic one ("sk-ant-…")
+// or [api] provider says otherwise; [api] local=true runs a model on this
+// computer instead. Everything else (the model team, autonomy, which tools
+// are enabled, the voice) lives in the same INI file and may be changed from
+// the Settings page. The base URL can be overridden for testing with the
+// environment variable SHADOW_ASSISTANT_BASE_URL.
 class AssistantConfig : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(bool apiKeyConfigured READ apiKeyConfigured NOTIFY changed)
     Q_PROPERTY(QString apiKeySource READ apiKeySource NOTIFY changed)
+    // The key in effect ends with these characters ("" when none is set).
+    Q_PROPERTY(QString apiKeyHint READ apiKeyHint NOTIFY changed)
+    // A key saved from Settings exists (it can be removed there).
+    Q_PROPERTY(bool apiKeySaved READ apiKeySaved NOTIFY changed)
+    // "nvidia" | "anthropic": the cloud service used when not in local mode.
+    Q_PROPERTY(QString provider READ provider NOTIFY changed)
+    Q_PROPERTY(QString providerName READ providerName NOTIFY changed)
+    // Where a key for the service is created.
+    Q_PROPERTY(QString keyHelpUrl READ keyHelpUrl NOTIFY changed)
+    // true: every model of the request's group works on it at the same time
+    // and a lead model combines their work. false: one model answers.
+    Q_PROPERTY(bool teamMode READ teamMode WRITE setTeamMode NOTIFY changed)
     Q_PROPERTY(QString baseUrl READ baseUrl NOTIFY changed)
     Q_PROPERTY(bool baseUrlOverridden READ baseUrlOverridden NOTIFY changed)
     // Local, offline model (an OpenAI-compatible server on this machine, e.g.
@@ -73,6 +93,31 @@ public:
     // In local mode no key is needed: the model runs on this machine.
     bool apiKeyConfigured() const { return m_localMode || !m_apiKey.isEmpty(); }
     QString apiKeySource() const { return m_apiKeySource; }
+    QString apiKeyHint() const;
+    bool apiKeySaved() const { return m_apiKeySaved; }
+    // Store a key entered in Settings (owner-only file next to the conf).
+    // Returns "" on success, otherwise why it was not saved.
+    Q_INVOKABLE QString saveApiKey(const QString &key);
+    Q_INVOKABLE void removeSavedApiKey();
+    QString keyFilePath() const;
+    QString provider() const { return m_provider; }
+    QString providerName() const;
+    QString keyHelpUrl() const;
+    bool nvidia() const { return !m_localMode && m_provider == QLatin1String("nvidia"); }
+    bool anthropic() const { return !m_localMode && m_provider == QLatin1String("anthropic"); }
+
+    // --- the model team (NVIDIA) ---
+    bool teamMode() const { return m_teamMode; }
+    void setTeamMode(bool on);
+    // The models of a group, in order: "coding" | "agents" | "chat" | "vision".
+    QStringList teamGroup(const QString &kind) const;
+    // The most models that work on one request, the lead included; 0 = every
+    // model of the group ([team] max_models).
+    int teamMaxModels() const { return m_teamMaxModels; }
+    // The models preferred as lead for a kind, best first.
+    QStringList teamLeads(const QString &kind) const;
+    // How long the lead waits for the other models' work, in milliseconds.
+    int advisorWaitMs(const QString &kind, bool voice, bool thorough) const;
     // The key itself is never exposed to QML; only the network layer reads it.
     QString apiKey() const { return m_apiKey; }
     // The endpoint actually used: the local server in local mode, else the cloud.
@@ -144,6 +189,13 @@ private:
     void save();
 
     QString m_apiKey, m_apiKeySource;
+    bool m_apiKeySaved = false;
+    QString m_provider;
+    bool m_teamMode = true;
+    QStringList m_groupCoding, m_groupAgents, m_groupChat, m_groupVision;
+    QStringList m_leadCoding, m_leadAgents, m_leadChat;
+    int m_advisorSeconds = 0;
+    int m_teamMaxModels = 0;
     QString m_baseUrl;
     QString m_anthropicVersion;
     bool m_baseUrlOverridden = false;

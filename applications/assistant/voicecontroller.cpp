@@ -895,7 +895,7 @@ void VoiceController::routeTranscript(const QString &text)
         m_replyId.clear();
         m_stream.reset();
         Q_EMIT transcriptReady(text);
-        m_agent->sendMessage(text);
+        m_agent->sendSpokenMessage(text);
         return;
     }
     if (m_agent->hasPending()) {
@@ -922,7 +922,7 @@ void VoiceController::routeTranscript(const QString &text)
     }
     Q_EMIT heard(text);
     if (m_agent->config() && !m_agent->config()->apiKeyConfigured())
-        Q_EMIT unavailable(tr("Add your Claude API key in Settings first."));
+        Q_EMIT unavailable(tr("Add your API key in Settings first."));
     else
         Q_EMIT unavailable(tr("I'm still working on the last request."));
 }

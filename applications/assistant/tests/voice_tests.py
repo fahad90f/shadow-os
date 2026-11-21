@@ -521,8 +521,10 @@ def config_new_template(suite):
         check(not line.startswith("#"), f"'#' is no comment for QSettings: {line!r}")
         if "=" in line and not line.startswith(";"):
             check("#" not in line and ";" not in line, f"comment on a value line: {line!r}")
-    r.conf(template.replace("sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", "sk-ant-test"))
+    check("nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" in template, "the template has no example key line")
+    r.conf(template.replace("nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", "nvapi-test"))
     c = dump_config(r)
+    check(c["team"]["mode"] == "team", f"{c['team']}")
     v = c["voice"]
     check(c["apiKeyConfigured"] and c["autonomy"] == "autopilot" and c["disabledTools"] == [], f"{c}")
     check(v == {"wakeEnabled": True, "wakePhrase": "shadow", "micMuted": False, "speakReplies": True,

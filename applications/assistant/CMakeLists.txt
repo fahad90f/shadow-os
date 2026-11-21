@@ -1,7 +1,7 @@
-# SHADOW Assistant — a personal AI agent (chat + tool calling) backed by the
-# Anthropic Claude Messages API (with an OpenAI-compatible local/offline mode).
-# No API key is ever stored here; it is read at run time from
-# ~/.config/shadow/assistant.conf or the environment.
+# SHADOW Assistant — a personal AI agent (chat + tool calling) backed by
+# NVIDIA's hosted models working as a team (also: the Anthropic Claude Messages
+# API, and an OpenAI-compatible local/offline mode). No API key is ever stored
+# here; it is read at run time from the user's own files or the environment.
 file(GLOB ASSISTANT_QML CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
      pages/*.qml components/*.qml components/*.js)
 # The design tokens: one shared instance (import org.shadow.assistant; Pe.ink).
@@ -16,6 +16,9 @@ shadow_add_app(shadow-assistant
         assistantconfig.cpp assistantconfig.h
         chatclient.cpp chatclient.h
         conversationstore.cpp conversationstore.h
+        council.cpp council.h
+        visionteam.cpp visionteam.h
+        modelcatalog.cpp modelcatalog.h
         toolregistry.cpp toolregistry.h
         undojournal.cpp undojournal.h
         speechtext.cpp speechtext.h

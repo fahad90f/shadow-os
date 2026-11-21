@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
@@ -10,6 +11,9 @@
 
 #include "assistantconfig.h"
 #include "chatclient.h"
+#include "council.h"
+#include "visionteam.h"
+#include "modelcatalog.h"
 #include "conversationstore.h"
 #include "toolregistry.h"
 
@@ -40,11 +44,26 @@ class Assistant : public QObject
     Q_PROPERTY(bool hasPending READ hasPending NOTIFY phaseChanged)
     Q_PROPERTY(bool thinkHard READ thinkHard WRITE setThinkHard NOTIFY thinkHardChanged)
     Q_PROPERTY(QVariantList toolLog READ toolLog NOTIFY toolLogChanged)
+    // The models the service offers and the groups that follow (Settings).
+    Q_PROPERTY(ModelCatalog *catalog READ catalog CONSTANT)
+    // The model team of the current (or last) request: [{id, name, publisher,
+    // role: "lead"|"advisor", state: "waiting"|"working"|"done"|"failed"|"late",
+    // seconds}], the lead first. Empty when one model answers alone.
+    Q_PROPERTY(QVariantList team READ team NOTIFY teamChanged)
+    // "coding" | "agents" | "chat": what the request was taken for.
+    Q_PROPERTY(QString teamKind READ teamKind NOTIFY teamChanged)
+    // The other models are still writing (the lead has not started yet).
+    Q_PROPERTY(bool teamGathering READ teamGathering NOTIFY teamChanged)
+    // The model that answers: the team's lead, or the single model in use.
+    Q_PROPERTY(QString activeModel READ activeModel NOTIFY teamChanged)
     // Env-gated screenshot/test hooks (empty in normal use), used to open a
     // view or inject a first message deterministically for headless captures.
     Q_PROPERTY(QString testView READ testView CONSTANT)
     Q_PROPERTY(QString testPrompt READ testPrompt CONSTANT)
     Q_PROPERTY(QString testOrb READ testOrb CONSTANT)
+    // SHADOW_ASSISTANT_TEST_KEY: typed into the key field and saved, as a
+    // user would (tests of the Settings / welcome page with dummy keys).
+    Q_PROPERTY(QString testKey READ testKey CONSTANT)
     // A screenshot is being taken (SHADOW_SCREENSHOT): the UI draws one fixed
     // instant of its animations so captures are deterministic.
     Q_PROPERTY(bool testFrozen READ testFrozen CONSTANT)
@@ -58,7 +77,12 @@ public:
     QString phase() const { return m_phase; }
     QString orbState() const;
     QString activeId() const { return m_activeId; }
-    bool busy() const { return m_client->busy() || m_executing > 0; }
+    bool busy() const { return m_client->busy() || m_executing > 0 || m_council->working(); }
+    ModelCatalog *catalog() { return m_catalog; }
+    QVariantList team() const { return m_council->members(); }
+    QString teamKind() const { return m_council->kind(); }
+    bool teamGathering() const { return m_council->working(); }
+    QString activeModel() const;
     bool canSend() const { return m_config->apiKeyConfigured() && !busy() && !hasPending(); }
     bool hasPending() const { return m_messages->hasPendingTools(); }
     bool thinkHard() const { return m_thinkHard; }
@@ -66,6 +90,7 @@ public:
     QVariantList toolLog() const { return m_log; }
     QString testView() const { return QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_TEST_VIEW")); }
     QString testPrompt() const { return QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_TEST_PROMPT")); }
+    QString testKey() const { return QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_TEST_KEY")); }
     QString testOrb() const { return QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_TEST_ORB")); }
     bool testFrozen() const { return !qEnvironmentVariableIsEmpty("SHADOW_SCREENSHOT"); }
 
@@ -74,6 +99,9 @@ public:
     Q_INVOKABLE void renameConversation(const QString &id, const QString &title);
     Q_INVOKABLE void deleteConversation(const QString &id);
     Q_INVOKABLE void sendMessage(const QString &text);
+    // The same for a request that was spoken: the team is given less time, a
+    // voice waits for an answer more impatiently than a reader.
+    void sendSpokenMessage(const QString &text);
     Q_INVOKABLE void stop();
     // Resolve a pending tool call: run=true executes it, run=false denies it.
     Q_INVOKABLE void confirmTool(int row, const QString &callId, bool run);
@@ -99,6 +127,7 @@ Q_SIGNALS:
     void activeChanged();
     void thinkHardChanged();
     void toolLogChanged();
+    void teamChanged();
     void actionLogChanged();
     void errorMessage(const QString &text);
     // Voice integration: a final assistant answer is ready to be spoken.
@@ -124,6 +153,14 @@ private:
     // when the phase string stays the same.
     void settleLoadedConversation();
     void ensureConversation();
+    // A user message is in the model: plan the team for it, let the other
+    // models work, then start the lead.
+    void beginTurn(const QString &userText, bool spoken);
+    // The text of the last user message of the conversation.
+    QString lastUserText() const;
+    // The lead could not be used (not offered, cannot use tools, refused):
+    // continue the request with the next one. False when there is none.
+    bool tryNextLead(const QString &code);
     void startCompletion();
     void saveActive();
     QString systemPrompt() const;
@@ -136,6 +173,14 @@ private:
     int rowOfCall(const QString &callId) const;
 
     AssistantConfig *m_config;
+    ModelCatalog *m_catalog;
+    Council *m_council;
+    VisionTeam *m_vision;
+    QString m_turnLead;        // NVIDIA: the model answering this turn
+    QStringList m_leadsTried;  // … and the ones already tried for it
+    // NVIDIA: the longest reply a model accepted being asked for, learnt when
+    // it rejects the default ("max_tokens must be at most …").
+    QHash<QString, int> m_replyLimit;
     ChatClient *m_client;
     ConversationStore *m_store;
     MessageModel *m_messages;

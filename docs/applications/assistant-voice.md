@@ -65,8 +65,9 @@ It is described [below](#the-one-shot-fix-scriptsfix-assistant-voicesh).
   voice run locally. The only network use of the voice is the one-time
   download of the engine data (below).
 * What you say **after "Shadow"** (or into the microphone button) becomes
-  text on this computer, and that text is sent to Claude like a typed message
-  (or to your local model, if `[api] local=true`).
+  text on this computer, and that text is sent to the AI models like a typed
+  message (NVIDIA's hosted models by default; Claude with an `sk-ant-` key;
+  your local model if `[api] local=true`).
 * Speech that is not addressed to the assistant is transcribed in memory and
   dropped: it is not kept, not logged and not sent.
 * **Nothing is recorded.** Audio is processed in memory only; transcripts
@@ -129,7 +130,7 @@ with one FAIL naming the cause; it never tests the old assistant instead.
 | 4 | repairs `~/.config/shadow/assistant.conf` after a backup: removes comments after values (Qt read `muted=false  # …` as muted) and turns `#` lines into `;` comments; shows every changed line. **Lines with your API key, a token, a password or a URL with a password are never changed, shown or logged**; the file is made private (mode 600); a symlinked file stays a symlink. Your own switches in the assistant are asked about: its microphone mute (`muted=true`) and a wake word you switched off there; Enter answers yes (the voice needs both on), `--yes` leaves them as the assistant reads them and writes nothing. A `wake_word_enabled=false` without `wake_word_chosen` was written by the old assistant without asking: the new one ignores it and listens, so the script writes nothing either (it only offers to switch the wake word off, default no) |
 | 5 | sound checks: PipeWire; the default input is a real microphone (not a "monitor"), not muted (offers to unmute), not nearly silent (offers 80 % below 30 %); the default output is a real device (not "Dummy Output") and not muted (offers to unmute) |
 | 6 | the engine's self-test; a spoken greeting (you must answer "Did you hear it?" with y or n; with `--yes` its sound is measured on the output); the microphone test: you say *"Shadow, the quick brown fox jumps over the lazy dog."* (no instruction, should any assistant listen). Every copy of the assistant is stopped right before. PASS needs speech in the recording, at most 34 % of the command words wrong, and "Shadow" taking the engine's real wake-word path (keyword spotter + transcript); a very quiet input is offered 100 % and a second try; if "Shadow" only works with `wake_sensitivity=high` that is offered. The better speech model is saved as `stt_model` |
-| 7 | checks that the API key reaches an assistant started by your user manager (as at login): a key only exported in your shell (`SHADOW_ASSISTANT_API_KEY`/`ANTHROPIC_API_KEY` in `~/.profile`) is offered to be saved in `assistant.conf` (never without asking; otherwise it is passed by name for this run and the login check fails). Starts the new assistant in the background, waits until its engine records, then you say **"Shadow, what time is it?"**: PASS only when the engine heard it and the assistant's spoken answer started (a failed request to Claude, which it answers with "Sorry, that didn't work", is a FAIL). Finally the wake word at login: `~/.config/autostart/org.shadow.assistant-listen.desktop` starting the new binary; PASS only when the unit your user manager makes of it (`app-org.shadow.assistant\x2dlisten@autostart.service`) starts the new binary with `--background`, otherwise WARN |
+| 7 | checks that the API key reaches an assistant started by your user manager (as at login): a key only exported in your shell (`SHADOW_ASSISTANT_API_KEY`, `NVIDIA_API_KEY` or `ANTHROPIC_API_KEY` in `~/.profile`) is offered to be saved in `assistant.conf` (never without asking; otherwise it is passed by name for this run and the login check fails). With no key anywhere it offers to take one now: you paste it (it is not shown) and `shadow-assistant --set-api-key` saves it as the Settings page does, in a file only you can read. Starts the new assistant in the background, waits until its engine records, then you say **"Shadow, what time is it?"**: PASS only when the engine heard it and the assistant's spoken answer started (a failed request to the AI models, which it answers with "Sorry, that didn't work", is a FAIL). Finally the wake word at login: `~/.config/autostart/org.shadow.assistant-listen.desktop` starting the new binary; PASS only when the unit your user manager makes of it (`app-org.shadow.assistant\x2dlisten@autostart.service`) starts the new binary with `--background`, otherwise WARN |
 
 If the script is interrupted (Ctrl+C, a closed terminal) or cannot start the
 new assistant, an assistant it stopped is started again. The summary says
@@ -182,7 +183,7 @@ them; edit by hand only with comments on lines of their own, starting with
 | No microphone at all on a laptop | `firmware-sof-signed` and `alsa-ucm-conf` installed? Then reboot. `sudo dmesg \| grep -i sof` shows firmware errors |
 | It misunderstands you | the fix script's microphone test picks the better speech model for your voice; speak closer to the microphone; reduce background noise |
 | Words are skipped when it speaks | `sudo apt install espeak-ng` |
-| It answers "Add your Claude API key in Settings first" | the voice works; the assistant needs an API key to answer |
+| It answers "Add your API key in Settings first" | the voice works; the assistant needs an API key to answer: open it, Settings → Models, paste the key, Save |
 | Engine errors | `~/.local/state/shadow/voice.log` (rotated at 1 MB); `shadow-voiced --selftest` (at `/usr/lib/shadow-assistant/voice/` or `/usr/local/lib/shadow-assistant/voice/`); `shadow-voice-setup --system --check` |
 
 ## Performance

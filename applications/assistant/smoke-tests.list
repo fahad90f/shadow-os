@@ -5,3 +5,5 @@ shadow-assistant
 # scripts/dev.sh run points at <build>/lib) and prints SHADOW-SMOKE-OK when all
 # tests pass. scripts/dev.sh mounts the source tree at /src.
 python3 /src/applications/assistant/tests/voice_tests.py --smoke
+# The model team (NVIDIA): the same binary against tests/mock_nvidia.py.
+python3 /src/applications/assistant/tests/team_tests.py --smoke

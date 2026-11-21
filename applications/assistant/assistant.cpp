@@ -17,6 +17,8 @@ constexpr int kMaxToolRounds = 100;
 // "something went wrong, try again later" cases; retrying quietly clears most
 // of them, especially on large high-effort requests.
 constexpr int kMaxRetries = 3;
+// What a lead model is asked for at most (NVIDIA), until it says it takes less.
+constexpr int kDefaultReplyTokens = 8192;
 }
 
 Assistant::Assistant(QObject *parent)
@@ -27,8 +29,31 @@ Assistant::Assistant(QObject *parent)
     m_messages = new MessageModel(this);
     m_registry = new ToolRegistry(m_config, this);
     m_client = new ChatClient(m_config, this);
+    m_catalog = new ModelCatalog(m_config, this);
+    m_council = new Council(m_config, m_catalog, this);
+    m_vision = new VisionTeam(m_config, m_catalog, this);
+    m_registry->setVision(m_vision);
 
-    connect(m_config, &AssistantConfig::changed, this, &Assistant::phaseChanged);
+    connect(m_config, &AssistantConfig::changed, this, [this]() {
+        // A key saved (or removed) in Settings: the first-start page goes
+        // away (or comes back) without a restart.
+        if (!busy()) {
+            const bool configured = m_config->apiKeyConfigured();
+            if (configured && m_phase == QLatin1String("setup"))
+                m_phase = hasPending() ? QStringLiteral("awaiting") : QStringLiteral("idle");
+            else if (!configured && m_phase != QLatin1String("setup"))
+                m_phase = QStringLiteral("setup");
+        }
+        Q_EMIT phaseChanged();
+        Q_EMIT teamChanged(); // the model shown follows the service in use
+    });
+    connect(m_council, &Council::membersChanged, this, &Assistant::teamChanged);
+    connect(m_council, &Council::ready, this, [this]() {
+        // The other models are done (or the wait is over): the lead starts.
+        Q_EMIT teamChanged();
+        if (m_phase == QLatin1String("thinking"))
+            startCompletion();
+    });
     connect(m_registry->journal(), &UndoJournal::changed, this, &Assistant::actionLogChanged);
 
     connect(m_client, &ChatClient::delta, this, [this](const QString &text) {
@@ -43,6 +68,8 @@ Assistant::Assistant(QObject *parent)
         if (m_assistantRow < 0)
             return;
         m_retries = 0; // a completion arrived: this request succeeded
+        if (m_config->nvidia())
+            m_catalog->noteKey(true);
         const int row = m_assistantRow;
         m_messages->finishAssistant(row, content, toolCalls, thinking, m_registry);
         m_assistantRow = -1;
@@ -50,6 +77,7 @@ Assistant::Assistant(QObject *parent)
         Q_EMIT replySegmentFinished();
 
         if (toolCalls.isEmpty()) {
+            m_council->setLeadState(QStringLiteral("done"));
             setPhase(QStringLiteral("idle"));
             if (!content.trimmed().isEmpty())
                 Q_EMIT assistantReplyReady(content);
@@ -92,6 +120,10 @@ Assistant::Assistant(QObject *parent)
         // close it now, so the phase changes below carry busy=false.
         if (m_client->busy())
             m_client->cancel();
+        if (code == QLatin1String("rate_limit"))
+            m_council->noteRateLimit(); // smaller teams for a while
+        if (code == QLatin1String("auth") && m_config->nvidia())
+            m_catalog->noteKey(false); // Settings shows the key as not accepted
         // Auto-retry transient failures (server error, overload, timeout, rate
         // limit) — the "something went wrong, try again later" cases — but only
         // when nothing was streamed yet, so a retry can't duplicate partial
@@ -117,6 +149,30 @@ Assistant::Assistant(QObject *parent)
             return;
         }
         m_retries = 0;
+        // NVIDIA: the model accepts only shorter replies than were asked
+        // for: ask the same model again for half as much.
+        if (nothingStreamed && m_config->nvidia() && code == QLatin1String("bad_response") && !m_turnLead.isEmpty()) {
+            const QString lower = message.toLower();
+            const int asked = m_replyLimit.value(m_turnLead, kDefaultReplyTokens);
+            if (asked > 1024 && (lower.contains(QLatin1String("max_tokens")) || lower.contains(QLatin1String("max_completion_tokens"))
+                                 || lower.contains(QLatin1String("maximum output")) || lower.contains(QLatin1String("output tokens")))) {
+                m_replyLimit.insert(m_turnLead, asked / 2);
+                m_messages->dropEmptyStreamingTail();
+                m_assistantRow = -1;
+                setPhase(QStringLiteral("thinking"));
+                QTimer::singleShot(0, this, [this]() {
+                    if (m_phase == QLatin1String("thinking"))
+                        startCompletion();
+                });
+                return;
+            }
+        }
+        // NVIDIA: this lead cannot do it (not offered to this key, cannot use
+        // tools, refused, or still failing after the retries): the next
+        // model of the group takes over the same request.
+        if (nothingStreamed && tryNextLead(code))
+            return;
+        m_council->setLeadState(QStringLiteral("failed"));
         if (m_assistantRow >= 0) {
             // Drop the empty streaming placeholder's streaming flag.
             m_messages->finishAssistant(m_assistantRow, m_messages->data(m_messages->index(m_assistantRow), MessageModel::ContentRole).toString(), {}, {}, m_registry);
@@ -175,8 +231,22 @@ void Assistant::settleLoadedConversation()
         Q_EMIT phaseChanged(); // hasPending/canSend follow the rows, not the phase string
 }
 
+QString Assistant::activeModel() const
+{
+    if (m_config->localMode())
+        return m_config->localModel();
+    if (m_config->nvidia()) {
+        if (!m_turnLead.isEmpty())
+            return m_turnLead;
+        return m_catalog->lead(m_thinkHard ? QStringLiteral("agents") : QStringLiteral("chat"));
+    }
+    return m_config->modelForRole(m_thinkHard ? QStringLiteral("planner") : QStringLiteral("brain"));
+}
+
 void Assistant::newConversation()
 {
+    m_council->clear();
+    m_turnLead.clear();
     m_activeId = m_store->createConversation();
     m_messages->clearAll();
     m_assistantRow = -1;
@@ -194,6 +264,8 @@ void Assistant::selectConversation(const QString &id)
 {
     if (id == m_activeId || busy())
         return;
+    m_council->clear();
+    m_turnLead.clear();
     m_activeId = id;
     m_messages->loadFrom(m_store->loadMessages(id));
     m_assistantRow = -1;
@@ -305,7 +377,97 @@ void Assistant::sendMessage(const QString &text)
     saveActive();
     m_toolRounds = 0;
     m_retries = 0;
-    startCompletion();
+    beginTurn(trimmed, false);
+}
+
+void Assistant::sendSpokenMessage(const QString &text)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty() || !canSend())
+        return;
+    ensureConversation();
+    m_messages->appendUser(trimmed);
+    m_store->touch(m_activeId, trimmed);
+    saveActive();
+    m_toolRounds = 0;
+    m_retries = 0;
+    beginTurn(trimmed, true);
+}
+
+QString Assistant::lastUserText() const
+{
+    for (int r = m_messages->rowCount() - 1; r >= 0; --r) {
+        const QModelIndex idx = m_messages->index(r);
+        if (m_messages->data(idx, MessageModel::KindRole).toString() == QLatin1String("user"))
+            return m_messages->data(idx, MessageModel::ContentRole).toString();
+    }
+    return {};
+}
+
+void Assistant::beginTurn(const QString &userText, bool spoken)
+{
+    if (!m_config->apiKeyConfigured()) {
+        setPhase(QStringLiteral("setup"));
+        return;
+    }
+    m_turnLead.clear();
+    m_leadsTried.clear();
+    if (!m_config->nvidia()) {
+        // Claude, or a model on this computer: one model answers.
+        m_council->clear();
+        startCompletion();
+        return;
+    }
+    const Council::Plan plan = m_council->plan(userText, m_thinkHard);
+    if (plan.lead.isEmpty()) {
+        const QString message = tr("NVIDIA offers none of the models configured for this kind of request. "
+                                   "Open Settings and read the model list again.");
+        m_messages->appendError(message);
+        saveActive();
+        setPhase(QStringLiteral("error"));
+        Q_EMIT errorMessage(message);
+        setPhase(QStringLiteral("idle"));
+        return;
+    }
+    m_turnLead = plan.lead;
+    m_leadsTried << plan.lead;
+    const QJsonArray tools = m_registry->hasEnabledTools() ? m_registry->apiTools() : QJsonArray{};
+    // busy()/canSend() change inside begin() (the team starts working), so
+    // the phase is switched quietly first and notified after, as in
+    // startCompletion().
+    m_phase = QStringLiteral("thinking");
+    m_council->begin(plan, m_messages->apiMessages(systemPrompt()), tools, spoken, m_thinkHard);
+    Q_EMIT phaseChanged();
+    Q_EMIT teamChanged();
+    // Council::ready() starts the lead (at once when it works alone).
+}
+
+bool Assistant::tryNextLead(const QString &code)
+{
+    if (!m_config->nvidia() || m_turnLead.isEmpty())
+        return false;
+    // The key itself was rejected: no other model would accept it either.
+    if (code == QLatin1String("auth") || code == QLatin1String("no_key"))
+        return false;
+    if (code == QLatin1String("no_tools"))
+        m_catalog->learnNoTools(m_turnLead);
+    if (m_leadsTried.size() >= 4)
+        return false;
+    const QString next = m_catalog->lead(m_council->kind().isEmpty() ? QStringLiteral("chat") : m_council->kind(),
+                                         m_leadsTried);
+    if (next.isEmpty())
+        return false;
+    m_turnLead = next;
+    m_leadsTried << next;
+    m_council->setLead(next);
+    m_messages->dropEmptyStreamingTail();
+    m_assistantRow = -1;
+    setPhase(QStringLiteral("thinking"));
+    QTimer::singleShot(0, this, [this]() {
+        if (m_phase == QLatin1String("thinking"))
+            startCompletion();
+    });
+    return true;
 }
 
 void Assistant::startCompletion()
@@ -314,9 +476,25 @@ void Assistant::startCompletion()
         setPhase(QStringLiteral("setup"));
         return;
     }
-    const QString model = m_thinkHard ? m_config->modelForRole(QStringLiteral("planner"))
-                                       : m_config->modelForRole(QStringLiteral("brain"));
-    const QJsonArray request = m_messages->apiMessages(systemPrompt());
+    QString model;
+    QString system = systemPrompt();
+    if (m_config->nvidia()) {
+        if (m_turnLead.isEmpty()) {
+            // A turn taken up again (a retry, an answer to a question that was
+            // still open after a restart): no team notes, the kind's lead.
+            m_turnLead = m_catalog->lead(Council::classify(lastUserText()));
+            if (m_turnLead.isEmpty())
+                m_turnLead = m_catalog->lead(QStringLiteral("chat"));
+            m_leadsTried = {m_turnLead};
+        }
+        model = m_turnLead;
+        system += m_council->notes();
+        m_council->setLeadState(QStringLiteral("working"));
+    } else {
+        model = m_thinkHard ? m_config->modelForRole(QStringLiteral("planner"))
+                            : m_config->modelForRole(QStringLiteral("brain"));
+    }
+    const QJsonArray request = m_messages->apiMessages(system);
     const QJsonArray tools = m_registry->hasEnabledTools() ? m_registry->apiTools() : QJsonArray{};
     m_assistantRow = m_messages->appendAssistantStreaming();
     // busy()/canSend() only change inside send() (the client becomes busy),
@@ -327,7 +505,10 @@ void Assistant::startCompletion()
     // moves it on (thinking → error → idle) and notifies by itself.
     const bool changed = m_phase != QLatin1String("thinking");
     m_phase = QStringLiteral("thinking");
-    m_client->send(model, request, tools);
+    ChatClient::Options options;
+    if (m_config->nvidia())
+        options.maxTokens = m_replyLimit.value(model, kDefaultReplyTokens);
+    m_client->send(model, request, tools, options);
     if (m_phase == QLatin1String("thinking") && (changed || m_client->busy()))
         Q_EMIT phaseChanged();
 }
@@ -442,7 +623,7 @@ bool Assistant::retry()
     saveActive();
     m_toolRounds = 0;
     m_retries = 0;
-    startCompletion();
+    beginTurn(lastUserText(), false);
     return true;
 }
 
@@ -523,6 +704,8 @@ void Assistant::maybeContinue(int row)
 
 void Assistant::stop()
 {
+    m_council->cancel();
+    m_council->setLeadState(QStringLiteral("failed"));
     m_client->cancel();
     if (m_assistantRow >= 0) {
         const QString partial = m_messages->data(m_messages->index(m_assistantRow), MessageModel::ContentRole).toString();

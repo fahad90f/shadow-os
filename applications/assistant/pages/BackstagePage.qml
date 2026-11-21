@@ -6,17 +6,18 @@ import QtQuick.Layouts
 import org.shadow.assistant
 
 // Settings, as one calm scrolling page with a numbered index under her face:
-// 01 Voice · 02 Claude · 03 Behaviour · 04 Tools · 05 Activity. Every switch
+// 01 Voice · 02 Models · 03 Behaviour · 04 Tools · 05 Activity. Every switch
 // writes straight through the configuration's own properties (persisted).
 Item {
     id: page
     required property StageModel stage
     readonly property AssistantConfig cfg: stage.cfg
     readonly property VoiceController voice: stage.voice
+    readonly property ModelCatalog catalog: stage.agent.catalog
     property string section: "voice"
     readonly property bool wide: width >= 900
     readonly property var sections: [
-        { key: "voice", label: qsTr("Voice") }, { key: "claude", label: qsTr("Claude") },
+        { key: "voice", label: qsTr("Voice") }, { key: "models", label: qsTr("Models") },
         { key: "behaviour", label: qsTr("Behaviour") }, { key: "tools", label: qsTr("Tools") },
         { key: "activity", label: qsTr("Activity") }
     ]
@@ -27,7 +28,7 @@ Item {
     property string jumped: ""
     property real jumpY: -1
     function jump(key: string) {
-        const target = key === "claude" ? secClaude : key === "behaviour" ? secBehaviour
+        const target = key === "models" ? secModels : key === "behaviour" ? secBehaviour
                      : key === "tools" ? secTools : key === "activity" ? secActivity : secVoice
         flick.contentY = Math.max(0, Math.min(target.y - 8, flick.contentHeight - flick.height))
         jumped = key
@@ -42,7 +43,7 @@ Item {
             return "activity"
         const y = flick.contentY + 80
         return y >= secActivity.y ? "activity" : y >= secTools.y ? "tools" : y >= secBehaviour.y ? "behaviour"
-             : y >= secClaude.y ? "claude" : "voice"
+             : y >= secModels.y ? "models" : "voice"
     }
     // the content column: the same place as History's (centred, clear of the index)
     readonly property real colW: wide ? Math.min(720, width - 272) : Math.min(720, width - 44)
@@ -607,27 +608,49 @@ Item {
                 }
             }
 
-            // ================= 02 CLAUDE =================
+            // ================= 02 MODELS =================
             SectionHead {
-                id: secClaude
-                number: "02"; title: qsTr("Claude")
-                lead: qsTr("The mind behind her. The key is read from the environment or %1 and never stored by the app.").arg(page.cfg.configPath)
+                id: secModels
+                number: "02"; title: qsTr("Models")
+                lead: page.stage.localMode ? qsTr("The mind behind her: a model on this computer.")
+                    : page.stage.nvidia ? qsTr("The mind behind her: NVIDIA's hosted models. Several work on each request at the same time, and one combines their work into the answer.")
+                    : qsTr("The mind behind her: Claude, from Anthropic.")
             }
             SettingRow {
                 Layout.fillWidth: true
+                divider: false
                 title: qsTr("API key")
-                note: page.cfg.apiKeyConfigured ? (page.cfg.localMode ? qsTr("Not needed: she runs on a local model")
-                                                                       : qsTr("From %1").arg(page.cfg.apiKeySource))
-                                                : qsTr("Not found yet — see the setup steps.")
+                note: page.cfg.localMode ? qsTr("Not needed: she runs on a local model")
+                    : !page.cfg.apiKeyConfigured ? qsTr("Paste your key below to wake her up.")
+                    : page.cfg.apiKeySource === "Settings"
+                      ? (page.cfg.apiKeyHint !== "" ? qsTr("Saved here · ends in %1").arg(page.cfg.apiKeyHint) : qsTr("Saved here"))
+                    : page.cfg.apiKeyHint !== "" ? qsTr("From %1 · ends in %2").arg(page.cfg.apiKeySource).arg(page.cfg.apiKeyHint)
+                    : qsTr("From %1").arg(page.cfg.apiKeySource)
                 StatusChip {
-                    ok: page.cfg.apiKeyConfigured
-                    text: page.cfg.apiKeyConfigured ? qsTr("Configured") : qsTr("Not configured")
+                    readonly property bool rejected: page.catalog.keyState === "rejected" && !page.cfg.localMode
+                    ok: (page.cfg.apiKeyConfigured && !rejected) || page.cfg.localMode
+                    text: page.cfg.localMode ? qsTr("Offline") : !page.cfg.apiKeyConfigured ? qsTr("Not configured")
+                        : rejected ? qsTr("Not accepted") : page.catalog.keyState === "ok" ? qsTr("Working") : qsTr("Configured")
                 }
             }
+            KeyField {
+                Layout.fillWidth: true
+                stage: page.stage
+            }
+            Text {
+                textFormat: Text.PlainText
+                Layout.fillWidth: true
+                Layout.bottomMargin: 12
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                lineHeight: 1.25
+                text: qsTr("Saved in a file only you can read. Optional instead: the SHADOW_ASSISTANT_API_KEY environment variable, or key= under [api] in %1.").arg(page.cfg.configPath)
+                font.family: Pe.sans; font.pixelSize: Pe.small; color: Pe.inkMute
+            }
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Pe.line }
             SettingRow {
                 Layout.fillWidth: true
-                title: qsTr("Endpoint")
-                note: page.cfg.baseUrlOverridden ? qsTr("Overridden by SHADOW_ASSISTANT_BASE_URL") : ""
+                title: qsTr("Service")
+                note: page.cfg.baseUrlOverridden ? qsTr("Overridden by SHADOW_ASSISTANT_BASE_URL") : page.cfg.providerName
                 Text {
                     textFormat: Text.PlainText
                     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
@@ -637,8 +660,53 @@ Item {
                     font.family: Pe.mono; font.pixelSize: Pe.small; color: Pe.inkSoft
                 }
             }
+
+            // ---- NVIDIA: the team ----
+            SettingRow {
+                visible: page.stage.nvidia
+                Layout.fillWidth: true
+                title: qsTr("Work as a team")
+                note: page.cfg.teamMode ? qsTr("On — every request goes to several models at once. Each writes its own answer or plan; the lead model combines them, replies, and is the only one that runs tools.")
+                                        : qsTr("Off — one model answers on its own: quicker, less thorough.")
+                PeSwitch {
+                    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                    text: qsTr("Work as a team")
+                    checked: page.cfg.teamMode
+                    onToggled: page.cfg.teamMode = checked
+                }
+            }
             Repeater {
-                model: [[qsTr("Brain"), qsTr("chat, tools, vision"), page.cfg.brainModel],
+                model: page.stage.nvidia ? page.catalog.groups : []
+                delegate: TeamGroup {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    group: modelData
+                    teamMode: page.cfg.teamMode
+                }
+            }
+            SettingRow {
+                visible: page.stage.nvidia
+                Layout.fillWidth: true
+                title: qsTr("Model list")
+                note: page.catalog.error !== "" ? qsTr("Could not be read: %1").arg(page.catalog.error)
+                    : page.catalog.known ? qsTr("NVIDIA offers %1 models. A model it stops offering is left out of the team by itself.").arg(page.catalog.count)
+                    : qsTr("Not read yet — every model above is tried.")
+                noteColor: page.catalog.error !== "" ? Pe.chipText(Pe.caution) : Pe.inkMute
+                PeButton {
+                    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                    compact: true
+                    kind: "secondary"
+                    iconName: "refresh"
+                    text: page.catalog.refreshing ? qsTr("Reading…") : qsTr("Read again")
+                    enabled: !page.catalog.refreshing
+                    onClicked: page.catalog.refresh()
+                }
+            }
+
+            // ---- Claude (an sk-ant- key): one model per job ----
+            Repeater {
+                model: page.stage.nvidia || page.stage.localMode ? []
+                     : [[qsTr("Brain"), qsTr("chat, tools, vision"), page.cfg.brainModel],
                         [qsTr("Planner"), qsTr("used by Think hard"), page.cfg.plannerModel],
                         [qsTr("Fast"), qsTr("background helpers"), page.cfg.fastModel],
                         [qsTr("Omni"), qsTr("voice & image"), page.cfg.omniModel]]
@@ -661,7 +729,7 @@ Item {
                 divider: false
                 title: qsTr("Run offline")
                 note: page.stage.localMode ? qsTr("On — using %1 on this computer. Nothing you type or say leaves the machine.").arg(page.cfg.localModel)
-                                           : qsTr("Use a local model instead of the Claude cloud (set it up with: shadow-assistant-local setup).")
+                                           : qsTr("Use a local model instead of the cloud (set it up with: shadow-assistant-local setup).")
                 PeSwitch {
                     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                     text: qsTr("Run offline")
@@ -789,7 +857,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.topMargin: 36
                 wrapMode: Text.Wrap
-                text: qsTr("Model IDs, the local model and other advanced options live in %1 (Reload configuration picks up changes).").arg(page.cfg.configPath)
+                text: qsTr("Which models are in each team, the local model and other advanced options live in %1 (Reload configuration picks up changes).").arg(page.cfg.configPath)
                 font.family: Pe.sans; font.pixelSize: Pe.small; color: Pe.inkMute
             }
         }
@@ -800,6 +868,96 @@ Item {
         { value: "autopilot", label: qsTr("Autopilot") }
     ]
 
+    // One team: what it is for, and its models. The lead is marked; a model the
+    // service does not offer right now is dimmed.
+    component TeamGroup: Item {
+        id: tg
+        property var group: ({})
+        property bool teamMode: true
+        readonly property var members: group.members !== undefined ? group.members : []
+        implicitHeight: tgCol.implicitHeight + 24
+        Accessible.role: Accessible.Grouping
+        Accessible.name: qsTr("%1 team").arg(group.title !== undefined ? group.title : "")
+        Column {
+            id: tgCol
+            y: 12
+            width: parent.width
+            spacing: 8
+            Row {
+                spacing: 10
+                Text {
+                    id: tgTitle
+                    textFormat: Text.PlainText
+                    text: tg.group.title !== undefined ? tg.group.title : ""
+                    font.family: Pe.sans; font.pixelSize: 14; font.weight: Font.Medium
+                    color: Pe.ink
+                }
+                Text {
+                    textFormat: Text.PlainText
+                    anchors.baseline: tgTitle.baseline
+                    text: tg.group.note !== undefined ? tg.group.note : ""
+                    font.family: Pe.sans; font.pixelSize: Pe.small
+                    color: Pe.inkMute
+                }
+            }
+            Flow {
+                width: parent.width
+                spacing: 6
+                Repeater {
+                    model: tg.members
+                    delegate: Rectangle {
+                        id: chip
+                        required property var modelData
+                        readonly property bool lead: modelData.lead === true
+                        // with the team off only the lead works
+                        readonly property bool idle: !modelData.available || (!tg.teamMode && !lead && tg.group.kind !== "vision")
+                        height: 24
+                        width: chipRow.implicitWidth + 18
+                        radius: 12
+                        color: lead ? Pe.alpha(Pe.violet, 0.14) : "transparent"
+                        border.width: 1
+                        border.color: lead ? Pe.alpha(Pe.violet, 0.55) : Pe.lineStrong
+                        opacity: idle ? 0.45 : 1
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: modelData.name + (lead ? qsTr(", leads") : "")
+                                         + (!modelData.available ? qsTr(", not offered right now") : "")
+                        Row {
+                            id: chipRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text {
+                                textFormat: Text.PlainText
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: chip.modelData.name
+                                font.family: Pe.mono; font.pixelSize: 11
+                                font.strikeout: !chip.modelData.available
+                                color: Pe.ink
+                            }
+                            Text {
+                                textFormat: Text.PlainText
+                                visible: chip.lead
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: qsTr("LEADS")
+                                font.family: Pe.sans; font.pixelSize: 9; font.weight: Font.Bold; font.letterSpacing: 0.8
+                                color: Pe.her
+                            }
+                        }
+                        HoverHandler { id: chipHover }
+                        ToolTip.visible: chipHover.hovered
+                        ToolTip.delay: 400
+                        ToolTip.text: chip.modelData.id + (!chip.modelData.available ? "\n" + qsTr("NVIDIA does not offer this model right now")
+                                                           : chip.lead ? "\n" + qsTr("Combines the team's work, answers, and runs the tools") : "")
+                    }
+                }
+            }
+        }
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 1
+            color: Pe.line
+        }
+    }
     component SectionHead: ColumnLayout {
         id: sh
         property string number: ""

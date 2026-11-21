@@ -2,9 +2,11 @@
 #include "assistantconfig.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
 
@@ -22,6 +24,103 @@ const QString kDefaultPlanner = QStringLiteral("claude-sonnet-4-6");
 const QString kDefaultFast = QStringLiteral("claude-sonnet-4-6");
 const QString kDefaultOmni = QStringLiteral("claude-sonnet-4-6");
 const QString kDefaultBaseUrl = QStringLiteral("https://api.anthropic.com/v1");
+
+// NVIDIA's hosted models: one OpenAI-compatible endpoint, one key ("nvapi-…")
+// for every model. The groups below are the models that work on a request
+// together; each list is in the order the models are shown, and the "lead"
+// lists name the models preferred to combine the others' work and run the
+// tools, best first. Models the service does not list (GET /models) are
+// skipped at run time, so a retired model never breaks the assistant. All of
+// it can be changed in the [team] section of the conf file.
+const QString kNvidiaBaseUrl = QStringLiteral("https://integrate.api.nvidia.com/v1");
+const QStringList kTeamCoding = {
+    QStringLiteral("moonshotai/kimi-k3.1-pro"),
+    QStringLiteral("minimaxai/minimax-m3.1-flash"),
+    QStringLiteral("nvidia/nemotron-3.5-super-vl-120b-a12b"),
+    QStringLiteral("poolside/laguna-xs-2.1"),
+    QStringLiteral("nvidia/nemotron-3-ultra-550b-a55b"),
+    QStringLiteral("google/gemma-4-31b-it"),
+};
+const QStringList kTeamAgents = {
+    QStringLiteral("moonshotai/kimi-k3.1-pro"),
+    QStringLiteral("nvidia/nemotron-3.5-bolt-e4b"),
+    QStringLiteral("minimaxai/minimax-m3.1-flash"),
+    QStringLiteral("nvidia/nemotron-3.5-super-vl-120b-a12b"),
+    QStringLiteral("nvidia/nemotron-3.5-lightning-30b-a3b"),
+    QStringLiteral("poolside/laguna-xs-2.1"),
+    QStringLiteral("nvidia/nemotron-3-ultra-550b-a55b"),
+    QStringLiteral("google/gemma-4-31b-it"),
+};
+const QStringList kTeamChat = {
+    QStringLiteral("mistralai/mistral-large-4-1t-a52b"),
+    QStringLiteral("nvidia/nemotron-3.5-bolt-e4b"),
+    QStringLiteral("nvidia/nemotron-3.5-super-vl-120b-a12b"),
+    QStringLiteral("stepfun-ai/step-5-preview"),
+    QStringLiteral("z-ai/glm-5.3-flash"),
+    QStringLiteral("meta/muse-glimmer-30b"),
+    QStringLiteral("poolside/laguna-xs-2.1"),
+    QStringLiteral("nvidia/nemotron-3-ultra-550b-a55b"),
+};
+// Models that accept images (used by the look_at_screen / look_at_image tools).
+const QStringList kTeamVision = {
+    QStringLiteral("nvidia/nemotron-3.5-super-vl-120b-a12b"),
+    QStringLiteral("moonshotai/kimi-k3.1-pro"),
+    QStringLiteral("stepfun-ai/step-5-preview"),
+    QStringLiteral("z-ai/glm-5.3-flash"),
+    QStringLiteral("mistralai/mistral-large-4-1t-a52b"),
+    QStringLiteral("meta/muse-glimmer-30b"),
+    QStringLiteral("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
+    QStringLiteral("nvidia/cosmos3-nano-reasoner"),
+    QStringLiteral("nvidia/cosmos-reason2-8b"),
+    QStringLiteral("google/paligemma"),
+    QStringLiteral("nvidia/ising-calibration-1.5-31b"),
+};
+const QStringList kLeadCoding = {
+    QStringLiteral("moonshotai/kimi-k3.1-pro"),
+    QStringLiteral("nvidia/nemotron-3-ultra-550b-a55b"),
+    QStringLiteral("minimaxai/minimax-m3.1-flash"),
+    QStringLiteral("poolside/laguna-xs-2.1"),
+    QStringLiteral("nvidia/nemotron-3.5-super-vl-120b-a12b"),
+};
+const QStringList kLeadAgents = {
+    QStringLiteral("nvidia/nemotron-3-ultra-550b-a55b"),
+    QStringLiteral("moonshotai/kimi-k3.1-pro"),
+    QStringLiteral("minimaxai/minimax-m3.1-flash"),
+    QStringLiteral("nvidia/nemotron-3.5-super-vl-120b-a12b"),
+    QStringLiteral("poolside/laguna-xs-2.1"),
+};
+const QStringList kLeadChat = {
+    QStringLiteral("mistralai/mistral-large-4-1t-a52b"),
+    QStringLiteral("nvidia/nemotron-3-ultra-550b-a55b"),
+    QStringLiteral("z-ai/glm-5.3-flash"),
+    QStringLiteral("stepfun-ai/step-5-preview"),
+    QStringLiteral("nvidia/nemotron-3.5-super-vl-120b-a12b"),
+};
+
+// A key somebody copied from a template without replacing it.
+bool isPlaceholderKey(const QString &key)
+{
+    return key.contains(QLatin1String("XXXXXXXX"));
+}
+
+// The key saved from Settings: the first line of an owner-only file.
+QString readKeyFile(const QString &path)
+{
+    QFile f(path);
+    if (!QFileInfo(path).isFile() || !f.open(QIODevice::ReadOnly))
+        return {};
+    const QString key = QString::fromUtf8(f.readLine(1024)).trimmed();
+    f.close();
+    // Anyone else being able to read it is a mistake worth correcting quietly.
+    const QFile::Permissions others = QFile::ReadGroup | QFile::WriteGroup | QFile::ExeGroup
+                                    | QFile::ReadOther | QFile::WriteOther | QFile::ExeOther;
+    if (f.permissions() & others)
+        QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+    return key;
+}
+
+// A model list from the conf file ("a, b"), or the default when unset.
+QStringList groupOr(const QSettings &ini, const QString &key, const QStringList &fallback);
 // Anthropic Messages API version pinned in the "anthropic-version" header.
 const QString kDefaultAnthropicVersion = QStringLiteral("2023-06-01");
 // Offline default: an OpenAI-compatible server on this machine. ollama's
@@ -41,6 +140,8 @@ const QStringList kAllTools = {
     QStringLiteral("copy_path"),         QStringLiteral("delete_path"),
     QStringLiteral("write_code"),        QStringLiteral("run_in_terminal"),
     QStringLiteral("type_text"),         QStringLiteral("take_screenshot"),
+    // Seeing: the vision models look at a picture or at the screen.
+    QStringLiteral("look_at_image"),
     // Pentest-specific tools (active only when role == "pentest").
     QStringLiteral("pentest_scan"),      QStringLiteral("web_enum"),
     QStringLiteral("search_exploits"),   QStringLiteral("run_sqlmap"),
@@ -119,6 +220,14 @@ double clampRate(double v)
 
 } // namespace
 
+namespace {
+QStringList groupOr(const QSettings &ini, const QString &key, const QStringList &fallback)
+{
+    const QStringList configured = readList(ini, key);
+    return configured.isEmpty() ? fallback : configured;
+}
+} // namespace
+
 QString AssistantConfig::sanitizeValue(const QString &raw)
 {
     // A comment starts at '#' or ';' at the start of the value or after a
@@ -148,28 +257,156 @@ QString AssistantConfig::configPath() const
     return iniPath();
 }
 
+// ---- the API key saved from Settings ---------------------------------------
+
+QString AssistantConfig::keyFilePath() const
+{
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+    return base + QStringLiteral("/shadow/assistant.key");
+}
+
+QString AssistantConfig::apiKeyHint() const
+{
+    // Enough to tell two keys apart, not enough to be of use to anyone.
+    return m_apiKey.size() >= 12 ? m_apiKey.right(4) : QString();
+}
+
+QString AssistantConfig::saveApiKey(const QString &key)
+{
+    const QString k = key.trimmed();
+    if (k.isEmpty())
+        return tr("Paste the key first.");
+    if (k.size() < 20 || k.size() > 512)
+        return tr("That does not look like an API key (NVIDIA keys start with nvapi- and are about 70 characters).");
+    for (const QChar c : k) {
+        if (c.unicode() <= 0x20 || c.unicode() >= 0x7f)
+            return tr("The key contains a space or a character that cannot be part of a key. Copy it again.");
+    }
+    if (isPlaceholderKey(k))
+        return tr("That is the example from the template, not a real key.");
+    const QString path = keyFilePath();
+    if (!QDir().mkpath(QFileInfo(path).absolutePath()))
+        return tr("Could not create %1.").arg(QFileInfo(path).absolutePath());
+    // Written in one step and readable by its owner only, from the first byte.
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly))
+        return tr("Could not write %1: %2").arg(path, f.errorString());
+    f.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
+    f.write(k.toUtf8());
+    f.write("\n");
+    if (!f.commit())
+        return tr("Could not write %1: %2").arg(path, f.errorString());
+    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+    reload();
+    return {};
+}
+
+void AssistantConfig::removeSavedApiKey()
+{
+    QFile::remove(keyFilePath());
+    reload();
+}
+
+QString AssistantConfig::providerName() const
+{
+    if (m_localMode)
+        return tr("a model on this computer");
+    return m_provider == QLatin1String("anthropic") ? QStringLiteral("Claude (Anthropic)") : QStringLiteral("NVIDIA");
+}
+
+QString AssistantConfig::keyHelpUrl() const
+{
+    return m_provider == QLatin1String("anthropic") ? QStringLiteral("https://console.anthropic.com/")
+                                                    : QStringLiteral("https://build.nvidia.com/");
+}
+
+// ---- the model team ----------------------------------------------------------
+
+void AssistantConfig::setTeamMode(bool on)
+{
+    if (on == m_teamMode)
+        return;
+    m_teamMode = on;
+    QSettings(iniPath(), QSettings::IniFormat).setValue(QStringLiteral("team/mode"),
+                                                        on ? QStringLiteral("team") : QStringLiteral("solo"));
+    Q_EMIT changed();
+}
+
+QStringList AssistantConfig::teamGroup(const QString &kind) const
+{
+    if (kind == QLatin1String("coding")) return m_groupCoding;
+    if (kind == QLatin1String("agents")) return m_groupAgents;
+    if (kind == QLatin1String("vision")) return m_groupVision;
+    return m_groupChat;
+}
+
+QStringList AssistantConfig::teamLeads(const QString &kind) const
+{
+    // The preferred leads first, then the rest of the group: any member can
+    // lead when the preferred ones are unavailable.
+    QStringList out = kind == QLatin1String("coding") ? m_leadCoding
+                    : kind == QLatin1String("agents") ? m_leadAgents : m_leadChat;
+    for (const QString &m : teamGroup(kind))
+        if (!out.contains(m))
+            out << m;
+    return out;
+}
+
+int AssistantConfig::advisorWaitMs(const QString &kind, bool voice, bool thorough) const
+{
+    int secs = m_advisorSeconds;
+    if (secs <= 0) {
+        // Code is worth waiting for; a spoken question is not.
+        secs = kind == QLatin1String("coding") ? 45 : kind == QLatin1String("vision") ? 30
+             : kind == QLatin1String("agents") ? 20 : 15;
+        if (voice)
+            secs = kind == QLatin1String("coding") ? 20 : 10;
+    }
+    if (thorough)
+        secs = qMin(secs * 2, 180);
+    return secs * 1000;
+}
+
 void AssistantConfig::reload()
 {
     QSettings ini(iniPath(), QSettings::IniFormat);
 
-    // --- API key: environment wins, then the conf file. Never the repo. ---
+    // --- API key: the environment wins, then the key saved from Settings,
+    // then the conf file. Never the repo. ---
     m_apiKey.clear();
     m_apiKeySource.clear();
+    const QString savedKey = readKeyFile(keyFilePath());
+    m_apiKeySaved = !savedKey.isEmpty();
     const QByteArray envKey = qgetenv("SHADOW_ASSISTANT_API_KEY");
+    const QByteArray envKeyNvidia = qgetenv("NVIDIA_API_KEY");
     const QByteArray envKeyAnthropic = qgetenv("ANTHROPIC_API_KEY");
+    const QString confKey = readString(ini, QStringLiteral("api/key"));
     if (!envKey.trimmed().isEmpty()) {
         m_apiKey = QString::fromUtf8(envKey).trimmed();
         m_apiKeySource = QStringLiteral("SHADOW_ASSISTANT_API_KEY environment variable");
+    } else if (!envKeyNvidia.trimmed().isEmpty()) {
+        m_apiKey = QString::fromUtf8(envKeyNvidia).trimmed();
+        m_apiKeySource = QStringLiteral("NVIDIA_API_KEY environment variable");
+    } else if (m_apiKeySaved) {
+        m_apiKey = savedKey;
+        m_apiKeySource = QStringLiteral("Settings");
+    } else if (!confKey.isEmpty() && !isPlaceholderKey(confKey)) {
+        m_apiKey = confKey;
+        m_apiKeySource = iniPath();
     } else if (!envKeyAnthropic.trimmed().isEmpty()) {
         m_apiKey = QString::fromUtf8(envKeyAnthropic).trimmed();
         m_apiKeySource = QStringLiteral("ANTHROPIC_API_KEY environment variable");
-    } else {
-        const QString k = readString(ini, QStringLiteral("api/key"));
-        if (!k.isEmpty()) {
-            m_apiKey = k;
-            m_apiKeySource = iniPath();
-        }
     }
+
+    // --- the service: NVIDIA's hosted models, unless the key in effect is an
+    // Anthropic one or the conf (or a test) names the service. ---
+    m_provider = QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_PROVIDER")).trimmed().toLower();
+    if (m_provider != QLatin1String("nvidia") && m_provider != QLatin1String("anthropic"))
+        m_provider = readString(ini, QStringLiteral("api/provider")).toLower();
+    if (m_provider != QLatin1String("nvidia") && m_provider != QLatin1String("anthropic"))
+        m_provider = m_apiKey.startsWith(QLatin1String("sk-ant-")) ? QStringLiteral("anthropic")
+                                                                    : QStringLiteral("nvidia");
+    const QString providerUrl = m_provider == QLatin1String("anthropic") ? kDefaultBaseUrl : kNvidiaBaseUrl;
 
     // --- Anthropic API version header (cloud mode) ---
     m_anthropicVersion = readString(ini, QStringLiteral("api/anthropic_version"), kDefaultAnthropicVersion);
@@ -182,9 +419,14 @@ void AssistantConfig::reload()
         m_baseUrl = QString::fromUtf8(envUrl).trimmed();
         m_baseUrlOverridden = true;
     } else {
-        m_baseUrl = readString(ini, QStringLiteral("api/base_url"), kDefaultBaseUrl);
-        if (m_baseUrl.isEmpty())
-            m_baseUrl = kDefaultBaseUrl;
+        m_baseUrl = readString(ini, QStringLiteral("api/base_url"), providerUrl);
+        // A base_url written for the other service (an old conf pointing at
+        // Anthropic while the key is an NVIDIA one) is not this one's.
+        const bool forAnthropic = m_baseUrl.contains(QLatin1String("anthropic.com"));
+        const bool forNvidia = m_baseUrl.contains(QLatin1String("nvidia.com"));
+        if (m_baseUrl.isEmpty() || (m_provider == QLatin1String("nvidia") && forAnthropic)
+            || (m_provider == QLatin1String("anthropic") && forNvidia))
+            m_baseUrl = providerUrl;
         m_baseUrlOverridden = false;
     }
     while (m_baseUrl.endsWith(QLatin1Char('/')))
@@ -210,6 +452,22 @@ void AssistantConfig::reload()
     if (m_planner.isEmpty()) m_planner = kDefaultPlanner;
     if (m_fast.isEmpty()) m_fast = kDefaultFast;
     if (m_omni.isEmpty()) m_omni = kDefaultOmni;
+
+    // --- the model team (NVIDIA) ---
+    m_teamMode = readString(ini, QStringLiteral("team/mode"), QStringLiteral("team")).toLower() != QLatin1String("solo");
+    m_groupCoding = groupOr(ini, QStringLiteral("team/coding"), kTeamCoding);
+    m_groupAgents = groupOr(ini, QStringLiteral("team/agents"), kTeamAgents);
+    m_groupChat = groupOr(ini, QStringLiteral("team/chat"), kTeamChat);
+    m_groupVision = groupOr(ini, QStringLiteral("team/vision"), kTeamVision);
+    m_leadCoding = groupOr(ini, QStringLiteral("team/lead_coding"), kLeadCoding);
+    m_leadAgents = groupOr(ini, QStringLiteral("team/lead_agents"), kLeadAgents);
+    m_leadChat = groupOr(ini, QStringLiteral("team/lead_chat"), kLeadChat);
+    bool secsOk = false;
+    const int secs = readString(ini, QStringLiteral("team/advisor_seconds")).toInt(&secsOk);
+    m_advisorSeconds = secsOk ? qBound(3, secs, 180) : 0;
+    bool maxOk = false;
+    const int maxModels = readString(ini, QStringLiteral("team/max_models")).toInt(&maxOk);
+    m_teamMaxModels = maxOk && maxModels > 0 ? qMin(maxModels, 64) : 0;
 
     // --- autonomy ---
     m_autonomy = readString(ini, QStringLiteral("behaviour/autonomy"), QStringLiteral("autopilot"));
@@ -303,6 +561,10 @@ QString AssistantConfig::modelForRole(const QString &role) const
     // Offline: one local model serves every role.
     if (m_localMode)
         return m_localModel;
+    // NVIDIA: the team decides per request (see Council); this is only the
+    // name shown before a request has run.
+    if (m_provider == QLatin1String("nvidia"))
+        return teamLeads(role == QLatin1String("planner") ? QStringLiteral("agents") : QStringLiteral("chat")).value(0);
     if (role == QLatin1String("planner")) return m_planner;
     if (role == QLatin1String("fast")) return m_fast;
     if (role == QLatin1String("omni")) return m_omni;
@@ -462,38 +724,58 @@ void AssistantConfig::setTtsEngine(const QString &v)
 
 QString AssistantConfig::configTemplate() const
 {
-    // Shown verbatim in the setup state so the user can create the file.
+    // Offered on the first-start page for those who prefer a file to the key
+    // field in Settings.
     // Comments start with ';' and stay on lines of their own: QSettings
     // treats only ';' as a comment ('#' lines become keys) and would read a
     // comment after a value as part of the value.
     return QStringLiteral(
-        "; ~/.config/shadow/assistant.conf  —  create with mode 0600 (chmod 600)\n"
-        "; SHADOW Assistant reads your Claude (Anthropic) API key from here (or\n"
-        "; from the SHADOW_ASSISTANT_API_KEY or ANTHROPIC_API_KEY environment\n"
-        "; variable). The key is never stored in the application or the repository.\n"
-        "; Get a key at https://console.anthropic.com/ (keys start with sk-ant-).\n"
+        "; ~/.config/shadow/assistant.conf  —  optional; create with mode 0600 (chmod 600)\n"
+        "; The easy way to give SHADOW Assistant its API key is Settings in the\n"
+        "; assistant. This file is the alternative, and holds the other options.\n"
+        "; The assistant uses NVIDIA's hosted models: get a free key at\n"
+        "; https://build.nvidia.com/ (keys start with nvapi-). The key is read from\n"
+        "; Settings, from here, or from the SHADOW_ASSISTANT_API_KEY or NVIDIA_API_KEY\n"
+        "; environment variable; it is never stored in the application or the repository.\n"
         "; Comments start with ';' on a line of their own, never after a value.\n"
         "\n"
         "[api]\n"
-        "key=sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n"
+        "key=nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n"
         "; Endpoint (usually leave unset):\n"
-        "; base_url=https://api.anthropic.com/v1\n"
-        "; Messages API version header:\n"
-        "; anthropic_version=2023-06-01\n"
+        "; base_url=https://integrate.api.nvidia.com/v1\n"
+        "; An Anthropic key (sk-ant-...) makes the assistant use Claude instead.\n"
         "; Offline: run a model on this computer instead of the cloud (no key\n"
         "; needed). Easiest setup:  shadow-assistant-local setup\n"
         "; local=true\n"
         "; local_base_url=http://127.0.0.1:11434/v1\n"
         "\n"
+        "[team]\n"
+        "; team: every model of a group works on a request at the same time and a\n"
+        "; lead model combines their work.  solo: one model answers.\n"
+        "mode=team\n"
+        "; The groups, as comma-separated model ids from https://build.nvidia.com/models\n"
+        "; (unset = the built-in lists; models the service does not offer are skipped):\n"
+        "; coding=moonshotai/kimi-k3.1-pro, minimaxai/minimax-m3.1-flash\n"
+        "; agents=\n"
+        "; chat=\n"
+        "; vision=\n"
+        "; The models preferred as lead, best first:\n"
+        "; lead_coding=\n"
+        "; lead_agents=\n"
+        "; lead_chat=\n"
+        "; How long the lead waits for the others, in seconds (default: 15 for chat,\n"
+        "; 20 for actions, 45 for code; 10 when you asked by voice):\n"
+        "; advisor_seconds=20\n"
+        "; The most models that work on one request, the lead included (unset = the\n"
+        "; whole group). A smaller team makes fewer requests per message:\n"
+        "; max_models=4\n"
+        "\n"
         "[models]\n"
-        "; One Claude model serves every role by default (claude-sonnet-4-6,\n"
-        "; run at high effort with adaptive thinking). Change any role to a\n"
-        "; different Claude model ID if you prefer (e.g. claude-opus-5-5 for the\n"
-        "; brain, claude-haiku-5-5 for fast low-cost replies).\n"
-        "brain=") + kDefaultBrain + QStringLiteral("\n"
-        "planner=") + kDefaultPlanner + QStringLiteral("\n"
-        "fast=") + kDefaultFast + QStringLiteral("\n"
-        "omni=") + kDefaultOmni + QStringLiteral("\n"
+        "; Only with a Claude key: the Claude model per role.\n"
+        "; brain=") + kDefaultBrain + QStringLiteral("\n"
+        "; planner=") + kDefaultPlanner + QStringLiteral("\n"
+        "; fast=") + kDefaultFast + QStringLiteral("\n"
+        "; omni=") + kDefaultOmni + QStringLiteral("\n"
         "; Model used when [api] local=true:\n"
         "; local=llama3.1:8b\n"
         "\n"
@@ -536,6 +818,17 @@ QJsonObject AssistantConfig::toJson() const
     return QJsonObject{
         {QStringLiteral("apiKeyConfigured"), apiKeyConfigured()},
         {QStringLiteral("apiKeySource"), m_apiKeySource},
+        {QStringLiteral("apiKeySaved"), m_apiKeySaved},
+        {QStringLiteral("apiKeyHint"), apiKeyHint()},
+        {QStringLiteral("provider"), m_localMode ? QStringLiteral("local") : m_provider},
+        {QStringLiteral("team"), QJsonObject{
+            {QStringLiteral("mode"), m_teamMode ? QStringLiteral("team") : QStringLiteral("solo")},
+            {QStringLiteral("maxModels"), m_teamMaxModels},
+            {QStringLiteral("coding"), QJsonArray::fromStringList(m_groupCoding)},
+            {QStringLiteral("agents"), QJsonArray::fromStringList(m_groupAgents)},
+            {QStringLiteral("chat"), QJsonArray::fromStringList(m_groupChat)},
+            {QStringLiteral("vision"), QJsonArray::fromStringList(m_groupVision)},
+        }},
         {QStringLiteral("baseUrl"), m_baseUrl},
         {QStringLiteral("baseUrlOverridden"), m_baseUrlOverridden},
         {QStringLiteral("configPath"), iniPath()},

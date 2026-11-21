@@ -11,11 +11,14 @@
 
 #include <QCommandLineOption>
 #include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QTimer>
 
 #include <cstdio>
 
@@ -28,7 +31,8 @@ bool isHeadlessVoiceMode(int argc, char **argv)
 {
     for (int i = 1; i < argc; ++i) {
         const QByteArray a(argv[i]);
-        for (const char *opt : {"--voice-session", "--voice-selftest", "--voice-speech-text"})
+        for (const char *opt : {"--voice-session", "--voice-selftest", "--voice-speech-text", "--ask",
+                                "--set-api-key", "--remove-api-key"})
             if (a == opt || a.startsWith(QByteArray(opt) + '='))
                 return true;
     }
@@ -108,6 +112,178 @@ int printSpeechText(const QString &path)
     return 0;
 }
 
+void printJsonLine(const QJsonObject &o)
+{
+    const QByteArray out = QJsonDocument(o).toJson(QJsonDocument::Compact) + '\n';
+    std::fwrite(out.constData(), 1, size_t(out.size()), stdout);
+    std::fflush(stdout);
+}
+
+// --ask: requests without a window. Each --ask is one turn of the same
+// conversation. The model team's progress is printed as it changes and the
+// outcome of every turn as a "turn" line ("done" for the last), one JSON
+// object per line. 'approve' answers the "may I do this?" questions: "yes",
+// "no", or "" to stop there and report awaiting = true.
+struct AskOptions
+{
+    QStringList texts;
+    double timeoutSecs = 180;
+    bool thinkHard = false;
+    QString approve;
+    double stopAfterSecs = 0; // > 0: press Stop this long after each request was sent
+};
+
+int runAsk(const AskOptions &options)
+{
+    Assistant agent;
+    // With the list read first, the team is the one the service really offers.
+    if (agent.config()->nvidia() && !agent.config()->localMode())
+        agent.catalog()->refreshSync(15000);
+    agent.setThinkHard(options.thinkHard);
+
+    QElapsedTimer clock;
+    clock.start();
+    QString error, lastTeam;
+    QObject::connect(&agent, &Assistant::errorMessage, &agent, [&error](const QString &m) { error = m; });
+    auto teamJson = [&agent]() {
+        QJsonArray members;
+        for (const QVariant &v : agent.team()) {
+            const QVariantMap m = v.toMap();
+            members.append(QJsonObject{{QStringLiteral("id"), m.value(QStringLiteral("id")).toString()},
+                                       {QStringLiteral("role"), m.value(QStringLiteral("role")).toString()},
+                                       {QStringLiteral("state"), m.value(QStringLiteral("state")).toString()},
+                                       {QStringLiteral("seconds"), m.value(QStringLiteral("seconds")).toDouble()}});
+        }
+        return members;
+    };
+    QObject::connect(&agent, &Assistant::teamChanged, &agent, [&]() {
+        const QJsonArray members = teamJson();
+        const QString now = QString::fromUtf8(QJsonDocument(members).toJson(QJsonDocument::Compact))
+            + (agent.teamGathering() ? QLatin1String("g") : QLatin1String(""));
+        if (now == lastTeam || members.isEmpty())
+            return;
+        lastTeam = now;
+        printJsonLine({{QStringLiteral("event"), QStringLiteral("team")},
+                       {QStringLiteral("t"), clock.elapsed() / 1000.0},
+                       {QStringLiteral("kind"), agent.teamKind()},
+                       {QStringLiteral("gathering"), agent.teamGathering()},
+                       {QStringLiteral("members"), members}});
+    });
+    QObject::connect(&agent, &Assistant::confirmationNeeded, &agent,
+                     [&](const QString &summary, const QString &preview, const QString &) {
+        printJsonLine({{QStringLiteral("event"), QStringLiteral("confirm")},
+                       {QStringLiteral("t"), clock.elapsed() / 1000.0},
+                       {QStringLiteral("summary"), summary},
+                       {QStringLiteral("preview"), preview},
+                       {QStringLiteral("answer"), options.approve}});
+    });
+
+    QEventLoop loop;
+    auto settled = [&agent]() {
+        return !agent.busy() && agent.phase() != QLatin1String("thinking") && agent.phase() != QLatin1String("streaming");
+    };
+    auto onSettled = [&]() {
+        if (!settled())
+            return;
+        if (agent.hasPending() && !options.approve.isEmpty()) {
+            agent.confirmAll(options.approve == QLatin1String("yes"));
+            return; // the turn goes on; phaseChanged comes again
+        }
+        loop.quit();
+    };
+    QObject::connect(&agent, &Assistant::phaseChanged, &loop, [&]() {
+        if (settled())
+            QTimer::singleShot(80, &loop, onSettled);
+    });
+    bool timedOut = false;
+    QTimer::singleShot(int(options.timeoutSecs * 1000), &loop, [&]() { timedOut = true; loop.quit(); });
+
+    const bool haveKey = agent.config()->apiKeyConfigured() || agent.config()->localMode();
+    for (qsizetype turn = 0; turn < options.texts.size(); ++turn) {
+        error.clear();
+        const int rowsBefore = agent.messages()->rowCount();
+        if (!haveKey) {
+            error = QStringLiteral("no API key is set");
+        } else if (!timedOut) {
+            agent.sendMessage(options.texts.at(turn));
+            if (options.stopAfterSecs > 0)
+                QTimer::singleShot(int(options.stopAfterSecs * 1000), &loop, [&]() {
+                    printJsonLine({{QStringLiteral("event"), QStringLiteral("stop")},
+                                   {QStringLiteral("t"), clock.elapsed() / 1000.0},
+                                   {QStringLiteral("phase"), agent.phase()}});
+                    agent.stop();
+                    if (settled())
+                        loop.quit();
+                });
+            if (!settled())
+                loop.exec();
+        }
+        // Timed out: the requests in flight are not stopped here. They end
+        // when the agent is destroyed on return, exactly as when the app is
+        // closed in mid-answer (tests rely on that path being safe).
+        if (timedOut)
+            error = QStringLiteral("timed out after %1 s").arg(options.timeoutSecs);
+
+        QString reply;
+        QJsonArray tools;
+        MessageModel *messages = agent.messages();
+        for (int r = rowsBefore; r < messages->rowCount(); ++r) {
+            const QModelIndex idx = messages->index(r);
+            if (messages->data(idx, MessageModel::KindRole).toString() != QLatin1String("assistant"))
+                continue;
+            const QString content = messages->data(idx, MessageModel::ContentRole).toString();
+            if (!content.trimmed().isEmpty())
+                reply = content;
+            for (const QVariant &cv : messages->data(idx, MessageModel::ToolCallsRole).toList()) {
+                const QVariantMap c = cv.toMap();
+                tools.append(QJsonObject{{QStringLiteral("name"), c.value(QStringLiteral("name")).toString()},
+                                         {QStringLiteral("status"), c.value(QStringLiteral("status")).toString()},
+                                         {QStringLiteral("preview"), c.value(QStringLiteral("preview")).toString()}});
+            }
+        }
+        const bool last = turn + 1 == options.texts.size() || timedOut || !haveKey;
+        printJsonLine({{QStringLiteral("event"), last ? QStringLiteral("done") : QStringLiteral("turn")},
+                       {QStringLiteral("turn"), int(turn)},
+                       {QStringLiteral("t"), clock.elapsed() / 1000.0},
+                       {QStringLiteral("provider"), agent.config()->localMode() ? QStringLiteral("local") : agent.config()->provider()},
+                       {QStringLiteral("kind"), agent.teamKind()},
+                       {QStringLiteral("model"), agent.activeModel()},
+                       {QStringLiteral("team"), teamJson()},
+                       {QStringLiteral("reply"), reply},
+                       {QStringLiteral("tools"), tools},
+                       {QStringLiteral("awaiting"), agent.hasPending()},
+                       {QStringLiteral("error"), error}});
+        if (last)
+            break;
+    }
+    return error.isEmpty() ? 0 : 1;
+}
+
+// --set-api-key: the key is read from standard input (never from the command
+// line, where other programs could see it) and saved like the Settings page
+// saves it.
+int runSetApiKey()
+{
+    QFile in;
+    if (!in.open(stdin, QIODevice::ReadOnly)) {
+        std::fprintf(stderr, "cannot read standard input\n");
+        return 2;
+    }
+    const QString key = QString::fromUtf8(in.readLine(2048)).trimmed();
+    AssistantConfig config;
+    const QString problem = config.saveApiKey(key);
+    if (!problem.isEmpty()) {
+        std::fprintf(stderr, "%s\n", qPrintable(problem));
+        return 1;
+    }
+    printJson({{QStringLiteral("saved"), true},
+               {QStringLiteral("file"), config.keyFilePath()},
+               {QStringLiteral("provider"), config.provider()},
+               {QStringLiteral("inEffect"), config.apiKeySource() == QLatin1String("Settings")},
+               {QStringLiteral("source"), config.apiKeySource()}});
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -124,7 +300,27 @@ int main(int argc, char **argv)
         !headlessVoice, // single instance — except the headless voice test modes
     });
     app.setDumpTopics({QStringLiteral("config"), QStringLiteral("models"), QStringLiteral("tools"),
-                       QStringLiteral("voice")});
+                       QStringLiteral("voice"), QStringLiteral("team")});
+
+    // One request without a window, and the API key from the command line.
+    QCommandLineOption askOpt(QStringLiteral("ask"),
+        QStringLiteral("Send one request without opening a window and print what happens as JSON lines "
+                       "(the model team's progress, then the reply). Give it several times for several turns of "
+                       "one conversation."),
+        QStringLiteral("text"));
+    QCommandLineOption askTimeoutOpt(QStringLiteral("ask-timeout"),
+        QStringLiteral("With --ask: give up after <seconds> (default 180)."), QStringLiteral("seconds"));
+    QCommandLineOption askThinkOpt(QStringLiteral("ask-think-hard"),
+        QStringLiteral("With --ask: as with \"Think hard\" switched on (every model of every group takes part)."));
+    QCommandLineOption askStopOpt(QStringLiteral("ask-stop-after"),
+        QStringLiteral("With --ask: press Stop <seconds> after each request was sent."), QStringLiteral("seconds"));
+    QCommandLineOption askApproveOpt(QStringLiteral("ask-approve"),
+        QStringLiteral("With --ask: answer \"may I do this?\" questions with <yes|no> instead of stopping there."),
+        QStringLiteral("yes|no"));
+    QCommandLineOption setKeyOpt(QStringLiteral("set-api-key"),
+        QStringLiteral("Save the API key read from standard input, as the Settings page does."));
+    QCommandLineOption removeKeyOpt(QStringLiteral("remove-api-key"),
+        QStringLiteral("Remove the API key saved from Settings."));
 
     // Headless voice test entry points (spec voice v2 §3).
     QCommandLineOption selftestOpt(QStringLiteral("voice-selftest"),
@@ -153,9 +349,39 @@ int main(int argc, char **argv)
     // wake word is switched off.
     QCommandLineOption backgroundOpt(QStringLiteral("background"),
         QStringLiteral("Start without a window and listen for the wake word."));
-    app.parser().addOptions({selftestOpt, sessionOpt, outOpt, timeoutOpt, actionsOpt, speechTextOpt, backgroundOpt});
+    app.parser().addOptions({selftestOpt, sessionOpt, outOpt, timeoutOpt, actionsOpt, speechTextOpt, backgroundOpt,
+                             askOpt, askTimeoutOpt, askThinkOpt, askApproveOpt, askStopOpt, setKeyOpt, removeKeyOpt});
     if (!app.processArguments())
         return 0;
+
+    if (app.parser().isSet(setKeyOpt))
+        return runSetApiKey();
+    if (app.parser().isSet(removeKeyOpt)) {
+        AssistantConfig config;
+        config.removeSavedApiKey();
+        printJson({{QStringLiteral("removed"), true}, {QStringLiteral("apiKeyConfigured"), config.apiKeyConfigured()}});
+        return 0;
+    }
+    if (app.parser().isSet(askOpt)) {
+        AskOptions ask;
+        ask.texts = app.parser().values(askOpt);
+        ask.thinkHard = app.parser().isSet(askThinkOpt);
+        ask.approve = app.parser().value(askApproveOpt);
+        if (!ask.approve.isEmpty() && ask.approve != QLatin1String("yes") && ask.approve != QLatin1String("no")) {
+            std::fprintf(stderr, "--ask-approve needs yes or no\n");
+            return 2;
+        }
+        if (app.parser().isSet(askTimeoutOpt)) {
+            bool ok = false;
+            ask.timeoutSecs = app.parser().value(askTimeoutOpt).toDouble(&ok);
+            if (!ok || ask.timeoutSecs <= 0) {
+                std::fprintf(stderr, "--ask-timeout needs a number of seconds\n");
+                return 2;
+            }
+        }
+        ask.stopAfterSecs = app.parser().value(askStopOpt).toDouble();
+        return runAsk(ask);
+    }
 
     if (app.parser().isSet(selftestOpt))
         return runVoiceSelftest();
@@ -234,6 +460,25 @@ int main(int argc, char **argv)
             return app.finishDump(QJsonObject{
                 {QStringLiteral("enabled"), tools},
                 {QStringLiteral("autonomy"), config.autonomy()},
+            });
+        }
+        if (topic == QLatin1String("team")) {
+            // The groups as the service offers them now (reads the model list).
+            ModelCatalog catalog(&config);
+            if (config.nvidia())
+                catalog.refreshSync(15000);
+            Council council(&config, &catalog);
+            QJsonObject leads;
+            for (const char *kind : {"coding", "agents", "chat"})
+                leads.insert(QLatin1String(kind), catalog.lead(QLatin1String(kind)));
+            return app.finishDump(QJsonObject{
+                {QStringLiteral("provider"), config.localMode() ? QStringLiteral("local") : config.provider()},
+                {QStringLiteral("mode"), config.teamMode() ? QStringLiteral("team") : QStringLiteral("solo")},
+                {QStringLiteral("listKnown"), catalog.known()},
+                {QStringLiteral("listError"), catalog.error()},
+                {QStringLiteral("modelsOffered"), catalog.count()},
+                {QStringLiteral("leads"), leads},
+                {QStringLiteral("groups"), QJsonArray::fromVariantList(catalog.groups())},
             });
         }
         if (topic == QLatin1String("voice")) {

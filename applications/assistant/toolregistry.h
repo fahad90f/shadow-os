@@ -10,6 +10,7 @@
 #include "undojournal.h"
 
 class AssistantConfig;
+class VisionTeam;
 
 // Describes one capability the model may invoke. Execution that changes the
 // system or reaches the network is marked and gated behind explicit in-UI
@@ -72,12 +73,16 @@ public:
     // The log of file-changing actions, with undo.
     UndoJournal *journal() { return &m_journal; }
 
+    // The vision models, for look_at_image. Without them the tool is not offered.
+    void setVision(VisionTeam *vision) { m_vision = vision; }
+
 private:
     // Whether a tool is offered to the model now: enabled, and (for the
     // offensive-security tools) only when the assistant is in pentest mode.
     bool toolAvailable(const ToolSpec &s) const;
 
     AssistantConfig *m_config;
+    VisionTeam *m_vision = nullptr;
     QList<ToolSpec> m_specs;
     UndoJournal m_journal;
 };

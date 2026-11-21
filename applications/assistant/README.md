@@ -10,40 +10,69 @@ spoken "I'd like to run a command. Shall I go ahead?" answered with yes or no.
 
 - **Application id:** `org.shadow.assistant`
 - **Binary:** `shadow-assistant`
-- **Backend:** Anthropic **Claude** models via the native Messages API at
-  `https://api.anthropic.com/v1` (`/messages`, SSE streaming, QtNetwork). The
-  default is a single model for every role — **Claude Sonnet 4.6** (1M
-  context) run at **high effort** with adaptive thinking, a strong all-rounder
-  for chat, planning, vision and tool use. Any role can be pointed at a
-  different Claude model ID in the conf file. An OpenAI-compatible local server
-  (ollama) is still supported for fully offline use (`[api] local=true`).
+- **Backend:** **NVIDIA's hosted models** (<https://build.nvidia.com/>) through
+  one OpenAI-compatible endpoint, `https://integrate.api.nvidia.com/v1`
+  (`/chat/completions`, SSE streaming, QtNetwork), with one key for every
+  model. Several models work on each request **at the same time** and one of
+  them writes the answer — see [The model team](#the-model-team). Two other
+  backends remain: a Claude key (`sk-ant-…`) makes the assistant talk to
+  Anthropic's Messages API with one model, as before; and an OpenAI-compatible
+  local server (ollama) runs it fully offline (`[api] local=true`).
 
 ## Configuration
 
-The Claude (Anthropic) API key is **never** stored in the application or this
-repository. It is read at run time from, in order of precedence:
+**The API key is set in the assistant:** Settings → Models → paste the key →
+**Save** (on first start the same field is on the welcome page). Save writes
+the key to `~/.config/shadow/assistant.key`, readable only by you (mode 600),
+and tries it at once with one tiny request; the page then says whether NVIDIA
+accepted it. The field never shows a saved key again, only its last four
+characters. **Remove saved key** deletes the file. Get a key at
+<https://build.nvidia.com/> (keys start with `nvapi-`).
 
-1. the environment variable `SHADOW_ASSISTANT_API_KEY`, or
-2. the environment variable `ANTHROPIC_API_KEY`, or
-3. `~/.config/shadow/assistant.conf` (INI; create it `chmod 600`).
+The key is never stored in the application, its logs or this repository.
+Optional other places, in order of precedence:
 
-Get a key at <https://console.anthropic.com/> (keys start with `sk-ant-`).
+1. the environment variable `SHADOW_ASSISTANT_API_KEY`, or `NVIDIA_API_KEY`;
+2. the key saved from Settings (above);
+3. `key=` under `[api]` in `~/.config/shadow/assistant.conf` (INI; `chmod 600`);
+4. the environment variable `ANTHROPIC_API_KEY`.
+
+Which service a key is used with follows the key: `sk-ant-…` is Claude,
+anything else NVIDIA. `SHADOW_ASSISTANT_PROVIDER=nvidia|anthropic` or
+`provider=` under `[api]` overrides that. From a terminal, the same as the
+Settings page: `shadow-assistant --set-api-key` (reads the key from standard
+input, never from the command line) and `shadow-assistant --remove-api-key`.
 
 ```ini
 ; Comments start with ';' on a line of their own — never after a value.
 [api]
-key=sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-; Endpoint (usually leave unset) and Messages API version header:
-; base_url=https://api.anthropic.com/v1
-; anthropic_version=2023-06-01
+; Optional: the key is normally saved from Settings.
+; key=nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+; Endpoint (usually leave unset):
+; base_url=https://integrate.api.nvidia.com/v1
+
+[team]
+; team: several models work on a request at the same time and a lead model
+; combines their work.  solo: one model answers.
+mode=team
+; The groups, as comma-separated model ids (unset = the built-in lists):
+; coding=moonshotai/kimi-k3.1-pro, minimaxai/minimax-m3.1-flash
+; agents=
+; chat=
+; vision=
+; The models preferred as lead, best first:
+; lead_coding=
+; lead_agents=
+; lead_chat=
+; How long the lead waits for the others, in seconds:
+; advisor_seconds=20
+; The most models per request, the lead included (unset = the whole group):
+; max_models=4
 
 [models]
-; brain: chat, tools, vision (the default) · planner: "Think hard"
-; fast: quick background helpers · omni: voice and image
-brain=claude-sonnet-4-6
-planner=claude-sonnet-4-6
-fast=claude-sonnet-4-6
-omni=claude-sonnet-4-6
+; Only with a Claude key: the Claude model per role.
+; brain=claude-sonnet-4-6
+; planner=claude-sonnet-4-6
 
 [behaviour]
 ; autopilot (default) | ask_risky | ask_every
@@ -86,8 +115,64 @@ and the first saved setting rewrites it clean (stray `#` keys removed). Keys of 
 `capture_tool`, `max_utterance_secs`, `pocketsphinx_model`) are ignored;
 `tts_engine=piper|speechd` reads as `auto`.
 
-If no key is configured the app shows a setup state (it never crashes). The
-endpoint can be overridden for development with `SHADOW_ASSISTANT_BASE_URL`.
+If no key is configured the app shows the welcome page with the key field (it
+never crashes). The endpoint can be overridden for development with
+`SHADOW_ASSISTANT_BASE_URL`.
+
+## The model team
+
+With NVIDIA's models, a request is not answered by one model. It goes to a
+**team**, chosen by what was asked:
+
+| Request | Team (default) | Lead |
+|---|---|---|
+| **Code** — writing, fixing, explaining code | kimi-k3.1-pro, minimax-m3.1-flash, nemotron-3.5-super-vl, laguna-xs-2.1, nemotron-3-ultra, gemma-4-31b-it | kimi-k3.1-pro |
+| **Actions** — doing things on this computer with tools | kimi-k3.1-pro, nemotron-3.5-bolt, minimax-m3.1-flash, nemotron-3.5-super-vl, nemotron-3.5-lightning, laguna-xs-2.1, nemotron-3-ultra, gemma-4-31b-it | nemotron-3-ultra |
+| **Conversation** — questions and everyday talk | mistral-large-4, nemotron-3.5-bolt, nemotron-3.5-super-vl, step-5-preview, glm-5.3-flash, muse-glimmer-30b, laguna-xs-2.1, nemotron-3-ultra | mistral-large-4 |
+| **Seeing** — a picture or the screen (`look_at_image`) | nemotron-3.5-super-vl, kimi-k3.1-pro, step-5-preview, glm-5.3-flash, … (the first four that take pictures) | — |
+
+How a turn runs (`council.cpp`):
+
+1. **Everyone but the lead works at once.** Each of these *advisors* gets the
+   conversation and writes its own answer, code or step-by-step plan, in
+   parallel. None of them can run a tool — an action that changes the
+   computer must happen once, not once per model — but they are told which
+   tools the lead has, so a plan can name exact steps.
+2. **The lead combines.** When all advisors are done, or the wait is over
+   (15 s for conversation, 20 s for actions, 45 s for code; 10 s / 20 s when
+   you asked by voice), the lead gets their notes with its instructions,
+   writes the reply you see, and is the only one that calls tools. Further
+   rounds of the same turn (after a tool's result) are the lead's alone.
+3. **Nothing depends on one model.** An advisor that fails or is too slow is
+   left out. A lead that cannot be used (not offered to the key, rejects
+   tools, refuses) hands the same request, notes included, to the next model
+   of the group, up to four. A rejected key stops at once with one message.
+
+**Think hard** brings in every model of every group. **Settings → Models**
+shows the teams, which model leads, and a switch to turn the team off (one
+model answers alone: quicker, fewer requests). While a request is worked on,
+a strip above the prompt shows one dot per model and what is happening.
+
+The list of models is not fixed in the program: NVIDIA adds and retires
+models, so the assistant reads what the service offers (`GET /models`, on
+start and from Settings → Models → *Read again*) and leaves out what is not
+there. A model that turns out to reject tools or pictures is remembered and
+not asked that way again (`~/.cache/shadow/assistant-models.json`).
+
+A team makes one request per model for every message (eight for a question).
+If NVIDIA answers "too many requests", the next messages go to the lead and
+two others for a minute and a half; `max_models=` under `[team]` limits the
+team for good.
+
+**Seeing.** `look_at_image` looks at a picture file, or at the screen as it is
+now. Up to four vision models get the picture at the same time (made small
+first: longest side 1280 px, JPEG, at most 180 kB) and the lead gets what each
+of them saw. Sending a picture is asked about first unless autonomy is
+`autopilot`.
+
+Without a window: `shadow-assistant --ask "…"` sends one request (give it
+several times for several turns) and prints the team's progress and the reply
+as JSON lines; `--dump team` prints the teams.
 
 ## Capabilities
 
@@ -118,10 +203,11 @@ endpoint can be overridden for development with `SHADOW_ASSISTANT_BASE_URL`.
    `run_shell_command`, `read_file`, `write_file`, `search_files`,
    `open_application`, `get_system_info`, `open_url`, `web_search`,
    `make_directory`, `move_path`, `copy_path`, `delete_path`, `write_code`,
-   `run_in_terminal`, `type_text`, `take_screenshot`.
+   `run_in_terminal`, `type_text`, `take_screenshot`, `look_at_image`.
    Destructive targets (filesystem root, `$HOME`, bare top-level system dirs)
    are refused at every autonomy level.
-4. **Settings** — key status, model mapping, autonomy, per-tool switches, and a
+4. **Settings** — the API key (paste, save, test, remove), the model teams,
+   autonomy, per-tool switches, and a
    Voice panel (status, privacy mute, wake toggle, speak-replies, speech
    output Auto/Natural/eSpeak, detected capabilities) plus an Activity log.
 
@@ -197,8 +283,9 @@ Ctrl+L prompt.
 ## Diagnostics
 
 ```
-shadow-assistant --dump config    # key configured? endpoint, models, autonomy, voice (never the key)
-shadow-assistant --dump models    # the four model-role IDs + base URL
+shadow-assistant --dump config    # key configured? where from, service, endpoint, team, autonomy, voice (never the key)
+shadow-assistant --dump team      # the model teams: members, which are offered now, who leads
+shadow-assistant --dump models    # the four model-role IDs + base URL (Claude key)
 shadow-assistant --dump tools     # enabled tools, changesSystem/risky flags
 shadow-assistant --dump voice     # helper path + its --probe answer, eSpeak NG, setup tool, voice config;
                                   # probe only: the engine is not started, the microphone not opened
@@ -257,16 +344,42 @@ pocketsphinx, speech-dispatcher and piper are no longer used.
   helper/models/eSpeak missing; mute; microphone failure; in-app install;
   Markdown for speech; the old corrupted conf templates; `--dump voice` is
   probe-only; `--voice-selftest`.
+- `tests/team_tests.py [--bin build/bin/shadow-assistant]` — the model team,
+  against the real binary and `tests/mock_nvidia.py` (a stand-in for NVIDIA's
+  API that records every request; `python3 tests/mock_nvidia.py --port 8910`
+  runs it by hand). 34 tests: all advisors asked at the same moment and the
+  lead after them with every note; code / actions / conversation go to their
+  teams; a tool runs once however many models planned it; yes/no before
+  acting; Think hard; solo; `max_models`; custom groups; several turns;
+  retired models left out; failing, slow or rate-limited advisors; a lead
+  that rejects tools, is not offered, accepts only shorter replies, or all
+  leads failing; a rejected key (answered as NVIDIA's real service answers
+  one) and no key; the model list unreachable; reasoning text and one-piece
+  replies; `look_at_image` (four models, the picture shrunk, a missing file,
+  a model that takes no pictures, "no" to sending); the key saved from
+  Settings (mode 600, never printed, removed again), its precedence, which
+  service a key selects, a Claude key still working; Stop while the team works; and closing the
+  app in mid-request.
 - The understand → tool → confirm loop is driven end to end against the
-  bundled mock server with `SHADOW_ASSISTANT_BASE_URL`.
+  bundled mock servers with `SHADOW_ASSISTANT_BASE_URL`.
 
 ## Limitations / not verified
 
 - Live microphone capture, wake-word latency, recognition accuracy and
   playback depend on the user's audio hardware; the app side is tested with
   the fake helper, the helper itself in `voice/`.
+- **NVIDIA's real service was not used in any test**: no key was available
+  in the test environment. The model ids and the shape of the model list were
+  read from the real service (the list needs no key); everything that needs a
+  key — streaming, tool calls, pictures, error answers, request limits — is
+  verified against `tests/mock_nvidia.py` only. Which of the listed models
+  really accept tools or pictures is not known in advance; the assistant
+  learns it from their answers and moves on to the next model.
+- A team of eight makes eight requests per message. Whether a given NVIDIA
+  account allows that rate was not measured (see `max_models`, and the
+  automatic smaller team after "too many requests").
 - The live Claude Messages endpoint was never reached from the test
-  environment; streaming/tool-calls are verified against the mock only.
+  environment either; that path is verified against `tests/mock_api.py`.
 
 ## Changes outside this directory
 

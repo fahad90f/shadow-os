@@ -1003,13 +1003,15 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
 Recommends: pipewire-pulse, wireplumber, pulseaudio-utils, alsa-ucm-conf,
  wtype, xdotool, libgtk-3-bin
 Description: Shadow Assistant
- A personal AI assistant for Shadow OS: a conversation with Anthropic's
- Claude (or, offline, a local model behind an OpenAI-compatible server)
- that answers questions and carries out tasks on the computer. Every
- action is listed in its activity history, and actions that change the
- system or reach the network can be set to require confirmation first. The
- API key is read from a private per-user configuration file or the
- environment and is never stored in the system.
+ A personal AI assistant for Shadow OS: a conversation with NVIDIA's
+ hosted models, several of which work on each request at the same time
+ (or with Anthropic's Claude, or offline with a local model behind an
+ OpenAI-compatible server), that answers questions and carries out tasks
+ on the computer. Every action is listed in its activity history, and
+ actions that change the system or reach the network can be set to
+ require confirmation first. The API key is entered in the assistant's
+ settings and kept in a private per-user file (or read from the
+ environment); it is never stored in the system.
  .
  Voice: say "Shadow" to talk to it hands-free; it speaks its replies. Wake
  word, speech recognition and the voice run on this computer (shadow-voiced,

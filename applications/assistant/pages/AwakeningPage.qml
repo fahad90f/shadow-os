@@ -6,8 +6,8 @@ import QtQuick.Layouts
 import org.shadow.assistant
 
 // First meeting: no API key yet. Her face is still scattered starlight
-// (mood "dormant"); she explains, in her own words, the two ways to give her
-// a key, and wakes up on Reload. The key itself is never shown here.
+// (mood "dormant"). The key is pasted right here and she wakes up; the
+// environment variable and the configuration file remain as optional ways.
 Item {
     id: page
     required property StageModel stage
@@ -20,8 +20,8 @@ Item {
     // she would reach the top line (the page itself is clipped below it).
     readonly property real faceOpacity: wide ? 1 : Math.max(0, Math.min(1, 1 - flick.contentY / (faceSize * 0.45)))
     readonly property AssistantConfig cfg: stage.cfg
-    readonly property string envLine: "export SHADOW_ASSISTANT_API_KEY=sk-ant-…"
-    readonly property string confLines: "[api]\nkey=sk-ant-…"
+    readonly property string envLine: "export SHADOW_ASSISTANT_API_KEY=nvapi-…"
+    readonly property string confLines: "[api]\nkey=nvapi-…"
 
     function wake() {
         stage.reload()
@@ -83,24 +83,37 @@ Item {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 lineHeight: 1.4
-                text: qsTr("I think with Anthropic's Claude. Give me an API key in one of the two ways below — it stays on this computer, and this app never stores it.")
+                text: qsTr("I think with NVIDIA's hosted models — several of them work on each thing you ask, together. Paste your API key and I wake up. It stays on this computer, in a file only you can read.")
                 font.family: Pe.sans; font.pixelSize: Pe.body
                 color: Pe.inkSoft
             }
-
-            Step {
-                Layout.topMargin: 10
+            KeyField {
+                Layout.fillWidth: true
+                Layout.topMargin: 6
                 stage: page.stage
-                number: "1"
-                title: qsTr("Set an environment variable")
-                note: qsTr("SHADOW_ASSISTANT_API_KEY (or ANTHROPIC_API_KEY): add it to your shell profile, then start me again.")
+                autoFocus: true
+            }
+
+            Text {
+                textFormat: Text.PlainText
+                Layout.topMargin: 18
+                text: qsTr("OTHER WAYS (OPTIONAL)")
+                font.family: Pe.sans; font.pixelSize: Pe.label; font.weight: Font.Bold
+                font.letterSpacing: Pe.labelTracking
+                color: Pe.inkMute
+            }
+            Step {
+                stage: page.stage
+                number: "a"
+                title: qsTr("An environment variable")
+                note: qsTr("SHADOW_ASSISTANT_API_KEY (or NVIDIA_API_KEY): add it to your shell profile, then start me again.")
                 code: page.envLine
                 lang: qsTr("shell")
             }
             Step {
                 stage: page.stage
-                number: "2"
-                title: qsTr("…or put it in my configuration file")
+                number: "b"
+                title: qsTr("My configuration file")
                 note: qsTr("%1 — create it with owner-only permissions (chmod 600).").arg(page.cfg.configPath)
                 code: page.confLines
                 lang: qsTr("assistant.conf")
@@ -124,9 +137,9 @@ Item {
                 Layout.topMargin: 8
                 spacing: 14
                 PeButton {
-                    kind: "primary"
+                    kind: "secondary"
                     iconName: "refresh"
-                    text: qsTr("Wake Shadow")
+                    text: qsTr("Look again")
                     tip: qsTr("Reload the configuration")
                     onClicked: page.wake()
                 }
@@ -134,7 +147,7 @@ Item {
                     textFormat: Text.PlainText
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    text: qsTr("Reloads the configuration — no restart needed for the file.")
+                    text: qsTr("After editing the file: reloads it, no restart needed.")
                     font.family: Pe.sans; font.pixelSize: Pe.small
                     color: Pe.inkMute
                 }
@@ -155,7 +168,7 @@ Item {
                     compact: true
                     kind: "secondary"
                     text: qsTr("Offline mode")
-                    onClicked: page.stage.openSettings("claude")
+                    onClicked: page.stage.openSettings("models")
                 }
             }
         }

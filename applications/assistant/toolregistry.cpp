@@ -2,12 +2,15 @@
 #include "toolregistry.h"
 
 #include "assistantconfig.h"
+#include "visionteam.h"
 
 #include <command.h>
 
 #include <memory>
 
+#include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QProcess>
 #include <QStandardPaths>
@@ -240,6 +243,21 @@ ToolRegistry::ToolRegistry(AssistantConfig *config, QObject *parent)
                   })}}),
             true, false,
         },
+        {
+            QStringLiteral("look_at_image"),
+            QStringLiteral("Look at a picture file, or at the screen as it is now, and get back a description of what is "
+                           "visible. Several vision models examine the picture at the same time. Use it when the user "
+                           "asks what is on the screen or in a picture, or wants text read from one. Leave 'path' out to "
+                           "look at the screen. The picture is sent to the model service, so the user is asked first."),
+            obj({{QStringLiteral("type"), QStringLiteral("object")},
+                 {QStringLiteral("properties"), obj({
+                      {QStringLiteral("path"), strProp(QStringLiteral("Picture file to look at (.png, .jpg, .webp, .gif, .bmp). "
+                                                                     "Leave it out to look at the screen as it is now."))},
+                      {QStringLiteral("question"), strProp(QStringLiteral("What to find out, e.g. 'What error does this window show?'. "
+                                                                         "Leave it out for a general description."))},
+                  })}}),
+            true, false,
+        },
 
         // ---- Pentest tools (active when role == "pentest") -----------------
         {
@@ -383,6 +401,9 @@ bool ToolRegistry::toolAvailable(const ToolSpec &s) const
         return false;
     if (isPentestTool(s.name) && m_config->role() != QLatin1String("pentest"))
         return false;
+    // Only with a service that has models which can see.
+    if (s.name == QLatin1String("look_at_image") && !(m_vision && m_vision->usable()))
+        return false;
     return true;
 }
 
@@ -467,6 +488,9 @@ QString ToolRegistry::summarize(const ToolInvocation &call) const
         return tr("Type into the focused window");
     if (call.name == QLatin1String("take_screenshot"))
         return tr("Take a screenshot");
+    if (call.name == QLatin1String("look_at_image"))
+        return call.args.value(QStringLiteral("path")).toString().trimmed().isEmpty() ? tr("Look at the screen")
+                                                                                     : tr("Look at a picture");
     if (call.name == QLatin1String("pentest_scan"))
         return tr("Run an Nmap scan");
     if (call.name == QLatin1String("web_enum"))
@@ -540,6 +564,15 @@ QString ToolRegistry::preview(const ToolInvocation &call) const
         const QString mode = call.args.value(QStringLiteral("mode")).toString();
         const QString out = call.args.value(QStringLiteral("output")).toString();
         return (mode.isEmpty() ? QStringLiteral("full") : mode) + (out.isEmpty() ? QString() : QStringLiteral("  →  ") + out);
+    }
+    if (call.name == QLatin1String("look_at_image")) {
+        const QString path = call.args.value(QStringLiteral("path")).toString().trimmed();
+        const QString question = call.args.value(QStringLiteral("question")).toString().trimmed();
+        QString what = path.isEmpty() ? tr("A picture of the whole screen, as it is now") : expandUser(path);
+        what += QStringLiteral("\n") + tr("It is sent to the vision models (%1).").arg(m_config->providerName());
+        if (!question.isEmpty())
+            what += QStringLiteral("\n") + tr("Question: %1").arg(question.size() > 300 ? question.left(300) + QStringLiteral("…") : question);
+        return what;
     }
     if (call.name == QLatin1String("pentest_scan")) {
         const QString target = call.args.value(QStringLiteral("target")).toString();
@@ -936,6 +969,58 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
                                              : QObject::tr("Saved a screenshot to %1.").arg(output)});
             else
                 done({false, r.errText().isEmpty() ? QObject::tr("Screenshot failed (exit %1).").arg(r.exitCode) : r.errText()});
+        }, 70000);
+        return;
+    }
+
+    if (call.name == QLatin1String("look_at_image")) {
+        if (!m_vision || !m_vision->usable()) {
+            done({false, tr("No model that can look at pictures is available.")});
+            return;
+        }
+        const QString question = call.args.value(QStringLiteral("question")).toString();
+        const QString given = call.args.value(QStringLiteral("path")).toString().trimmed();
+        VisionTeam *vision = m_vision;
+        auto look = [vision, question, done](const QString &file, bool temporary) {
+            vision->look(file, question, [done, file, temporary](bool ok, const QString &text) {
+                if (temporary)
+                    QFile::remove(file);
+                done({ok, text});
+            });
+        };
+        if (!given.isEmpty()) {
+            const QString path = expandUser(given);
+            const QFileInfo info(path);
+            if (!info.isFile()) {
+                done({false, tr("There is no file %1.").arg(path)});
+                return;
+            }
+            if (info.size() > 64 * 1024 * 1024) {
+                done({false, tr("%1 is too large to look at (more than 64 MB).").arg(path)});
+                return;
+            }
+            look(path, false);
+            return;
+        }
+        if (!Command::available(QStringLiteral("shadow-screenshot"))) {
+            done({false, tr("shadow-screenshot is not available, so the screen cannot be captured.")});
+            return;
+        }
+        // In the user's own cache folder, not in the shared /tmp.
+        const QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + QStringLiteral("/shadow");
+        QDir().mkpath(dir);
+        static int counter = 0;
+        const QString shot = QStringLiteral("%1/assistant-look-%2-%3.png").arg(dir).arg(QCoreApplication::applicationPid()).arg(++counter);
+        QFile::remove(shot);
+        Command::run(this, QStringLiteral("shadow-screenshot"), {QStringLiteral("--full"), QStringLiteral("--output"), shot},
+                     [look, done, shot](const CommandResult &r) {
+            if (r.exitCode != 0 || !QFileInfo(shot).isFile()) {
+                QFile::remove(shot);
+                done({false, r.errText().isEmpty() ? QObject::tr("The screen could not be captured (exit %1).").arg(r.exitCode)
+                                                   : r.errText()});
+                return;
+            }
+            look(shot, true);
         }, 70000);
         return;
     }

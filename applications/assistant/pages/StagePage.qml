@@ -66,7 +66,7 @@ Item {
         anchors.fill: parent
         anchors.topMargin: page.topInset + 6
         // while she asks, the dialogue ends just above the question card
-        anchors.bottomMargin: page.bottomBlock + (page.asking ? askCard.height + 14 : 0)
+        anchors.bottomMargin: page.bottomBlock + (page.asking ? askCard.height + 14 : teamStrip.on ? teamStrip.height + 12 : 0)
         visible: opacity > 0.01
         opacity: page.spotlight ? 0 : 1
         Behavior on opacity { NumberAnimation { duration: Pe.tDock } }
@@ -600,6 +600,19 @@ Item {
                 color: Pe.inkMute
             }
         }
+    }
+
+    // ---- the model team at work -------------------------------------------------------
+    TeamStrip {
+        id: teamStrip
+        stage: page.stage
+        readonly property bool on: page.stage.teamVisible && !followCue.on && !page.asking
+        visible: opacity > 0.01
+        opacity: on ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Pe.tQuick } }
+        maxWidth: promptBar.width
+        anchors.horizontalCenter: promptBar.horizontalCenter
+        y: promptBar.y - height - 10
     }
 
     // ---- the prompt ----------------------------------------------------------------------

@@ -122,7 +122,7 @@ ApplicationWindow {
         else
             agent.newConversation()
         // Env-gated screenshot/test hooks (no effect in normal use):
-        // SHADOW_ASSISTANT_TEST_VIEW = settings[-voice|-claude|-behaviour|-tools|-activity]
+        // SHADOW_ASSISTANT_TEST_VIEW = settings[-voice|-models|-behaviour|-tools|-activity]
         // | history | conversations | stage | chat
         const v = agent.testView
         if (v === "history") {

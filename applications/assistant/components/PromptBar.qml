@@ -75,7 +75,7 @@ Item {
                 placeholderTextColor: Pe.inkMute
                 selectionColor: Pe.alpha(Pe.violet, 0.38)
                 selectedTextColor: Pe.ink
-                placeholderText: !bar.stage.keyConfigured ? qsTr("Add your Claude API key first")
+                placeholderText: !bar.stage.keyConfigured ? qsTr("Add your API key first")
                                : bar.stage.hasPending ? qsTr("Answer Shadow's question above — or type ahead")
                                : bar.stage.working ? qsTr("Type ahead — you can send when she's done")
                                : bar.stage.armed ? qsTr("Type to Shadow, or just say “Shadow”…")

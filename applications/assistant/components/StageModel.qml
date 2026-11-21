@@ -21,7 +21,7 @@ Item {
     // ---- window state (Main.qml owns the window; pages read and set this) -----------
     property string view: "stage"             // stage | settings | history
     property bool conversationsOpen: false
-    property string settingsSection: "voice"  // voice | claude | behaviour | tools | activity
+    property string settingsSection: "voice"  // voice | models | behaviour | tools | activity
     property bool onScreen: true              // window shown and not minimised
     property bool appActive: true             // the app has the focus
     // Screenshots (SHADOW_SCREENSHOT) draw one fixed instant of every animation.
@@ -36,7 +36,7 @@ Item {
         whispered(text, kind)
     }
     function openSettings(section: string) {
-        settingsSection = section
+        settingsSection = section === "claude" ? "models" : section
         view = "settings"
         conversationsOpen = false
     }
@@ -458,9 +458,60 @@ Item {
 
     // ---- what she is doing, in words ------------------------------------------------------------
     readonly property string modelName: {
+        if (nvidia)
+            return cfg.teamMode ? qsTr("Model team") : shortModel(agent.activeModel)
         const id = localMode ? cfg.localModel : (thinkHard ? cfg.plannerModel : cfg.brainModel)
         const m = /^claude-([a-z]+)-(\d+)-(\d+)/.exec(id)
         return m ? "Claude " + m[1].charAt(0).toUpperCase() + m[1].slice(1) + " " + m[2] + "." + m[3] : id
+    }
+
+    // ---- the model team (NVIDIA): several models work on a request at the same time -------------
+    readonly property bool nvidia: cfg.provider === "nvidia" && !localMode
+    // the service said no to the key in use (when it was tried, or on a request)
+    readonly property bool keyRejected: nvidia && agent.catalog.keyState === "rejected"
+    // What the service is called in a sentence.
+    readonly property string serviceName: localMode ? qsTr("The local model")
+        : cfg.provider === "anthropic" ? qsTr("Claude") : qsTr("NVIDIA")
+    readonly property var team: agent.team            // [{id, name, publisher, role, state, seconds}], lead first
+    readonly property bool teamGathering: agent.teamGathering
+    readonly property string teamKind: agent.teamKind
+    readonly property var teamCounts: {
+        let advisors = 0, done = 0
+        let lead = ""
+        for (let i = 0; i < team.length; ++i) {
+            if (team[i].role === "lead") {
+                lead = team[i].name
+            } else {
+                ++advisors
+                if (team[i].state === "done")
+                    ++done
+            }
+        }
+        return { advisors: advisors, done: done, lead: lead }
+    }
+    // shown while the team works on the request in front of the user
+    readonly property bool teamVisible: nvidia && team.length > 1 && (phase === "thinking" || phase === "streaming")
+                                        && !hasPending
+    readonly property string teamText: {
+        const c = teamCounts
+        if (teamGathering)
+            return qsTr("%1 models are working on this · %2 of %3 ready").arg(team.length).arg(c.done).arg(c.advisors)
+        if (c.done > 0)
+            return qsTr("%1 answers, with the work of %2 others").arg(c.lead).arg(c.done)
+        return qsTr("%1 answers").arg(c.lead)
+    }
+    function shortModel(id: string): string {
+        const i = id.lastIndexOf("/")
+        return i >= 0 ? id.slice(i + 1) : id
+    }
+    Connections {
+        target: sm.agent.catalog
+        // The first-start page is gone the moment a key is saved; the outcome
+        // of trying the key still has to reach the user.
+        function onKeyChecked(ok: bool, message: string) {
+            if (sm.view !== "settings")
+                sm.whisper(message, ok ? "success" : "warning")
+        }
     }
     readonly property string listeningText: listenMode === "followup" ? qsTr("Still listening, go ahead")
         : listenMode === "yesno" ? qsTr("Say yes or no")
@@ -474,11 +525,12 @@ Item {
         case "speaking": return voice.resolvedTtsEngine === "espeak" ? qsTr("Speaking · Basic voice")
                                                                      : qsTr("Speaking · %1").arg(voiceName)
         case "asking": return qsTr("Waiting for your answer")
-        case "thinking": return thinkHard ? qsTr("Thinking hard · %1").arg(modelName) : qsTr("Thinking…")
+        case "thinking": return teamVisible && teamGathering ? qsTr("%1 models working together…").arg(team.length)
+                              : thinkHard ? qsTr("Thinking hard · %1").arg(modelName) : qsTr("Thinking…")
         case "writing": return qsTr("Writing…")
         case "concerned": return qsTr("Something went wrong")
         case "sleeping": return qsTr("Microphone off · %1").arg(modelName)
-        default: return qsTr("%1 · ready").arg(modelName)
+        default: return keyRejected ? qsTr("The key was not accepted · see Settings") : qsTr("%1 · ready").arg(modelName)
         }
     }
     readonly property color cueTone: {
@@ -488,7 +540,7 @@ Item {
         case "asking": case "thinking": case "writing": return Pe.her
         case "concerned": return Pe.alarm
         case "sleeping": case "dormant": return Pe.inkMute
-        default: return Pe.ok
+        default: return keyRejected ? Pe.caution : Pe.ok
         }
     }
     readonly property var cueTags: {
@@ -529,6 +581,7 @@ Item {
         "Delete": qsTr("Deleted"), "Write code to a file": qsTr("Wrote code to a file"),
         "Run in the terminal": qsTr("Ran in the terminal"), "Type into the focused window": qsTr("Typed into a window"),
         "Take a screenshot": qsTr("Took a screenshot"), "Run an Nmap scan": qsTr("Ran an Nmap scan"),
+        "Look at the screen": qsTr("Looked at the screen"), "Look at a picture": qsTr("Looked at a picture"),
         "Enumerate a web target (Nikto + Gobuster)": qsTr("Enumerated a web target"),
         "Search Exploit-DB": qsTr("Searched Exploit-DB"), "Test for SQL injection (sqlmap)": qsTr("Tested for SQL injection"),
         "Crack a password hash": qsTr("Cracked a password hash"),
@@ -552,6 +605,7 @@ Item {
         case "open_application": return qsTr("May I open this app?")
         case "type_text": return qsTr("May I type this into the focused window?")
         case "take_screenshot": return qsTr("May I take a screenshot?")
+        case "look_at_image": return qsTr("May I send this picture to the vision models?")
         case "web_search": return qsTr("May I search the web for this?")
         case "read_file": return qsTr("May I read this file?")
         case "search_files": return qsTr("May I search your files?")
@@ -571,22 +625,26 @@ Item {
         return qsTr("Read-only: nothing on your computer changes.")
     }
     function errorHeadline(text: string): string {
-        if (/HTTP 40[13]|rejected the key|refused this request/.test(text))
-            return qsTr("Claude didn't accept my key.")
+        if (/No API key|No Claude API key/.test(text))
+            return qsTr("I have no API key yet.")
+        if (/HTTP 402|credits are used up/.test(text))
+            return qsTr("My key has run out of credit.")
+        if (/HTTP 40[13]|rejected the key|refused this request|did not accept the API key/.test(text))
+            return qsTr("%1 didn't accept my key.").arg(serviceName)
         if (/timed out|Network error|no data/.test(text))
-            return qsTr("I couldn't reach Claude.")
-        if (/HTTP 429|HTTP 529|overloaded|Rate limited/.test(text))
-            return qsTr("Claude is busy right now.")
+            return qsTr("I couldn't reach %1.").arg(serviceName)
+        if (/HTTP 429|HTTP 529|overloaded|Rate limited|limiting requests/.test(text))
+            return qsTr("%1 is busy right now.").arg(serviceName)
         if (/Stopped after/.test(text))
             return qsTr("I stopped, to avoid going in circles.")
         if (/declined/.test(text))
-            return qsTr("Claude declined this one.")
-        if (/HTTP 404|not found/.test(text))
-            return qsTr("Claude couldn't find that model or endpoint.")
+            return qsTr("%1 declined this one.").arg(serviceName)
+        if (/HTTP 404|not found|does not offer/.test(text))
+            return qsTr("%1 couldn't find that model or endpoint.").arg(serviceName)
         return qsTr("Something went wrong.")
     }
     function errorNeedsKey(text: string): bool {
-        return /HTTP 40[13]|rejected the key|No Claude API key/.test(text)
+        return /HTTP 40[123]|rejected the key|did not accept the API key|No API key|No Claude API key/.test(text)
     }
 
     // ---- tools (toolregistry.cpp) --------------------------------------------------------------
@@ -606,7 +664,8 @@ Item {
         { name: "web_search", label: qsTr("Web search"), changes: true, risky: false },
         { name: "get_system_info", label: qsTr("Read system info"), changes: false, risky: false },
         { name: "type_text", label: qsTr("Type into focused window"), changes: true, risky: true },
-        { name: "take_screenshot", label: qsTr("Take screenshots"), changes: true, risky: false }
+        { name: "take_screenshot", label: qsTr("Take screenshots"), changes: true, risky: false },
+        { name: "look_at_image", label: qsTr("Look at pictures and the screen"), changes: true, risky: false }
     ]
     function toolLabel(name: string): string {
         for (let i = 0; i < tools.length; ++i)

@@ -179,6 +179,16 @@ In the image, with limits stated in their READMEs
   chroot and on the 0.2.0 image's root filesystem) and a stand-in for the
   Claude API, never with a real microphone, speakers or the real API
   ([applications/assistant-voice.md](applications/assistant-voice.md)).
+* **The assistant's model team was never run against NVIDIA's real service.**
+  No API key was available in the test environment. The model ids were read
+  from NVIDIA's real model list; requests, streaming, tool calls, pictures
+  and error answers are tested against a stand-in server only (34 tests).
+  Which listed models accept tools or pictures is learnt at run time. A team
+  sends one request per model for each message (eight for a question);
+  whether an account's request limit allows that was not measured — the team
+  shrinks by itself after a "too many requests" answer, and `max_models` in
+  `[team]` of `assistant.conf` limits it for good
+  ([applications/assistant/README.md](../applications/assistant/README.md#the-model-team)).
 
 ## Hardware and drivers
 

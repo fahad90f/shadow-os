@@ -5,22 +5,25 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMap>
+#include <QNetworkReply>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 
 class AssistantConfig;
 class QNetworkAccessManager;
-class QNetworkReply;
 
-// Streaming client for the assistant's language model. One request at a time.
+// Streaming client for one request to a language model. One request at a
+// time per client; the model team (Council) uses several clients at once.
 //
 // Two wire protocols are supported, chosen from the config at send() time:
-//   * Cloud (default): the native Anthropic Messages API
-//     (https://api.anthropic.com/v1/messages) — x-api-key auth, a top-level
-//     system prompt, Anthropic tool schema and the Messages SSE event stream.
-//   * Local (config api/local=true): an OpenAI-compatible /chat/completions
-//     endpoint on this machine (e.g. ollama), so the assistant still runs
-//     fully offline. Bearer auth, OpenAI tool schema, OpenAI SSE.
+//   * OpenAI-compatible /chat/completions — NVIDIA's hosted models (the
+//     default service, https://integrate.api.nvidia.com/v1) and a local
+//     server on this machine (config api/local=true, e.g. ollama). Bearer
+//     auth, OpenAI tool schema, OpenAI SSE.
+//   * The native Anthropic Messages API (https://api.anthropic.com/v1/messages)
+//     when the key is an Anthropic one — x-api-key auth, a top-level system
+//     prompt, Anthropic tool schema and the Messages SSE event stream.
 //
 // The caller always speaks one neutral format — the OpenAI-shaped 'messages'
 // and 'tools' arrays produced by MessageModel/ToolRegistry. This class
@@ -37,15 +40,27 @@ class ChatClient : public QObject
 {
     Q_OBJECT
 public:
-    explicit ChatClient(AssistantConfig *config, QObject *parent = nullptr);
+    // 'net' lets several clients share one connection pool; by default each
+    // client has its own.
+    explicit ChatClient(AssistantConfig *config, QObject *parent = nullptr, QNetworkAccessManager *net = nullptr);
     ~ChatClient() override;
 
-    bool busy() const { return m_reply != nullptr; }
+    bool busy() const { return !m_reply.isNull(); }
+    // The model of the request in flight (or the last one).
+    QString model() const { return m_model; }
+
+    struct Options
+    {
+        int maxTokens = 0;         // 0 = the client's default
+        double temperature = -1.0; // < 0 = the client's default
+        int idleTimeoutMs = 0;     // 0 = the client's default
+    };
 
     // Start a streaming completion. 'messages' and 'tools' are OpenAI-format
     // arrays (the first message may be a system message); pass an empty 'tools'
     // to disable tool calling for this request.
     void send(const QString &model, const QJsonArray &messages, const QJsonArray &tools);
+    void send(const QString &model, const QJsonArray &messages, const QJsonArray &tools, const Options &options);
 
 public Q_SLOTS:
     void cancel();
@@ -61,8 +76,10 @@ Q_SIGNALS:
     // "tool_calls".
     void completed(const QString &content, const QJsonArray &toolCalls,
                    const QJsonArray &thinking, const QString &finishReason);
-    // A typed failure. 'code' is one of: no_key, network, auth, not_found,
-    // rate_limit, timeout, bad_response, server, refusal. 'message' is human-readable.
+    // A typed failure. 'code' is one of: no_key, network, auth, forbidden, not_found,
+    // rate_limit, timeout, bad_response, server, refusal, no_tools (the model
+    // rejected a request because it carried tools), no_images (because it
+    // carried an image). 'message' is human-readable.
     void failed(const QString &code, const QString &message);
 
 private:
@@ -78,7 +95,12 @@ private:
 
     AssistantConfig *m_config;
     QNetworkAccessManager *m_net = nullptr;
-    QNetworkReply *m_reply = nullptr;
+    // Guarded: with a shared connection pool ('net') the pool owns the reply
+    // and may be destroyed before this client (at exit, in mid-request).
+    QPointer<QNetworkReply> m_reply;
+    QString m_model;
+    bool m_sentTools = false;   // the request in flight carries tools
+    bool m_sentImages = false;  // … or an image
     QByteArray m_buffer;
     QString m_content;
     bool m_anthropic = false; // which parser onFinished()/onReadyRead() uses

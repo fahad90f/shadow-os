@@ -283,7 +283,7 @@ import ast, json, math, os, re, sys, tempfile, time
 # A line that holds (or held) a secret: never changed, never printed. Keys,
 # tokens, passwords, and URLs with a user:password@ part.
 SECRET_KEY = re.compile(r'^\s*[#;]?\s*[\w.-]*(key|token|secret|passw(or)?d|auth|credential)[\w.-]*\s*=', re.I)
-SECRET_VALUE = re.compile(r'sk-ant-|\bsk-[A-Za-z0-9_-]{20,}|://[^/\s@]*@')
+SECRET_VALUE = re.compile(r'sk-ant-|nvapi-|\bsk-[A-Za-z0-9_-]{20,}|://[^/\s@]*@')
 # The assistant's own rule (AssistantConfig::sanitizeValue): a comment starts
 # at '#' or ';' at the start of the value or after a blank.
 INLINE = re.compile(r'(?:^|\s)[#;].*$', re.S)
@@ -1049,7 +1049,7 @@ finish() {
         printf '%sPASS%s: the assistant heard you and answered aloud.\n\n' "$C_OK" "$C_OFF"
         printf '%s\n' "  Say \"Shadow\" and then what you want, e.g. \"$ROUNDTRIP\"" \
             '  It listens for "Shadow" from login on. Your voice is processed on this' \
-            '  computer only; just the words of your request go to Claude, as text. To' \
+            '  computer only; just the words of your request go to the AI models, as text. To' \
             "  stop it listening, switch \"Listen for Shadow\" off in the assistant's settings."
         [ "$nside" -gt 0 ] && printf '  (%s WARN line(s) in the summary: worth a look.)\n' "$nside"
         rc=0
@@ -1989,10 +1989,36 @@ elif [ "$term_key" = true ] && [ "$SD_USER" = 1 ] && [ "${term_src#*environment}
     fi
 elif [ "$term_key" = true ]; then
     fail "this terminal's assistant has an API key (from $term_src), but the one started in the background does not"
-    check FAIL "API key: not seen by the background assistant" "put key=... in [api] of ${CONF/#$HOME/\~} (chmod 600), then run this script again"
+    check FAIL "API key: not seen by the background assistant" "open the assistant and save the key in Settings > Models (or put key=... in [api] of ${CONF/#$HOME/\~}, chmod 600), then run this script again"
 else
-    fail "no API key is configured: the assistant hears you, but cannot answer"
-    check FAIL "API key" "put your Claude API key as key=... in [api] of ${CONF/#$HOME/\~} (chmod 600; the assistant never stores it itself), then run this script again"
+    # No key anywhere. With a terminal, offer to save one now, exactly as the
+    # assistant's Settings page does: shadow-assistant --set-api-key reads it
+    # from standard input and writes it to a file only you can read. This
+    # script never prints it and keeps it nowhere else.
+    if [ "$INTERACTIVE" = 1 ] && QT_QPA_PLATFORM=offscreen timeout 30 "$BIN" --help < /dev/null 2>/dev/null | grep -q -- '--set-api-key'; then
+        note "the assistant has no API key yet. It thinks with NVIDIA's models: create a key at https://build.nvidia.com/ (it starts with nvapi-)"
+        printf '         Paste the key and press Enter (it is not shown). Or just press Enter to add it later in the assistant (Settings > Models): '
+        newkey=""
+        IFS= read -rs newkey || newkey=""
+        printf '\n'
+        if [ -n "$newkey" ]; then
+            if printf '%s\n' "$newkey" | timeout 60 "$BIN" --set-api-key > /dev/null 2> "$TMPD/setkey.err"; then
+                bg_dump_config "$TMPD/bgconfig.json"
+                if [ "$(py field "$TMPD/bgconfig.json" apiKeyConfigured)" = true ]; then
+                    KEY_OK=1 LOGIN_KEY=ok bg_src=Settings
+                    ok "saved, readable only by you (not shown): the background assistant has it now"
+                    check PASS "API key: saved where the background assistant reads it" ""
+                fi
+            else
+                warn "the key was not saved: $(head -n 1 "$TMPD/setkey.err" 2>/dev/null)"
+            fi
+        fi
+        newkey=""
+    fi
+    if [ "$KEY_OK" = 0 ]; then
+        fail "no API key is configured: the assistant hears you, but cannot answer"
+        check FAIL "API key" "open the assistant and paste your NVIDIA API key (nvapi-..., from build.nvidia.com) in Settings > Models; or put it as key=... in [api] of ${CONF/#$HOME/\~} (chmod 600). Then run this script again"
+    fi
 fi
 
 ROUNDTRIP_OK=0
@@ -2064,7 +2090,7 @@ else
                     warn "it records, but from no microphone that works (the microphone test above did not pass)"
                     check WARN "the assistant runs in the background, but cannot hear you yet" "fix the microphone (above), then run this script again"
                 fi
-                # The whole way, as you will use it: your voice -> wake word -> Claude -> its voice.
+                # The whole way, as you will use it: your voice -> wake word -> the AI models -> its voice.
                 if [ "$DO_CALIBRATE" = 0 ]; then
                     check SKIP "\"$ROUNDTRIP\": not tested (--no-calibrate)" "run this script without --no-calibrate"
                 elif [ "$MIC_OK" != 1 ]; then
@@ -2089,7 +2115,7 @@ else
                         RT_FINAL=0 RT_REJECTED=0 RT_SPEAK_ID="" RT_SPEAK_END=0 RT_INTERRUPTED=0 RT_ERROR=""
                         RT_FIRST_AUDIO_S=""
                         printf '         Say now: "%s"\n' "$ROUNDTRIP"
-                        # Heard within 20 s; then the answer (Claude, then its voice) within 90 s.
+                        # Heard within 20 s; then the answer (the AI models, then its voice) within 90 s.
                         heard_by=$(( $(date +%s) + 20 )) answer_by=0
                         while :; do
                             sleep 0.5
@@ -2119,8 +2145,8 @@ else
                             check PASS "\"$ROUNDTRIP\": heard, and answered aloud" ""
                             ROUNDTRIP_OK=1
                         elif [ "$spoke" = error ]; then
-                            fail "it heard you, but the request to Claude failed (it said \"Sorry, that didn't work\")"
-                            check FAIL "\"$ROUNDTRIP\": heard, but the request to Claude failed" "open the assistant: its window shows the error (API key not valid, network?). The background assistant uses the key from ${bg_src:-$term_src}"
+                            fail "it heard you, but the request to the AI models failed (it said \"Sorry, that didn't work\")"
+                            check FAIL "\"$ROUNDTRIP\": heard, but the request to the AI models failed" "open the assistant: its window shows the error (API key not valid, network?). The background assistant uses the key from ${bg_src:-$term_src}"
                         elif [ "$RT_FINAL" = 1 ] && [ -n "$RT_SPEAK_ID" ]; then
                             fail "it heard you and started to answer, but playing the answer failed${RT_ERROR:+: $RT_ERROR}"
                             check FAIL "\"$ROUNDTRIP\": the answer could not be played" "check the output device (wpctl status); details in $VOICE_LOG"

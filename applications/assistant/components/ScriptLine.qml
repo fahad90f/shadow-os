@@ -250,7 +250,7 @@ Item {
                         kind: "primary"; compact: true
                         iconName: "key"
                         text: qsTr("Check my key")
-                        onClicked: line.stage.openSettings("claude")
+                        onClicked: line.stage.openSettings("models")
                     }
                     PeButton {
                         // only the latest failure can be tried again (the turn itself is retried)
