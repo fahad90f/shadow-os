@@ -23,3 +23,6 @@ shadow_add_app(shadow-assistant
 
 # Listen for the wake word from login on (exits at once when it is switched off).
 install(FILES org.shadow.assistant-listen.desktop DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/autostart)
+
+# The offline voice engine helper (shadow-voiced) and its setup tool.
+add_subdirectory(voice)
