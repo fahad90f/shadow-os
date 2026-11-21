@@ -314,10 +314,14 @@ reconnect() {   # reconnect iface uuid -> 0 when the profile is active again
         RECONNECT_FAILED=1
         return 1
     fi
-    # DHCP and the default route can trail the "activated" state by a moment.
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-        [ -n "$(gw_of "$1")" ] && return 0
+    # NetworkManager reports "activated" as soon as IPv6 works; the IPv4
+    # address from DHCP can follow much later (it tries for 45 seconds, and
+    # phone hotspots are slow). Wait for it before testing.
+    local waited=0
+    while [ -z "$(gw_of "$1")" ] && [ "$waited" -lt 40 ]; do
+        [ "$waited" = 3 ] && info "waiting for an address from the router (up to 40 seconds)..."
         pause 1
+        waited=$((waited + 1))
     done
     return 0
 }
