@@ -56,6 +56,63 @@ bool hasImages(const QJsonArray &messages)
 }
 
 // What an error body says, whichever of the shapes in use it has.
+// The conversation as OpenAI-compatible models accept it. Several of them
+// take only what a clean exchange looks like, and answer anything else with
+// "bad request": an assistant turn with nothing in it (Stop before the first
+// word, a failed reply), two user turns in a row (Stop, then a new message),
+// a tool call without its result (a stopped action) or a result without its
+// call. Such leftovers are folded away here; nothing is added to what was said.
+QJsonArray tidyOpenAiMessages(const QJsonArray &messages)
+{
+    // Results by call id, wherever they stand.
+    QHash<QString, QJsonObject> results;
+    for (const QJsonValue &mv : messages) {
+        const QJsonObject m = mv.toObject();
+        if (m.value(QStringLiteral("role")).toString() == QLatin1String("tool"))
+            results.insert(m.value(QStringLiteral("tool_call_id")).toString(), m);
+    }
+    auto isText = [](const QJsonObject &m) { return m.value(QStringLiteral("content")).isString(); };
+    auto roleOf = [](const QJsonValue &v) { return v.toObject().value(QStringLiteral("role")).toString(); };
+
+    QJsonArray out;
+    for (const QJsonValue &mv : messages) {
+        const QJsonObject m = mv.toObject();
+        const QString role = m.value(QStringLiteral("role")).toString();
+        if (role == QLatin1String("tool"))
+            continue; // placed after its call below
+        const QJsonArray calls = m.value(QStringLiteral("tool_calls")).toArray();
+        if (role == QLatin1String("assistant") && calls.isEmpty()) {
+            if (isText(m) && m.value(QStringLiteral("content")).toString().trimmed().isEmpty())
+                continue; // nothing was said
+            if (!m.contains(QStringLiteral("content")) || m.value(QStringLiteral("content")).isNull())
+                continue;
+        }
+        const bool mergeable = (role == QLatin1String("user") || (role == QLatin1String("assistant") && calls.isEmpty()))
+                               && isText(m);
+        if (mergeable && !out.isEmpty() && roleOf(out.last()) == role) {
+            QJsonObject last = out.last().toObject();
+            if (isText(last) && last.value(QStringLiteral("tool_calls")).toArray().isEmpty()) {
+                last.insert(QStringLiteral("content"), last.value(QStringLiteral("content")).toString() + QStringLiteral("\n\n")
+                                                           + m.value(QStringLiteral("content")).toString());
+                out[out.size() - 1] = last;
+                continue;
+            }
+        }
+        out.append(m);
+        for (const QJsonValue &cv : calls) {
+            const QString id = cv.toObject().value(QStringLiteral("id")).toString();
+            if (results.contains(id)) {
+                out.append(results.value(id));
+            } else {
+                out.append(QJsonObject{{QStringLiteral("role"), QStringLiteral("tool")},
+                                       {QStringLiteral("tool_call_id"), id},
+                                       {QStringLiteral("content"), QStringLiteral("(no result: the action was stopped)")}});
+            }
+        }
+    }
+    return out;
+}
+
 QString errorText(const QByteArray &body)
 {
     const QJsonDocument doc = QJsonDocument::fromJson(body);
@@ -196,6 +253,7 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
     m_buffer.clear();
     m_content.clear();
     m_calls.clear();
+    m_lastCall = -1;
     m_blocks.clear();
     m_finishReason.clear();
     m_sawData = false;
@@ -203,6 +261,7 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
     m_anthropic = m_config->anthropic();
     m_model = model;
     m_sentTools = !tools.isEmpty();
+    m_sentToolHistory = false;
     m_sentImages = !m_anthropic && hasImages(messages);
 
     if (!m_config->apiKeyConfigured()) {
@@ -258,8 +317,15 @@ void ChatClient::send(const QString &model, const QJsonArray &messages, const QJ
         }
     } else {
         // --- OpenAI-compatible: NVIDIA's hosted models, or a local server ---
+        const QJsonArray tidy = tidyOpenAiMessages(messages);
+        for (const QJsonValue &mv : tidy) {
+            if (mv.toObject().value(QStringLiteral("role")).toString() == QLatin1String("tool")) {
+                m_sentToolHistory = true;
+                break;
+            }
+        }
         body.insert(QStringLiteral("model"), model);
-        body.insert(QStringLiteral("messages"), messages);
+        body.insert(QStringLiteral("messages"), tidy);
         body.insert(QStringLiteral("stream"), true);
         body.insert(QStringLiteral("temperature"), options.temperature >= 0 ? options.temperature : 0.6);
         // A hosted model needs a limit (the service's default is small); a
@@ -432,9 +498,23 @@ void ChatClient::processEvent(const QByteArray &event)
         }
 
         const QJsonArray toolCalls = delta.value(QStringLiteral("tool_calls")).toArray();
+        const bool whole = !choice.contains(QStringLiteral("delta")); // a reply in one piece
         for (const QJsonValue &tcv : toolCalls) {
             const QJsonObject tc = tcv.toObject();
-            const int index = tc.value(QStringLiteral("index")).toInt();
+            // Which call a fragment belongs to. Streams number them ("index").
+            // A reply in one piece does not: there every entry is a call of
+            // its own. A stream without numbers starts a new call with every
+            // new id.
+            int index;
+            if (tc.contains(QStringLiteral("index"))) {
+                index = tc.value(QStringLiteral("index")).toInt();
+            } else if (whole || m_lastCall < 0) {
+                index = m_lastCall + 1;
+            } else {
+                const QString id = tc.value(QStringLiteral("id")).toString();
+                index = !id.isEmpty() && id != m_calls.value(m_lastCall).id ? m_lastCall + 1 : m_lastCall;
+            }
+            m_lastCall = qMax(m_lastCall, index);
             PartialCall &pc = m_calls[index];
             if (tc.contains(QStringLiteral("id")))
                 pc.id = tc.value(QStringLiteral("id")).toString();
@@ -460,18 +540,25 @@ void ChatClient::emitHttpError(QNetworkReply *reply)
     const QString name = m_model.section(u'/', -1);
 
     // A model that cannot take what the request carried says so in words; the
-    // caller then asks it differently (or asks another model).
+    // caller then asks it differently (or asks another model) and remembers.
+    // Only a "bad request" kind of answer counts (never 404: that is a model
+    // the service or the account does not have, whose text may well contain
+    // "function"), and for tools only a request without earlier tool turns:
+    // with them, the complaint may be about the conversation, not the model.
     const QString lower = apiMessage.toLower();
-    const bool capability = status == 400 || status == 404 || status == 422 || status == 501;
-    if (!m_anthropic && capability && m_sentTools
-        && (lower.contains(QLatin1String("tool")) || lower.contains(QLatin1String("function")))) {
+    const bool capability = status == 400 || status == 415 || status == 422 || status == 501;
+    if (!m_anthropic && capability && m_sentTools && !m_sentToolHistory
+        && (lower.contains(QLatin1String("tool")) || lower.contains(QLatin1String("function call"))
+            || lower.contains(QLatin1String("function-call")) || lower.contains(QLatin1String("functions")))) {
         Q_EMIT failed(QStringLiteral("no_tools"),
                       tr("%1 cannot use tools (HTTP %2).").arg(name).arg(status) + QStringLiteral("\n") + apiMessage);
         return;
     }
     if (!m_anthropic && capability && m_sentImages
         && (lower.contains(QLatin1String("image")) || lower.contains(QLatin1String("vision"))
-            || lower.contains(QLatin1String("multimodal")) || lower.contains(QLatin1String("content")))) {
+            || lower.contains(QLatin1String("multimodal")) || lower.contains(QLatin1String("multi-modal"))
+            || lower.contains(QLatin1String("must be a string")) || lower.contains(QLatin1String("valid string"))
+            || lower.contains(QLatin1String("expected string")) || lower.contains(QLatin1String("str type")))) {
         Q_EMIT failed(QStringLiteral("no_images"),
                       tr("%1 cannot look at images (HTTP %2).").arg(name).arg(status) + QStringLiteral("\n") + apiMessage);
         return;

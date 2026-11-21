@@ -182,7 +182,7 @@ In the image, with limits stated in their READMEs
 * **The assistant's model team was never run against NVIDIA's real service.**
   No API key was available in the test environment. The model ids were read
   from NVIDIA's real model list; requests, streaming, tool calls, pictures
-  and error answers are tested against a stand-in server only (34 tests).
+  and error answers are tested against a stand-in server only (45 tests).
   Which listed models accept tools or pictures is learnt at run time. A team
   sends one request per model for each message (eight for a question);
   whether an account's request limit allows that was not measured — the team

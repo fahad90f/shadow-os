@@ -101,6 +101,7 @@ private:
     QString m_model;
     bool m_sentTools = false;   // the request in flight carries tools
     bool m_sentImages = false;  // … or an image
+    bool m_sentToolHistory = false; // … or earlier tool calls and their results
     QByteArray m_buffer;
     QString m_content;
     bool m_anthropic = false; // which parser onFinished()/onReadyRead() uses
@@ -108,6 +109,7 @@ private:
     // --- OpenAI streaming: tool calls assembled by their streamed index ---
     struct PartialCall { QString id; QString name; QString arguments; };
     QHash<int, PartialCall> m_calls;
+    int m_lastCall = -1; // the highest call number seen in this reply
 
     // --- Anthropic streaming: content blocks assembled by their index ---
     struct Block {

@@ -522,6 +522,150 @@ def lead_that_cannot_use_tools(suite):
 
 
 @test
+def not_found_is_not_no_tools(suite):
+    """NVIDIA's 404 for a model the account lacks mentions "function": that says nothing about tools."""
+    b = Behaviour()
+    b.errors = {ULTRA: (404, {"status": 404, "title": "Not Found",
+                              "detail": "Function 'nvidia/nemotron-3-ultra-550b-a55b': Not found for account 'x'"})}
+    r = Run(suite, "notfound_function", b)
+    try:
+        d = r.ask(TOOL_Q).done
+        check(d["error"] == "" and d["model"] == KIMI and "team-ok" in d["reply"], f"{d['model']} {d['error']}")
+        cache = {}
+        if os.path.exists(r.cache_path):
+            with open(r.cache_path) as f:
+                cache = json.load(f)
+        check(not cache.get("noTools"), f"learnt from a 404: {cache.get('noTools')}")
+    finally:
+        r.close()
+
+
+@test
+def complaint_about_the_conversation_is_not_learnt(suite):
+    """An error on a request that carries earlier tool results is not held against the model's tools."""
+    b = Behaviour()
+    b.tool_history_errors = {ULTRA: (400, {"error": {"message": "Unexpected role 'tool' after tool_calls in messages."}})}
+    r = Run(suite, "tool_history", b)
+    try:
+        d = r.ask(TOOL_Q).done
+        # The second round fails on the first lead; the next lead finishes the turn.
+        check(d["error"] == "" and d["model"] == KIMI and "team-ok" in d["reply"], f"{d['model']} {d['error']} {d['reply']!r}")
+        check(len(d["tools"]) == 1 and d["tools"][0]["status"] == "done", f"the command ran {len(d['tools'])} times")
+        with open(r.cache_path) as f:
+            cache = json.load(f)
+        check(not cache.get("noTools"), f"learnt: {cache.get('noTools')}")
+    finally:
+        r.close()
+
+
+@test
+def learnt_limits_do_not_disable_a_team(suite):
+    """Every lead marked "no tools" (a wrong conclusion): the request is still answered; old marks expire; Read again forgets."""
+    r = Run(suite, "poisoned")
+    try:
+        def seed(when):
+            os.makedirs(os.path.dirname(r.cache_path), exist_ok=True)
+            with open(r.cache_path, "w") as f:
+                json.dump({"baseUrl": r.mock.url, "ids": r.mock.behaviour.models,
+                           "noTools": {m: when for m in CHAT}, "noImages": {}}, f)
+
+        seed(time.time())
+        d = r.ask(CHAT_Q).done
+        check(d["error"] == "" and d["reply"].startswith("LEAD "), f"all leads marked: {d}")
+        # A mark older than a week is forgotten: the preferred lead is back.
+        seed(time.time() - 8 * 24 * 3600)
+        d = r.ask(CHAT_Q).done
+        check(d["model"] == MISTRAL, f"after the marks expired: {d['model']}")
+        # Marks made at another endpoint do not apply here.
+        os.makedirs(os.path.dirname(r.cache_path), exist_ok=True)
+        with open(r.cache_path, "w") as f:
+            json.dump({"baseUrl": "http://127.0.0.1:1/v1", "ids": [], "noTools": {MISTRAL: time.time()}}, f)
+        d = r.ask(CHAT_Q).done
+        check(d["model"] == MISTRAL, f"marks of another endpoint: {d['model']}")
+    finally:
+        r.close()
+
+
+@test
+def several_actions_in_one_reply(suite):
+    """Two tool calls in one reply stay two: streamed with numbers, streamed without, and in a one-piece reply."""
+    for shape in ("numbered", "unnumbered", "one piece"):
+        b = Behaviour()
+        if shape == "unnumbered":
+            b.no_index = {ULTRA}
+        if shape == "one piece":
+            b.one_piece = {ULTRA}
+        r = Run(suite, "two_calls", b)
+        try:
+            one, two = os.path.join(r.dir, "one.txt"), os.path.join(r.dir, "two.txt")
+            b.tool_calls = [("run_shell_command", {"command": "sh", "args": ["-c", f"echo 1 >> {one}"]}),
+                            ("run_shell_command", {"command": "sh", "args": ["-c", f"echo 2 >> {two}"]})]
+            d = r.ask(TOOL_Q).done
+            check([t["status"] for t in d["tools"]] == ["done", "done"], f"{shape}: {d['tools']} {d['error']}")
+            for path in (one, two):
+                with open(path) as f:
+                    check(len(f.read().split()) == 1, f"{shape}: {path} was not written exactly once")
+            check(r.leads()[-1]["roles"][-3:] == ["assistant", "tool", "tool"], f"{shape}: {r.leads()[-1]['roles']}")
+        finally:
+            r.close()
+
+
+@test
+def earlier_turn_cannot_start_a_request_in_this_one(suite):
+    """Stop during the pause before a retry, then a new message: the old retry does not fire inside the new turn."""
+    b = Behaviour()
+    b.default_delay = 1.5
+    b.fail_first = {MISTRAL: 1}
+    r = Run(suite, "stale_retry", b)
+    try:
+        # Turn 1: the team is ready at 1.5 s, the lead fails at once (500), its
+        # retry is due at 3.0 s. Stop at 2.0 s. Turn 2 starts and gathers
+        # until about 3.6 s: the old retry would fire in the middle of it.
+        res = r.ask(CHAT_Q, "And of Italy?", args=["--ask-stop-after", "2.0"], timeout=40)
+        check(res.turns[0]["reply"] == "" and res.turns[1]["error"] == "", f"{[(t['reply'][:20], t['error']) for t in res.turns]}")
+        second = [q for q in r.chats() if "Italy" in str(q["last_user"])]
+        adv = [q for q in second if q["advisor"]]
+        lead = [q for q in second if not q["advisor"]]
+        check(len(lead) == 1, f"{len(lead)} lead requests in the second turn")
+        check(lead[0]["start"] >= max(a["end"] for a in adv) - 0.05 and len(lead[0]["notes"]) == 7,
+              f"the lead started early or without notes: {lead[0]['notes']}")
+        check(res.turns[1]["reply"].startswith("LEAD "), f"{res.turns[1]['reply']!r}")
+    finally:
+        r.close()
+
+
+@test
+def stop_then_send_is_a_clean_conversation(suite):
+    """Stop before any reply, then a new message: the lead gets one user turn, not two in a row."""
+    b = Behaviour()
+    b.default_delay = 1.5
+    r = Run(suite, "tidy", b)
+    try:
+        res = r.ask(CHAT_Q, "And of Italy?", args=["--ask-stop-after", "0.5"], timeout=40)
+        check(res.turns[1]["error"] == "", f"{res.turns[1]}")
+        lead = [q for q in r.leads() if "Italy" in str(q["last_user"])]
+        check(len(lead) == 1 and lead[0]["roles"] == ["system", "user"], f"roles: {[q['roles'] for q in lead]}")
+        check("France" in lead[0]["last_user"] and "Italy" in lead[0]["last_user"], f"{lead[0]['last_user']!r}")
+    finally:
+        r.close()
+
+
+@test
+def service_unreachable(suite):
+    """No connection: one message after the retries, not a tour of every lead."""
+    r = Run(suite, "offline", service=False)
+    try:
+        port = free_port()
+        res = r.ask(CHAT_Q, base=f"http://127.0.0.1:{port}/v1", timeout=40,
+                    extra={"SHADOW_ASSISTANT_NO_MODEL_REFRESH": "1"})
+        d = res.done
+        check(res.rc == 1 and d["reply"] == "" and d["error"] != "", f"{d}")
+        check(d["t"] < 16, f"took {d['t']} s to give up")
+    finally:
+        r.close()
+
+
+@test
 def lead_not_offered(suite):
     """A lead the key cannot use (404, 403) hands over to the next one."""
     for status in (404, 403):
@@ -788,6 +932,53 @@ def picture_problems(suite):
 
 
 @test
+def two_pictures_in_one_reply(suite):
+    """The lead asks for two pictures at once: both are looked at, one after the other, and the turn ends."""
+    b = Behaviour()
+    b.tool_trigger = r"\bcompare\b"
+    b.default_delay = 0.2
+    r = Run(suite, "vision_two", b)
+    try:
+        a, c = os.path.join(r.dir, "a.png"), os.path.join(r.dir, "b.png")
+        png(a, 320, 200)
+        png(c, 200, 320)
+        b.tool_calls = [("look_at_image", {"path": a, "question": "first"}), ("look_at_image", {"path": c, "question": "second"})]
+        res = r.ask("Please compare the two pictures", timeout=40)
+        d = res.done
+        check(res.rc == 0 and d["error"] == "", f"{d}")
+        check([t["status"] for t in d["tools"]] == ["done", "done"], f"{d['tools']}")
+        looks = [q for q in r.chats() if q["images"]]
+        first = [q for q in looks if q["last_user"] == "first"]
+        second = [q for q in looks if q["last_user"] == "second"]
+        check(len(first) == 4 and len(second) == 4, f"{len(first)} + {len(second)} picture requests")
+        check(min(q["start"] for q in second) >= max(q["end"] for q in first) - 0.05, "the second picture did not wait for the first")
+        check(d["reply"].startswith("LEAD ") and "DONE after tool" in d["reply"], f"{d['reply']!r}")
+    finally:
+        r.close()
+
+
+@test
+def stop_while_looking(suite):
+    """Stop while the vision models look: the turn ends at once and the next message works."""
+    b = Behaviour()
+    b.tool_trigger = r"\blook at\b"
+    r = Run(suite, "vision_stop", b)
+    try:
+        picture = os.path.join(r.dir, "small.png")
+        png(picture, 320, 200)
+        b.tool_call = ("look_at_image", {"path": picture})
+        b.delays = {m: 5 for m in VISION_FIRST4}  # the lookers are slow; the teams below do not include them
+        r.conf("[team]\nagents=" + ", ".join([ULTRA, BOLT, LAGUNA]) + "\nchat=" + ", ".join([MISTRAL, BOLT, LAGUNA]) + "\n")
+        res = r.ask("Please look at the picture", "And now? " + CHAT_Q, args=["--ask-stop-after", "1.5"], timeout=40)
+        first, second = res.turns[0], res.turns[1]
+        check(first["tools"] and first["tools"][0]["status"] == "error" and "Stopped" in json.dumps(res.events), f"{first}")
+        check(first["t"] < 3.0, f"Stop took until {first['t']} s")
+        check(second["error"] == "" and second["reply"].startswith("LEAD "), f"the next message: {second}")
+    finally:
+        r.close()
+
+
+@test
 def no_vision_models_no_tool(suite):
     """Without a model that can see, the tool is not offered at all."""
     b = Behaviour()
@@ -913,17 +1104,83 @@ def which_service(suite):
         check(c["provider"] == "anthropic" and "anthropic.com" in c["baseUrl"], f"{c['provider']} {c['baseUrl']}")
         c = cfg("some-other-key-0000")
         check(c["provider"] == "nvidia", f"unknown key shape: {c['provider']}")
-        c = cfg("nvapi-test", SHADOW_ASSISTANT_PROVIDER="anthropic")
-        check(c["provider"] == "anthropic", f"forced by the environment: {c['provider']}")
+        c = cfg("some-other-key-0000", SHADOW_ASSISTANT_PROVIDER="anthropic")
+        check(c["provider"] == "anthropic" and c["apiKeyConfigured"], f"forced by the environment: {c['provider']}")
         r.conf("[api]\nprovider=anthropic\n")
-        check(cfg("nvapi-test")["provider"] == "anthropic", "forced by the conf file")
-        # An old conf file pointing at Anthropic does not send an NVIDIA key there.
+        check(cfg("some-other-key-0000")["provider"] == "anthropic", "forced by the conf file")
+
+        # A key is only ever used with its own service. With the service named,
+        # a key that is plainly the other one's is passed over.
+        c = cfg("nvapi-test", SHADOW_ASSISTANT_PROVIDER="anthropic")
+        check(c["provider"] == "anthropic" and c["apiKeyConfigured"] is False, f"nvapi key with Claude forced: {c['apiKeyConfigured']}")
+        c = cfg("", SHADOW_ASSISTANT_PROVIDER="anthropic", NVIDIA_API_KEY="nvapi-test-env-000000000000000000")
+        check(c["provider"] == "anthropic" and c["apiKeyConfigured"] is False, f"NVIDIA_API_KEY with Claude forced: {c['apiKeyConfigured']}")
+        c = cfg("", SHADOW_ASSISTANT_PROVIDER="nvidia", ANTHROPIC_API_KEY="sk-ant-test-000000000000000000")
+        check(c["provider"] == "nvidia" and c["apiKeyConfigured"] is False, f"ANTHROPIC_API_KEY with NVIDIA forced: {c['apiKeyConfigured']}")
+        c = cfg("sk-ant-test", SHADOW_ASSISTANT_PROVIDER="nvidia", NVIDIA_API_KEY="nvapi-test-env-000000000000000000")
+        check(c["apiKeyConfigured"] and c["apiKeySource"].startswith("NVIDIA_API_KEY"), f"the next fitting key is used: {c['apiKeySource']}")
+        # The variable's name says whose key it is, whatever it looks like.
+        r.conf("")
+        c = cfg("", ANTHROPIC_API_KEY="gateway-token-000000000000")
+        check(c["provider"] == "anthropic" and "anthropic.com" in c["baseUrl"], f"ANTHROPIC_API_KEY of another shape: {c['provider']} {c['baseUrl']}")
+
+        # Endpoints are per service: [api] base_url is Anthropic's (it predates
+        # NVIDIA), nvidia_base_url NVIDIA's. An NVIDIA key never goes to an
+        # endpoint written down for the other service.
         r.conf("[api]\nbase_url=https://api.anthropic.com/v1\n")
         c = cfg("nvapi-test")
-        check(c["provider"] == "nvidia" and "nvidia.com" in c["baseUrl"], f"{c['provider']} {c['baseUrl']}")
+        check(c["provider"] == "nvidia" and c["baseUrl"] == "https://integrate.api.nvidia.com/v1", f"{c['provider']} {c['baseUrl']}")
+        r.conf("[api]\nbase_url=https://gateway.example.net/v1\n")
+        c = cfg("nvapi-test")
+        check(c["provider"] == "nvidia" and c["baseUrl"] == "https://integrate.api.nvidia.com/v1", f"nvapi key with a custom base_url: {c['baseUrl']}")
+        # ...while a key of unknown shape with that conf is the Anthropic-protocol setup it always was.
+        c = cfg("gateway-token-000000000000")
+        check(c["provider"] == "anthropic" and c["baseUrl"] == "https://gateway.example.net/v1", f"{c['provider']} {c['baseUrl']}")
+        r.conf("[api]\nnvidia_base_url=https://nim.example.net/v1\nbase_url=https://gateway.example.net/v1\n")
+        c = cfg("nvapi-test")
+        check(c["baseUrl"] == "https://nim.example.net/v1", f"nvidia_base_url: {c['baseUrl']}")
+        c = cfg("sk-ant-test")
+        check(c["baseUrl"] == "https://gateway.example.net/v1", f"base_url with a Claude key: {c['baseUrl']}")
+        r.conf("")
         team = json.loads(r.run(["--dump", "team"], r.env(key="nvapi-test", base="",
                                                           extra={"SHADOW_ASSISTANT_NO_MODEL_REFRESH": "1"})).stdout)
         check([g["kind"] for g in team["groups"]] == ["coding", "agents", "chat", "vision"], f"{[g['kind'] for g in team['groups']]}")
+    finally:
+        r.close()
+
+
+@test
+def key_never_goes_to_the_other_service(suite):
+    """Claude forced while only an NVIDIA key exists: nothing is sent anywhere."""
+    r = Run(suite, "key_cross")
+    try:
+        res = r.ask(CHAT_Q, key="", extra={"SHADOW_ASSISTANT_PROVIDER": "anthropic",
+                                           "NVIDIA_API_KEY": "nvapi-test-env-000000000000000000"})
+        check(res.rc == 1 and "no API key" in res.done["error"], f"{res.done}")
+        check([q for q in r.mock.requests if q.get("auth")] == [], "a request carried the key")
+    finally:
+        r.close()
+
+
+@test
+def key_file_is_private_from_the_first_byte(suite):
+    """Whatever the umask, the saved key is never readable by others, and no temporary file stays behind."""
+    r = Run(suite, "key_umask", service=False)
+    try:
+        env = r.env(key="")
+        old = os.umask(0)
+        try:
+            p = r.run(["--set-api-key"], env, stdin=SAVED_KEY + "\n")
+        finally:
+            os.umask(old)
+        check(p.returncode == 0, p.stderr)
+        check(stat.S_IMODE(os.stat(r.key_path).st_mode) == 0o600, oct(stat.S_IMODE(os.stat(r.key_path).st_mode)))
+        check(sorted(os.listdir(r.confdir)) == ["assistant.key"], f"left behind: {os.listdir(r.confdir)}")
+        # Replacing it keeps it private too.
+        p = r.run(["--set-api-key"], env, stdin=CONF_KEY + "\n")
+        with open(r.key_path) as f:
+            check(p.returncode == 0 and f.read().strip() == CONF_KEY, "the key was not replaced")
+        check(stat.S_IMODE(os.stat(r.key_path).st_mode) == 0o600 and sorted(os.listdir(r.confdir)) == ["assistant.key"], "after replacing")
     finally:
         r.close()
 

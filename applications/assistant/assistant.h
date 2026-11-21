@@ -77,7 +77,7 @@ public:
     QString phase() const { return m_phase; }
     QString orbState() const;
     QString activeId() const { return m_activeId; }
-    bool busy() const { return m_client->busy() || m_executing > 0 || m_council->working(); }
+    bool busy() const { return m_client->busy() || m_executing > 0 || m_council->working() || m_restartPending; }
     ModelCatalog *catalog() { return m_catalog; }
     QVariantList team() const { return m_council->members(); }
     QString teamKind() const { return m_council->kind(); }
@@ -162,6 +162,7 @@ private:
     // continue the request with the next one. False when there is none.
     bool tryNextLead(const QString &code);
     void startCompletion();
+    void restartLater(int delayMs);
     void saveActive();
     QString systemPrompt() const;
     bool needsConfirmation(const QString &toolName) const;
@@ -177,6 +178,13 @@ private:
     Council *m_council;
     VisionTeam *m_vision;
     QString m_turnLead;        // NVIDIA: the model answering this turn
+    // Counts the turns (a new message, Stop, another conversation). Whatever
+    // was scheduled for an earlier turn — a retry after a pause, the next
+    // lead, the continuation after a tool — finds the number changed and
+    // stands down instead of starting a request in the middle of this one.
+    int m_turn = 0;
+    // A retry or the next lead is scheduled: still busy, nothing can be sent.
+    bool m_restartPending = false;
     QStringList m_leadsTried;  // … and the ones already tried for it
     // NVIDIA: the longest reply a model accepted being asked for, learnt when
     // it rejects the default ("max_tokens must be at most …").

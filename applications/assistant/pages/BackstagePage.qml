@@ -699,7 +699,7 @@ Item {
                     iconName: "refresh"
                     text: page.catalog.refreshing ? qsTr("Reading…") : qsTr("Read again")
                     enabled: !page.catalog.refreshing
-                    onClicked: page.catalog.refresh()
+                    onClicked: page.catalog.readAgain()
                 }
             }
 

@@ -130,7 +130,7 @@ struct AskOptions
     double timeoutSecs = 180;
     bool thinkHard = false;
     QString approve;
-    double stopAfterSecs = 0; // > 0: press Stop this long after each request was sent
+    double stopAfterSecs = 0; // > 0: press Stop this long after the first request was sent
 };
 
 int runAsk(const AskOptions &options)
@@ -206,7 +206,7 @@ int runAsk(const AskOptions &options)
             error = QStringLiteral("no API key is set");
         } else if (!timedOut) {
             agent.sendMessage(options.texts.at(turn));
-            if (options.stopAfterSecs > 0)
+            if (options.stopAfterSecs > 0 && turn == 0)
                 QTimer::singleShot(int(options.stopAfterSecs * 1000), &loop, [&]() {
                     printJsonLine({{QStringLiteral("event"), QStringLiteral("stop")},
                                    {QStringLiteral("t"), clock.elapsed() / 1000.0},
@@ -313,7 +313,7 @@ int main(int argc, char **argv)
     QCommandLineOption askThinkOpt(QStringLiteral("ask-think-hard"),
         QStringLiteral("With --ask: as with \"Think hard\" switched on (every model of every group takes part)."));
     QCommandLineOption askStopOpt(QStringLiteral("ask-stop-after"),
-        QStringLiteral("With --ask: press Stop <seconds> after each request was sent."), QStringLiteral("seconds"));
+        QStringLiteral("With --ask: press Stop <seconds> after the first request was sent."), QStringLiteral("seconds"));
     QCommandLineOption askApproveOpt(QStringLiteral("ask-approve"),
         QStringLiteral("With --ask: answer \"may I do this?\" questions with <yes|no> instead of stopping there."),
         QStringLiteral("yes|no"));

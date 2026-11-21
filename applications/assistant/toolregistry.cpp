@@ -9,6 +9,7 @@
 #include <memory>
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -81,6 +82,16 @@ QString dangerousPathReason(const QString &rawPath)
 ToolRegistry::ToolRegistry(AssistantConfig *config, QObject *parent)
     : QObject(parent), m_config(config)
 {
+    // A screen capture for look_at_image is deleted as soon as it was looked
+    // at. One left behind by an assistant that exited in the middle goes now
+    // (older than ten minutes: not another instance's capture in progress).
+    {
+        const QDir cache(QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + QStringLiteral("/shadow"));
+        const QDateTime limit = QDateTime::currentDateTime().addSecs(-600);
+        for (const QFileInfo &f : cache.entryInfoList({QStringLiteral("assistant-look-*.png")}, QDir::Files))
+            if (f.lastModified() < limit)
+                QFile::remove(f.absoluteFilePath());
+    }
     m_specs = {
         {
             QStringLiteral("run_shell_command"),
@@ -248,7 +259,8 @@ ToolRegistry::ToolRegistry(AssistantConfig *config, QObject *parent)
             QStringLiteral("Look at a picture file, or at the screen as it is now, and get back a description of what is "
                            "visible. Several vision models examine the picture at the same time. Use it when the user "
                            "asks what is on the screen or in a picture, or wants text read from one. Leave 'path' out to "
-                           "look at the screen. The picture is sent to the model service, so the user is asked first."),
+                           "look at the screen. The picture is sent to the model service: use it only when the user's "
+                           "request needs it."),
             obj({{QStringLiteral("type"), QStringLiteral("object")},
                  {QStringLiteral("properties"), obj({
                       {QStringLiteral("path"), strProp(QStringLiteral("Picture file to look at (.png, .jpg, .webp, .gif, .bmp). "
@@ -1012,8 +1024,15 @@ void ToolRegistry::execute(const ToolInvocation &call, Done done)
         static int counter = 0;
         const QString shot = QStringLiteral("%1/assistant-look-%2-%3.png").arg(dir).arg(QCoreApplication::applicationPid()).arg(++counter);
         QFile::remove(shot);
+        const int epoch = vision->epoch();
         Command::run(this, QStringLiteral("shadow-screenshot"), {QStringLiteral("--full"), QStringLiteral("--output"), shot},
-                     [look, done, shot](const CommandResult &r) {
+                     [look, done, shot, vision, epoch](const CommandResult &r) {
+            // Stop was pressed while the screen was captured: the picture stays here.
+            if (vision->epoch() != epoch) {
+                QFile::remove(shot);
+                done({false, QObject::tr("Stopped before the picture was looked at.")});
+                return;
+            }
             if (r.exitCode != 0 || !QFileInfo(shot).isFile()) {
                 QFile::remove(shot);
                 done({false, r.errText().isEmpty() ? QObject::tr("The screen could not be captured (exit %1).").arg(r.exitCode)

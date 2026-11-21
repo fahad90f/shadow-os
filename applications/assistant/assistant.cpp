@@ -51,7 +51,7 @@ Assistant::Assistant(QObject *parent)
     connect(m_council, &Council::ready, this, [this]() {
         // The other models are done (or the wait is over): the lead starts.
         Q_EMIT teamChanged();
-        if (m_phase == QLatin1String("thinking"))
+        if (m_phase == QLatin1String("thinking") && !m_client->busy())
             startCompletion();
     });
     connect(m_registry->journal(), &UndoJournal::changed, this, &Assistant::actionLogChanged);
@@ -139,13 +139,7 @@ Assistant::Assistant(QObject *parent)
             m_assistantRow = -1;
             setPhase(QStringLiteral("thinking"));
             const int delayMs = 1500 * (1 << (m_retries - 1)); // 1.5s → 3s → 6s backoff
-            QTimer::singleShot(delayMs, this, [this]() {
-                // Stand down if the user stopped or started something else.
-                if (m_phase == QLatin1String("idle") || m_phase == QLatin1String("error")
-                    || m_phase == QLatin1String("setup"))
-                    return;
-                startCompletion();
-            });
+            restartLater(delayMs);
             return;
         }
         m_retries = 0;
@@ -160,10 +154,7 @@ Assistant::Assistant(QObject *parent)
                 m_messages->dropEmptyStreamingTail();
                 m_assistantRow = -1;
                 setPhase(QStringLiteral("thinking"));
-                QTimer::singleShot(0, this, [this]() {
-                    if (m_phase == QLatin1String("thinking"))
-                        startCompletion();
-                });
+                restartLater(0);
                 return;
             }
         }
@@ -245,6 +236,7 @@ QString Assistant::activeModel() const
 
 void Assistant::newConversation()
 {
+    ++m_turn;
     m_council->clear();
     m_turnLead.clear();
     m_activeId = m_store->createConversation();
@@ -264,6 +256,7 @@ void Assistant::selectConversation(const QString &id)
 {
     if (id == m_activeId || busy())
         return;
+    ++m_turn;
     m_council->clear();
     m_turnLead.clear();
     m_activeId = id;
@@ -410,6 +403,8 @@ void Assistant::beginTurn(const QString &userText, bool spoken)
         setPhase(QStringLiteral("setup"));
         return;
     }
+    ++m_turn;
+    m_restartPending = false;
     m_turnLead.clear();
     m_leadsTried.clear();
     if (!m_config->nvidia()) {
@@ -446,8 +441,10 @@ bool Assistant::tryNextLead(const QString &code)
 {
     if (!m_config->nvidia() || m_turnLead.isEmpty())
         return false;
-    // The key itself was rejected: no other model would accept it either.
-    if (code == QLatin1String("auth") || code == QLatin1String("no_key"))
+    // The key was rejected, the service cannot be reached, or the account is
+    // over its request limit: no other model would fare better.
+    if (code == QLatin1String("auth") || code == QLatin1String("no_key") || code == QLatin1String("network")
+        || code == QLatin1String("rate_limit"))
         return false;
     if (code == QLatin1String("no_tools"))
         m_catalog->learnNoTools(m_turnLead);
@@ -463,11 +460,26 @@ bool Assistant::tryNextLead(const QString &code)
     m_messages->dropEmptyStreamingTail();
     m_assistantRow = -1;
     setPhase(QStringLiteral("thinking"));
-    QTimer::singleShot(0, this, [this]() {
-        if (m_phase == QLatin1String("thinking"))
-            startCompletion();
-    });
+    restartLater(0);
     return true;
+}
+
+// Start the request again after a pause (a retry, the next lead) — unless the
+// turn it belongs to is over by then.
+void Assistant::restartLater(int delayMs)
+{
+    const int turn = m_turn;
+    m_restartPending = true;
+    QTimer::singleShot(delayMs, this, [this, turn]() {
+        if (turn != m_turn)
+            return; // stopped, or the user moved on: that turn's flag was cleared with it
+        m_restartPending = false;
+        if (m_phase == QLatin1String("thinking")) {
+            startCompletion();
+        } else {
+            Q_EMIT phaseChanged(); // busy() changed
+        }
+    });
 }
 
 void Assistant::startCompletion()
@@ -647,7 +659,8 @@ void Assistant::executeCall(int row, const ToolCallEntry &call)
     ++m_executing;
     Q_EMIT phaseChanged();
 
-    m_registry->execute(inv, [this, row, call](const ToolOutcome &out) {
+    const int turn = m_turn;
+    m_registry->execute(inv, [this, row, call, turn](const ToolOutcome &out) {
         --m_executing;
         // busy() just changed (e.g. a tool that outlived a Stop): notify, or
         // QML keeps busy=true and canSend=false until something else changes.
@@ -656,7 +669,10 @@ void Assistant::executeCall(int row, const ToolCallEntry &call)
         m_messages->appendToolResult(call.id, call.name, out.text);
         logCall(call.id, call.name, call.preview, out.ok ? QStringLiteral("done") : QStringLiteral("error"));
         saveActive();
-        maybeContinue(row);
+        // A tool that outlived its turn (Stop, then a new message): its result
+        // is recorded, but it does not start a request inside the new turn.
+        if (turn == m_turn)
+            maybeContinue(row);
     });
 }
 
@@ -690,8 +706,11 @@ void Assistant::maybeContinue(int row)
     if (m_continueScheduled)
         return;
     m_continueScheduled = true;
-    QTimer::singleShot(0, this, [this]() {
+    const int turn = m_turn;
+    QTimer::singleShot(0, this, [this, turn]() {
         m_continueScheduled = false;
+        if (turn != m_turn)
+            return;
         // If the user stopped (or an error landed) in the meantime, don't open
         // a new request. A live continuation is always mid-run (thinking /
         // awaiting / streaming); idle/error/setup means we should stand down.
@@ -704,6 +723,9 @@ void Assistant::maybeContinue(int row)
 
 void Assistant::stop()
 {
+    ++m_turn; // whatever was scheduled for this turn stands down
+    m_restartPending = false;
+    m_vision->cancel(); // a picture not yet sent stays here
     m_council->cancel();
     m_council->setLeadState(QStringLiteral("failed"));
     m_client->cancel();

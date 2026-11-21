@@ -3,6 +3,7 @@
 
 #include "assistantconfig.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
 #include <QFile>
@@ -21,6 +22,8 @@
 namespace {
 constexpr int kListTimeoutMs = 20000;
 constexpr int kCheckTimeoutMs = 30000;
+// How long a learnt "cannot use tools / pictures" is believed.
+constexpr qint64 kLearntSecs = 7 * 24 * 3600;
 
 QString apiMessage(const QByteArray &body)
 {
@@ -82,13 +85,20 @@ void ModelCatalog::loadCache()
     if (!f.open(QIODevice::ReadOnly))
         return;
     const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
-    // What was learnt about a model holds for any endpoint; the list does not.
-    for (const QJsonValue &v : o.value(QStringLiteral("noTools")).toArray())
-        m_noTools.insert(v.toString());
-    for (const QJsonValue &v : o.value(QStringLiteral("noImages")).toArray())
-        m_noImages.insert(v.toString());
+    // The list and what was learnt describe one endpoint.
     if (o.value(QStringLiteral("baseUrl")).toString() != m_config->baseUrl())
         return;
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    auto learnt = [&](const QString &key, QHash<QString, qint64> *into) {
+        const QJsonObject entries = o.value(key).toObject();
+        for (auto it = entries.constBegin(); it != entries.constEnd(); ++it) {
+            const qint64 when = qint64(it.value().toDouble());
+            if (when > 0 && now - when < kLearntSecs)
+                into->insert(it.key(), when);
+        }
+    };
+    learnt(QStringLiteral("noTools"), &m_noTools);
+    learnt(QStringLiteral("noImages"), &m_noImages);
     m_ids.clear();
     for (const QJsonValue &v : o.value(QStringLiteral("ids")).toArray())
         m_ids << v.toString();
@@ -101,17 +111,20 @@ void ModelCatalog::saveCache() const
 {
     const QString path = cachePath();
     QDir().mkpath(QFileInfo(path).absolutePath());
-    QStringList noTools(m_noTools.cbegin(), m_noTools.cend()), noImages(m_noImages.cbegin(), m_noImages.cend());
-    noTools.sort();
-    noImages.sort();
+    auto learnt = [](const QHash<QString, qint64> &from) {
+        QJsonObject entries;
+        for (auto it = from.constBegin(); it != from.constEnd(); ++it)
+            entries.insert(it.key(), double(it.value()));
+        return entries;
+    };
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly))
         return;
     f.write(QJsonDocument(QJsonObject{
-        {QStringLiteral("baseUrl"), m_listUrl},
+        {QStringLiteral("baseUrl"), m_listUrl.isEmpty() ? m_config->baseUrl() : m_listUrl},
         {QStringLiteral("ids"), QJsonArray::fromStringList(m_ids)},
-        {QStringLiteral("noTools"), QJsonArray::fromStringList(noTools)},
-        {QStringLiteral("noImages"), QJsonArray::fromStringList(noImages)},
+        {QStringLiteral("noTools"), learnt(m_noTools)},
+        {QStringLiteral("noImages"), learnt(m_noImages)},
     }).toJson(QJsonDocument::Indented));
     f.commit();
 }
@@ -128,6 +141,8 @@ void ModelCatalog::onConfigChanged()
         m_known = false;
         m_ids.clear();
         m_idSet.clear();
+        m_noTools.clear(); // learnt from the other endpoint's answers
+        m_noImages.clear();
     }
     if (otherEndpoint || otherKey || (!m_known && m_config->nvidia()))
         refresh();
@@ -203,8 +218,15 @@ bool ModelCatalog::refreshSync(int timeoutMs)
 
 void ModelCatalog::checkKey()
 {
-    if (m_check)
-        return;
+    // A check still in flight was for the key in use when it started; its
+    // answer must not be reported for the one in use now.
+    if (m_check) {
+        QNetworkReply *old = m_check;
+        m_check = nullptr;
+        old->disconnect(this);
+        old->abort();
+        old->deleteLater();
+    }
     if (m_config->apiKey().isEmpty()) {
         Q_EMIT keyChecked(false, tr("No key is set."));
         return;
@@ -234,7 +256,10 @@ void ModelCatalog::checkKey()
     };
     m_check = m_net->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
     Q_EMIT changed();
-    connect(m_check, &QNetworkReply::finished, this, [this, model]() {
+    QNetworkReply *started = m_check;
+    connect(m_check, &QNetworkReply::finished, this, [this, model, started]() {
+        if (m_check != started)
+            return; // superseded
         QNetworkReply *reply = m_check;
         m_check = nullptr;
         reply->deleteLater();
@@ -289,7 +314,7 @@ void ModelCatalog::learnNoTools(const QString &id)
 {
     if (id.isEmpty() || m_noTools.contains(id))
         return;
-    m_noTools.insert(id);
+    m_noTools.insert(id, QDateTime::currentSecsSinceEpoch());
     saveCache();
     Q_EMIT changed();
 }
@@ -298,7 +323,7 @@ void ModelCatalog::learnNoImages(const QString &id)
 {
     if (id.isEmpty() || m_noImages.contains(id))
         return;
-    m_noImages.insert(id);
+    m_noImages.insert(id, QDateTime::currentSecsSinceEpoch());
     saveCache();
     Q_EMIT changed();
 }
@@ -322,7 +347,25 @@ QString ModelCatalog::lead(const QString &kind, const QStringList &exclude) cons
         if (available(id) && supportsTools(id) && !exclude.contains(id))
             return id;
     }
+    // Every candidate is marked as unable to use tools. That mark is a
+    // conclusion from an error's wording: it must not leave a kind of request
+    // without a lead, so the candidates are tried again.
+    for (const QString &id : m_config->teamLeads(kind)) {
+        if (available(id) && !exclude.contains(id))
+            return id;
+    }
     return {};
+}
+
+void ModelCatalog::readAgain()
+{
+    if (!m_noTools.isEmpty() || !m_noImages.isEmpty()) {
+        m_noTools.clear();
+        m_noImages.clear();
+        saveCache();
+    }
+    refresh();
+    Q_EMIT changed();
 }
 
 QVariantList ModelCatalog::groups() const

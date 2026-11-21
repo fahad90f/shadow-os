@@ -90,6 +90,10 @@ class Behaviour:
         self.tool_call = ("run_shell_command", {"command": "echo", "args": ["team-ok"]})
         self.rate_limited = set()    # models that answer HTTP 429
         self.max_tokens = {}         # model -> the largest max_tokens it accepts (HTTP 400 above it)
+        self.tool_calls = None       # several calls in one reply: [(tool name, arguments), ...] (instead of tool_call)
+        self.no_index = set()        # models whose streamed tool calls carry no "index"
+        self.tool_history_errors = {}  # model -> (status, body) for a request that carries tool results
+        self.fail_first = {}         # model -> how many of its first requests answer HTTP 500
 
 
 class MockNvidia:
@@ -156,11 +160,14 @@ class MockNvidia:
     def _send(handler, status, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else (
             body.encode() if isinstance(body, str) else json.dumps(body).encode())
-        handler.send_response(status)
-        handler.send_header("Content-Type", ctype)
-        handler.send_header("Content-Length", str(len(data)))
-        handler.end_headers()
-        handler.wfile.write(data)
+        try:
+            handler.send_response(status)
+            handler.send_header("Content-Type", ctype)
+            handler.send_header("Content-Length", str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the assistant gave up on this request (Stop, too slow)
 
     def _authorised(self, handler):
         auth = handler.headers.get("Authorization", "")
@@ -265,6 +272,17 @@ class MockNvidia:
             self._send(handler, 400, {"error": {"message": f"max_tokens must be at most {b.max_tokens[model]}, got {req.get('max_tokens')}.",
                                                 "type": "BadRequestError", "code": 400}})
             return finish(400)
+        if tool_results and model in b.tool_history_errors:
+            status, body = b.tool_history_errors[model]
+            self._send(handler, status, body)
+            return finish(status)
+        with self._lock:
+            failing = b.fail_first.get(model, 0)
+            if failing > 0:
+                b.fail_first[model] = failing - 1
+        if failing > 0:
+            self._send(handler, 500, {"status": 500, "title": "Internal Server Error"})
+            return finish(500)
         if model in b.errors:
             status, body = b.errors[model]
             self._send(handler, status, body)
@@ -281,6 +299,7 @@ class MockNvidia:
         # What the model says.
         name = short(model)
         call = None
+        calls = []
         if images:
             text = f"{name} sees an image and was asked: {question.strip()[:120]}"
         elif advisor:
@@ -289,8 +308,10 @@ class MockNvidia:
             text = f"NOTE-FROM-{name}: my {kind} for \"{str(question).strip()[:60]}\"."
         elif tool_results:
             text = f"LEAD {name} | notes: {','.join(notes)} | DONE after tool: {str(tool_results[-1].get('content', ''))[:200]}"
-        elif tools and b.tool_call[0] in entry["tools"] and re.search(b.tool_trigger, str(question), re.I):
-            call = (b.tool_call[0], json.dumps(b.tool_call[1]))
+        elif tools and re.search(b.tool_trigger, str(question), re.I) and all(
+                c[0] in entry["tools"] for c in (b.tool_calls or [b.tool_call])):
+            calls = [(name, json.dumps(arguments)) for name, arguments in (b.tool_calls or [b.tool_call])]
+            call = calls[0]
             text = ""
         else:
             text = f"LEAD {name} | notes: {','.join(notes)} | reply to \"{str(question).strip()[:60]}\""
@@ -299,8 +320,8 @@ class MockNvidia:
             if model in b.one_piece or not req.get("stream"):
                 message = {"role": "assistant", "content": text}
                 if call:
-                    message["tool_calls"] = [{"id": "call_1", "type": "function",
-                                              "function": {"name": call[0], "arguments": call[1]}}]
+                    message["tool_calls"] = [{"id": f"call_{n + 1}", "type": "function",
+                                              "function": {"name": c[0], "arguments": c[1]}} for n, c in enumerate(calls)]
                 self._send(handler, 200, {"id": "cmpl-mock", "object": "chat.completion", "model": model,
                                           "choices": [{"index": 0, "message": message,
                                                        "finish_reason": "tool_calls" if call else "stop"}]})
@@ -322,11 +343,18 @@ class MockNvidia:
                 for piece in ("Let me think. ", "The user wants an answer. "):
                     chunk({"reasoning_content": piece})
             if call:
-                chunk({"tool_calls": [{"index": 0, "id": "call_1", "type": "function",
-                                       "function": {"name": call[0], "arguments": ""}}]})
-                half = len(call[1]) // 2
-                for part in (call[1][:half], call[1][half:]):
-                    chunk({"tool_calls": [{"index": 0, "function": {"arguments": part}}]})
+                numbered = model not in b.no_index
+                for n, c in enumerate(calls):
+                    first = {"id": f"call_{n + 1}", "type": "function", "function": {"name": c[0], "arguments": ""}}
+                    if numbered:
+                        first["index"] = n
+                    chunk({"tool_calls": [first]})
+                    half = len(c[1]) // 2
+                    for part in (c[1][:half], c[1][half:]):
+                        rest = {"function": {"arguments": part}}
+                        if numbered:
+                            rest["index"] = n
+                        chunk({"tool_calls": [rest]})
                 chunk({}, "tool_calls")
             else:
                 for piece in re.findall(r"\S+\s*", text):

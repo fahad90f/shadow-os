@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "assistantconfig.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
+
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace {
 
@@ -287,16 +292,37 @@ QString AssistantConfig::saveApiKey(const QString &key)
     const QString path = keyFilePath();
     if (!QDir().mkpath(QFileInfo(path).absolutePath()))
         return tr("Could not create %1.").arg(QFileInfo(path).absolutePath());
-    // Written in one step and readable by its owner only, from the first byte.
-    QSaveFile f(path);
-    if (!f.open(QIODevice::WriteOnly))
-        return tr("Could not write %1: %2").arg(path, f.errorString());
-    f.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
-    f.write(k.toUtf8());
-    f.write("\n");
-    if (!f.commit())
-        return tr("Could not write %1: %2").arg(path, f.errorString());
-    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+    // Created readable by its owner only (the umask can only narrow 0600, so
+    // there is no moment at which anyone else could open it), written in
+    // full, then moved into place in one step.
+    const QByteArray target = QFile::encodeName(path);
+    const QByteArray tmp = target + ".new-" + QByteArray::number(qint64(QCoreApplication::applicationPid()));
+    ::unlink(tmp.constData());
+    const int fd = ::open(tmp.constData(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (fd < 0)
+        return tr("Could not write %1: %2").arg(path, QString::fromLocal8Bit(std::strerror(errno)));
+    const QByteArray data = k.toUtf8() + '\n';
+    int problem = 0;
+    qsizetype written = 0;
+    while (problem == 0 && written < data.size()) {
+        const ssize_t n = ::write(fd, data.constData() + written, size_t(data.size() - written));
+        if (n < 0) {
+            if (errno != EINTR)
+                problem = errno;
+        } else {
+            written += n;
+        }
+    }
+    if (problem == 0 && ::fsync(fd) != 0)
+        problem = errno;
+    if (::close(fd) != 0 && problem == 0)
+        problem = errno;
+    if (problem == 0 && ::rename(tmp.constData(), target.constData()) != 0)
+        problem = errno;
+    if (problem != 0) {
+        ::unlink(tmp.constData());
+        return tr("Could not write %1: %2").arg(path, QString::fromLocal8Bit(std::strerror(problem)));
+    }
     reload();
     return {};
 }
@@ -373,59 +399,85 @@ void AssistantConfig::reload()
 
     // --- API key: the environment wins, then the key saved from Settings,
     // then the conf file. Never the repo. ---
+    // A key belongs to one service and is only ever sent to that service:
+    // NVIDIA_API_KEY is NVIDIA's and ANTHROPIC_API_KEY Anthropic's, whatever
+    // they look like; any other key is NVIDIA's when it starts with nvapi-
+    // and Anthropic's when it starts with sk-ant-. A key of another shape (a
+    // gateway's token) goes where the configuration says.
     m_apiKey.clear();
     m_apiKeySource.clear();
     const QString savedKey = readKeyFile(keyFilePath());
     m_apiKeySaved = !savedKey.isEmpty();
-    const QByteArray envKey = qgetenv("SHADOW_ASSISTANT_API_KEY");
-    const QByteArray envKeyNvidia = qgetenv("NVIDIA_API_KEY");
-    const QByteArray envKeyAnthropic = qgetenv("ANTHROPIC_API_KEY");
+    const QString nvidia = QStringLiteral("nvidia"), anthropic = QStringLiteral("anthropic");
+    auto ownerOf = [&](const QString &key) {
+        return key.startsWith(QLatin1String("nvapi-")) ? nvidia : key.startsWith(QLatin1String("sk-ant-")) ? anthropic : QString();
+    };
+    struct Candidate { QString key, source, owner; };
+    QList<Candidate> candidates;
+    const QString envKey = QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_API_KEY")).trimmed();
+    const QString envKeyNvidia = QString::fromUtf8(qgetenv("NVIDIA_API_KEY")).trimmed();
+    const QString envKeyAnthropic = QString::fromUtf8(qgetenv("ANTHROPIC_API_KEY")).trimmed();
     const QString confKey = readString(ini, QStringLiteral("api/key"));
-    if (!envKey.trimmed().isEmpty()) {
-        m_apiKey = QString::fromUtf8(envKey).trimmed();
-        m_apiKeySource = QStringLiteral("SHADOW_ASSISTANT_API_KEY environment variable");
-    } else if (!envKeyNvidia.trimmed().isEmpty()) {
-        m_apiKey = QString::fromUtf8(envKeyNvidia).trimmed();
-        m_apiKeySource = QStringLiteral("NVIDIA_API_KEY environment variable");
-    } else if (m_apiKeySaved) {
-        m_apiKey = savedKey;
-        m_apiKeySource = QStringLiteral("Settings");
-    } else if (!confKey.isEmpty() && !isPlaceholderKey(confKey)) {
-        m_apiKey = confKey;
-        m_apiKeySource = iniPath();
-    } else if (!envKeyAnthropic.trimmed().isEmpty()) {
-        m_apiKey = QString::fromUtf8(envKeyAnthropic).trimmed();
-        m_apiKeySource = QStringLiteral("ANTHROPIC_API_KEY environment variable");
-    }
+    if (!envKey.isEmpty())
+        candidates.append({envKey, QStringLiteral("SHADOW_ASSISTANT_API_KEY environment variable"), ownerOf(envKey)});
+    if (!envKeyNvidia.isEmpty())
+        candidates.append({envKeyNvidia, QStringLiteral("NVIDIA_API_KEY environment variable"), nvidia});
+    if (m_apiKeySaved)
+        candidates.append({savedKey, QStringLiteral("Settings"), ownerOf(savedKey)});
+    if (!confKey.isEmpty() && !isPlaceholderKey(confKey))
+        candidates.append({confKey, iniPath(), ownerOf(confKey)});
+    if (!envKeyAnthropic.isEmpty())
+        candidates.append({envKeyAnthropic, QStringLiteral("ANTHROPIC_API_KEY environment variable"), anthropic});
 
-    // --- the service: NVIDIA's hosted models, unless the key in effect is an
-    // Anthropic one or the conf (or a test) names the service. ---
-    m_provider = QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_PROVIDER")).trimmed().toLower();
-    if (m_provider != QLatin1String("nvidia") && m_provider != QLatin1String("anthropic"))
-        m_provider = readString(ini, QStringLiteral("api/provider")).toLower();
-    if (m_provider != QLatin1String("nvidia") && m_provider != QLatin1String("anthropic"))
-        m_provider = m_apiKey.startsWith(QLatin1String("sk-ant-")) ? QStringLiteral("anthropic")
-                                                                    : QStringLiteral("nvidia");
-    const QString providerUrl = m_provider == QLatin1String("anthropic") ? kDefaultBaseUrl : kNvidiaBaseUrl;
+    // --- the service. Named by a test or the conf; otherwise it follows the
+    // key in effect; without a key it is NVIDIA's hosted models. ---
+    const QString confUrl = readString(ini, QStringLiteral("api/base_url"));
+    const QString confNvidiaUrl = readString(ini, QStringLiteral("api/nvidia_base_url"));
+    QString forced = QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_PROVIDER")).trimmed().toLower();
+    if (forced != nvidia && forced != anthropic)
+        forced = readString(ini, QStringLiteral("api/provider")).toLower();
+    if (forced != nvidia && forced != anthropic)
+        forced.clear();
+    m_provider = forced.isEmpty() ? nvidia : forced;
+    for (const Candidate &c : std::as_const(candidates)) {
+        // With the service named, a key that is plainly the other service's
+        // is passed over: it must never be sent there.
+        if (!forced.isEmpty() && !c.owner.isEmpty() && c.owner != forced)
+            continue;
+        m_apiKey = c.key;
+        m_apiKeySource = c.source;
+        if (forced.isEmpty()) {
+            if (!c.owner.isEmpty())
+                m_provider = c.owner;
+            else
+                // A key of unknown shape: a conf with its own endpoint is the
+                // Anthropic-protocol setup it was before NVIDIA was added.
+                m_provider = !confUrl.isEmpty() && !confUrl.contains(QLatin1String("nvidia.com")) ? anthropic : nvidia;
+        }
+        break;
+    }
+    const QString providerUrl = m_provider == anthropic ? kDefaultBaseUrl : kNvidiaBaseUrl;
 
     // --- Anthropic API version header (cloud mode) ---
     m_anthropicVersion = readString(ini, QStringLiteral("api/anthropic_version"), kDefaultAnthropicVersion);
     if (m_anthropicVersion.isEmpty())
         m_anthropicVersion = kDefaultAnthropicVersion;
 
-    // --- base URL: dev override, then conf, then the Anthropic default. ---
+    // --- base URL: a development override, then the conf's endpoint for this
+    // service, then the service's own. [api] base_url is Anthropic's endpoint
+    // (it predates NVIDIA) and nvidia_base_url NVIDIA's, so a key never goes
+    // to an endpoint that was written down for the other service. ---
     const QByteArray envUrl = qgetenv("SHADOW_ASSISTANT_BASE_URL");
     if (!envUrl.trimmed().isEmpty()) {
         m_baseUrl = QString::fromUtf8(envUrl).trimmed();
         m_baseUrlOverridden = true;
     } else {
-        m_baseUrl = readString(ini, QStringLiteral("api/base_url"), providerUrl);
-        // A base_url written for the other service (an old conf pointing at
-        // Anthropic while the key is an NVIDIA one) is not this one's.
-        const bool forAnthropic = m_baseUrl.contains(QLatin1String("anthropic.com"));
-        const bool forNvidia = m_baseUrl.contains(QLatin1String("nvidia.com"));
-        if (m_baseUrl.isEmpty() || (m_provider == QLatin1String("nvidia") && forAnthropic)
-            || (m_provider == QLatin1String("anthropic") && forNvidia))
+        if (m_provider == anthropic)
+            m_baseUrl = confUrl.contains(QLatin1String("nvidia.com")) ? QString() : confUrl;
+        else
+            m_baseUrl = !confNvidiaUrl.isEmpty() ? confNvidiaUrl
+                      : confUrl.contains(QLatin1String("nvidia.com")) ? confUrl : QString();
+        if (m_baseUrl.isEmpty())
             m_baseUrl = providerUrl;
         m_baseUrlOverridden = false;
     }
@@ -742,7 +794,7 @@ QString AssistantConfig::configTemplate() const
         "[api]\n"
         "key=nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n"
         "; Endpoint (usually leave unset):\n"
-        "; base_url=https://integrate.api.nvidia.com/v1\n"
+        "; nvidia_base_url=https://integrate.api.nvidia.com/v1\n"
         "; An Anthropic key (sk-ant-...) makes the assistant use Claude instead.\n"
         "; Offline: run a model on this computer instead of the cloud (no key\n"
         "; needed). Easiest setup:  shadow-assistant-local setup\n"

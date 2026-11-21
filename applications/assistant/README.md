@@ -37,9 +37,15 @@ Optional other places, in order of precedence:
 3. `key=` under `[api]` in `~/.config/shadow/assistant.conf` (INI; `chmod 600`);
 4. the environment variable `ANTHROPIC_API_KEY`.
 
-Which service a key is used with follows the key: `sk-ant-…` is Claude,
-anything else NVIDIA. `SHADOW_ASSISTANT_PROVIDER=nvidia|anthropic` or
-`provider=` under `[api]` overrides that. From a terminal, the same as the
+A key is only ever sent to its own service. `NVIDIA_API_KEY` is NVIDIA's and
+`ANTHROPIC_API_KEY` Anthropic's; any other key is NVIDIA's when it starts
+with `nvapi-` and Anthropic's when it starts with `sk-ant-`. The service in
+use follows the key in effect; `SHADOW_ASSISTANT_PROVIDER=nvidia|anthropic`
+or `provider=` under `[api]` names it instead, and a key that is plainly the
+other service's is then passed over (the next one that fits is used). The
+endpoints are per service too: `nvidia_base_url=` for NVIDIA, `base_url=`
+for Anthropic (a key of another shape with a `base_url` of its own is the
+Anthropic-protocol gateway setup it was before NVIDIA was added). From a terminal, the same as the
 Settings page: `shadow-assistant --set-api-key` (reads the key from standard
 input, never from the command line) and `shadow-assistant --remove-api-key`.
 
@@ -49,7 +55,7 @@ input, never from the command line) and `shadow-assistant --remove-api-key`.
 ; Optional: the key is normally saved from Settings.
 ; key=nvapi-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ; Endpoint (usually leave unset):
-; base_url=https://integrate.api.nvidia.com/v1
+; nvidia_base_url=https://integrate.api.nvidia.com/v1
 
 [team]
 ; team: several models work on a request at the same time and a lead model
@@ -157,7 +163,10 @@ The list of models is not fixed in the program: NVIDIA adds and retires
 models, so the assistant reads what the service offers (`GET /models`, on
 start and from Settings → Models → *Read again*) and leaves out what is not
 there. A model that turns out to reject tools or pictures is remembered and
-not asked that way again (`~/.cache/shadow/assistant-models.json`).
+not asked that way again (`~/.cache/shadow/assistant-models.json`). That is
+a conclusion from the wording of an error, so it is kept for a week and for
+one endpoint only, *Read again* forgets it, and it never leaves a kind of
+request without a lead.
 
 A team makes one request per model for every message (eight for a question).
 If NVIDIA answers "too many requests", the next messages go to the lead and
@@ -167,8 +176,10 @@ team for good.
 **Seeing.** `look_at_image` looks at a picture file, or at the screen as it is
 now. Up to four vision models get the picture at the same time (made small
 first: longest side 1280 px, JPEG, at most 180 kB) and the lead gets what each
-of them saw. Sending a picture is asked about first unless autonomy is
-`autopilot`.
+of them saw; several pictures asked for at once are looked at one after the
+other. Sending a picture is asked about first unless autonomy is `autopilot`
+(the default), where it is sent without a question, like every other action.
+Stop ends it: a picture not yet sent stays on the computer.
 
 Without a window: `shadow-assistant --ask "…"` sends one request (give it
 several times for several turns) and prints the team's progress and the reply
@@ -347,7 +358,7 @@ pocketsphinx, speech-dispatcher and piper are no longer used.
 - `tests/team_tests.py [--bin build/bin/shadow-assistant]` — the model team,
   against the real binary and `tests/mock_nvidia.py` (a stand-in for NVIDIA's
   API that records every request; `python3 tests/mock_nvidia.py --port 8910`
-  runs it by hand). 34 tests: all advisors asked at the same moment and the
+  runs it by hand). 45 tests: all advisors asked at the same moment and the
   lead after them with every note; code / actions / conversation go to their
   teams; a tool runs once however many models planned it; yes/no before
   acting; Think hard; solo; `max_models`; custom groups; several turns;
@@ -358,8 +369,11 @@ pocketsphinx, speech-dispatcher and piper are no longer used.
   replies; `look_at_image` (four models, the picture shrunk, a missing file,
   a model that takes no pictures, "no" to sending); the key saved from
   Settings (mode 600, never printed, removed again), its precedence, which
-  service a key selects, a Claude key still working; Stop while the team works; and closing the
-  app in mid-request.
+  service a key selects, a Claude key still working; a key never used with the other service and
+  the key file private whatever the umask; several tool calls or pictures in
+  one reply; what an error may and may not teach about a model; Stop while
+  the team works or looks, and nothing from a stopped turn starting inside
+  the next; no connection at all; and closing the app in mid-request.
 - The understand → tool → confirm loop is driven end to end against the
   bundled mock servers with `SHADOW_ASSISTANT_BASE_URL`.
 

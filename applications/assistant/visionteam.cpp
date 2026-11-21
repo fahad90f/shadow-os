@@ -41,7 +41,9 @@ VisionTeam::VisionTeam(AssistantConfig *config, ModelCatalog *catalog, QObject *
 
 VisionTeam::~VisionTeam()
 {
-    cancel(); // requests in flight end while the clients and their pools exist
+    // Requests in flight end while the clients and their pools exist. Nobody
+    // is told: whoever asked is being destroyed too.
+    endRequests();
 }
 
 bool VisionTeam::usable() const
@@ -107,7 +109,8 @@ QByteArray VisionTeam::encodeImage(const QString &path, int maxBytes, QString *e
     return {};
 }
 
-void VisionTeam::cancel()
+// End the requests of the look in progress, without telling its caller.
+void VisionTeam::endRequests()
 {
     ++m_generation;
     m_deadline->stop();
@@ -120,34 +123,62 @@ void VisionTeam::cancel()
         }
     }
     m_members.clear();
+}
+
+void VisionTeam::cancel()
+{
+    ++m_epoch;
+    endRequests();
+    QList<Done> waiting;
+    if (m_done)
+        waiting.append(std::move(m_done));
     m_done = nullptr;
+    for (Job &job : m_queue)
+        waiting.append(std::move(job.done));
+    m_queue.clear();
+    m_running = false;
+    for (const Done &done : std::as_const(waiting))
+        done(false, tr("Stopped before the picture was looked at."));
 }
 
 void VisionTeam::look(const QString &imagePath, const QString &question, Done done)
 {
-    cancel();
+    m_queue.append({imagePath, question, std::move(done)});
+    startNext();
+}
+
+void VisionTeam::startNext()
+{
+    while (!m_running && !m_queue.isEmpty()) {
+        const Job job = m_queue.takeFirst();
+        m_running = start(job);
+    }
+}
+
+bool VisionTeam::start(const Job &job)
+{
     QStringList models;
     for (const QString &id : m_catalog->members(QStringLiteral("vision")))
         if (m_catalog->supportsImages(id) && models.size() < kMaxLookers)
             models << id;
     if (!m_config->nvidia() || m_config->localMode()) {
-        done(false, tr("Looking at pictures needs the NVIDIA service."));
-        return;
+        job.done(false, tr("Looking at pictures needs the NVIDIA service."));
+        return false;
     }
     if (models.isEmpty()) {
-        done(false, tr("The service offers no model that can look at pictures right now."));
-        return;
+        job.done(false, tr("The service offers no model that can look at pictures right now."));
+        return false;
     }
     QString error;
-    const QByteArray url = encodeImage(imagePath, kMaxImageBytes, &error);
+    const QByteArray url = encodeImage(job.path, kMaxImageBytes, &error);
     if (url.isEmpty()) {
-        done(false, error);
-        return;
+        job.done(false, error);
+        return false;
     }
 
-    const QString ask = question.trimmed().isEmpty()
+    const QString ask = job.question.trimmed().isEmpty()
         ? tr("Describe what is in this picture: what it shows, any text in it (quote it), and anything unusual.")
-        : question.trimmed();
+        : job.question.trimmed();
     const QJsonArray messages{
         QJsonObject{{QStringLiteral("role"), QStringLiteral("system")},
                     {QStringLiteral("content"),
@@ -166,7 +197,7 @@ void VisionTeam::look(const QString &imagePath, const QString &question, Done do
     options.temperature = 0.2;
     options.idleTimeoutMs = kWaitMs + 5000;
 
-    m_done = std::move(done);
+    m_done = job.done;
     const int generation = m_generation;
     for (const QString &id : std::as_const(models)) {
         Member member;
@@ -202,6 +233,7 @@ void VisionTeam::look(const QString &imagePath, const QString &question, Done do
         client->send(m_members.at(i).id, messages, QJsonArray{}, options);
     }
     m_deadline->start(kWaitMs);
+    return true;
 }
 
 void VisionTeam::finishIfComplete(int generation)
@@ -211,7 +243,6 @@ void VisionTeam::finishIfComplete(int generation)
     for (const Member &m : std::as_const(m_members))
         if (m.state == QLatin1String("working"))
             return;
-    m_deadline->stop();
 
     QStringList answers, problems;
     for (const Member &m : std::as_const(m_members)) {
@@ -220,17 +251,19 @@ void VisionTeam::finishIfComplete(int generation)
         else
             problems << QStringLiteral("%1: %2").arg(ModelCatalog::shortName(m.id), m.error);
     }
+    // This look is over before its caller hears of it: the caller may ask for
+    // the next picture from inside the callback.
     const Done done = std::move(m_done);
-    cancel();
-    if (answers.isEmpty()) {
+    m_done = nullptr;
+    endRequests();
+    m_running = false;
+    if (answers.isEmpty())
         done(false, tr("No vision model could look at the picture (%1).").arg(problems.join(QStringLiteral("; "))));
-        return;
-    }
-    if (answers.size() == 1) {
+    else if (answers.size() == 1)
         done(true, tr("One vision model looked at the picture.\n\n") + answers.first());
-        return;
-    }
-    done(true, tr("%1 vision models looked at the picture at the same time. Where they disagree, trust what most of "
-                  "them report and say what is uncertain.\n\n").arg(answers.size())
-                   + answers.join(QStringLiteral("\n\n")));
+    else
+        done(true, tr("%1 vision models looked at the picture at the same time. Where they disagree, trust what most of "
+                      "them report and say what is uncertain.\n\n").arg(answers.size())
+                       + answers.join(QStringLiteral("\n\n")));
+    startNext();
 }

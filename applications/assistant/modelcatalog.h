@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QQmlEngine>
 #include <QSet>
@@ -25,8 +26,11 @@ class QNetworkReply;
 //
 // Two things cannot be read from the list and are learnt from use instead: a
 // model that rejects a request with tools, or with an image, is remembered
-// (noTools / noImages) so it is not asked that way again. The list and what
-// was learnt are kept in ~/.cache/shadow/assistant-models.json.
+// (noTools / noImages) so it is not asked that way again. Such a conclusion
+// is drawn from the wording of an error and can be wrong, so it is kept for
+// one endpoint only, forgotten after a week and on "Read again", and never
+// leaves a kind of request without a lead. The list and what was learnt are
+// kept in ~/.cache/shadow/assistant-models.json.
 class ModelCatalog : public QObject
 {
     Q_OBJECT
@@ -70,6 +74,8 @@ public:
     bool available(const QString &id) const;
     bool supportsTools(const QString &id) const { return !m_noTools.contains(id); }
     bool supportsImages(const QString &id) const { return !m_noImages.contains(id); }
+    // The list again, and what was learnt forgotten (Settings: "Read again").
+    Q_INVOKABLE void readAgain();
     void learnNoTools(const QString &id);
     void learnNoImages(const QString &id);
     // A request said something about the key in use: it was accepted, or not.
@@ -109,5 +115,6 @@ private:
     QString m_keyState;
     QStringList m_ids;
     QSet<QString> m_idSet;
-    QSet<QString> m_noTools, m_noImages;
+    // model id -> when it was learnt (seconds since the epoch)
+    QHash<QString, qint64> m_noTools, m_noImages;
 };

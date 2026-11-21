@@ -32,10 +32,17 @@ public:
     bool usable() const;
 
     // 'ok' is false when the picture could not be read or no model answered;
-    // 'text' is then the reason.
+    // 'text' is then the reason. 'done' is called exactly once for every
+    // look(), also after cancel(). Looks asked for while one is running wait
+    // their turn (a reply can ask for several pictures at once).
     using Done = std::function<void(bool ok, const QString &text)>;
     void look(const QString &imagePath, const QString &question, Done done);
+    // Stop: the look in progress ends and the waiting ones are dropped; each
+    // gets its answer ("stopped") and no picture is sent after this.
     void cancel();
+    // Counts the Stops: work prepared before one (a screen capture still
+    // running) compares it and does not send its picture afterwards.
+    int epoch() const { return m_epoch; }
 
     // The picture as a "data:image/jpeg;base64,…" URL, small enough to send
     // ('maxBytes' of image data). "" (and 'error') when it cannot be read.
@@ -50,6 +57,16 @@ private:
         QString error;
         ChatClient *client = nullptr;
     };
+    struct Job
+    {
+        QString path;
+        QString question;
+        Done done;
+    };
+    // Start the job; false when it ended at once (its 'done' was called).
+    bool start(const Job &job);
+    void startNext();
+    void endRequests();
     void finishIfComplete(int generation);
 
     AssistantConfig *m_config;
@@ -57,6 +74,9 @@ private:
     QList<QNetworkAccessManager *> m_nets; // one connection pool per model, as in Council
     QTimer *m_deadline;
     QList<Member> m_members;
-    Done m_done;
+    QList<Job> m_queue;      // waiting for the one in progress
+    Done m_done;             // of the one in progress
+    bool m_running = false;
     int m_generation = 0;
+    int m_epoch = 0;
 };
