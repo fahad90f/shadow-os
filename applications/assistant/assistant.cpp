@@ -85,6 +85,13 @@ Assistant::Assistant(QObject *parent)
             maybeContinue(row);
     });
     connect(m_client, &ChatClient::failed, this, [this](const QString &code, const QString &message) {
+        // A failure reported from inside the stream (an SSE "error" event,
+        // e.g. overloaded_error) arrives while the reply is still open, so the
+        // client would stay busy until the server closes the connection — and
+        // nothing notifies busy/canSend after that. The request is dead:
+        // close it now, so the phase changes below carry busy=false.
+        if (m_client->busy())
+            m_client->cancel();
         // Auto-retry transient failures (server error, overload, timeout, rate
         // limit) — the "something went wrong, try again later" cases — but only
         // when nothing was streamed yet, so a retry can't duplicate partial
@@ -157,13 +164,24 @@ void Assistant::reloadConfig()
     setPhase(m_config->apiKeyConfigured() ? (busy() ? m_phase : QStringLiteral("idle")) : QStringLiteral("setup"));
 }
 
+void Assistant::settleLoadedConversation()
+{
+    const QString p = !m_config->apiKeyConfigured() ? QStringLiteral("setup")
+        : hasPending()                              ? QStringLiteral("awaiting")
+                                                    : QStringLiteral("idle");
+    if (p != m_phase)
+        setPhase(p);
+    else
+        Q_EMIT phaseChanged(); // hasPending/canSend follow the rows, not the phase string
+}
+
 void Assistant::newConversation()
 {
     m_activeId = m_store->createConversation();
     m_messages->clearAll();
     m_assistantRow = -1;
     Q_EMIT activeChanged();
-    setPhase(m_config->apiKeyConfigured() ? QStringLiteral("idle") : QStringLiteral("setup"));
+    settleLoadedConversation();
 }
 
 void Assistant::ensureConversation()
@@ -180,7 +198,9 @@ void Assistant::selectConversation(const QString &id)
     m_messages->loadFrom(m_store->loadMessages(id));
     m_assistantRow = -1;
     Q_EMIT activeChanged();
-    setPhase(m_config->apiKeyConfigured() ? QStringLiteral("idle") : QStringLiteral("setup"));
+    // A conversation left (or saved) while a tool call waited for a decision
+    // comes back with that question open: it can still be answered.
+    settleLoadedConversation();
 }
 
 void Assistant::renameConversation(const QString &id, const QString &title)
@@ -195,6 +215,8 @@ void Assistant::deleteConversation(const QString &id)
         m_activeId.clear();
         m_messages->clearAll();
         Q_EMIT activeChanged();
+        if (!busy())
+            settleLoadedConversation();
     }
 }
 
@@ -352,7 +374,7 @@ void Assistant::confirmTool(int row, const QString &callId, bool run)
         const QString msg = tr("The user denied permission to run this action.");
         m_messages->setToolStatus(row, callId, QStringLiteral("denied"), msg);
         m_messages->appendToolResult(callId, e.name, msg);
-        logCall(e.name, e.preview, QStringLiteral("denied"));
+        logCall(callId, e.name, e.preview, QStringLiteral("denied"));
         saveActive();
         maybeContinue(row);
     }
@@ -374,6 +396,56 @@ void Assistant::confirmAll(bool run)
         confirmTool(p.first, p.second, run);
 }
 
+QVariantMap Assistant::firstPendingCall() const
+{
+    for (int r = 0; r < m_messages->rowCount(); ++r) {
+        const QVariantList calls = m_messages->data(m_messages->index(r), MessageModel::ToolCallsRole).toList();
+        for (const QVariant &cv : calls) {
+            const QVariantMap cm = cv.toMap();
+            if (cm.value(QStringLiteral("status")).toString() == QLatin1String("pending"))
+                return QVariantMap{{QStringLiteral("id"), cm.value(QStringLiteral("id"))},
+                                   {QStringLiteral("name"), cm.value(QStringLiteral("name"))},
+                                   {QStringLiteral("summary"), cm.value(QStringLiteral("summary"))},
+                                   {QStringLiteral("preview"), cm.value(QStringLiteral("preview"))}};
+        }
+    }
+    return {};
+}
+
+bool Assistant::retry()
+{
+    if (!canSend())
+        return false;
+    QJsonArray rows = m_messages->toJson();
+    bool failed = false;
+    // The failed turn, from the end: its error row(s), then the reply that
+    // failed — empty, or cut off mid-stream (a reply with tool calls is a
+    // finished step of the turn and stays).
+    while (!rows.isEmpty() && rows.last().toObject().value(QStringLiteral("kind")).toString() == QLatin1String("error")) {
+        rows.removeLast();
+        failed = true;
+    }
+    if (!failed)
+        return false;
+    if (!rows.isEmpty()) {
+        const QJsonObject last = rows.last().toObject();
+        if (last.value(QStringLiteral("kind")).toString() == QLatin1String("assistant")
+            && last.value(QStringLiteral("toolCalls")).toArray().isEmpty())
+            rows.removeLast();
+    }
+    // Something to answer: the user's message, or tool results to go on from.
+    const QString kind = rows.isEmpty() ? QString() : rows.last().toObject().value(QStringLiteral("kind")).toString();
+    if (kind != QLatin1String("user") && kind != QLatin1String("tool"))
+        return false;
+    m_messages->loadFrom(rows);
+    m_assistantRow = -1;
+    saveActive();
+    m_toolRounds = 0;
+    m_retries = 0;
+    startCompletion();
+    return true;
+}
+
 void Assistant::executeCall(int row, const ToolCallEntry &call)
 {
     // Rebuild the invocation from the raw arguments stored on the model
@@ -389,7 +461,7 @@ void Assistant::executeCall(int row, const ToolCallEntry &call)
 
     ToolInvocation inv{call.id, call.name, QJsonDocument::fromJson(argsJson.toUtf8()).object()};
     m_messages->setToolStatus(row, call.id, QStringLiteral("running"));
-    logCall(call.name, call.preview, QStringLiteral("running"));
+    logCall(call.id, call.name, call.preview, QStringLiteral("running"));
     setPhase(QStringLiteral("thinking"));
     ++m_executing;
     Q_EMIT phaseChanged();
@@ -401,7 +473,7 @@ void Assistant::executeCall(int row, const ToolCallEntry &call)
         Q_EMIT phaseChanged();
         m_messages->setToolStatus(row, call.id, out.ok ? QStringLiteral("done") : QStringLiteral("error"), out.text);
         m_messages->appendToolResult(call.id, call.name, out.text);
-        logCall(call.name, call.preview, out.ok ? QStringLiteral("done") : QStringLiteral("error"));
+        logCall(call.id, call.name, call.preview, out.ok ? QStringLiteral("done") : QStringLiteral("error"));
         saveActive();
         maybeContinue(row);
     });
@@ -463,9 +535,20 @@ void Assistant::stop()
     Q_EMIT stopped();
 }
 
-void Assistant::logCall(const QString &name, const QString &preview, const QString &status)
+void Assistant::logCall(const QString &callId, const QString &name, const QString &preview, const QString &status)
 {
+    // The same call again (running → done/error): its one entry is updated
+    // and moves to the top (the log reads newest change first).
+    if (!callId.isEmpty()) {
+        for (qsizetype i = 0; i < m_log.size(); ++i) {
+            if (m_log.at(i).toMap().value(QStringLiteral("id")).toString() == callId) {
+                m_log.removeAt(i);
+                break;
+            }
+        }
+    }
     m_log.prepend(QVariantMap{
+        {QStringLiteral("id"), callId},
         {QStringLiteral("time"), QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"))},
         {QStringLiteral("name"), name},
         {QStringLiteral("preview"), preview},

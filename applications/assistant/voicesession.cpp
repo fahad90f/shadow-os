@@ -202,6 +202,12 @@ void VoiceSession::wire()
                                              {QStringLiteral("progress"), m_voice->installProgress()},
                                              {QStringLiteral("status"), m_voice->installStatus()}});
     });
+    connect(v, &VoiceController::spokenSentenceChanged, this, [this]() {
+        emitLine(QStringLiteral("spoken"), {{QStringLiteral("text"), m_voice->spokenSentence()}});
+    });
+    connect(v, &VoiceController::listenModeChanged, this, [this]() {
+        emitLine(QStringLiteral("listen_mode"), {{QStringLiteral("value"), m_voice->listenMode()}});
+    });
     connect(v, &VoiceController::levelsChanged, this, [this]() {
         // How often QML would be notified: the busiest second of the run.
         ++m_levelEmits;
@@ -261,8 +267,8 @@ void VoiceSession::onEngineEvent(const QJsonObject &ev)
     static const QStringList forwarded = {
         QStringLiteral("hello"), QStringLiteral("ready"), QStringLiteral("wake"), QStringLiteral("wake_rejected"),
         QStringLiteral("partial"), QStringLiteral("final"), QStringLiteral("timeout"), QStringLiteral("speak_start"),
-        QStringLiteral("first_audio"), QStringLiteral("speak_end"), QStringLiteral("mic"), QStringLiteral("eof"),
-        QStringLiteral("config_ok")};
+        QStringLiteral("first_audio"), QStringLiteral("sentence"), QStringLiteral("speak_end"), QStringLiteral("mic"),
+        QStringLiteral("eof"), QStringLiteral("config_ok")};
     if (e == QLatin1String("final"))
         ++m_finals;
     if (e == QLatin1String("eof"))

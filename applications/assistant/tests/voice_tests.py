@@ -27,8 +27,10 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FAKE = os.path.join(HERE, "fake_voiced.py")
@@ -195,6 +197,92 @@ class Mock:
         except subprocess.TimeoutExpired:
             self.proc.kill()
         self.log.close()
+
+
+class ScriptedMock:
+    """An Anthropic Messages API mock in this process, for replies mock_api.py
+    has no mode for: each request gets the next reply of a script, then
+    `default`. A reply is {"text": str, "delay": s/token} (streamed text),
+    {"tools": [{"name", "input"}]} (tool_use blocks), or {"text": ...,
+    "sse_error": message} (the stream breaks off with an SSE error event and
+    then ends normally, like an overloaded_error mid-answer)."""
+
+    def __init__(self, replies, default=None):
+        self.replies = list(replies)
+        self.default = default or {"text": "All done."}
+        self.requests = []
+        self.bodies = []   # each request's "messages" array, as sent
+        self.lock = threading.Lock()
+        mock = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *a):
+                pass
+
+            def ev(self, etype, obj):
+                data = ("event: " + etype + "\n" + "data: " + json.dumps({"type": etype, **obj}) + "\n\n").encode()
+                self.wfile.write(("%x\r\n" % len(data)).encode() + data + b"\r\n")
+                self.wfile.flush()
+
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length", 0))
+                try:
+                    req = json.loads(self.rfile.read(n) or b"{}")
+                except ValueError:
+                    req = {}
+                results = sum(1 for m in req.get("messages", []) if isinstance(m.get("content"), list)
+                              for b in m["content"] if isinstance(b, dict) and b.get("type") == "tool_result")
+                with mock.lock:
+                    reply = mock.replies.pop(0) if mock.replies else dict(mock.default)
+                    mock.requests.append({"messages": len(req.get("messages", [])), "tool_results": results})
+                    mock.bodies.append(req.get("messages", []))
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.end_headers()
+                try:
+                    self.ev("message_start", {"message": {"id": "msg_scripted", "type": "message", "role": "assistant",
+                                                          "model": req.get("model", "mock"), "content": []}})
+                    idx = 0
+                    text = reply.get("text", "")
+                    if text:
+                        self.ev("content_block_start", {"index": idx, "content_block": {"type": "text", "text": ""}})
+                        for tok in [t for t in text.replace("\n", " \n ").split(" ") if t]:
+                            self.ev("content_block_delta", {"index": idx, "delta": {"type": "text_delta",
+                                                                                    "text": tok + " "}})
+                            time.sleep(float(reply.get("delay", 0.02)))
+                        self.ev("content_block_stop", {"index": idx})
+                        idx += 1
+                    if reply.get("sse_error"):
+                        self.ev("error", {"error": {"type": "overloaded_error", "message": reply["sse_error"]}})
+                    for k, call in enumerate(reply.get("tools", [])):
+                        self.ev("content_block_start", {"index": idx, "content_block": {
+                            "type": "tool_use", "id": "toolu_scripted_%d_%d" % (len(mock.requests), k),
+                            "name": call["name"], "input": {}}})
+                        self.ev("content_block_delta", {"index": idx, "delta": {
+                            "type": "input_json_delta", "partial_json": json.dumps(call.get("input", {}))}})
+                        self.ev("content_block_stop", {"index": idx})
+                        idx += 1
+                    self.ev("message_delta", {"delta": {"stop_reason": "tool_use" if reply.get("tools") else "end_turn"}})
+                    self.ev("message_stop", {})
+                    self.wfile.write(b"0\r\n\r\n")
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    @property
+    def url(self):
+        return f"http://127.0.0.1:{self.server.server_address[1]}/v1"
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
 
 
 class Suite:
@@ -647,7 +735,7 @@ def yes_no_timeout_leaves_card(suite):
 
 @test
 def spoken_yes_while_card_waits(suite):
-    """A card waits after a missed answer; "Shadow, yes" then confirms it (confirmAll)."""
+    """A card waits after a missed answer; "Shadow, yes" then confirms it (the first waiting call)."""
     r = Run(suite, "yes_later")
     r.conf("[behaviour]\nautonomy=ask_every\n")
     s = r.session({"utterances": [{"at": 0.4, "text": "run a command that lists the files in tmp"},
@@ -655,6 +743,155 @@ def spoken_yes_while_card_waits(suite):
     check(s.rc == 0, f"rc {s.rc}")
     check([e["status"] for e in s.all("tool")][:2] == ["running", "done"], f"{s.all('tool')}")
     check(not s.all("unavailable"), f"{s.all('unavailable')}")
+
+
+@test
+def spoken_yes_answers_one_call(suite):
+    """Two calls wait at once: a spoken "yes" answers the card's question — the first call only.
+    The second one is asked aloud on its own (here: "no"), never run unseen."""
+    r = Run(suite, "yes_one")
+    r.conf("[behaviour]\nautonomy=ask_every\n")
+    marker = os.path.join(r.dir, "SECOND-CALL-RAN")
+    mock = ScriptedMock([{"tools": [{"name": "get_system_info", "input": {}},
+                                    {"name": "run_shell_command", "input": {"command": "touch " + marker}}]},
+                         {"text": "Here is what I found."}])
+    try:
+        s = r.session({"utterances": [{"at": 0.4, "text": "check my system", "heard": "Shadow, check my system"},
+                                      {"at": 4.0, "text": "yes", "heard": "Shadow, yes"}],
+                       "answers": {"yesno": [{"timeout": True}, {"text": "no"}]}},
+                      extra={"SHADOW_ASSISTANT_BASE_URL": mock.url})
+    finally:
+        mock.stop()
+    check(s.rc == 0, f"rc {s.rc}\n{s.tail()}")
+    tools = [(e["name"], e["status"]) for e in s.all("tool")]
+    check(("get_system_info", "done") in tools, f"the first call ran: {tools}")
+    check(("run_shell_command", "running") not in tools and ("run_shell_command", "denied") in tools,
+          f"the second call was asked and denied, not run: {tools}")
+    check(not os.path.exists(marker), "the second command never ran")
+    yes = s.first("final", text="yes")
+    after = s.events[s.index(yes):]
+    asks = [e for e in after if e["event"] == "speak" and e.get("text") == "I'd like to run a command. Shall I go ahead?"]
+    check(asks, "the second call is asked aloud: " + json.dumps([e for e in after if e["event"] == "speak"]))
+    check([e for e in after if e["event"] == "listen" and e.get("mode") == "yesno"], "and its answer listened for")
+
+
+@test
+def sse_error_frees_the_agent(suite):
+    """An API error inside the stream (an SSE "error" event after part of the answer): the request
+    is closed at once, so the phase change that reports the error already says busy=false."""
+    r = Run(suite, "sse_error")
+    mock = ScriptedMock([{"text": "Partial answer", "sse_error": "Overloaded"},
+                         {"text": "The second answer."}])
+    try:
+        s = r.session(actions="0.3:send:first question;2.0:send:second question",
+                      extra={"SHADOW_ASSISTANT_BASE_URL": mock.url})
+    finally:
+        mock.stop()
+    check(s.rc == 0, f"rc {s.rc}\n{s.tail()}")
+    err = s.first("error", source="agent")
+    check("Overloaded" in err["message"], err["message"])
+    later = [e for e in s.events[s.index(err):] if e["event"] == "phase"]
+    check(later and all(e["busy"] is False for e in later if e["value"] in ("error", "idle")),
+          f"not busy once the error is reported: {later}")
+    check(len(mock.requests) == 2, f"the next message was sent: {mock.requests}")
+
+
+class SavedConversations:
+    """Watches the conversation files a run saves (~/.local/share/<org>/<app>/*.json) while its
+    session runs (a session deletes the conversation it created when it ends) and keeps, per file,
+    the longest version that parsed."""
+
+    def __init__(self, r):
+        self.dir = os.path.join(r.home, ".local", "share")
+        self.seen = {}
+        self.done = threading.Event()
+        self.thread = threading.Thread(target=self.loop, daemon=True)
+        self.thread.start()
+
+    def loop(self):
+        while not self.done.is_set():
+            for root, _dirs, files in os.walk(self.dir):
+                for name in files:
+                    if not name.endswith(".json"):
+                        continue
+                    try:
+                        with open(os.path.join(root, name)) as f:
+                            conv = json.load(f)
+                    except (OSError, ValueError):
+                        continue   # gone, or caught mid-write
+                    if len(conv.get("messages", [])) >= len(self.seen.get(name, {}).get("messages", [])):
+                        self.seen[name] = conv
+            time.sleep(0.02)
+
+    def stop(self):
+        self.done.set()
+        self.thread.join()
+        return list(self.seen.values())
+
+
+@test
+def user_and_error_rows(suite):
+    """A typed message is a user row of exactly its text, sent as a plain user turn; the API error
+    it got is an error row of exactly the error's text that stays local (never sent back). Neither
+    carries any other field (tool ids, replayed thinking): the rows MessageModel::appendUser /
+    appendError build field by field (a positional list of every field once fell behind the
+    struct, -Wmissing-field-initializers)."""
+    r = Run(suite, "rows")
+    mock = ScriptedMock([{"text": "Partial answer", "sse_error": "Overloaded right now"},
+                         {"text": "The second answer."}])
+    watch = SavedConversations(r)
+    try:
+        s = r.session(actions="0.3:send:first question;2.0:send:second question",
+                      extra={"SHADOW_ASSISTANT_BASE_URL": mock.url})
+    finally:
+        mock.stop()
+        saved = watch.stop()
+    check(s.rc == 0, f"rc {s.rc}\n{s.tail()}")
+    err = s.first("error", source="agent")
+    check("Overloaded right now" in err["message"], err["message"])
+    check(len(saved) == 1, f"one conversation saved while the session ran: {saved}")
+    rows = saved[0].get("messages", [])
+    check([m for m in rows if m.get("kind") == "user"]
+          == [{"kind": "user", "content": "first question"}, {"kind": "user", "content": "second question"}],
+          f"user rows: {rows}")
+    check([m for m in rows if m.get("kind") == "error"] == [{"kind": "error", "content": err["message"]}],
+          f"error row: {rows}")
+    check([m.get("kind") for m in rows] == ["user", "assistant", "error", "user", "assistant"], f"rows: {rows}")
+    check(len(mock.bodies) == 2, f"two requests: {mock.bodies}")
+    first, second = mock.bodies
+    check(first == [{"role": "user", "content": "first question"}], f"first request: {first}")
+    check([m["content"] for m in second if m.get("role") == "user"] == ["first question", "second question"],
+          f"user turns of the second request: {second}")
+    check([m.get("role") for m in second] == ["user", "assistant", "user"], f"second request: {second}")
+    check("Overloaded" not in json.dumps(second), f"the error row stays local: {second}")
+    check(all(isinstance(m.get("content"), str) for m in second if m.get("role") == "user"),
+          f"user turns carry text only: {second}")
+
+
+@test
+def crash_mid_reply_one_voice(suite):
+    """The helper dies in the middle of a spoken reply: eSpeak takes over that reply and keeps it
+    to its end, even once the helper is back — two voices never read one reply at once."""
+    r = Run(suite, "crash_reply")
+    mock = ScriptedMock([{"text": "First sentence of a long answer. " + " ".join(
+        f"Sentence number {i} goes on for a little while." for i in range(2, 9)), "delay": 0.08}])
+    try:
+        s = r.session(actions="0.3:send:tell me a long story", timeout=40,
+                      extra={"SHADOW_ASSISTANT_BASE_URL": mock.url, "FAKE_VOICED_CRASH": "speak",
+                             "FAKE_VOICED_CRASH_TIMES": "1"})
+    finally:
+        mock.stop()
+    check(s.rc == 0, f"rc {s.rc}\n{s.tail()}")
+    restarts = s.all("engine_restart")
+    check(restarts, "the helper crashed and was restarted")
+    readies = s.all("ready")
+    check(len(readies) >= 2, f"the helper came back: {len(readies)} ready events")
+    back = s.index(readies[-1])
+    reply_ids = {e["id"] for e in s.events[:back] if e["event"] == "speak" and str(e.get("id", "")).startswith("r")}
+    check(reply_ids, "the reply had started to speak before the crash")
+    later = [e for e in s.events[back:] if e["event"] == "speak" and e.get("id") in reply_ids]
+    check(not later, f"after the restart nothing of that reply goes to the helper: {later}")
+    check(r.espeak_calls(), "eSpeak read the rest of the reply")
 
 
 @test
@@ -852,6 +1089,134 @@ def install_failure(suite):
     check(last["installing"] is False and last["status"] == "Download failed: no network", f"{last}")
     s.first("unavailable", reason="Download failed: no network")
     check(s.done["engine"] == "basic", s.done["engine"])
+
+
+# ----------------------------------------------------------------------------- spokenSentence / listenMode
+# Spoken through speak(): numbers, a path, a version and CamelCase come back from
+# the helper spelled out ("thirty-eight point two gigabytes"); "42." has no word in
+# common with its spoken form at all.
+SPOKEN_TEXT = ("Your home folder is using 38.2 GB. Most of it sits in ~/Videos, about 21 GB. "
+               "Version 3.13 of Python is installed, and PipeWire runs fine. 42. All done!")
+SPOKEN_SENTENCES = ["Your home folder is using 38.2 GB.", "Most of it sits in ~/Videos, about 21 GB.",
+                    "Version 3.13 of Python is installed, and PipeWire runs fine.", "42.", "All done!"]
+
+
+def shown_during(s):
+    """For each helper "sentence" event: (its text, the spokenSentence shown while it plays)."""
+    out, current, pending = [], "", None
+    for e in s.events:
+        if e["event"] == "sentence":
+            if pending is not None:
+                out.append((pending, current))
+            pending = e["text"]
+        elif e["event"] == "spoken":
+            current = e["text"]
+        elif e["event"] == "speak_end" and pending is not None:
+            out.append((pending, current))
+            pending = None
+    if pending is not None:
+        out.append((pending, current))
+    return out
+
+
+@test
+def spoken_sentence(suite):
+    """spokenSentence: the sentence being spoken as the app sent it — digits, not the helper's
+    words — in order; a helper sentence that cannot be matched shows nothing (never a wrong
+    sentence); cleared when the speech ends."""
+    r = Run(suite, "spoken")
+    s = r.session(actions="0.3:speak:" + SPOKEN_TEXT, extra={"FAKE_VOICED_CPS": "80"})
+    check(s.rc == 0, f"rc {s.rc}")
+    sent = s.first("speak")
+    check(sent["text"] == " ".join(SPOKEN_SENTENCES), f"sent as before (one chunk): {sent}")
+    during = shown_during(s)
+    check(any("thirty" in h for h, _ in during), f"the helper says numbers as words: {during}")
+    for heard, shown in during:
+        check(shown == "" or shown in SPOKEN_SENTENCES, f"{heard!r} showed {shown!r}")
+    shown = [x for _, x in during if x]
+    order = [SPOKEN_SENTENCES.index(x) for x in shown]
+    check(order == sorted(order), f"in order: {shown}")
+    for want in ("Your home folder is using 38.2 GB.", "Version 3.13 of Python is installed, and PipeWire runs fine.",
+                 "All done!"):
+        check(want in shown, f"{want!r} not shown: {during}")
+    forty = [x for h, x in during if "forty" in h.lower()]
+    check(forty == [""], f"'42.' has no word in common with 'forty-two': nothing, not a guess: {during}")
+    spoken = s.all("spoken")
+    check(spoken[-1]["text"] == "" and s.index(spoken[-1]) > s.index(s.first("speak_end", id=sent["id"])),
+          "cleared at speak_end")
+
+
+@test
+def spoken_sentence_reply(suite):
+    """A streamed voice reply: each sentence shown was sent to be spoken, in the order sent;
+    Stop clears it at once and nothing is shown afterwards."""
+    r = Run(suite, "spoken_reply")
+    s = r.session(actions="0.3:send:Hello there;2.2:stop-agent", extra={"FAKE_VOICED_CPS": "25"})
+    check(s.rc == 0, f"rc {s.rc}")
+    sent = [e["text"] for e in s.all("speak") if e["text"]]
+    shown = [x for _, x in shown_during(s) if x]
+    check(shown, f"a sentence was shown while it was spoken: {s.tail()}")
+    check(all(x in sent for x in shown), f"only sent sentences: {shown} vs {sent}")
+    check([sent.index(x) for x in shown] == sorted(sent.index(x) for x in shown), f"in order: {shown}")
+    stop = s.first("action", name="stop-agent")
+    after = [e["text"] for e in s.events[s.index(stop):] if e["event"] == "spoken"]
+    check(after and all(x == "" for x in after), f"cleared by Stop: {after}")
+
+
+@test
+def spoken_sentence_basic_voice(suite):
+    """With the basic voice (eSpeak NG) a streamed sentence is shown while eSpeak says it."""
+    r = Run(suite, "spoken_basic")
+    s = r.session(actions="0.3:send:Hello there", helper=NO_HELPER)
+    check(s.rc == 0, f"rc {s.rc}")
+    said = [c[-1] for c in r.espeak_calls()]
+    shown = [e["text"] for e in s.all("spoken") if e["text"]]
+    check(shown and all(x in said for x in shown), f"{shown} vs {said}")
+    check(s.all("spoken")[-1]["text"] == "", "cleared after the last sentence")
+
+
+@test
+def listen_mode(suite):
+    """listenMode: "wake" while the helper takes a command after "Shadow", "followup" after a
+    spoken reply, "command" for push-to-talk, "yesno" for a spoken confirmation, "" otherwise."""
+    r = Run(suite, "listen_mode")
+    s = r.session({"utterances": [{"at": 0.4, "text": "hello there", "heard": "Shadow, hello there"}]})
+    check(s.rc == 0, f"rc {s.rc}")
+    modes = [e["value"] for e in s.all("listen_mode")]
+    check(modes[:2] == ["wake", ""], f"wake utterance: {modes}")
+    fu = s.first("listen_mode", value="followup")
+    check(s.index(fu) > s.index(s.all("speak_end")[-1]), "follow-up after the reply was spoken")
+    check(modes[-1] == "", f"ends empty: {modes}")
+
+    r = Run(suite, "listen_mode_ptt")
+    r.conf("[behaviour]\nautonomy=ask_every\n")
+    s = r.session({"answers": {"command": [{"text": "run a command that lists the files in tmp", "hold": True}],
+                               "yesno": [{"text": "yes"}]}}, actions="0.3:start;1.0:finish")
+    check(s.rc == 0, f"rc {s.rc}")
+    modes = [e["value"] for e in s.all("listen_mode")]
+    check(modes[:2] == ["command", ""], f"push-to-talk: {modes}")
+    yn = s.first("listen_mode", value="yesno")
+    check(s.index(yn) > s.index(s.first("confirm")), "yes/no after the question")
+    check("wake" not in modes and modes[-1] == "", f"{modes}")
+
+
+@test
+def bare_wake_listens(suite):
+    """A bare "Shadow": wakeDetected, then the helper listens for the command itself (listenMode
+    "wake" lasts until its final) — what the UI greets with "Yes?". "Shadow, <command>" in one
+    breath: the command follows the wake at once, the listen mode is over with it."""
+    r = Run(suite, "bare_wake")
+    s = r.session({"utterances": [{"at": 0.4, "bare": True, "then": "what time is it", "after": 1.0}]})
+    check(s.rc == 0, f"rc {s.rc}\n{s.tail()}")
+    wake = s.first("wake", via="stt")
+    lm = [e for e in s.events[s.index(wake):] if e["event"] == "listen_mode"]
+    check(lm and lm[0]["value"] == "wake", f"listening after a bare wake: {lm}")
+    fin = s.first("final", id="wake")
+    held = fin["t"] - lm[0]["t"]
+    check(held > 0.5, f"the wake listen lasts until the command is said ({held:.2f} s)")
+    s.first("sent", text="what time is it")
+    after = [e["value"] for e in s.events[s.index(fin):] if e["event"] == "listen_mode"]
+    check(after[:1] == [""], f"over with the final: {after}")
 
 
 @test

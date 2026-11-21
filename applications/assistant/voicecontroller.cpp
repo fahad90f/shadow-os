@@ -122,6 +122,68 @@ QJsonArray toJsonArray(const QStringList &l)
     return QJsonArray::fromStringList(l);
 }
 
+// The sentences a Markdown text is spoken as (SpeechText::forSpeech() joins
+// exactly these with spaces).
+QStringList speechSentences(const QString &markdown)
+{
+    SentenceStream stream;
+    QStringList all = stream.push(markdown);
+    all += stream.flush();
+    return all;
+}
+
+// How many sentences past the last match a helper sentence is looked for.
+constexpr int kSentenceLookahead = 8;
+
+// Words for comparing what the helper says with what was sent: runs of
+// letters and digits, lower case, accents removed (the helper drops them
+// too). Numbers, units, paths and acronyms come back spelled out from the
+// helper and simply do not match; plain words do.
+QStringList matchWords(const QString &text)
+{
+    const QString decomposed = text.normalized(QString::NormalizationForm_KD);
+    QStringList out;
+    QString word;
+    for (const QChar c : decomposed) {
+        if (c.category() == QChar::Mark_NonSpacing)
+            continue;
+        if (c.isLetterOrNumber()) {
+            word += c.toLower();
+        } else if (!word.isEmpty()) {
+            out << word;
+            word.clear();
+        }
+    }
+    if (!word.isEmpty())
+        out << word;
+    return out;
+}
+
+// Length of the longest common subsequence of 'a' and 'b'; '*end' gets the
+// length of the shortest prefix of 'b' that still contains all of it (where
+// the match ends in 'b').
+int commonWords(const QStringList &a, const QStringList &b, int *end)
+{
+    const qsizetype n = a.size(), m = b.size();
+    QList<int> prev(m + 1, 0), row(m + 1, 0);
+    for (qsizetype i = 1; i <= n; ++i) {
+        for (qsizetype j = 1; j <= m; ++j)
+            row[j] = a.at(i - 1) == b.at(j - 1) ? prev[j - 1] + 1 : qMax(prev[j], row[j - 1]);
+        std::swap(prev, row);
+    }
+    const int best = prev[m];
+    int e = int(m);
+    for (qsizetype j = 0; j <= m; ++j) {
+        if (prev[j] == best) {
+            e = int(j);
+            break;
+        }
+    }
+    if (end)
+        *end = e;
+    return best;
+}
+
 } // namespace
 
 // --- construction ---------------------------------------------------------------
@@ -284,6 +346,7 @@ void VoiceController::onEngineStatus()
     if (!m_engine->isReady()) {
         // Whatever the helper was doing is gone with it.
         m_helperState.clear();
+        m_wakeListen = false;
         m_micStatus.clear();
         m_micMessage.clear();
         if (m_listenActive) {
@@ -299,6 +362,9 @@ void VoiceController::onEngineStatus()
         // waited for it as interrupted (a yes/no prompt leaves the card).
         const QSet<QString> lost = m_helperSpeech;
         m_helperSpeech.clear();
+        forgetSpeechTracks();
+        if (!m_espeak)
+            setSpokenSentence({});
         for (const QString &id : lost)
             onSpeechEnded(id, true);
         m_captureTool = m_engine->probeResult().value(QStringLiteral("capture")).toString();
@@ -317,23 +383,44 @@ void VoiceController::onEngineEvent(const QJsonObject &ev)
     if (e == QLatin1String("level")) {
         noteLevel(ev.value(QStringLiteral("source")).toString(), ev.value(QStringLiteral("rms")).toDouble());
     } else if (e == QLatin1String("state")) {
+        const QString before = m_helperState;
         m_helperState = ev.value(QStringLiteral("value")).toString();
+        if ((before == QLatin1String("listening") || before == QLatin1String("transcribing"))
+            && m_helperState != QLatin1String("listening") && m_helperState != QLatin1String("transcribing"))
+            m_wakeListen = false; // whatever the helper listened for is over
         updateState();
     } else if (e == QLatin1String("partial")) {
         setPartial(ev.value(QStringLiteral("text")).toString());
     } else if (e == QLatin1String("final")) {
+        if (ev.value(QStringLiteral("id")).toString() == QLatin1String("wake"))
+            m_wakeListen = false;
         handleFinal(ev);
+        updateListenMode();
     } else if (e == QLatin1String("timeout")) {
+        if (ev.value(QStringLiteral("id")).toString() == QLatin1String("wake"))
+            m_wakeListen = false;
         handleTimeout(ev);
+        updateListenMode();
     } else if (e == QLatin1String("wake")) {
+        // The helper takes the command itself now (its own listen, id "wake").
+        if (!m_listenActive) {
+            m_wakeListen = true;
+            updateListenMode();
+        }
         // "kws" is only an early acoustic hit; the transcript confirms it.
         if (ev.value(QStringLiteral("via")).toString() == QLatin1String("stt"))
             Q_EMIT wakeDetected();
     } else if (e == QLatin1String("wake_rejected")) {
+        m_wakeListen = false;
+        updateListenMode();
         setPartial({});
+    } else if (e == QLatin1String("sentence")) {
+        onHelperSentence(ev.value(QStringLiteral("id")).toString(), ev.value(QStringLiteral("text")).toString());
     } else if (e == QLatin1String("speak_end")) {
         const QString id = ev.value(QStringLiteral("id")).toString();
         m_helperSpeech.remove(id);
+        m_tracks.remove(id);
+        setSpokenSentence({});
         onSpeechEnded(id, ev.value(QStringLiteral("interrupted")).toBool());
     } else if (e == QLatin1String("mic")) {
         handleMic(ev);
@@ -497,6 +584,7 @@ void VoiceController::updateState()
         s = QStringLiteral("idle"); // eSpeak can still speak
     else
         s = QStringLiteral("unavailable");
+    updateListenMode();
     if (s == m_state)
         return;
     m_state = s;
@@ -663,7 +751,9 @@ void VoiceController::startListen(const QString &mode, double timeoutSecs)
     m_listenActive = true;
     m_listenId = id;
     m_listenMode = mode;
+    m_wakeListen = false;
     m_listenWatchdog->start(int(timeoutSecs * 1000) + kListenGraceMs);
+    updateListenMode();
 }
 
 void VoiceController::clearListen()
@@ -672,6 +762,22 @@ void VoiceController::clearListen()
     m_listenId.clear();
     m_listenMode.clear();
     m_listenWatchdog->stop();
+    updateListenMode();
+}
+
+void VoiceController::updateListenMode()
+{
+    const bool helperListens = m_helperState == QLatin1String("listening")
+        || m_helperState == QLatin1String("transcribing");
+    QString mode;
+    if (m_listenActive)
+        mode = m_listenMode;
+    else if (m_wakeListen && helperListens)
+        mode = QStringLiteral("wake"); // the helper listens on its own: after "Shadow"
+    if (mode == m_listenModeShown)
+        return;
+    m_listenModeShown = mode;
+    Q_EMIT listenModeChanged();
 }
 
 void VoiceController::startListening()
@@ -793,12 +899,18 @@ void VoiceController::routeTranscript(const QString &text)
         return;
     }
     if (m_agent->hasPending()) {
-        // "yes" / "no" while a card waits: answer it.
+        // "yes" / "no" while a card waits: it answers the card's question —
+        // the first waiting call only. Any other call is asked on its own
+        // (aloud, now that this is a voice turn), never run unseen.
         const Answer a = parseYesNo(text);
-        if (a != Answer::Unclear) {
+        const QString first = m_agent->firstPendingCall().value(QStringLiteral("id")).toString();
+        if (a != Answer::Unclear && !first.isEmpty()) {
             beginVoiceTurn();
             m_turnByListen = false;
-            m_agent->confirmAll(a == Answer::Yes);
+            if (m_yesNoTag == first)
+                m_yesNoTag.clear(); // answered: no yes/no listen for it after the question
+            m_agent->confirmTool(-1, first, a == Answer::Yes);
+            askNextPending();
             return;
         }
     }
@@ -829,8 +941,23 @@ void VoiceController::handleYesNoAnswer(const QString &text)
     }
     const bool yes = a == Answer::Yes;
     Q_EMIT yesNoResult(tag, yes);
-    if (m_agent)
+    if (m_agent) {
         m_agent->confirmTool(-1, tag, yes);
+        askNextPending();
+    }
+}
+
+void VoiceController::askNextPending()
+{
+    // One call answered by voice, another one still waits (several calls in
+    // one turn): during a voice turn it is asked aloud on its own.
+    if (!m_agent || !m_voiceTurn || !m_yesNoTag.isEmpty())
+        return;
+    const QVariantMap next = m_agent->firstPendingCall();
+    if (next.isEmpty())
+        return;
+    onConfirmationNeeded(next.value(QStringLiteral("summary")).toString(),
+                         next.value(QStringLiteral("preview")).toString(), next.value(QStringLiteral("id")).toString());
 }
 
 // --- speaking -----------------------------------------------------------------------
@@ -851,21 +978,35 @@ void VoiceController::onSpeechEnded(const QString &id, bool interrupted)
     updateState();
 }
 
-void VoiceController::queueSpeech(const QString &id, const QString &text, bool more)
+void VoiceController::queueSpeech(const QString &id, const QString &text, bool more, const QStringList &sentences)
 {
+    QStringList parts = sentences;
+    if (parts.isEmpty() && !text.trimmed().isEmpty())
+        parts << text;
     const QString tts = resolvedTtsEngine();
-    if (tts == QLatin1String("kokoro")
+    // A reply eSpeak already reads (the helper vanished in the middle of it)
+    // stays with eSpeak to its end, even once the helper is back: two voices
+    // must never read different parts of one reply at the same time.
+    const bool espeakOwns = !m_espeakBin.isEmpty() && m_espeakOpen.contains(id);
+    if (!espeakOwns && tts == QLatin1String("kokoro")
         && m_engine->send({{QStringLiteral("cmd"), QStringLiteral("speak")},
                            {QStringLiteral("id"), id},
                            {QStringLiteral("text"), text},
                            {QStringLiteral("more"), more}})) {
         m_helperSpeech.insert(id);
+        if (!parts.isEmpty()) {
+            SpeechTrack &track = m_tracks[id];
+            for (const QString &p : std::as_const(parts)) {
+                track.texts << p;
+                track.words << matchWords(p);
+            }
+        }
         return;
     }
-    if (!m_espeakBin.isEmpty() && !tts.isEmpty()) {
+    if (!m_espeakBin.isEmpty() && (!tts.isEmpty() || espeakOwns)) {
         // eSpeak NG ("basic voice"), also when the helper vanished just now.
         m_espeakOpen.insert(id);
-        m_espeakQueue.append({id, text, more});
+        m_espeakQueue.append({id, text, more, parts.size() == 1 ? parts.first() : QString()});
         pumpEspeak();
         updateState();
         return;
@@ -907,6 +1048,8 @@ void VoiceController::pumpEspeak()
                 onSpeechEnded(done.id, false);
             }
             pumpEspeak();
+            if (!m_espeak)
+                setSpokenSentence({}); // nothing follows (yet)
             updateState();
         });
         connect(m_espeak, &QProcess::errorOccurred, this, [this](QProcess::ProcessError err) {
@@ -920,6 +1063,7 @@ void VoiceController::pumpEspeak()
             m_espeakCurrent = {};
             m_espeakQueue.clear();
             m_espeakOpen.clear();
+            setSpokenSentence({});
             detectTools();
             Q_EMIT unavailable(tr("eSpeak NG could not be started: %1").arg(why));
             onSpeechEnded(failed.id, true);
@@ -928,6 +1072,9 @@ void VoiceController::pumpEspeak()
         });
         m_espeak->start(m_espeakBin, {QStringLiteral("-v"), QStringLiteral("en-us+f3"), QStringLiteral("-s"),
                                       QString::number(wpm), QStringLiteral("--"), item.text});
+        // eSpeak says exactly what it was given: one sentence is known
+        // exactly; several in one item cannot be followed.
+        setSpokenSentence(item.sentence);
         if (!m_testLevel && !m_levelTimer->isActive())
             m_levelTimer->start();
         return;
@@ -939,6 +1086,8 @@ void VoiceController::stopSpeech(bool suppressReply)
     if (!m_helperSpeech.isEmpty() || m_helperState == QLatin1String("speaking"))
         m_engine->send({{QStringLiteral("cmd"), QStringLiteral("stop")}});
     m_helperSpeech.clear();
+    forgetSpeechTracks();
+    setSpokenSentence({});
     m_espeakQueue.clear();
     m_espeakOpen.clear();
     if (m_espeak) {
@@ -962,7 +1111,8 @@ void VoiceController::speak(const QString &text)
 {
     if (!m_config || !m_config->speakReplies())
         return;
-    const QString t = SpeechText::forSpeech(text);
+    const QStringList sentences = speechSentences(text);
+    const QString t = sentences.join(u' '); // = SpeechText::forSpeech(text)
     if (t.isEmpty())
         return;
     if (!ttsAvailable()) {
@@ -970,7 +1120,7 @@ void VoiceController::speak(const QString &text)
         return;
     }
     stopSpeech(true);
-    queueSpeech(newId(QStringLiteral("s")), t, false);
+    queueSpeech(newId(QStringLiteral("s")), t, false, sentences);
     updateState();
 }
 
@@ -1030,7 +1180,8 @@ void VoiceController::endVoiceTurn()
 void VoiceController::confirmBySpeech(const QString &tag, const QString &prompt)
 {
     m_yesNoTag = tag;
-    const QString text = SpeechText::forSpeech(prompt);
+    const QStringList promptSentences = speechSentences(prompt);
+    const QString text = promptSentences.join(u' '); // = SpeechText::forSpeech(prompt)
     if (!m_config || !m_config->speakReplies() || !ttsAvailable() || text.isEmpty()) {
         // Without a spoken question there is no spoken answer: the card decides.
         m_yesNoTag.clear();
@@ -1062,7 +1213,7 @@ void VoiceController::confirmBySpeech(const QString &tag, const QString &prompt)
             m_yesNoTag.clear();
         updateState();
     });
-    queueSpeech(id, text, false);
+    queueSpeech(id, text, false, promptSentences);
     updateState();
 }
 
@@ -1224,6 +1375,73 @@ void VoiceController::setPartial(const QString &text)
         return;
     m_partial = text;
     notifyLevels();
+}
+
+// --- the sentence being spoken ------------------------------------------------------------
+
+void VoiceController::setSpokenSentence(const QString &sentence)
+{
+    if (sentence == m_spokenSentence)
+        return;
+    m_spokenSentence = sentence;
+    Q_EMIT spokenSentenceChanged();
+}
+
+void VoiceController::forgetSpeechTracks()
+{
+    m_tracks.clear();
+}
+
+// The helper says a sentence (event "sentence", just before its audio plays).
+// Its text is the helper's normalised form — numbers, units, paths, URLs and
+// acronyms spelled out ("nine point four gigabytes"), long sentences cut at
+// commas — so it is matched word by word against what was sent for this id,
+// in order: the sent sentence that shares the most words with it, clearly
+// more than any other, at least half of the helper's words (a third when no
+// other sentence shares any). A further piece of the sentence already shown
+// keeps it. Anything less certain shows nothing rather than a wrong sentence.
+void VoiceController::onHelperSentence(const QString &id, const QString &text)
+{
+    const auto it = m_tracks.find(id);
+    if (it == m_tracks.end()) {
+        setSpokenSentence({}); // e.g. a voice preview: not part of any reply
+        return;
+    }
+    SpeechTrack &t = it.value();
+    const QStringList heard = matchWords(text);
+    if (heard.isEmpty()) {
+        setSpokenSentence({});
+        return;
+    }
+    int best = -1, bestScore = 0, second = 0, bestEnd = 0;
+    const int last = qMin(int(t.texts.size()) - 1, t.cur + kSentenceLookahead);
+    for (int c = t.cur; c <= last; ++c) {
+        const int start = c == t.cur ? t.off : 0;
+        int end = 0;
+        const int score = commonWords(heard, t.words.at(c).mid(start), &end);
+        if (score > bestScore) {
+            second = bestScore;
+            bestScore = score;
+            best = c;
+            bestEnd = start + end;
+        } else if (score > second) {
+            second = score; // a tie with the best makes it ambiguous
+        }
+    }
+    const int n = int(heard.size());
+    const bool confident = best >= 0 && bestScore > second && bestScore >= qMin(2, n)
+        && (2 * bestScore >= n || (second == 0 && 3 * bestScore >= n));
+    // The helper cut the sentence on screen into pieces: this one shares
+    // words only with what is left of it.
+    const bool continues = !confident && best == t.cur && t.off > 0 && bestScore >= 1 && second == 0
+        && m_spokenSentence == t.texts.at(t.cur);
+    if (confident || continues) {
+        t.cur = best;
+        t.off = bestEnd;
+        setSpokenSentence(t.texts.at(best));
+    } else {
+        setSpokenSentence({});
+    }
 }
 
 void VoiceController::noteLevel(const QString &source, double rms)
@@ -1499,10 +1717,12 @@ QJsonObject VoiceController::diagnostics() const
              {QStringLiteral("xdotool"), m_xdotool},
          }},
         {QStringLiteral("voiceTurn"), m_voiceTurn},
+        {QStringLiteral("spokenSentence"), m_spokenSentence},
         {QStringLiteral("listen"), QJsonObject{
              {QStringLiteral("active"), m_listenActive},
              {QStringLiteral("id"), m_listenId},
              {QStringLiteral("mode"), m_listenMode},
+             {QStringLiteral("shown"), m_listenModeShown},
          }},
         {QStringLiteral("install"), QJsonObject{
              {QStringLiteral("installing"), m_installing},

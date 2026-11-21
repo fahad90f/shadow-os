@@ -19,7 +19,10 @@ every listen times out. Scenario keys (all optional):
 
     "utterances": [  # spoken to the wake word, "at" seconds after "ready"
         {"at": 0.5, "text": "what can you do", "heard": "Shadow, what can you do"},
-        {"at": 4.0, "heard": "I saw my shadow", "reject": true}    # kws fired, transcript did not
+        {"at": 4.0, "heard": "I saw my shadow", "reject": true},   # kws fired, transcript did not
+        {"at": 6.0, "bare": true, "then": "what time is it", "after": 1.0}
+                     # a bare "Shadow": the helper listens itself (listen id "wake"); "then" is
+                     # said "after" seconds later (none: the listen times out, 8 s x scale)
     ],
     "answers": {     # what is heard by each listen{mode}, consumed in order
         "command":  [{"text": "list my files", "hold": true}],     # hold: until "finish"
@@ -49,6 +52,13 @@ Behaviour follows the spec: "state" is "speaking" from speak_start to speak_end
 runs; speak{more:false} with empty text just closes the id; stop ends the current
 id with interrupted:true; mute cancels a listen; level events ~30 Hz while
 listening (mic) or playing (tts). It never touches audio devices.
+
+Like the real helper, each chunk is said sentence by sentence in its NORMALISED
+form (numbers, units, paths, URLs and acronyms spelled out, long sentences cut at
+commas; the first chunk of an id short) and sentence{id,text} comes just before
+that sentence "plays". The normaliser is the helper's own textnorm.py when it can
+be found (../voice/shadow_voice/ next to this file, or $FAKE_VOICED_TEXTNORM),
+else a small built-in stand-in (numbers spelled out, split at . ! ?).
 """
 import argparse
 import heapq
@@ -98,6 +108,66 @@ def crash(where, run):
                      f"RuntimeError: fake crash at {where} (run {run}, FAKE_VOICED_CRASH={where})\n")
     sys.stderr.flush()
     os._exit(1)
+
+
+# ----------------------------------------------------------------------------- speech text
+_TEXTNORM = []   # [module or None], loaded on first use
+
+
+def _textnorm():
+    if not _TEXTNORM:
+        mod = None
+        here = os.path.dirname(os.path.abspath(__file__))
+        for path in (env("TEXTNORM"), os.path.join(here, "..", "voice", "shadow_voice", "textnorm.py")):
+            if not path or not os.path.isfile(path):
+                continue
+            try:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("fake_voiced_textnorm", path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                break
+            except Exception as e:  # a broken file: use the stand-in
+                sys.stderr.write(f"fake_voiced: cannot use {path}: {e}\n")
+                mod = None
+        _TEXTNORM.append(mod)
+    return _TEXTNORM[0]
+
+
+_ONES = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen "
+         "sixteen seventeen eighteen nineteen").split()
+_TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
+
+
+def _number_words(n):
+    if n < 20:
+        return _ONES[n]
+    if n < 100:
+        return _TENS[n // 10] + ("-" + _ONES[n % 10] if n % 10 else "")
+    for size, name in ((10 ** 9, "billion"), (10 ** 6, "million"), (1000, "thousand"), (100, "hundred")):
+        if n >= size:
+            rest = n % size
+            return _number_words(n // size) + " " + name + (" " + _number_words(rest) if rest else "")
+    return str(n)
+
+
+def _stand_in_sentences(text):
+    t = re.sub(r"[*_`#>\[\]|~]", " ", text)
+    t = re.sub(r"(\d+)\.(\d+)", lambda m: _number_words(int(m.group(1))) + " point "
+               + " ".join(_ONES[int(d)] for d in m.group(2)), t)
+    t = re.sub(r"\d+", lambda m: _number_words(int(m.group(0))) if len(m.group(0)) < 10 else m.group(0), t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return [s for s in re.split(r"(?<=[.!?…])\s+", t) if re.search(r"[A-Za-z]", s)]
+
+
+def speech_sentences(text, first):
+    """What the real helper says for one speak chunk, sentence by sentence."""
+    if not text.strip():
+        return []
+    tn = _textnorm()
+    if tn is not None:
+        return tn.split_sentences(tn.normalize(text), first_short=first)
+    return _stand_in_sentences(text)
 
 
 # ----------------------------------------------------------------------------- probe / selftest
@@ -304,6 +374,19 @@ class Helper:
             emit("vad", speech=False)
             emit("wake_rejected", heard=heard)
             return
+        if u.get("bare"):
+            # "Shadow." alone: confirmed, then the helper listens for the command itself
+            emit("vad", speech=False)
+            emit("wake", via="stt")
+            then = str(u.get("then", ""))
+            self.listen = {"id": "wake", "mode": "command", "spontaneous": True, "speech": False,
+                           "answer": {"text": then}}
+            self.settle()
+            if then.strip():
+                self.later(float(u.get("after", 1.0)), self.speech_starts)
+            else:
+                self.listen["timer"] = self.later(8.0 * self.scale, self.listen_timeout)
+            return
         text = u.get("text", "")
         words = text.split()
         if len(words) > 2:
@@ -476,6 +559,8 @@ class Helper:
         self.speech.clear()
         if self.playing:
             self.playing[3].cancel()
+            for t in self.playing[4]:
+                t.cancel()
             self.playing = None
         for sid in self.open_ids:
             emit("speak_end", id=sid, interrupted=True)
@@ -487,25 +572,30 @@ class Helper:
             self.settle()
             return
         sid, text, more = self.speech.pop(0)
-        if sid not in self.open_ids:
+        first = sid not in self.open_ids
+        if first:
             self.open_ids.append(sid)
             self.durations[sid] = 0.0
             emit("speak_start", id=sid)
             emit("first_audio", id=sid, latency_ms=80)
         if not more:
             self.closed.add(sid)
-        if text.strip():
-            for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
-                if sentence:
-                    emit("sentence", id=sid, text=sentence)
         seconds = len(text) / self.cps if text.strip() else 0.0
+        # Sentence by sentence, each "playing" for a share of the chunk's time
+        # by its length; its sentence event comes just before it plays.
+        sentences = speech_sentences(text, first)
+        total = sum(len(s) for s in sentences) or 1
+        sentence_timers, at = [], 0.0
+        for s in sentences:
+            sentence_timers.append(self.later(at, lambda s=s: emit("sentence", id=sid, text=s)))
+            at += seconds * len(s) / total
         self.durations[sid] = self.durations.get(sid, 0.0) + seconds
         timer = self.later(seconds, self.chunk_done)
-        self.playing = [sid, text, more, timer]
+        self.playing = [sid, text, more, timer, sentence_timers]
         self.settle()
 
     def chunk_done(self):
-        sid, _text, more, _timer = self.playing
+        sid, _text, more, _timer, _sentences = self.playing
         self.playing = None
         still_queued = any(c[0] == sid for c in self.speech)
         if sid in self.closed and not still_queued:

@@ -3,7 +3,10 @@
 # No API key is ever stored here; it is read at run time from
 # ~/.config/shadow/assistant.conf or the environment.
 file(GLOB ASSISTANT_QML CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
-     pages/*.qml components/*.qml)
+     pages/*.qml components/*.qml components/*.js)
+# The design tokens: one shared instance (import org.shadow.assistant; Pe.ink).
+# At the module root, where the generated qmldir declares it a singleton.
+set_source_files_properties(Pe.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 shadow_add_app(shadow-assistant
     URI org.shadow.assistant
@@ -19,7 +22,7 @@ shadow_add_app(shadow-assistant
         voicecontroller.cpp voicecontroller.h
         voiceengine.cpp voiceengine.h
         voicesession.cpp voicesession.h
-    QML Main.qml ${ASSISTANT_QML}
+    QML Main.qml Pe.qml ${ASSISTANT_QML}
     DESKTOP org.shadow.assistant.desktop
     LIBS Qt6::Network
 )

@@ -70,7 +70,13 @@ QVariant MessageModel::data(const QModelIndex &index, int role) const
 int MessageModel::appendUser(const QString &text)
 {
     beginInsertRows({}, m_messages.size(), m_messages.size());
-    m_messages.append({QStringLiteral("user"), text, false, {}, {}, {}});
+    // Named members, not a positional {...} list: a positional list has to name
+    // every field of Message and fell behind when thinkingJson was added
+    // (-Wmissing-field-initializers). Fields left out keep their defaults.
+    Message m;
+    m.kind = QStringLiteral("user");
+    m.content = text;
+    m_messages.append(m);
     endInsertRows();
     Q_EMIT countChanged();
     return int(m_messages.size()) - 1;
@@ -149,7 +155,10 @@ int MessageModel::appendToolResult(const QString &toolCallId, const QString &too
 int MessageModel::appendError(const QString &text)
 {
     beginInsertRows({}, m_messages.size(), m_messages.size());
-    m_messages.append({QStringLiteral("error"), text, false, {}, {}, {}});
+    Message m;
+    m.kind = QStringLiteral("error");
+    m.content = text;
+    m_messages.append(m);
     endInsertRows();
     Q_EMIT countChanged();
     return int(m_messages.size()) - 1;

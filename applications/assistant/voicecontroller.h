@@ -75,6 +75,18 @@ class VoiceController : public QObject, public QQmlParserStatus
     Q_PROPERTY(qreal speechLevel READ speechLevel NOTIFY levelsChanged)
     Q_PROPERTY(QString partialText READ partialText NOTIFY levelsChanged)
     Q_PROPERTY(QString lastHeard READ lastHeard NOTIFY levelsChanged)
+    // The sentence being spoken right now, as this controller sent it (the
+    // reply's sentence with its Markdown stripped, numbers as digits) — not
+    // the helper's normalised form ("38.2 GB", not "thirty eight point two
+    // gigabytes"). "" when nothing is spoken, and when the helper's sentence
+    // cannot be matched to a sent one with confidence (never a wrong one).
+    Q_PROPERTY(QString spokenSentence READ spokenSentence NOTIFY spokenSentenceChanged)
+    // What the microphone is listening for right now:
+    // "" (no listen) | "command" (push-to-talk) | "followup" (after a spoken
+    // reply, no wake word needed) | "yesno" (a spoken confirmation) |
+    // "wake" (the helper's own listen after a bare "Shadow", or a wake
+    // utterance being transcribed).
+    Q_PROPERTY(QString listenMode READ listenMode NOTIFY listenModeChanged)
 
     // Honest capability flags.
     Q_PROPERTY(bool ttsAvailable READ ttsAvailable NOTIFY capabilitiesChanged)
@@ -137,6 +149,8 @@ public:
     qreal speechLevel() const { return m_speechLevel; }
     QString partialText() const { return m_partial; }
     QString lastHeard() const { return m_lastHeard; }
+    QString spokenSentence() const { return m_spokenSentence; }
+    QString listenMode() const { return m_listenModeShown; }
     bool ttsAvailable() const { return !resolvedTtsEngine().isEmpty(); }
     bool sttAvailable() const;
     bool wakeAvailable() const;
@@ -198,6 +212,8 @@ Q_SIGNALS:
     void configChanged();
     void agentChanged();
     void installChanged();
+    void spokenSentenceChanged();
+    void listenModeChanged();
 
 private:
     // engine + state bookkeeping
@@ -217,10 +233,15 @@ private:
     void handleTimeout(const QJsonObject &ev);
     void routeTranscript(const QString &text);
     void handleYesNoAnswer(const QString &text);
+    // After one call was answered by voice: the next waiting call (if any)
+    // is asked aloud during a voice turn.
+    void askNextPending();
     void handleMic(const QJsonObject &ev);
 
     // speaking
-    void queueSpeech(const QString &id, const QString &text, bool more);
+    // 'sentences' are the sentences 'text' consists of (for spokenSentence);
+    // empty = 'text' is one sentence.
+    void queueSpeech(const QString &id, const QString &text, bool more, const QStringList &sentences = {});
     void afterSpeech(const QString &id, std::function<void(bool interrupted)> then);
     void onSpeechEnded(const QString &id, bool interrupted);
     void stopSpeech(bool suppressReply);
@@ -244,6 +265,12 @@ private:
     void tickLevels();
     void setPartial(const QString &text);
     void notifyLevels();
+
+    // spokenSentence / listenMode
+    void updateListenMode();
+    void setSpokenSentence(const QString &sentence);
+    void onHelperSentence(const QString &id, const QString &text);
+    void forgetSpeechTracks();
 
     // install
     void onInstallOutput();
@@ -285,8 +312,26 @@ private:
     QHash<QString, std::function<void(bool)>> m_afterSpeech;
     QSet<QString> m_helperSpeech; // ids sent to the helper whose speak_end has not come yet
 
+    // What was sent to be spoken, per speech id, sentence by sentence: the
+    // helper's "sentence" events carry its normalised text ("thirty eight
+    // point two gigabytes"); they are matched against these to find the
+    // sentence as the reply shows it. 'cur'/'off' is where the last match
+    // ended (sentence index, word offset): the helper speaks in order.
+    struct SpeechTrack
+    {
+        QStringList texts;
+        QList<QStringList> words;
+        int cur = 0;
+        int off = 0;
+    };
+    QHash<QString, SpeechTrack> m_tracks;
+    QString m_spokenSentence;
+    QString m_listenModeShown;
+    bool m_wakeListen = false;   // the helper heard "Shadow" and listens for the command itself
+
     // eSpeak NG fallback ("basic voice")
-    struct EspeakItem { QString id; QString text; bool more; };
+    // 'sentence': the one sentence this item is, "" when it is several.
+    struct EspeakItem { QString id; QString text; bool more; QString sentence; };
     QList<EspeakItem> m_espeakQueue;
     QProcess *m_espeak = nullptr;
     EspeakItem m_espeakCurrent;
