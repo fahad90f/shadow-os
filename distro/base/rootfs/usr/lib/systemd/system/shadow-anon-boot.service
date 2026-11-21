@@ -1,0 +1,16 @@
+[Unit]
+Description=Shadow OS Hide Me — keep DNS-over-Tor working after a restart
+# DNS protection's files (resolv.conf locked to Tor) survive a restart, its
+# redirect to Tor's DNSPort does not: without it every name lookup fails.
+# This puts it back (or hands DNS back to NetworkManager when Tor is gone)
+# before the network comes up, and records the real Hide Me state.
+After=local-fs.target
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/shadow-anon boot
+
+[Install]
+WantedBy=multi-user.target

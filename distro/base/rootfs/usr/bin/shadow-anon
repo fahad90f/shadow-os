@@ -35,6 +35,15 @@ FEATURES
     nuke         — ghost mode + wipe logs + new Tor exit
     leak-test    — show direct IP, Tor exit IP, DNS, IPv6 exposure
     status       — full current-state report
+    boot         — run at every start (shadow-anon-boot.service): put DNS
+                   protection back and record the real state
+
+WHAT SURVIVES A RESTART
+  DNS protection does: its files (resolv.conf locked to Tor, NetworkManager
+  told to leave DNS alone) stay, and at every start "boot" puts back the
+  redirect to Tor's DNSPort that the files depend on (or hands DNS back to
+  NetworkManager when Tor is gone). The transparent proxy and the kill switch
+  are firewall rules only: they end with a restart, and so does Ghost Mode.
 
 HONEST LIMITS
   Your real public IP is assigned by your ISP/router. What changes is your
@@ -320,7 +329,7 @@ def transparent_proxy_off():
     ipt = "iptables"
     _nat_remove(TPROXY_CHAIN)
     Path(TPROXY_CF).unlink(missing_ok=True)
-    if not load_state().get("dns_protected"):
+    if not dns_protection_configured():
         Path(TORDNS_CF).unlink(missing_ok=True)
     restart_tor()
     ok("transparent proxy disabled")
@@ -392,11 +401,106 @@ def kill_switch_active():
     return rc == 0 and "DROP" in out
 
 # ── DNS-over-Tor ──────────────────────────────────────────────────────────────
+# Kept in files that survive a restart (resolv.conf locked to 127.0.0.1 and
+# NetworkManager told to leave DNS alone) plus an iptables redirect of port 53
+# to Tor's DNSPort, which does not survive one: boot() puts it back.
 
-RESOLV_BACKUP = "/etc/resolv.conf.shadow-backup"
-NM_DNS_CONF   = "/etc/NetworkManager/conf.d/90-shadow-dns.conf"
+RESOLV          = "/etc/resolv.conf"
+RESOLV_BACKUP   = "/etc/resolv.conf.shadow-backup"   # written by older versions
+NM_DNS_CONF     = "/etc/NetworkManager/conf.d/90-shadow-dns.conf"
+NM_RESOLV       = "/run/NetworkManager/resolv.conf"
+TOR_RESOLV_MARK = "DNS routed through Tor"
+RESOLV_TOR = (
+    "# Shadow OS — DNS routed through Tor's DNSPort (written by shadow-anon;\n"
+    "# turn it off in Hide Me or with: sudo shadow-anon dns-protect-off)\n"
+    "nameserver 127.0.0.1\n"
+    "options ndots:0 edns0\n"
+)
 
 DNS_CHAIN = "SHADOWDNS"
+
+def _nat_hooked(chain):
+    """Does nat OUTPUT jump to 'chain'?"""
+    rc, out, _ = sh(["iptables", "-t", "nat", "-S", "OUTPUT"])
+    return rc == 0 and any(line.split()[-2:] == ["-j", chain] for line in out.splitlines())
+
+def dns_protection_configured():
+    """DNS protection as far as the files are concerned (they survive a restart)."""
+    if Path(NM_DNS_CONF).exists():
+        return True
+    try:
+        return TOR_RESOLV_MARK in Path(RESOLV).read_text()
+    except OSError:
+        return False
+
+def tor_dns_redirect_active():
+    """Is port 53 sent to Tor's DNSPort (by DNS protection or the proxy)?"""
+    return _nat_hooked(DNS_CHAIN) or _nat_hooked(TPROXY_CHAIN)
+
+def _dns_redirect_on():
+    """Every DNS query (to 127.0.0.1 or any server) goes to Tor's DNSPort,
+    except Tor's own."""
+    _nat_reset(DNS_CHAIN)
+    sh(["iptables", "-t", "nat", "-A", DNS_CHAIN, "-m", "owner", "--uid-owner", "debian-tor", "-j", "RETURN"])
+    for proto in ("udp", "tcp"):
+        sh(["iptables", "-t", "nat", "-A", DNS_CHAIN, "-p", proto, "--dport", "53",
+            "-j", "REDIRECT", "--to-ports", DNS_PORT])
+    _nat_hook(DNS_CHAIN)
+
+def _start_tor_soon(config_changed):
+    """Ask systemd to (re)start Tor without waiting for it (at boot Tor is
+    ordered after the network; waiting here would hold the boot up)."""
+    sh(["systemctl", "reload-or-restart" if config_changed else "start", "--no-block", "tor@default"])
+
+def _resolv_usable():
+    try:
+        txt = Path(RESOLV).read_text()
+    except OSError:
+        return False
+    return TOR_RESOLV_MARK not in txt and any(
+        line.split()[:1] == ["nameserver"] for line in txt.splitlines())
+
+def _hand_dns_to_networkmanager():
+    """NetworkManager manages /etc/resolv.conf again: with its lock gone and
+    our file removed it writes the network's own DNS servers there (Shadow OS
+    has no systemd-resolved). A copy of the file from before DNS protection
+    (older versions restored it) is stale by now and is not used."""
+    sh(["chattr", "-i", RESOLV])
+    Path(NM_DNS_CONF).unlink(missing_ok=True)
+    Path(RESOLV_BACKUP).unlink(missing_ok=True)
+    try:
+        ours = TOR_RESOLV_MARK in Path(RESOLV).read_text()
+    except OSError:
+        ours = True   # missing, or a link that points nowhere
+    try:
+        if ours and os.path.lexists(RESOLV):
+            os.unlink(RESOLV)
+    except OSError as exc:
+        warn(f"{RESOLV}: {exc}")
+    if sh(["nmcli", "general", "reload", "conf"])[0] != 0:
+        sh(["systemctl", "reload", "NetworkManager"])
+    sh(["nmcli", "general", "reload", "dns-rc"])
+    for _ in range(10):
+        if _resolv_usable():
+            return
+        time.sleep(0.3)
+    # NetworkManager did not write it (not running, or another rc-manager).
+    try:
+        nm_has_servers = "nameserver" in Path(NM_RESOLV).read_text()
+    except OSError:
+        nm_has_servers = False
+    try:
+        if os.path.lexists(RESOLV):
+            os.unlink(RESOLV)
+        if nm_has_servers:
+            os.symlink(NM_RESOLV, RESOLV)
+        else:
+            Path(RESOLV).write_text(
+                "# Shadow OS — NetworkManager did not provide DNS servers; public ones\n"
+                "nameserver 9.9.9.9\nnameserver 1.1.1.1\n")
+            warn("NetworkManager did not write DNS servers — using 9.9.9.9 and 1.1.1.1")
+    except OSError as exc:
+        warn(f"{RESOLV}: {exc}")
 
 def dns_protect_on():
     need_root()
@@ -408,49 +512,25 @@ def dns_protect_on():
     if not restart_tor():
         warn("Tor did not start — DNS left unchanged (it would stop working)")
         return
-    # Every DNS query (to 127.0.0.1 or any server) goes to Tor's DNSPort,
-    # except Tor's own.
-    _nat_reset(DNS_CHAIN)
-    for proto in ("udp", "tcp"):
-        sh(["iptables", "-t", "nat", "-A", DNS_CHAIN, "-m", "owner", "--uid-owner", "debian-tor", "-j", "RETURN"])
-        sh(["iptables", "-t", "nat", "-A", DNS_CHAIN, "-p", proto, "--dport", "53",
-            "-j", "REDIRECT", "--to-ports", DNS_PORT])
-    _nat_hook(DNS_CHAIN)
-    if not Path(RESOLV_BACKUP).exists():
-        try:
-            shutil.copy2("/etc/resolv.conf", RESOLV_BACKUP)
-        except OSError:
-            pass
+    _dns_redirect_on()
     Path(NM_DNS_CONF).write_text("[main]\ndns=none\n")
     sh(["systemctl", "reload", "NetworkManager"])
-    sh(["chattr", "-i", "/etc/resolv.conf"])
-    if os.path.islink("/etc/resolv.conf"):
-        os.unlink("/etc/resolv.conf")
-    Path("/etc/resolv.conf").write_text(
-        "# Shadow OS — DNS routed through Tor's DNSPort\n"
-        "nameserver 127.0.0.1\n"
-        "options ndots:0 edns0\n"
-    )
-    sh(["chattr", "+i", "/etc/resolv.conf"])
-    ok(f"DNS → 127.0.0.1:{DNS_PORT} (via Tor)")
+    sh(["chattr", "-i", RESOLV])
+    if os.path.lexists(RESOLV) and (os.path.islink(RESOLV) or not Path(RESOLV).is_file()):
+        os.unlink(RESOLV)
+    Path(RESOLV).write_text(RESOLV_TOR)
+    sh(["chattr", "+i", RESOLV])
+    ok(f"DNS → 127.0.0.1:{DNS_PORT} (via Tor); kept after a restart")
     save_state({"dns_protected": True})
 
 def dns_protect_off():
     need_root()
     log("Restoring system DNS")
-    sh(["chattr", "-i", "/etc/resolv.conf"])
     _nat_remove(DNS_CHAIN)
     if not transparent_proxy_active():
         Path(TORDNS_CF).unlink(missing_ok=True)
-    Path(NM_DNS_CONF).unlink(missing_ok=True)
-    if Path(RESOLV_BACKUP).exists():
-        shutil.copy2(RESOLV_BACKUP, "/etc/resolv.conf")
-        Path(RESOLV_BACKUP).unlink(missing_ok=True)
-        ok("resolv.conf restored from backup")
-    else:
-        Path("/etc/resolv.conf").write_text("nameserver 1.1.1.1\nnameserver 9.9.9.9\n")
-        ok("resolv.conf reset to 1.1.1.1 / 9.9.9.9")
-    sh(["systemctl", "reload", "NetworkManager"])
+    _hand_dns_to_networkmanager()
+    ok("DNS handed back to NetworkManager (the network's own DNS servers)")
     save_state({"dns_protected": False})
 
 # ── Bluetooth kill ────────────────────────────────────────────────────────────
@@ -685,6 +765,56 @@ def stop_rotate():
     ok("auto-rotation disabled")
     save_state({"auto_rotate": False})
 
+# ── Start of the system ───────────────────────────────────────────────────────
+
+def real_state():
+    """The state file from what is actually in effect, not from what was
+    asked for earlier (/run is empty after a restart, and firewall rules may
+    have been removed by other tools)."""
+    state = load_state()
+    tproxy, killsw = transparent_proxy_active(), kill_switch_active()
+    dns = dns_protection_configured() and tor_dns_redirect_active()
+    state.update({
+        "transparent_proxy": tproxy,
+        "kill_switch": killsw,
+        "dns_protected": dns,
+        "ghost_mode": bool(state.get("ghost_mode")) and tproxy and killsw,
+        "kernel_hardened": kernel_hardened(),
+        "usb_killed": Path(USB_RULE).exists(),
+        "bt_killed": bluetooth_killed(),
+    })
+    if state.get("threat_model") == "maximum" and not state["ghost_mode"]:
+        state["threat_model"] = "enhanced" if dns else "basic"
+    state.setdefault("threat_model", "basic")
+    return state
+
+def boot():
+    """At every start (shadow-anon-boot.service, also run after an upgrade of
+    the package): DNS protection's files survived the restart but its
+    redirect to Tor did not, and without it every name lookup fails. Put the
+    redirect back, or hand DNS back to NetworkManager when Tor is gone. Then
+    record the real state for the Hide Me panel."""
+    need_root()
+    if dns_protection_configured():
+        if have("tor"):
+            changed = not Path(TORDNS_CF).exists()
+            if changed:
+                _write_tor_dns()
+            _start_tor_soon(changed)
+            if not tor_dns_redirect_active():
+                _dns_redirect_on()
+            ok("DNS protection kept: DNS → Tor")
+        else:
+            warn("DNS protection was on but Tor is not installed — DNS handed back to NetworkManager")
+            _nat_remove(DNS_CHAIN)
+            _hand_dns_to_networkmanager()
+    state = real_state()
+    try:
+        Path(STATE_FILE).write_text(json.dumps(state, indent=2))
+        os.chmod(STATE_FILE, 0o644)
+    except OSError as exc:
+        warn(f"{STATE_FILE}: {exc}")
+
 # ── Leak test ─────────────────────────────────────────────────────────────────
 
 def leak_test():
@@ -710,7 +840,7 @@ def leak_test():
 
     print("\n[3] DNS resolver (resolv.conf):")
     try:
-        for line in Path("/etc/resolv.conf").read_text().splitlines():
+        for line in Path(RESOLV).read_text().splitlines():
             if line.startswith("nameserver"):
                 ns = line.split()[1]
                 tag = " ← DNS-over-Tor (protected)" if ns == "127.0.0.1" else \
@@ -840,6 +970,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("status")
     sub.add_parser("rotate")
+    sub.add_parser("boot")
     sub.add_parser("mac")
     sub.add_parser("hostname")
     sub.add_parser("ipv6")
@@ -874,6 +1005,7 @@ def main():
         None:                    status,
         "status":                status,
         "rotate":                rotate,
+        "boot":                  boot,
         "mac":                   lambda: (need_root(), randomize_mac()),
         "hostname":              lambda: (need_root(), random_hostname()),
         "ipv6":                  lambda: (need_root(), ipv6_privacy()),

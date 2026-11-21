@@ -52,9 +52,13 @@ override_dh_installsystemd-arch:
 
 # The Hide Me rotation timer (shadow-hardening) changes the MAC address and
 # hostname every few seconds: only the user turns it on (shadow-anon start).
+# shadow-anon-boot.service is enabled and also run on install and upgrade: it
+# puts back DNS-over-Tor's redirect (a system that restarted with DNS
+# protection on has no working DNS until it runs) and is harmless otherwise.
 override_dh_installsystemd-indep:
 	dh_installsystemd -i -Nshadow-hardening
-	dh_installsystemd -pshadow-hardening --no-enable --no-start
+	dh_installsystemd -pshadow-hardening shadow-anon-boot.service
+	dh_installsystemd -pshadow-hardening --no-enable --no-start shadow-anon-rotate.service shadow-anon-rotate.timer
 
 # ---- architecture-independent packages: nothing to compile ------------------
 override_dh_auto_configure-indep override_dh_auto_test-indep:

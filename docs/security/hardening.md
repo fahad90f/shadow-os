@@ -352,6 +352,32 @@ connection (`nmcli`, Control Center) or with a file in
 | `ethernet.cloned-mac-address=stable` | networks correlating the device with each other over the cable (a per-network address, as for Wi-Fi) | wired networks that filter by hardware address: set `permanent` on that connection |
 | `ipv6.ip6-privacy=2` | tracking through a stable IPv6 address | services expecting a stable source address |
 
+## Hide Me across a restart
+
+Hide Me (`shadow-anon`, Control Center → Privacy) changes the network in two
+ways that behave differently when the computer restarts:
+
+| Feature | Kept in | After a restart |
+|---|---|---|
+| DNS protection (DNS-over-Tor) | `/etc/resolv.conf` locked to `127.0.0.1`, `/etc/NetworkManager/conf.d/90-shadow-dns.conf`, `/etc/tor/torrc.d/shadow-dns.conf`, plus an iptables redirect of port 53 to Tor's DNSPort | stays on: `shadow-anon-boot.service` puts the redirect back before the network starts. If Tor is no longer installed it hands DNS back to NetworkManager instead |
+| Transparent Tor proxy, kill switch (Ghost Mode) | iptables rules only | off; turn Ghost Mode on again |
+| Kernel hardening, USB storage block | files in `/etc/sysctl.d`, `/etc/udev/rules.d` | stay on |
+| Identity rotation | `shadow-anon-rotate.timer` | stays on if it was started |
+
+`shadow-anon-boot.service` runs `shadow-anon boot` at every start (and when
+the package is installed or upgraded). Besides restoring the DNS redirect it
+writes `/run/shadow-anon-state.json` from what is actually in effect, which
+is what the Privacy page shows. Without the redirect, the locked
+`resolv.conf` points at a port where nothing answers and no name can be
+looked up — what images up to 0.2.0 did after a restart with DNS protection
+on (`scripts/fix-network.sh` repairs such a system).
+
+Turning DNS protection off (`sudo shadow-anon dns-protect-off`, or the
+switch on the Privacy page) unlocks `/etc/resolv.conf` and lets NetworkManager
+write the network's own DNS servers again; if NetworkManager does not, it
+falls back to 9.9.9.9 and 1.1.1.1. It no longer restores the copy of
+`resolv.conf` taken when protection was turned on, which is stale by then.
+
 ## Disk encryption (LUKS2)
 
 Set up by the installer engine when you choose encryption

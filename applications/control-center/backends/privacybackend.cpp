@@ -445,8 +445,11 @@ void PrivacyBackend::refreshAnon()
         bool torRunning = false, autoRotate = false;
         QString threatModel = QStringLiteral("basic");
 
+        // shadow-anon rewrites this at every start (shadow-anon-boot.service)
+        // from what is really in effect, so it is the truth when present.
         QFile stateFile(QStringLiteral("/run/shadow-anon-state.json"));
-        if (stateFile.open(QIODevice::ReadOnly)) {
+        const bool haveState = stateFile.open(QIODevice::ReadOnly);
+        if (haveState) {
             const QJsonObject s = QJsonDocument::fromJson(stateFile.readAll()).object();
             ghostMode       = s.value(QStringLiteral("ghost_mode")).toBool();
             threatModel     = s.value(QStringLiteral("threat_model")).toString(QStringLiteral("basic"));
@@ -459,7 +462,11 @@ void PrivacyBackend::refreshAnon()
         // Cross-check on-disk evidence (survives reboots that clear /run)
         kernelHardened  = kernelHardened || QFile::exists(QStringLiteral("/etc/sysctl.d/90-shadow-anon.conf"));
         usbKilled       = usbKilled     || QFile::exists(QStringLiteral("/etc/udev/rules.d/90-shadow-nousb.rules"));
-        dnsProtected    = dnsProtected  || QFile::exists(QStringLiteral("/etc/NetworkManager/conf.d/90-shadow-dns.conf"));
+        // Without a state file (an older shadow-anon after a restart) the
+        // DNS lock file is the only evidence; with one, the lock file alone
+        // does not mean DNS works through Tor.
+        if (!haveState)
+            dnsProtected = QFile::exists(QStringLiteral("/etc/NetworkManager/conf.d/90-shadow-dns.conf"));
 
         // Tor service
         { QProcess p; p.start(QStringLiteral("systemctl"), {QStringLiteral("is-active"), QStringLiteral("--quiet"), QStringLiteral("tor")});
