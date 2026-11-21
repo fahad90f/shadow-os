@@ -376,7 +376,8 @@ Debian packages and the offline voice engine data it needs, repairs
 key line), checks the default input and output, tests the speakers and your
 voice (including the wake word), restarts the assistant in the background
 and has you say "Shadow, what time is it?" to it. It ends with PASS only
-when the assistant really heard you and answered aloud; otherwise FAIL (with
+when the assistant really heard you and answered aloud and your session
+starts it at login; otherwise FAIL (with
 the next step for each failure) or NOT VERIFIED (a test was skipped, or a
 switch of yours keeps it from listening). Without a checkout: `sudo
 shadow-voice-setup --system` installs the engine data, and
