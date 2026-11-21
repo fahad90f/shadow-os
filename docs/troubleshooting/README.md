@@ -160,6 +160,31 @@ as the keys of the original layout. There is no recovery key.
    per-network random address Shadow OS uses by default:
    `nmcli connection modify "<name>" wifi.cloned-mac-address permanent`.
 
+### Wi-Fi is connected but there is no internet (Ethernet works)
+
+Run the network fix from your checkout of the Shadow OS sources (over the
+cable if Wi-Fi does not work); it asks for your password, tests every
+connection on its own and ends with PASS or FAIL:
+
+```sh
+bash scripts/fix-network.sh
+```
+
+It repairs what images up to 0.2.0 got wrong: strict reverse-path filtering
+(`/etc/sysctl.d/90-shadow-anon.conf`), which drops every answer arriving over
+Wi-Fi while a cable is also connected, and a new random Wi-Fi hardware
+address at every connection, which routers and log-in pages treat as a new
+device each time. It also stops Hide Me's identity rotation, unlocks DNS that
+Hide Me left pointing at Tor after a restart, turns Ghost Mode's network part
+off when nothing gets through Tor (it asks first), and then tries, one at a
+time and keeping only what helps: reconnecting with a stable private address,
+public DNS servers, Wi-Fi power saving off, the real hardware address for
+that network only, and (Realtek and MediaTek chips) the chip's power saving
+off, which needs a restart. `--report-only` changes nothing; every change is
+listed with an undo script in `~/.local/state/shadow-fix-network/`. If it
+still fails, it names a short report (no passwords or hardware addresses) to
+send with a bug report.
+
 ### No sound
 
 `wpctl status` shows the devices PipeWire sees. On recent laptops a missing

@@ -349,7 +349,7 @@ connection (`nmcli`, Control Center) or with a file in
 |---|---|---|
 | `wifi.scan-rand-mac-address=yes` | tracking of the device while it scans for networks | — |
 | `wifi.cloned-mac-address=stable` | networks correlating the device with each other: every Wi-Fi network sees a different, but for that network stable, address. DHCP leases and captive-portal log-ins keep working | networks that filter by hardware address: set `permanent` on that connection (`nmcli connection modify <name> wifi.cloned-mac-address permanent`) |
-| `ethernet.cloned-mac-address=permanent` | — (wired interfaces keep their real address) | — |
+| `ethernet.cloned-mac-address=stable` | networks correlating the device with each other over the cable (a per-network address, as for Wi-Fi) | wired networks that filter by hardware address: set `permanent` on that connection |
 | `ipv6.ip6-privacy=2` | tracking through a stable IPv6 address | services expecting a stable source address |
 
 ## Disk encryption (LUKS2)
