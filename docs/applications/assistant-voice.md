@@ -125,7 +125,7 @@ with one FAIL naming the cause; it never tests the old assistant instead.
 |---|---|
 | 0 | checks that it runs as you (not root), inside the graphical session, on x86-64, from a checkout with the new engine; notes whether a systemd user manager runs |
 | 1 | builds the assistant. It uses `--build-dir`, else the configured build directory of the checkout (`build/cmake` first; a tree whose configuration never finished is ignored). **When there is none, it creates `build/cmake`** (`cmake -G Ninja -DSHADOW_ONLY=assistant -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr/local`; `build/cmake` is git-ignored), after installing the build tools with apt if they are missing (`cmake ninja-build g++ qt6-declarative-dev qt6-svg-dev`: on the 0.2.0 image 67 packages, 57 MB to download, 261 MB on disk, measured against the Debian archive on 2026-11-21; asked first, done with `--yes`). Build files owned by root (an earlier `sudo` build) are given back to you first (asked). Then `cmake --build … --target shadow-assistant` and, only if a staged install differs from the installed files, `sudo cmake --install … --component shadow-assistant`. The running assistant is stopped only right before that install. The new binary must report its voice engine (`--dump voice`) |
-| 2 | installs what is missing of `python3 python3-numpy espeak-ng pipewire-bin pipewire-pulse wireplumber pulseaudio-utils alsa-ucm-conf curl bzip2` (and `firmware-sof-signed` on an SOF laptop) without recommends; removes nothing |
+| 2 | installs what is missing of `python3 python3-numpy espeak-ng pipewire-bin pipewire-pulse wireplumber pulseaudio-utils alsa-ucm-conf curl bzip2` (and `firmware-sof-signed` on an SOF laptop) without recommends; removes nothing. When `alsa-ucm-conf` was new and no microphone is there yet (or the laptop has SOF digital microphones), WirePlumber is restarted so that it reads the new profiles; the script then checks that the sound server still answers and, if it does not, restarts PipeWire, its PulseAudio server and WirePlumber together |
 | 3 | installs the engine data into `/var/lib/shadow-voice` with the installed `shadow-voice-setup` (both speech models; only damaged or missing parts are downloaded again), or verifies it |
 | 4 | repairs `~/.config/shadow/assistant.conf` after a backup: removes comments after values (Qt read `muted=false  # …` as muted) and turns `#` lines into `;` comments; shows every changed line. **Lines with your API key, a token, a password or a URL with a password are never changed, shown or logged**; the file is made private (mode 600); a symlinked file stays a symlink. Your own switches in the assistant are asked about: its microphone mute (`muted=true`) and a wake word you switched off there; Enter answers yes (the voice needs both on), `--yes` leaves them as the assistant reads them and writes nothing. A `wake_word_enabled=false` without `wake_word_chosen` was written by the old assistant without asking: the new one ignores it and listens, so the script writes nothing either (it only offers to switch the wake word off, default no) |
 | 5 | sound checks: PipeWire; the default input is a real microphone (not a "monitor"), not muted (offers to unmute), not nearly silent (offers 80 % below 30 %); the default output is a real device (not "Dummy Output") and not muted (offers to unmute) |
@@ -254,11 +254,22 @@ None of it on real audio hardware:
   for the login); muted speakers, no speakers; an assistant opened during
   the test; Ctrl+C; passwords in URLs; a symlinked settings file;
   root-owned build files; a wrong `--build-dir`; no systemd user manager;
+* the WirePlumber restart of step 2, on its own, in desktop sessions (KWin,
+  portals) on the same image: on an idle machine the sound server kept
+  answering in all of about 95 sessions; with the processors kept busy it
+  stopped answering for good in 2 of 20 (that had made one full run of the
+  script wait 6.5 minutes and fail). With the script's own function
+  (`restart_wireplumber_safely`), under the same load: 40 of 40 sessions ended
+  with the sound server answering, one of them after the restart of the
+  whole sound system (10 s); with the hang forced, 8 of 8 were cleared the
+  same way. Every wait for the sound server is now bounded by the clock (at
+  most about 40 s in step 5);
 * the image step (`build/iso/voice-data.sh`) against a scratch image root,
   with and without network, and `SHADOW_IMAGE_VOICE=required`.
 
 Not verified: a real microphone and speakers, a laptop's SOF digital
 microphones and the WirePlumber restart after `alsa-ucm-conf` on real
-hardware, the real Claude API (the round trip used a stand-in), the time a
+hardware (whether a real session's sound server can stop answering after it
+is not known; the script recovers from it either way), the real Claude API (the round trip used a stand-in), the time a
 real reply takes, whether KWin raises the window when the wake word is heard,
 a complete ISO build with the engine data, arm64 (not supported).
