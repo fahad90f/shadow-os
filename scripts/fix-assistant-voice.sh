@@ -158,6 +158,7 @@ START_UNIT=""
 KEY_FORWARD=""   # name of the variable that holds the key, passed by name to the background assistant
 LOGIN_KEY=""     # ok | missing (the assistant started at login has no API key)
 MIC_OK=0         # the microphone test heard and understood you
+SOUND_DEAD=0     # the sound server did not answer, also after restarting it
 SPEAK_REPLIES=true
 WAKE_ON=""
 MUTED=""
@@ -188,6 +189,41 @@ wait_until() {   # seconds command... : poll every 0.25 s
         n=$((n - 1))
     done
     return 1
+}
+
+# Does the sound server answer? A hung PipeWire PulseAudio server accepts the
+# connection and then says nothing, so every try is cut off after 2 seconds
+# and the whole wait is bounded by the clock (not by a number of tries).
+sound_answers() {   # seconds
+    local end=$(( $(date +%s) + $1 ))
+    command -v pactl >/dev/null 2>&1 || return 1
+    while :; do
+        timeout 2 pactl info > "$TMPD/pactl-info" 2>&1 && return 0
+        [ "$(date +%s)" -ge "$end" ] && return 1
+        sleep 0.5
+    done
+}
+# PipeWire, its PulseAudio server and WirePlumber again, all three. This is
+# what clears a session whose sound server stopped answering (pactl and
+# wpctl hang then): seen after restarting WirePlumber alone in a KWin
+# session, in about one of four first restarts in the test lab.
+restart_sound_stack() {
+    systemctl --user restart pipewire pipewire-pulse wireplumber >/dev/null 2>&1
+    sound_answers 20
+}
+# WirePlumber again (it reads new ALSA profiles when it starts), with the
+# sound server still answering afterwards. On a busy machine that restart
+# sometimes leaves the sound server silent for good (2 of 20 sessions in the
+# test lab under load, none of 95 on an idle machine); the trouble is there
+# within two seconds, so it is looked for after a pause, and cleared by
+# restarting the whole sound system. 0: the sound server answers.
+restart_wireplumber_safely() {
+    systemctl --user restart wireplumber.service >/dev/null 2>&1 || return 2
+    command -v pactl >/dev/null 2>&1 || { sleep 2; return 0; }
+    sleep 3
+    sound_answers 6 && return 0
+    note "the sound server does not answer after that; restarting PipeWire as a whole"
+    restart_sound_stack
 }
 
 ask() {   # question default(Y|N|-) [answer without questions] -> 0 = yes; "-": y or n must be typed
@@ -1370,13 +1406,27 @@ else
         tail -n 4 "$STATE_DIR/apt.log" 2>/dev/null | while IFS= read -r l; do note "$l"; done
         check FAIL "Debian packages" "sudo apt install --no-install-recommends $missing"
     fi
-    # New ALSA use-case profiles are read by WirePlumber when it starts.
+    # New ALSA use-case profiles are read by WirePlumber when it starts. They
+    # matter for a microphone that is not there yet (a laptop's digital
+    # microphones), so WirePlumber is restarted only then: with a microphone
+    # already present nothing is gained, and a restart is not free of risk
+    # (below).
     case " $had_missing " in
         *" alsa-ucm-conf "*)
             if pkg_installed alsa-ucm-conf && systemctl --user is-active --quiet wireplumber.service 2>/dev/null; then
-                note "restarting WirePlumber so it reads the new ALSA profiles (sound stops for a moment)"
-                systemctl --user restart wireplumber.service >/dev/null 2>&1 || warn "could not restart WirePlumber"
-                sleep 2
+                have_mic=$(timeout 5 pactl -f json list sources 2>/dev/null | py devices sources 2>/dev/null \
+                    | awk -F'\t' '$2 == 0 && $1 !~ /^auto_null/' | head -n 1)
+                if [ -n "$have_mic" ] && [ -z "$SOF" ]; then
+                    note "(the new ALSA profiles are read by the sound system at your next login; your microphone is already there)"
+                else
+                    note "restarting WirePlumber so it reads the new ALSA profiles (sound stops for a moment)"
+                    restart_wireplumber_safely
+                    case $? in
+                        0) ;;
+                        2) warn "could not restart WirePlumber" ;;
+                        *) warn "the sound server still does not answer (checked again in step 5)" ;;
+                    esac
+                fi
             fi ;;
     esac
     if [ -n "$sof_pkgs" ] && pkg_installed firmware-sof-signed; then
@@ -1565,17 +1615,22 @@ fi
 step "5/7  Sound system, microphone and speakers"
 sources() { timeout 10 pactl -f json list sources 2>/dev/null | py devices sources; }
 sinks() { timeout 10 pactl -f json list sinks 2>/dev/null | py devices sinks; }
-pactl_ok() { timeout 10 pactl info > "$TMPD/pactl-info" 2>&1; }
-if ! pactl_ok && command -v systemctl >/dev/null 2>&1; then
+# At most 5 + 10 + 20 seconds, whatever the sound server does.
+if ! sound_answers 5 && command -v systemctl >/dev/null 2>&1; then
     note "the sound server does not answer; starting PipeWire"
     systemctl --user start pipewire.socket pipewire.service wireplumber.service \
         pipewire-pulse.socket pipewire-pulse.service >/dev/null 2>&1
-    wait_until 10 pactl_ok
+    if ! sound_answers 10; then
+        # Running but not answering: starting it again changes nothing.
+        note "still no answer; restarting PipeWire, its PulseAudio server and WirePlumber"
+        restart_sound_stack && ok "the sound server answers again"
+    fi
 fi
 SINK="" SINK_DESC=""
-if ! pactl_ok; then
-    fail "the sound server does not answer (pactl info: $(head -n 1 "$TMPD/pactl-info"))"
-    check FAIL "PipeWire sound server" "systemctl --user restart pipewire pipewire-pulse wireplumber (or log out and in), then run this script again"
+if ! sound_answers 2; then
+    SOUND_DEAD=1
+    fail "the sound server does not answer (pactl info: $(head -n 1 "$TMPD/pactl-info" 2>/dev/null))"
+    check FAIL "PipeWire sound server" "log out and in again (or: systemctl --user restart pipewire pipewire-pulse wireplumber), then run this script again"
 else
     server=$(sed -n 's/^Server Name: //p' "$TMPD/pactl-info")
     case "$server" in
@@ -1836,7 +1891,12 @@ else
             # No level statistics: nothing was recorded at all.
             cp -f "$TMPD/calib.err" "$STATE_DIR/microphone-test.log" 2>/dev/null
             fail "the microphone could not be opened: ${CAL_ERROR:-$(tail -n 1 "$TMPD/calib.err" 2>/dev/null) (exit $crc)}"
-            check FAIL "your voice: the microphone could not be opened" "check the input in the sound settings (wpctl status); details: $STATE_DIR/microphone-test.log"
+            if [ "$SOUND_DEAD" = 1 ]; then
+                # wpctl would hang as well: the one thing to do is named above.
+                check FAIL "your voice: the microphone could not be opened" "the sound server does not answer (see above); details: $STATE_DIR/microphone-test.log"
+            else
+                check FAIL "your voice: the microphone could not be opened" "check the input in the sound settings (wpctl status); details: $STATE_DIR/microphone-test.log"
+            fi
             break
         fi
         if [ "$CAL_SILENCE" = 1 ]; then
