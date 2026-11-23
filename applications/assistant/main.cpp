@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "assistant.h"
+#include "council.h"
+#include "skilllibrary.h"
 #include "assistantconfig.h"
 #include "speechtext.h"
 #include "toolregistry.h"
@@ -249,6 +251,7 @@ int runAsk(const AskOptions &options)
                        {QStringLiteral("kind"), agent.teamKind()},
                        {QStringLiteral("model"), agent.activeModel()},
                        {QStringLiteral("team"), teamJson()},
+                       {QStringLiteral("skills"), QJsonArray::fromStringList(agent.activeSkills())},
                        {QStringLiteral("reply"), reply},
                        {QStringLiteral("tools"), tools},
                        {QStringLiteral("awaiting"), agent.hasPending()},
@@ -300,7 +303,7 @@ int main(int argc, char **argv)
         !headlessVoice, // single instance — except the headless voice test modes
     });
     app.setDumpTopics({QStringLiteral("config"), QStringLiteral("models"), QStringLiteral("tools"),
-                       QStringLiteral("voice"), QStringLiteral("team")});
+                       QStringLiteral("voice"), QStringLiteral("team"), QStringLiteral("skills")});
 
     // One request without a window, and the API key from the command line.
     QCommandLineOption askOpt(QStringLiteral("ask"),
@@ -479,6 +482,21 @@ int main(int argc, char **argv)
                 {QStringLiteral("modelsOffered"), catalog.count()},
                 {QStringLiteral("leads"), leads},
                 {QStringLiteral("groups"), QJsonArray::fromVariantList(catalog.groups())},
+            });
+        }
+        if (topic == QLatin1String("skills")) {
+            // Every skill, and (with --dump-text) which would be chosen for it.
+            SkillLibrary skills(&config);
+            const QString text = QString::fromUtf8(qgetenv("SHADOW_ASSISTANT_SKILL_TEXT"));
+            const QString kind = config.role() == QLatin1String("pentest")
+                ? QStringLiteral("agents") : Council::classify(text);
+            return app.finishDump(QJsonObject{
+                {QStringLiteral("enabled"), config.skillsEnabled()},
+                {QStringLiteral("role"), config.role()},
+                {QStringLiteral("count"), skills.count()},
+                {QStringLiteral("probe"), text},
+                {QStringLiteral("chosen"), QJsonArray::fromStringList(text.isEmpty() ? QStringList() : skills.match(text, kind))},
+                {QStringLiteral("skills"), QJsonArray::fromVariantList(skills.describe(text, kind))},
             });
         }
         if (topic == QLatin1String("voice")) {

@@ -180,6 +180,32 @@ Item {
                         }
                     }
                 }
+                Rectangle {
+                    id: skillChip
+                    visible: head.stage.activeSkills.length > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 18
+                    width: skillRow.implicitWidth + 14
+                    radius: 9
+                    color: Pe.alpha(Pe.her, 0.16)
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: qsTr("Using skill %1").arg(head.stage.activeSkills.join(", "))
+                    Row {
+                        id: skillRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        PeIcon { anchors.verticalCenter: parent.verticalCenter; name: "lab"; size: 11; color: Pe.her }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            textFormat: Text.PlainText
+                            text: head.stage.activeSkills.length === 0 ? ""
+                                  : head.stage.activeSkills[0].replace(/-/g, " ")
+                                    + (head.stage.activeSkills.length > 1 ? " +" + (head.stage.activeSkills.length - 1) : "")
+                            font.family: Pe.sans; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 0.6
+                            color: Pe.chipText(Pe.her)
+                        }
+                    }
+                }
                 PeButton {
                     id: stopButton
                     visible: head.stage.working || head.stage.speaking || head.stage.hasPending

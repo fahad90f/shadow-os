@@ -30,6 +30,7 @@ Assistant::Assistant(QObject *parent)
     m_registry = new ToolRegistry(m_config, this);
     m_client = new ChatClient(m_config, this);
     m_catalog = new ModelCatalog(m_config, this);
+    m_skills = new SkillLibrary(m_config, this);
     m_council = new Council(m_config, m_catalog, this);
     m_vision = new VisionTeam(m_config, m_catalog, this);
     m_registry->setVision(m_vision);
@@ -239,6 +240,8 @@ void Assistant::newConversation()
     ++m_turn;
     m_council->clear();
     m_turnLead.clear();
+    m_turnSkills.clear();
+    m_turnSkillText.clear();
     m_activeId = m_store->createConversation();
     m_messages->clearAll();
     m_assistantRow = -1;
@@ -259,6 +262,8 @@ void Assistant::selectConversation(const QString &id)
     ++m_turn;
     m_council->clear();
     m_turnLead.clear();
+    m_turnSkills.clear();
+    m_turnSkillText.clear();
     m_activeId = id;
     m_messages->loadFrom(m_store->loadMessages(id));
     m_assistantRow = -1;
@@ -341,7 +346,10 @@ QString Assistant::systemPrompt() const
             "brute_service (hydra), start_capture (tcpdump).");
     }
 
-    return base.arg(approval, QDate::currentDate().toString(Qt::ISODate));
+    QString prompt = base.arg(approval, QDate::currentDate().toString(Qt::ISODate));
+    if (!m_turnSkillText.isEmpty())
+        prompt += m_turnSkillText;
+    return prompt;
 }
 
 bool Assistant::needsConfirmation(const QString &toolName) const
@@ -407,6 +415,15 @@ void Assistant::beginTurn(const QString &userText, bool spoken)
     m_restartPending = false;
     m_turnLead.clear();
     m_leadsTried.clear();
+
+    // Which skills apply to this request. The kind is the same one the team is
+    // chosen by (pentest mode is always tool work). The chosen text is added to
+    // the models' instructions through systemPrompt() and the advisor prompts.
+    const QString kind = m_config->role() == QLatin1String("pentest")
+        ? QStringLiteral("agents") : Council::classify(userText);
+    m_turnSkills = m_skills->match(userText, kind);
+    m_turnSkillText = m_skills->render(m_turnSkills);
+
     if (!m_config->nvidia()) {
         // Claude, or a model on this computer: one model answers.
         m_council->clear();
@@ -431,7 +448,7 @@ void Assistant::beginTurn(const QString &userText, bool spoken)
     // the phase is switched quietly first and notified after, as in
     // startCompletion().
     m_phase = QStringLiteral("thinking");
-    m_council->begin(plan, m_messages->apiMessages(systemPrompt()), tools, spoken, m_thinkHard);
+    m_council->begin(plan, m_messages->apiMessages(systemPrompt()), tools, m_turnSkillText, spoken, m_thinkHard);
     Q_EMIT phaseChanged();
     Q_EMIT teamChanged();
     // Council::ready() starts the lead (at once when it works alone).
@@ -488,8 +505,21 @@ void Assistant::startCompletion()
         setPhase(QStringLiteral("setup"));
         return;
     }
+    // The skills of the message this turn answers. Recomputed here so a turn
+    // taken up again (a tool continuation, a retry, a pending question resumed
+    // after a restart) always carries exactly the skills of its own last user
+    // message — never a stale block from an earlier turn, and never none where
+    // there should be some. (It is the same block beginTurn computed for a
+    // fresh turn; the last user message does not change within a turn.)
+    {
+        const QString last = lastUserText();
+        const QString kind = m_config->role() == QLatin1String("pentest")
+            ? QStringLiteral("agents") : Council::classify(last);
+        m_turnSkills = m_skills->match(last, kind);
+        m_turnSkillText = m_skills->render(m_turnSkills);
+    }
+
     QString model;
-    QString system = systemPrompt();
     if (m_config->nvidia()) {
         if (m_turnLead.isEmpty()) {
             // A turn taken up again (a retry, an answer to a question that was
@@ -500,11 +530,15 @@ void Assistant::startCompletion()
             m_leadsTried = {m_turnLead};
         }
         model = m_turnLead;
-        system += m_council->notes();
-        m_council->setLeadState(QStringLiteral("working"));
     } else {
         model = m_thinkHard ? m_config->modelForRole(QStringLiteral("planner"))
                             : m_config->modelForRole(QStringLiteral("brain"));
+    }
+    // Built after the branch above, so the skills it may have recomputed are in it.
+    QString system = systemPrompt();
+    if (m_config->nvidia()) {
+        system += m_council->notes();
+        m_council->setLeadState(QStringLiteral("working"));
     }
     const QJsonArray request = m_messages->apiMessages(system);
     const QJsonArray tools = m_registry->hasEnabledTools() ? m_registry->apiTools() : QJsonArray{};
@@ -725,6 +759,8 @@ void Assistant::stop()
 {
     ++m_turn; // whatever was scheduled for this turn stands down
     m_restartPending = false;
+    m_turnSkills.clear();
+    m_turnSkillText.clear();
     m_vision->cancel(); // a picture not yet sent stays here
     m_council->cancel();
     m_council->setLeadState(QStringLiteral("failed"));

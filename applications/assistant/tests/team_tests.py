@@ -1209,6 +1209,192 @@ def claude_key_still_works(suite):
         r.close()
 
 
+
+# ----------------------------------------------------------------------------- skills
+def skills_dump(r, text="", role=None, extra=None):
+    e = {"SHADOW_ASSISTANT_SKILL_TEXT": text}
+    e.update(extra or {})
+    return r.dump("skills", extra=e)
+
+
+@test
+def skills_catalogue(suite):
+    """The built-in skills load from the binary's resources; pentest ones are hidden in general mode."""
+    r = Run(suite, "skills_cat", service=False)
+    try:
+        d = skills_dump(r)
+        names = {s["name"] for s in d["skills"]}
+        check(len(d["skills"]) == 12 and d["enabled"] and all(s["builtin"] for s in d["skills"]), f"{len(d['skills'])} skills")
+        for n in ("code-review", "debug-issue", "write-tests", "explain-code", "refactor-safely", "git-tasks"):
+            check(n in names, f"missing general skill {n}")
+        for n in ("pentest-methodology", "recon-and-scan", "web-assessment", "credential-attacks"):
+            check(n in names, f"missing pentest skill {n}")
+        # In general mode the pentest skills exist but are not offered.
+        check(d["count"] == 6, f"general mode offers {d['count']}")
+        pentest = [s for s in d["skills"] if s["mode"] == "pentest"]
+        check(all(not s["available"] for s in pentest), "a pentest skill is offered in general mode")
+        check(all(s["bodyChars"] > 400 for s in d["skills"]), "a skill body did not load")
+    finally:
+        r.close()
+
+
+@test
+def skills_match_each_request(suite):
+    """The right skill is chosen for each kind of request, and small talk gets none."""
+    cases = [("Please review this diff for bugs", ["code-review"]),
+             ("why does my program crash with a segfault", ["debug-issue"]),
+             ("write unit tests for this function", ["write-tests"]),
+             ("explain how this file works", ["explain-code"]),
+             ("clean up and refactor this module", ["refactor-safely"]),
+             ("commit my staged changes", ["git-tasks"]),
+             ("What is the capital of France?", [])]
+    r = Run(suite, "skills_match", service=False)
+    try:
+        for text, want in cases:
+            d = skills_dump(r, text)
+            check(d["chosen"] == want, f"{text!r} -> {d['chosen']} (wanted {want})")
+    finally:
+        r.close()
+
+
+@test
+def skills_reach_the_whole_team(suite):
+    """A coding request's skill is in every advisor's prompt and the lead's, and the answer still comes."""
+    r = Run(suite, "skills_team")
+    try:
+        res = r.ask("Please review this diff for bugs")
+        d = res.done
+        check(d["error"] == "" and d["skills"] == ["code-review"], f"{d.get('skills')} {d['error']}")
+        for c in r.chats():
+            check(c["has_skill_block"] and "Review a change" in c["skills"],
+                  f"{'advisor' if c['advisor'] else 'lead'} {c['model']} missing the skill: {c['skills']}")
+    finally:
+        r.close()
+
+
+@test
+def no_skill_for_small_talk(suite):
+    """A plain question adds no skill block to any request."""
+    r = Run(suite, "skills_none")
+    try:
+        res = r.ask(CHAT_Q)
+        check(res.done["skills"] == [], f"{res.done['skills']}")
+        check(all(not c["has_skill_block"] and c["skills"] == [] for c in r.chats()), "a skill block was sent for small talk")
+    finally:
+        r.close()
+
+
+@test
+def skills_can_be_turned_off(suite):
+    """[skills] enabled=false adds nothing; disabling one skill drops only that one."""
+    r = Run(suite, "skills_off")
+    try:
+        r.conf("[skills]\nenabled=false\n")
+        res = r.ask("Please review this diff for bugs")
+        check(res.done["skills"] == [] and all(not c["has_skill_block"] for c in r.chats()), f"{res.done['skills']}")
+        d = skills_dump(r)
+        check(d["enabled"] is False, "dump still says enabled")
+        # One skill disabled: it is not chosen even when it matches.
+        r.conf("[skills]\ndisabled=code-review\n")
+        d = skills_dump(r, "Please review this diff for bugs")
+        check(d["chosen"] == [] and any(s["name"] == "code-review" and not s["enabled"] for s in d["skills"]), f"{d['chosen']}")
+    finally:
+        r.close()
+
+
+@test
+def pentest_skills_only_in_pentest_mode(suite):
+    """Security skills appear and reach the team only when the assistant is in pentest mode."""
+    r = Run(suite, "skills_pentest")
+    try:
+        # General mode: a scan request matches no offered skill.
+        d = skills_dump(r, "scan 10.0.0.5 for open ports")
+        check(d["chosen"] == [], f"general mode chose {d['chosen']}")
+        # Pentest mode: the recon skill is offered, chosen, and reaches the team.
+        r.conf("[behaviour]\nrole=pentest\n")
+        d = skills_dump(r, "scan 10.0.0.5 for open ports")
+        check(d["role"] == "pentest" and d["count"] == 12 and d["chosen"] == ["recon-and-scan"], f"{d['count']} {d['chosen']}")
+        res = r.ask("scan 10.0.0.5 for open ports")
+        check(res.done["skills"] == ["recon-and-scan"], f"{res.done['skills']}")
+        check(any(any("Scan a target" in h for h in c["skills"]) for c in r.chats()), "the recon skill did not reach the team")
+    finally:
+        r.close()
+
+
+@test
+def user_skill_overrides_and_adds(suite):
+    """A Markdown file in the user's skills dir overrides a built-in and adds a new skill."""
+    r = Run(suite, "skills_user", service=False)
+    try:
+        d = os.path.join(r.home, ".local", "share", "shadow", "assistant", "skills")
+        os.makedirs(d)
+        # Override the built-in code-review with a shorter body.
+        with open(os.path.join(d, "code-review.md"), "w") as f:
+            f.write("---\nname: code-review\ntitle: My review\nmode: general\n"
+                    "triggers: review, diff\nsummary: my own review rules\n---\n# My review\nDo it my way.\n")
+        # A brand-new skill with its own trigger.
+        with open(os.path.join(d, "sql-tune.md"), "w") as f:
+            f.write("---\nname: sql-tune\ntitle: Tune SQL\nmode: general\n"
+                    "triggers: slow query, explain plan, index the, query is slow\nsummary: speed up a slow query\n---\n"
+                    "# Tune SQL\nRead the EXPLAIN plan first.\n")
+        dd = skills_dump(r, "review this diff")
+        names = {s["name"]: s for s in dd["skills"]}
+        check(len(dd["skills"]) == 13, f"{len(dd['skills'])} skills after adding one")
+        check(names["code-review"]["builtin"] is False and names["code-review"]["title"] == "My review", "override not applied")
+        check(names["code-review"]["bodyChars"] < 60, f"override body {names['code-review']['bodyChars']}")
+        check(dd["chosen"] == ["code-review"], f"{dd['chosen']}")
+        check(skills_dump(r, "my query is slow")["chosen"] == ["sql-tune"], "the new skill was not matched")
+    finally:
+        r.close()
+
+
+@test
+def skills_persist_across_a_tool_round(suite):
+    """A coding request that also runs a tool keeps its skill in the continuation round (the resume path), and a later turn re-matches."""
+    b = Behaviour()
+    r = Run(suite, "skills_resume", b)
+    try:
+        marker = os.path.join(r.dir, "ran.txt")
+        b.tool_trigger = r"\brun a command\b"
+        b.tool_call = ("run_shell_command", {"command": "sh", "args": ["-c", f"echo ok >> {marker}; echo team-ok"]})
+        res = r.ask("Please review this code, then run a command that prints team-ok", CHAT_Q)
+        t1, t2 = res.turns[0], res.turns[1]
+        check(t1["error"] == "" and t1["skills"] == ["code-review"], f"turn 1: {t1.get('skills')} {t1['error']}")
+        check(t1["tools"] and t1["tools"][0]["status"] == "done", f"the tool did not run: {t1['tools']}")
+        # Both lead rounds of turn 1 (the second goes through startCompletion as a
+        # continuation, not beginTurn) carry the skill.
+        leads1 = [c for c in r.leads() if "review this code" in str(c["last_user"])]
+        check(len(leads1) == 2, f"{len(leads1)} lead rounds in turn 1")
+        check(all("Review a change" in c["skills"] for c in leads1), f"a continuation round lost the skill: {[c['skills'] for c in leads1]}")
+        # Turn 2 is small talk: no skill anywhere, no stale block left over.
+        check(t2["skills"] == [], f"turn 2 skills: {t2['skills']}")
+        check(all(not c["has_skill_block"] for c in r.chats() if "France" in str(c["last_user"])), "a stale skill block leaked into turn 2")
+    finally:
+        r.close()
+
+
+@test
+def skills_apply_on_the_claude_path(suite):
+    """Skills are provider-independent: a Claude turn also carries the matched skill."""
+    r = Run(suite, "skills_anthropic", service=False)
+    port = free_port()
+    mock = subprocess.Popen([sys.executable, "-I", MOCK_ANTHROPIC, "--port", str(port), "--mode", "stream"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        for _ in range(100):
+            try:
+                socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+                break
+            except OSError:
+                time.sleep(0.05)
+        res = r.ask("Please review this diff for bugs", key="sk-ant-test", base=f"http://127.0.0.1:{port}/v1")
+        check(res.rc == 0 and res.done["provider"] == "anthropic" and res.done["skills"] == ["code-review"], f"{res.done}")
+    finally:
+        mock.terminate()
+        mock.wait(timeout=5)
+        r.close()
+
+
 # ----------------------------------------------------------------------------- runner
 def find_binary(explicit):
     cands = [explicit, os.environ.get("SHADOW_ASSISTANT_BIN")]

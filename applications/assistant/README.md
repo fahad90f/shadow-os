@@ -185,6 +185,40 @@ Without a window: `shadow-assistant --ask "…"` sends one request (give it
 several times for several turns) and prints the team's progress and the reply
 as JSON lines; `--dump team` prints the teams.
 
+## Skills
+
+A **skill** is a short set of instructions that teaches the assistant how to
+do one kind of task well — reviewing a change, finding a bug, writing tests,
+or (in Pentest mode) running an authorized security assessment. For each
+message the assistant picks the skills whose triggers best match what was
+asked and adds their text to the models' instructions for that turn, so the
+**whole team** works the same way; when nothing fits, nothing is added.
+
+The built-in skills (in `skills/`, compiled into the binary and installed to
+`/usr/share/shadow/assistant/skills`):
+
+| | General | Only in Pentest mode |
+|---|---|---|
+| | `code-review`, `debug-issue`, `write-tests`, `explain-code`, `refactor-safely`, `git-tasks` | `pentest-methodology`, `recon-and-scan`, `web-assessment`, `exploit-research`, `credential-attacks`, `traffic-capture` |
+
+The pentest skills are framed around written authorization and are offered
+only while the assistant is in Pentest mode (Settings → Behaviour), alongside
+the pentest tools.
+
+- **Settings → Skills** lists them with a per-skill switch and a master
+  switch, and a button to reload after editing.
+- Each skill is a Markdown file with a little front matter (`name`, `title`,
+  `mode: general|pentest`, `triggers`, `summary`). **Your own** skills go in
+  `~/.local/share/shadow/assistant/skills/`; one there overrides a built-in
+  of the same name, and a new file adds a new skill.
+- `[skills] enabled=false` turns them all off; `[skills] disabled=` is a
+  comma-separated list.
+- At most three skills, and about 9000 characters, go into one request.
+- Without a window: `shadow-assistant --dump skills` lists them (set
+  `SHADOW_ASSISTANT_SKILL_TEXT` to see which a message would pick), and the
+  skills chosen for a turn appear in each `--ask` line and on the stage while
+  the assistant works.
+
 ## Capabilities
 
 1. **Chat** — streaming SSE responses, Markdown, per-conversation history under
@@ -296,6 +330,7 @@ Ctrl+L prompt.
 ```
 shadow-assistant --dump config    # key configured? where from, service, endpoint, team, autonomy, voice (never the key)
 shadow-assistant --dump team      # the model teams: members, which are offered now, who leads
+shadow-assistant --dump skills    # the skills, and (with SHADOW_ASSISTANT_SKILL_TEXT) which a message picks
 shadow-assistant --dump models    # the four model-role IDs + base URL (Claude key)
 shadow-assistant --dump tools     # enabled tools, changesSystem/risky flags
 shadow-assistant --dump voice     # helper path + its --probe answer, eSpeak NG, setup tool, voice config;
@@ -358,7 +393,7 @@ pocketsphinx, speech-dispatcher and piper are no longer used.
 - `tests/team_tests.py [--bin build/bin/shadow-assistant]` — the model team,
   against the real binary and `tests/mock_nvidia.py` (a stand-in for NVIDIA's
   API that records every request; `python3 tests/mock_nvidia.py --port 8910`
-  runs it by hand). 45 tests: all advisors asked at the same moment and the
+  runs it by hand). 53 tests: all advisors asked at the same moment and the
   lead after them with every note; code / actions / conversation go to their
   teams; a tool runs once however many models planned it; yes/no before
   acting; Think hard; solo; `max_models`; custom groups; several turns;
@@ -369,7 +404,9 @@ pocketsphinx, speech-dispatcher and piper are no longer used.
   replies; `look_at_image` (four models, the picture shrunk, a missing file,
   a model that takes no pictures, "no" to sending); the key saved from
   Settings (mode 600, never printed, removed again), its precedence, which
-  service a key selects, a Claude key still working; a key never used with the other service and
+  service a key selects, a Claude key still working; skills matched per request and reaching the
+  whole team, turned off, overridden by a user file, and offered only in the
+  right mode; a key never used with the other service and
   the key file private whatever the umask; several tool calls or pictures in
   one reply; what an error may and may not teach about a model; Stop while
   the team works or looks, and nothing from a stopped turn starting inside

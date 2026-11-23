@@ -63,6 +63,8 @@ DEFAULT_MODELS = [
 
 ADVISOR_MARK = "one of several AI models"
 NOTES_MARK = "--- Team notes ---"
+SKILL_MARK = "--- Skill instructions ---"
+SKILL_HEADING = re.compile(r"^# (.+)$", re.M)
 
 
 def short(model):
@@ -232,6 +234,11 @@ class MockNvidia:
             question = " ".join(p.get("text", "") for p in last_user if p.get("type") == "text")
         tools = req.get("tools") or []
         advisor = ADVISOR_MARK in system
+        skill_block = ""
+        if SKILL_MARK in system:
+            after = system.split(SKILL_MARK, 1)[1]
+            skill_block = after.split("--- End of skill instructions ---", 1)[0]
+        skills = SKILL_HEADING.findall(skill_block)
         notes = re.findall(r"^\[([^\]\n]+)\]\nNOTE-FROM", system, re.M) if NOTES_MARK in system else []
         tool_results = [m for m in messages if m.get("role") == "tool"]
         roles = [m.get("role") for m in messages]
@@ -240,7 +247,8 @@ class MockNvidia:
                       "last_user": question, "notes": notes, "stream": bool(req.get("stream")),
                       "temperature": req.get("temperature"),
                       "tool_result": str(tool_results[-1].get("content", ""))[:6000] if tool_results else "",
-                      "roles": roles, "max_tokens": req.get("max_tokens"), "system_chars": len(system)})
+                      "roles": roles, "max_tokens": req.get("max_tokens"), "system_chars": len(system),
+                      "skills": skills, "has_skill_block": SKILL_MARK in system})
 
         def finish(status):
             entry["status"] = status

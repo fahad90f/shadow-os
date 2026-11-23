@@ -190,6 +190,9 @@ QJsonArray Council::advisorMessages(const QJsonArray &conversation, const QJsonA
             "name the tool and its arguments:\n") + lines.join(u'\n');
     }
 
+    if (!m_skills.isEmpty())
+        system += m_skills;
+
     // The conversation as plain text turns. Tool calls and their results are
     // folded into the assistant's turn, and neighbouring turns of one role
     // are joined: several models accept only strictly alternating roles, and
@@ -237,10 +240,12 @@ QJsonArray Council::advisorMessages(const QJsonArray &conversation, const QJsonA
 
 // ---- a turn -------------------------------------------------------------------
 
-void Council::begin(const Plan &plan, const QJsonArray &conversation, const QJsonArray &tools, bool voice, bool thorough)
+void Council::begin(const Plan &plan, const QJsonArray &conversation, const QJsonArray &tools, const QString &skills,
+                    bool voice, bool thorough)
 {
     cancel();
     m_plan = plan;
+    m_skills = skills;
     m_leadState = QStringLiteral("waiting");
     m_members.clear();
     m_working = true;

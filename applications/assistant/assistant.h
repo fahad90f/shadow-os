@@ -12,6 +12,7 @@
 #include "assistantconfig.h"
 #include "chatclient.h"
 #include "council.h"
+#include "skilllibrary.h"
 #include "visionteam.h"
 #include "modelcatalog.h"
 #include "conversationstore.h"
@@ -46,6 +47,9 @@ class Assistant : public QObject
     Q_PROPERTY(QVariantList toolLog READ toolLog NOTIFY toolLogChanged)
     // The models the service offers and the groups that follow (Settings).
     Q_PROPERTY(ModelCatalog *catalog READ catalog CONSTANT)
+    Q_PROPERTY(SkillLibrary *skills READ skills CONSTANT)
+    // The skills applied to the current turn (names), shown while she works.
+    Q_PROPERTY(QStringList activeSkillNames READ activeSkills NOTIFY phaseChanged)
     // The model team of the current (or last) request: [{id, name, publisher,
     // role: "lead"|"advisor", state: "waiting"|"working"|"done"|"failed"|"late",
     // seconds}], the lead first. Empty when one model answers alone.
@@ -79,6 +83,9 @@ public:
     QString activeId() const { return m_activeId; }
     bool busy() const { return m_client->busy() || m_executing > 0 || m_council->working() || m_restartPending; }
     ModelCatalog *catalog() { return m_catalog; }
+    SkillLibrary *skills() { return m_skills; }
+    // The skills chosen for the current turn (names), for the UI and tests.
+    QStringList activeSkills() const { return m_turnSkills; }
     QVariantList team() const { return m_council->members(); }
     QString teamKind() const { return m_council->kind(); }
     bool teamGathering() const { return m_council->working(); }
@@ -175,9 +182,12 @@ private:
 
     AssistantConfig *m_config;
     ModelCatalog *m_catalog;
+    SkillLibrary *m_skills;
     Council *m_council;
     VisionTeam *m_vision;
     QString m_turnLead;        // NVIDIA: the model answering this turn
+    QStringList m_turnSkills;  // the skills chosen for this turn
+    QString m_turnSkillText;   // ... rendered for the models' instructions
     // Counts the turns (a new message, Stop, another conversation). Whatever
     // was scheduled for an earlier turn — a retry after a pause, the next
     // lead, the continuation after a tool — finds the number changed and

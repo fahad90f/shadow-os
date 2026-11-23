@@ -63,6 +63,8 @@ class AssistantConfig : public QObject
     // "general" | "pentest"  — changes the system prompt and available tools
     Q_PROPERTY(QString role READ role WRITE setRole NOTIFY changed)
     Q_PROPERTY(QStringList enabledTools READ enabledTools NOTIFY changed)
+    // Skills on at all; a skill is used only when the request matches it.
+    Q_PROPERTY(bool skillsEnabled READ skillsEnabled WRITE setSkillsEnabled NOTIFY changed)
 
     // --- Voice (hands-free "Shadow") -------------------------------------
     // Persisted in the [voice] section of the same conf file (spec voice v2
@@ -145,6 +147,10 @@ public:
 
     QStringList enabledTools() const { return m_enabledTools; }
     Q_INVOKABLE bool toolEnabled(const QString &name) const;
+    bool skillsEnabled() const { return m_skillsEnabled; }
+    void setSkillsEnabled(bool on);
+    bool skillEnabled(const QString &name) const;
+    void setSkillEnabled(const QString &name, bool on);
     Q_INVOKABLE void setToolEnabled(const QString &name, bool enabled);
 
     // --- Voice accessors ---
@@ -206,6 +212,8 @@ private:
     QString m_autonomy;
     QString m_role;
     QStringList m_enabledTools;
+    bool m_skillsEnabled = true;
+    QStringList m_disabledSkills;
     bool m_toolsKeySet = false; // whether [tools] disabled=... was present
     QStringList m_disabledTools;
 

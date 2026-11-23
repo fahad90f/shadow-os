@@ -14,12 +14,13 @@ Item {
     readonly property AssistantConfig cfg: stage.cfg
     readonly property VoiceController voice: stage.voice
     readonly property ModelCatalog catalog: stage.agent.catalog
+    readonly property SkillLibrary skills: stage.agent.skills
     property string section: "voice"
     readonly property bool wide: width >= 900
     readonly property var sections: [
         { key: "voice", label: qsTr("Voice") }, { key: "models", label: qsTr("Models") },
         { key: "behaviour", label: qsTr("Behaviour") }, { key: "tools", label: qsTr("Tools") },
-        { key: "activity", label: qsTr("Activity") }
+        { key: "skills", label: qsTr("Skills") }, { key: "activity", label: qsTr("Activity") }
     ]
 
     // The section chosen in the index stays marked while the page sits where
@@ -29,7 +30,7 @@ Item {
     property real jumpY: -1
     function jump(key: string) {
         const target = key === "models" ? secModels : key === "behaviour" ? secBehaviour
-                     : key === "tools" ? secTools : key === "activity" ? secActivity : secVoice
+                     : key === "tools" ? secTools : key === "skills" ? secSkills : key === "activity" ? secActivity : secVoice
         flick.contentY = Math.max(0, Math.min(target.y - 8, flick.contentHeight - flick.height))
         jumped = key
         jumpY = flick.contentY
@@ -42,7 +43,7 @@ Item {
         if (flick.atYEnd && flick.contentHeight > flick.height + 1)
             return "activity"
         const y = flick.contentY + 80
-        return y >= secActivity.y ? "activity" : y >= secTools.y ? "tools" : y >= secBehaviour.y ? "behaviour"
+        return y >= secActivity.y ? "activity" : y >= secSkills.y ? "skills" : y >= secTools.y ? "tools" : y >= secBehaviour.y ? "behaviour"
              : y >= secModels.y ? "models" : "voice"
     }
     // the content column: the same place as History's (centred, clear of the index)
@@ -817,10 +818,84 @@ Item {
                 }
             }
 
-            // ================= 05 ACTIVITY =================
+            // ================= 05 SKILLS =================
+            SectionHead {
+                id: secSkills
+                number: "05"; title: qsTr("Skills")
+                lead: qsTr("Short instructions that help her with a kind of task. The ones that fit a request are added to her thinking for that message; nothing is added when none fit.")
+            }
+            SettingRow {
+                Layout.fillWidth: true
+                divider: false
+                title: qsTr("Use skills")
+                note: page.cfg.skillsEnabled ? qsTr("On — %1 skills are available in this mode.").arg(page.skills.count)
+                                             : qsTr("Off — no skill is ever added to a request.")
+                PeSwitch {
+                    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                    text: qsTr("Use skills")
+                    checked: page.cfg.skillsEnabled
+                    onToggled: page.cfg.skillsEnabled = checked
+                }
+            }
+            Repeater {
+                model: page.skills.groups
+                delegate: ColumnLayout {
+                    id: skillGroup
+                    required property var modelData
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    spacing: 0
+                    Text {
+                        textFormat: Text.PlainText
+                        Layout.topMargin: 10
+                        Layout.bottomMargin: 2
+                        text: skillGroup.modelData.title
+                        font.family: Pe.sans; font.pixelSize: Pe.label; font.weight: Font.Bold
+                        font.letterSpacing: Pe.labelTracking
+                        color: skillGroup.modelData.group === "pentest" ? Pe.caution : Pe.inkMute
+                    }
+                    Repeater {
+                        model: skillGroup.modelData.items
+                        delegate: SettingRow {
+                            id: skillRow
+                            required property var modelData
+                            Layout.fillWidth: true
+                            title: modelData.title
+                            note: modelData.summary + (modelData.available ? "" : qsTr("  ·  only in Pentest mode"))
+                            opacity: modelData.available && page.cfg.skillsEnabled ? 1 : 0.5
+                            PeSwitch {
+                                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                                text: skillRow.modelData.title
+                                enabled: page.cfg.skillsEnabled
+                                checked: skillRow.modelData.enabled
+                                onToggled: page.skills.setSkillEnabled(skillRow.modelData.name, checked)
+                            }
+                        }
+                    }
+                }
+            }
+            SettingRow {
+                Layout.fillWidth: true
+                divider: false
+                title: qsTr("Your own skills")
+                note: qsTr("Markdown files in ~/.local/share/shadow/assistant/skills override a built-in of the same name.")
+                PeButton {
+                    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                    compact: true
+                    kind: "secondary"
+                    iconName: "refresh"
+                    text: qsTr("Reload skills")
+                    onClicked: {
+                        page.skills.reload()
+                        page.stage.whisper(qsTr("Skills reloaded"), "info")
+                    }
+                }
+            }
+
+            // ================= 06 ACTIVITY =================
             SectionHead {
                 id: secActivity
-                number: "05"; title: qsTr("Activity")
+                number: "06"; title: qsTr("Activity")
                 lead: qsTr("Every tool call this session, newest first.")
             }
             Repeater {

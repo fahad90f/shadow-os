@@ -4,6 +4,9 @@
 # here; it is read at run time from the user's own files or the environment.
 file(GLOB ASSISTANT_QML CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
      pages/*.qml components/*.qml components/*.js)
+# The built-in skills (Markdown), compiled into the binary and also installed
+# so users can read and copy them.
+file(GLOB ASSISTANT_SKILLS CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} skills/*.md)
 # The design tokens: one shared instance (import org.shadow.assistant; Pe.ink).
 # At the module root, where the generated qmldir declares it a singleton.
 set_source_files_properties(Pe.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -19,6 +22,7 @@ shadow_add_app(shadow-assistant
         council.cpp council.h
         visionteam.cpp visionteam.h
         modelcatalog.cpp modelcatalog.h
+        skilllibrary.cpp skilllibrary.h
         toolregistry.cpp toolregistry.h
         undojournal.cpp undojournal.h
         speechtext.cpp speechtext.h
@@ -26,9 +30,13 @@ shadow_add_app(shadow-assistant
         voiceengine.cpp voiceengine.h
         voicesession.cpp voicesession.h
     QML Main.qml Pe.qml ${ASSISTANT_QML}
+    RESOURCES ${ASSISTANT_SKILLS}
     DESKTOP org.shadow.assistant.desktop
     LIBS Qt6::Network
 )
+
+# A copy on disk for reference and for users to base their own skills on.
+install(DIRECTORY skills/ DESTINATION ${CMAKE_INSTALL_DATADIR}/shadow/assistant/skills FILES_MATCHING PATTERN "*.md")
 
 # Listen for the wake word from login on (exits at once when it is switched off).
 install(FILES org.shadow.assistant-listen.desktop DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/autostart)

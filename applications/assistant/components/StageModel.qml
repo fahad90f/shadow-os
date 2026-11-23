@@ -467,6 +467,8 @@ Item {
 
     // ---- the model team (NVIDIA): several models work on a request at the same time -------------
     readonly property bool nvidia: cfg.provider === "nvidia" && !localMode
+    // Skills added to the current message (empty when none fit or they are off).
+    readonly property var activeSkills: working ? agent.activeSkillNames : []
     // the service said no to the key in use (when it was tried, or on a request)
     readonly property bool keyRejected: nvidia && agent.catalog.keyState === "rejected"
     // What the service is called in a sentence.

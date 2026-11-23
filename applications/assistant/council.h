@@ -56,7 +56,11 @@ public:
 
     // Step 1. 'conversation' is the neutral (OpenAI-shaped) message list the
     // lead will get, system prompt first; 'tools' the lead's tools.
-    void begin(const Plan &plan, const QJsonArray &conversation, const QJsonArray &tools, bool voice, bool thorough);
+    // 'skills' is the skill-instruction block (SkillLibrary::render) for this
+    // request, added to every advisor's prompt so the team works the same way;
+    // the lead gets it through the system prompt.
+    void begin(const Plan &plan, const QJsonArray &conversation, const QJsonArray &tools, const QString &skills,
+               bool voice, bool thorough);
     // Stop the advisors (the user pressed Stop). No ready() follows.
     void cancel();
     // Forget the turn (a new conversation, or the turn is over).
@@ -101,6 +105,7 @@ private:
     };
 
     QJsonArray advisorMessages(const QJsonArray &conversation, const QJsonArray &tools) const;
+    QString m_skills; // the skill block for the current turn
     void finishMember(int index, int generation, const QString &state, const QString &text, const QString &error);
     void maybeReady();
 

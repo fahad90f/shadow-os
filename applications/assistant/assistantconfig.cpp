@@ -538,6 +538,10 @@ void AssistantConfig::reload()
         if (!m_disabledTools.contains(t))
             m_enabledTools << t;
 
+    // --- skills ---
+    m_skillsEnabled = readBool(ini, QStringLiteral("skills/enabled"), true);
+    m_disabledSkills = readList(ini, QStringLiteral("skills/disabled"));
+
     // --- voice ---
     // Saying "Shadow" works out of the box. The listener transcribes on this
     // computer only and keeps nothing; the toggle in the sidebar and Settings
@@ -577,6 +581,8 @@ void AssistantConfig::save()
     ini.setValue(QStringLiteral("behaviour/autonomy"), m_autonomy);
     ini.setValue(QStringLiteral("behaviour/role"), m_role);
     ini.setValue(QStringLiteral("tools/disabled"), m_disabledTools);
+    ini.setValue(QStringLiteral("skills/enabled"), m_skillsEnabled);
+    ini.setValue(QStringLiteral("skills/disabled"), m_disabledSkills);
     // Every voice setting the UI can change, clean (this also replaces values
     // an old template left with an inline comment).
     ini.setValue(QStringLiteral("voice/wake_word_enabled"), m_wakeEnabled);
@@ -676,6 +682,33 @@ void AssistantConfig::setToolEnabled(const QString &name, bool enabled)
     for (const QString &t : kAllTools)
         if (!m_disabledTools.contains(t))
             m_enabledTools << t;
+    save();
+    Q_EMIT changed();
+}
+
+void AssistantConfig::setSkillsEnabled(bool on)
+{
+    if (on == m_skillsEnabled)
+        return;
+    m_skillsEnabled = on;
+    save();
+    Q_EMIT changed();
+}
+
+bool AssistantConfig::skillEnabled(const QString &name) const
+{
+    return !m_disabledSkills.contains(name);
+}
+
+void AssistantConfig::setSkillEnabled(const QString &name, bool on)
+{
+    const bool currently = !m_disabledSkills.contains(name);
+    if (currently == on)
+        return;
+    if (on)
+        m_disabledSkills.removeAll(name);
+    else if (!name.isEmpty())
+        m_disabledSkills << name;
     save();
     Q_EMIT changed();
 }
@@ -840,6 +873,16 @@ QString AssistantConfig::configTemplate() const
         "; Comma-separated tool names to turn off, e.g. run_shell_command\n"
         "disabled=\n"
         "\n"
+        "[skills]\n"
+        "; Skills are short instructions that help with coding, debugging,\n"
+        "; testing and (in pentest mode) security testing. enabled=false turns\n"
+        "; them all off; disabled= is a comma-separated list of skill names.\n"
+        "; Your own skills (Markdown files) go in\n"
+        "; ~/.local/share/shadow/assistant/skills/ and override a built-in of\n"
+        "; the same name.\n"
+        "enabled=true\n"
+        "disabled=\n"
+        "\n"
         "[voice]\n"
         "; Hands-free voice: say \"Shadow\", speak, hear the reply. Speech is\n"
         "; recognised on this computer. Install the voice with: shadow-voice-setup\n"
@@ -895,6 +938,8 @@ QJsonObject AssistantConfig::toJson() const
         {QStringLiteral("autonomy"), m_autonomy},
         {QStringLiteral("enabledTools"), QJsonArray::fromStringList(m_enabledTools)},
         {QStringLiteral("disabledTools"), QJsonArray::fromStringList(m_disabledTools)},
+        {QStringLiteral("skillsEnabled"), m_skillsEnabled},
+        {QStringLiteral("disabledSkills"), QJsonArray::fromStringList(m_disabledSkills)},
         {QStringLiteral("voice"), QJsonObject{
             {QStringLiteral("wakeEnabled"), m_wakeEnabled},
             {QStringLiteral("wakePhrase"), wakePhrase()},
