@@ -26,6 +26,20 @@ QSettings settings()
 }
 } // namespace
 
+namespace {
+bool s_pinned = false;
+bool s_pinnedDark = true;
+QString s_pinnedAccent;
+} // namespace
+
+void Appearance::pin(bool dark, const QString &accent)
+{
+    s_pinned = true;
+    s_pinnedDark = dark;
+    s_pinnedAccent = kAccents.contains(accent) ? accent : QStringLiteral("cyan");
+    instance()->load();
+}
+
 Appearance *Appearance::instance()
 {
     static Appearance *self = new Appearance;
@@ -87,11 +101,15 @@ void Appearance::load()
     s.sync();
     s.beginGroup(QStringLiteral("Appearance"));
 
-    const bool dark = s.value(QStringLiteral("ColorScheme"), QStringLiteral("dark")).toString()
-                      != QStringLiteral("light");
+    bool dark = s.value(QStringLiteral("ColorScheme"), QStringLiteral("dark")).toString()
+                != QStringLiteral("light");
     QString accent = s.value(QStringLiteral("Accent"), QStringLiteral("cyan")).toString();
     if (!kAccents.contains(accent))
         accent = QStringLiteral("cyan");
+    if (s_pinned) { // this application keeps its own look
+        dark = s_pinnedDark;
+        accent = s_pinnedAccent;
+    }
     const bool reduce = s.value(QStringLiteral("ReduceMotion"), false).toBool();
     const bool transparency = s.value(QStringLiteral("Transparency"), true).toBool();
     const qreal scale = qBound(0.8, s.value(QStringLiteral("FontScale"), 1.0).toDouble(), 1.6);
@@ -115,7 +133,7 @@ void Appearance::store(const QString &key, const QVariant &value)
 
 void Appearance::setDark(bool dark)
 {
-    if (dark == m_dark)
+    if (dark == m_dark || s_pinned)
         return;
     m_dark = dark;
     store(QStringLiteral("ColorScheme"), dark ? QStringLiteral("dark") : QStringLiteral("light"));
@@ -124,7 +142,7 @@ void Appearance::setDark(bool dark)
 
 void Appearance::setAccent(const QString &accent)
 {
-    if (accent == m_accent || !kAccents.contains(accent))
+    if (accent == m_accent || !kAccents.contains(accent) || s_pinned)
         return;
     m_accent = accent;
     store(QStringLiteral("Accent"), accent);

@@ -1,0 +1,9 @@
+# <binary> [arguments...] — each line is launched by tests/desktop/smoke.sh
+shadow-trading
+shadow-trading analysis
+shadow-trading history
+shadow-trading portfolio
+shadow-trading risk
+shadow-trading models
+shadow-trading settings
+shadow-trading about

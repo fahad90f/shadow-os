@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Shadow Trading
+GenericName=AI Trading Desk
+Comment=Market analysis by a panel of NVIDIA-hosted AI models, with trades placed on a paper account
+Exec=shadow-trading
+Icon=org.shadow.trading
+Terminal=false
+Categories=Office;Finance;
+Keywords=trading;trade;crypto;bitcoin;chart;market;ai;nvidia;signals;paper;portfolio;
+StartupNotify=true
+StartupWMClass=org.shadow.trading
+X-SHADOW-Component=trading

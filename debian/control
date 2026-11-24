@@ -1034,3 +1034,24 @@ Description: Shadow Assistant
  Silero VAD, Moonshine/Whisper, Kokoro) is not part of this package: Shadow
  OS images include it, otherwise shadow-voice-setup downloads it. Without
  it, replies are spoken with eSpeak NG and there is no speech recognition.
+
+Package: shadow-trading
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
+ ca-certificates
+Recommends: qml6-module-qtwebengine
+Description: Shadow Trading
+ A trading desk for Shadow OS. A panel of AI models hosted by NVIDIA and a
+ rule-based analyst read live market data (candles, indicators, market
+ structure) and answer buy, sell or hold with a stop and a target; fixed
+ risk rules size every order and can refuse it; the trades are placed on a
+ paper account and listed with their results. Orders are simulated against
+ live prices: no order leaves the computer and no real money is involved.
+ .
+ The NVIDIA API key is entered in the application and kept in a private
+ per-user file (or read from the environment, or shared with Shadow
+ Assistant); it is never stored in the system. Without a key the rule-based
+ analyst works alone.
+ .
+ The TradingView chart view needs qml6-module-qtwebengine and an internet
+ connection; without them the application draws its own chart.

@@ -53,6 +53,13 @@ public:
 
     static QString configPath();
 
+    // Pin this process to a colour scheme and an accent, whatever the user's
+    // settings say, and without storing anything: for an application whose
+    // look is part of what it is (a trading desk that is always dark). The
+    // user's own settings are neither read for these two nor changed. Call
+    // before the first QML engine is created.
+    static void pin(bool dark, const QString &accent);
+
 Q_SIGNALS:
     void darkChanged();
     void accentChanged();

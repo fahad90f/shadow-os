@@ -91,6 +91,8 @@ user_suites() {
         suite "$(basename "$(dirname "$t")")-$(basename "$t" .py)" python3 -B "${t#"$REPO"/}"
     done
     suite installation-plan   python3 -B tests/installation/test_plan.py
+    suite trading-skills      bash applications/trading/tests/run-unit.sh skills
+    suite trading-core        bash applications/trading/tests/run-unit.sh core
     suite arsenal-validate    python3 -B arsenal/tools/validate.py --quiet
     suite fix-network         bash tests/network/fix-network-test.sh
     suite shellcheck          bash -c 'command -v shellcheck >/dev/null || { echo "SKIP: shellcheck is not installed"; exit 77; }

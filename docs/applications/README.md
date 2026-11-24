@@ -38,6 +38,7 @@ the launcher, in QEMU). Nothing has run on real hardware.
 | [Arsenal](#arsenal-manager) | `shadow-arsenal` | `shadow-arsenal` | yes |
 | [Installer](#installer) | `shadow-installer` | `shadow-installer-gui` | yes (removed from the installed system) |
 | [Assistant](#assistant) | `shadow-assistant` | `shadow-assistant` | yes (listed in the desktop variant), with the voice engine data when the image was built with network access |
+| [Trading](#trading) | `shadow-trading` | `shadow-trading` | yes (listed in the desktop variant), with the web view for its TradingView tab |
 | [Terminal](#terminal) | `shadow-terminal` | none yet | **no** |
 
 [In progress](#in-progress): Editor, Archive Manager, Disk Manager,
@@ -224,6 +225,21 @@ engine's internals:
 | Repair | `bash scripts/fix-assistant-voice.sh` from a source checkout: builds and installs the assistant (build tools and `build/cmake` when missing), installs packages and engine data, repairs the settings file, checks microphone and speakers, tests your voice and the wake word, restarts it and has you talk to it; PASS only when it answered aloud ([assistant-voice.md](assistant-voice.md#the-one-shot-fix-scriptsfix-assistant-voicesh)) |
 | Verified | in the build chroot: the engine's 66 tests and a live run through PipeWire with a virtual microphone; 43 tests of the application's voice side; whole voice sessions with the real engine on recorded speech; the repair script end to end as a desktop user with sudo; 53 tests of the model team (parallel work, one answer, tools run once, fallbacks, the key saved from Settings) |
 | Not verified | a real microphone and speakers; the booted image; KWin raising the window on the wake word; the live NVIDIA and Claude APIs (no key in the test environment: both tested against stand-in servers; the model ids come from NVIDIA's real model list) |
+
+## Trading
+
+[`applications/trading/README.md`](../../applications/trading/README.md).
+
+| | |
+|---|---|
+| Purpose | a trading desk: live prices and a chart, a panel of NVIDIA-hosted models plus a rule-based analyst that analyses the selected market at each candle close, fixed risk rules, and a **paper account** the resulting trades are placed on. No order leaves the computer; there is no real-money mode |
+| Binary / package | `shadow-trading` / `shadow-trading`; single instance; always dark with a violet accent |
+| Data sources | public market data from a Binance-compatible API (`/api/v3/klines`, `/api/v3/ticker/24hr`, default `data-api.binance.vision`, no key); NVIDIA's model service (`integrate.api.nvidia.com/v1`, one request per model per analysis); `~/.config/shadow/trading.conf`; `~/.config/shadow/trading/nvidia.key` (mode 600, also read from `NVIDIA_API_KEY` or shared with the Assistant); `~/.local/share/shadow/trading/paper.json` (the account and its history) |
+| Command line | `shadow-trading [live\|analysis\|history\|portfolio\|risk\|models\|settings\|about]`, `--dump config\|account\|market\|signal\|session` |
+| Privileges | none |
+| Runtime dependencies | `shadow-ui`; `qml6-module-qtwebengine` for the TradingView tab (without it, or without a route to tradingview.com, the application draws its own chart and says so) |
+| Tests | `tests/run-suites.sh` runs the two unit programs (indicators and patterns; consensus, risk rules, paper account); `applications/trading/tests/test_app.py` drives the built binary against stand-ins for the exchange and for NVIDIA's service |
+| Not verified | the real exchange API, real answers from NVIDIA's models and the TradingView chart itself: the build environment has no route to them and no key. This is not financial advice, and simulated results are not real ones |
 
 ## Terminal
 

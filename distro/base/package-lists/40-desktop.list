@@ -57,6 +57,11 @@ mesa-vulkan-drivers
 mesa-va-drivers
 libglx-mesa0
 
+# Shadow Trading's TradingView view: the Qt web view (the package only
+# recommends it, and recommended packages are not installed in the image).
+# Without it the application draws its own chart.
+qml6-module-qtwebengine
+
 # Audio
 pipewire
 pipewire-pulse
