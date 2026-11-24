@@ -33,7 +33,10 @@ while PackageKit allows it. Errors show PackageKit's error code and text.
 
 * **Install profile** installs the metapackage `shadow-arsenal-<id>`. If no
   enabled repository offers it, the dialog says so and offers to install the
-  profile's missing tools directly.
+  profile's missing tools directly. Tools marked `optional` in the manifest
+  (firewalld and ufw in Blue Team: a second firewall next to Shadow's) are only
+  suggested by the metapackage, are left out of "missing tools" and of the
+  profile's counts, and can still be installed one by one.
 * **Remove profile** is offered only when the metapackage is installed; it
   removes the metapackage with autoremove, so tools that came with it and that
   nothing else needs go too, and tools installed by hand stay.

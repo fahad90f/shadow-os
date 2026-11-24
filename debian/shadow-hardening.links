@@ -1,0 +1,1 @@
+usr/lib/NetworkManager/dispatcher.d/50-shadow-killswitch usr/lib/NetworkManager/dispatcher.d/pre-up.d/50-shadow-killswitch

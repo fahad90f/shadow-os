@@ -141,9 +141,11 @@ Description: OpenPGP key and APT source of the Shadow OS package repository
 Package: shadow-hardening
 Architecture: all
 Depends: ${misc:Depends}, python3, nftables, apparmor, auditd, sudo, iproute2, init-system-helpers,
- util-linux, procps
+ util-linux, procps, conntrack, systemd-resolved
 Recommends: apparmor-profiles, apparmor-profiles-extra, apparmor-utils, cryptsetup-bin, mokutil,
- shadow-boot, tor, torsocks, curl, iptables, rfkill, macchanger
+ shadow-boot, tor, torsocks, curl, iptables, rfkill
+Suggests: dnscrypt-proxy
+Conflicts: libnss-resolve
 Description: Shadow OS security baseline
  The security configuration Shadow OS ships with, as one removable package:
  .
@@ -151,8 +153,15 @@ Description: Shadow OS security baseline
   * no implicit loading of rarely used network protocol and filesystem
     modules;
   * a default-deny nftables host firewall and shadow-firewall to manage it;
+  * shadow-killswitch, the network kill switch (nothing leaves except
+    through Tor or a VPN tunnel; applied at boot before any interface is
+    configured), and shadow-panic, which cuts every network at once;
   * audit rules for identity, privilege, kernel-module and boot-chain changes;
-  * NetworkManager privacy defaults (per-network MAC address, IPv6 privacy);
+  * encrypted DNS through systemd-resolved (DNS-over-TLS to Quad9 by
+    default, DNSSEC where answers are signed, DNS-over-HTTPS through
+    dnscrypt-proxy on request) and NetworkManager privacy defaults (a
+    private MAC address per network and per boot, IPv6 privacy), managed
+    with shadow-netprivacy;
   * shadow-anon, the identity protection engine behind Hide Me (Tor
     transparent proxy, DNS over Tor, kill switch, MAC/hostname rotation),
     with its AppArmor profile;
@@ -196,7 +205,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends},
  libkf6service-bin, kio6,
  dbus-user-session, polkitd, pkexec,
  xdg-desktop-portal, xdg-desktop-portal-kde, plasma-workspace, qml6-module-org-kde-pipewire,
- xdg-user-dirs, xdg-utils,
+ xdg-user-dirs, xdg-utils, wl-clipboard,
  shared-mime-info, desktop-file-utils
 Recommends: xdg-desktop-portal-gtk, sddm, pipewire, pipewire-pulse, wireplumber,
  network-manager, bluez, upower, power-profiles-daemon, udisks2, accountsservice
@@ -204,7 +213,8 @@ Description: Shadow Horizon desktop shell and session
  The desktop of Shadow OS: top panel, dock, application launcher, wallpaper,
  session menu and the polkit authentication dialog, running as a Wayland
  session on the KWin compositor. Also provides the "Shadow Horizon" entry for
- the login screen and the compositor defaults.
+ the login screen and the compositor defaults. wl-clipboard is used to clear
+ the clipboard when the panic shortcut is pressed.
 
 Package: shadow-sysinfo
 Architecture: any
@@ -278,12 +288,12 @@ Package: shadow-control-center
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  libkscreen-bin, xkb-data, polkitd, pkexec, pulseaudio-utils, python3, passwd,
- accountsservice, shadow-hardening, apt, locales, tzdata, util-linux, libkf6config-bin,
+ accountsservice, shadow-hardening (>= ${source:Version}), apt, locales, tzdata, util-linux, libkf6config-bin,
  qml6-module-qtquick-dialogs, qml6-module-qtquick-effects
 Recommends: network-manager, bluez, pipewire-pulse, wireplumber, upower, power-profiles-daemon,
  udisks2, smartmontools, shadow-updater, shadow-security-center,
  aircrack-ng
-Suggests: network-manager-openvpn
+Suggests: network-manager-openvpn, shadow-hardening
 Description: SHADOW Control Center
  The system settings application of Shadow OS: network (Wi-Fi, wired and
  proxy, Bluetooth, VPN), hardware (displays, sound, power, keyboard, mouse
@@ -297,7 +307,7 @@ Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, shadow-ui (= ${binary:Version}),
  network-manager, iproute2, iputils-ping, python3, pkexec, polkitd
 Recommends: traceroute, bind9-dnsutils, tcpdump
-Suggests: wireshark, network-manager-openvpn
+Suggests: wireshark, network-manager-openvpn, shadow-hardening
 Description: SHADOW Network Center
  Network interfaces, addresses, routes, DNS, sockets and connections, Wi-Fi
  and VPN management through NetworkManager, diagnostics (ping, traceroute,
@@ -588,30 +598,34 @@ Depends:
  debsecan,
  fail2ban,
  firejail,
- firewalld,
  lnav,
  lynis,
  nftables,
  openscap-scanner,
  psad,
- python3-opensnitch-ui,
  rkhunter,
  sshguard,
  suricata,
  timeshift,
- ufw,
  usbguard,
  wireshark,
  yara
-Suggests: shadow-arsenal
+Suggests:
+ shadow-arsenal,
+ firewalld,
+ ufw
 Description: SHADOW Arsenal profile - Blue Team
  Tools for defenders and system owners: network and host intrusion detection,
  file-integrity and rootkit checks, log analysis, security auditing and
  benchmarking, sandboxing and firewalls. All are open-source packages from
  Debian; they help you watch, harden and audit systems you administer.
  .
- This metapackage depends on the 25 tools of the profile, all from Debian
+ This metapackage depends on the 22 tools of the profile, all from Debian
  main; APT installs every one of them with it.
+ .
+ Suggested only, not installed with the profile, because they run a second
+ firewall next to Shadow's own: firewalld, UFW. Install one of them on its own
+ only to replace shadow-firewall.
  .
  Not included, because they are not in Debian main: Zeek, Wazuh, Velociraptor,
  Elastic Stack (ELK), Trivy, Grype, Chainsaw, Hayabusa, Falco, OpenVAS /

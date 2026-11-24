@@ -1,16 +1,29 @@
 #!/bin/sh
 set -e
 
+# Puts base-files' own file back. dpkg-divert refuses to rename it over a file
+# that is still there, so this is only done once dpkg has deleted ours.
 undivert() {
     file="$1"
     if dpkg-divert --list "$file" | grep -q "by shadow-base-files"; then
-        dpkg-divert --package shadow-base-files --remove --rename --divert "$file.debian" "$file"
+        if [ ! -e "$file" ]; then
+            dpkg-divert --package shadow-base-files --remove --rename --divert "$file.debian" "$file"
+        else
+            echo "shadow-base-files: warning: $file is still there; Debian's file stays at $file.debian (diversion kept)" >&2
+        fi
     fi
 }
 
 case "$1" in
     remove|purge|abort-install)
+        # Not a configuration file: dpkg has deleted it before "remove".
         undivert /usr/lib/os-release
+        ;;
+esac
+case "$1" in
+    purge|abort-install)
+        # Configuration files: dpkg keeps them on "remove" (the diversions stay
+        # with them) and deletes them before "purge".
         undivert /etc/issue
         undivert /etc/issue.net
         ;;

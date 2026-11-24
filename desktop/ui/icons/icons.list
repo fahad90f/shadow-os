@@ -22,6 +22,7 @@ battery-low.svg
 bell.svg
 bell-off.svg
 bluetooth.svg
+bluetooth-off.svg
 brightness.svg
 bug.svg
 calendar.svg
@@ -68,6 +69,7 @@ gauge.svg
 globe.svg
 grid.svg
 grip.svg
+hard-drive.svg
 harddrive.svg
 hash.svg
 help.svg
@@ -84,6 +86,7 @@ leaf.svg
 life-buoy.svg
 link.svg
 list.svg
+loader.svg
 lock.svg
 lock-open.svg
 logout.svg
@@ -101,7 +104,6 @@ more-vertical.svg
 mouse.svg
 music.svg
 network.svg
-shadow.svg
 night-light.svg
 notifications.svg
 package.svg
@@ -120,12 +122,15 @@ radar.svg
 recovery.svg
 redo.svg
 refresh.svg
+refresh-cw.svg
+rotate-cw.svg
 rows.svg
 save.svg
 screenshot.svg
 search.svg
 server.svg
 settings.svg
+shadow.svg
 share.svg
 shield.svg
 shield-alert.svg
@@ -149,8 +154,10 @@ thermometer.svg
 timer.svg
 touchpad.svg
 trash.svg
+trash-2.svg
 type.svg
 undo.svg
+unlock.svg
 updates.svg
 upload.svg
 usb.svg
@@ -171,6 +178,7 @@ wifi-4.svg
 wifi-off.svg
 window.svg
 wrench.svg
+x.svg
 x-circle.svg
 zap.svg
 zoom-in.svg

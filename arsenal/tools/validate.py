@@ -21,6 +21,7 @@ Two layers of checks:
    * CLI tools name their command, GUI tools their desktop entry;
    * 'includes' refers to existing profiles and does not form a loop;
    * the 'complete' profile includes every other profile and adds nothing;
+   * an optional tool (only suggested by the metapackage) says why in 'notes';
    * the profile icon exists in assets/icons (when run inside the repository).
 
 Whether the packages exist in Debian is a separate question answered by
@@ -159,6 +160,10 @@ def check_profile(ident, manifest, category_ids, errors):
             errors.append(f"{where}: 'help' only applies to tools with a command-line interface")
         if "architectures" in tool and set(tool["architectures"]) == set(am.ARCHITECTURES):
             errors.append(f"{where}: 'architectures' lists every architecture; leave it out")
+        if "optional" in tool and tool["optional"] is not True:
+            errors.append(f"{where}: 'optional' is either true or left out")
+        if tool.get("optional") is True and "notes" not in tool:
+            errors.append(f"{where}: an optional tool needs 'notes' saying why it is not installed with the profile")
 
     seen = set()
     for index, entry in enumerate(manifest.get("external", [])):

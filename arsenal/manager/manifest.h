@@ -33,6 +33,7 @@ struct Tool
     QString desktopId;      // desktop entry without .desktop, for gui/both
     QString notes;
     QStringList architectures; // empty: every architecture
+    bool optional = false;  // only suggested by the profile metapackage (conflicts with Shadow OS)
 
     bool availableOn(const QString &arch) const { return architectures.isEmpty() || architectures.contains(arch); }
     QStringList helpArguments() const { return hasHelp ? help : QStringList{QStringLiteral("--help")}; }

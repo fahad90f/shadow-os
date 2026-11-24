@@ -16,6 +16,7 @@ PopupSurface {
     readonly property var audio: status.audio
     readonly property var battery: status.battery
     readonly property var profiles: status.powerProfiles
+    readonly property var ks: status.killSwitch
     // The notifications module is optional.
     readonly property bool hasNotifications: typeof notifications !== "undefined"
     // Buttons that open the Control Center exist only when it does.
@@ -42,6 +43,26 @@ PopupSurface {
         return h === 0 ? qsTr("%1 min").arg(m) : m === 0 ? qsTr("%1 h").arg(h) : qsTr("%1 h %2 min").arg(h).arg(m)
     }
 
+    function modeName(mode) {
+        switch (mode) {
+        case "tor": return qsTr("Tor only")
+        case "vpn": return qsTr("VPN only")
+        case "tor-or-vpn": return qsTr("Tor or VPN")
+        default: return mode
+        }
+    }
+
+    function killSwitchSubtitle() {
+        switch (ks.state) {
+        case "on": return modeName(ks.mode) + (ks.lan ? qsTr(" + local network") : "")
+        // "Not in force" only when the mode's table is not loaded: an error with the
+        // table loaded (a broken configuration while it fails closed) still blocks.
+        case "error": return ks.active && !ks.loaded ? qsTr("Not in force") : qsTr("Problem")
+        case "bypassed": return qsTr("Off for this boot")
+        default: return qsTr("Off")
+        }
+    }
+
     function degradedText(reason) {
         switch (reason) {
         case "lap-detected": return qsTr("Performance is reduced because the computer is on a lap.")
@@ -62,6 +83,7 @@ PopupSurface {
     onOpenChanged: if (open) {
         hasControlCenter = session.programExists("shadow-control-center")
         status.brightness.refresh()
+        status.killSwitch.refresh()
     }
 
     // Requests a back-end could not carry out.
@@ -84,6 +106,74 @@ PopupSurface {
             id: content
             width: scroller.width
             spacing: Theme.spaceMd
+
+            // ---- panic: the banner's buttons, for the keyboard ---------------------
+            // The panic banner gets the keyboard only when it is clicked; here
+            // (Meta+A, then Tab) its buttons are reached without a mouse. First
+            // in the popup, so the first Tab lands on them.
+            Rectangle {
+                id: panicBox
+                readonly property var banner: popup.shell.panicBanner
+                objectName: "quickSettingsPanic"
+                visible: banner !== null && banner.shown && (banner.canRestore || banner.canDismiss)
+                Layout.fillWidth: true
+                implicitHeight: panicColumn.implicitHeight + Theme.spaceMd * 2
+                radius: Theme.radiusMd
+                color: Theme.hoverOverlay
+                border.width: Theme.borderWidth
+                border.color: Theme.alpha(panicBox.banner && panicBox.banner.problem ? Theme.warning : Theme.danger, 0.6)
+
+                ColumnLayout {
+                    id: panicColumn
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceMd
+                    spacing: Theme.spaceSm
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceSm
+                        NxIcon {
+                            Layout.alignment: Qt.AlignTop
+                            name: panicBox.banner && panicBox.banner.problem ? "alert-triangle" : "shield-off"
+                            size: Theme.iconSmall
+                            color: panicBox.banner && panicBox.banner.problem ? Theme.warning : Theme.danger
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: panicBox.banner ? panicBox.banner.title : ""
+                            color: Theme.textPrimary
+                            font.family: Theme.fontUi
+                            font.pixelSize: Theme.fontSizeBody
+                            font.weight: Theme.weightSemibold
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceSm
+                        Item { Layout.fillWidth: true }
+                        NxButton {
+                            objectName: "quickSettingsPanicRestore"
+                            visible: panicBox.banner !== null && panicBox.banner.canRestore
+                            kind: "primary"
+                            text: panicBox.banner ? panicBox.banner.restoreText : ""
+                            busy: panicBox.banner !== null && panicBox.banner.restoreBusy
+                            Accessible.description: qsTr("Release the panic: an administrator must authenticate")
+                            Keys.onReturnPressed: click()
+                            Keys.onEnterPressed: click()
+                            onClicked: { popup.shell.closeOverlays(); panicBox.banner.restoreNetwork() }
+                        }
+                        NxButton {
+                            objectName: "quickSettingsPanicDismiss"
+                            visible: panicBox.banner !== null && panicBox.banner.canDismiss
+                            text: qsTr("Dismiss")
+                            Accessible.description: qsTr("Hide the panic banner; nothing was cut")
+                            Keys.onReturnPressed: click()
+                            Keys.onEnterPressed: click()
+                            onClicked: panicBox.banner.dismissPanic()
+                        }
+                    }
+                }
+            }
 
             // ---- switches ---------------------------------------------------------
             GridLayout {
@@ -152,6 +242,24 @@ PopupSurface {
                     subtitle: status.radio.airplaneMode ? qsTr("All radios off") : qsTr("Off")
                     onToggled: status.radio.setAirplaneMode(!status.radio.airplaneMode)
                 }
+                // The kill switch: its state, read from shadow-killswitch's
+                // status file. Changing it needs an administrator, so the
+                // tile opens the Control Center's privacy page instead of
+                // switching anything itself.
+                StatusTile {
+                    objectName: "killSwitchTile"
+                    visible: popup.ks.present
+                    icon: popup.ks.state === "error" ? "shield-alert" : popup.ks.state === "on" ? "lock" : "lock-open"
+                    title: qsTr("Kill switch")
+                    active: popup.ks.isProtected
+                    checkable: false
+                    tone: popup.ks.state === "error" ? "danger" : popup.ks.state === "bypassed" ? "warning" : ""
+                    subtitle: popup.killSwitchSubtitle()
+                    switchable: popup.hasControlCenter
+                    reason: qsTr("The Control Center is not installed. Change the kill switch with: sudo shadow-killswitch set MODE")
+                    tooltip: qsTr("Kill switch settings (changes need an administrator)")
+                    onToggled: popup.openSettings("privacy")
+                }
                 StatusTile {
                     visible: popup.hasNotifications
                     readonly property bool dnd: popup.hasNotifications && notifications.doNotDisturb
@@ -179,6 +287,32 @@ PopupSurface {
                         : night.running ? qsTr("On — %1 K").arg(night.currentTemperature)
                         : qsTr("On — waiting for the evening")
                     onToggled: night.setEnabled(!night.enabled)
+                }
+            }
+
+            // What is wrong with the kill switch or a panic, in full: the tile
+            // and the panel only have room for a word.
+            Repeater {
+                model: [popup.ks.state === "error" ? popup.ks.errorText : "",
+                        popup.ks.panicState === "error" ? popup.ks.panicErrorText : ""].filter(text => text !== "")
+                delegate: RowLayout {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSm
+                    NxIcon {
+                        Layout.alignment: Qt.AlignTop
+                        name: "shield-alert"
+                        size: Theme.iconSmall
+                        color: Theme.danger
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: modelData
+                        color: Theme.danger
+                        font.family: Theme.fontUi
+                        font.pixelSize: Theme.fontSizeSmall
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
 

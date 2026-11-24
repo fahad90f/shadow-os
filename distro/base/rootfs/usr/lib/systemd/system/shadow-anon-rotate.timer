@@ -1,8 +1,12 @@
 [Unit]
-Description=Shadow OS Hide Me — periodic identity rotation
+Description=Shadow OS Hide Me — new Tor circuits at an interval
+# Started by "shadow-anon start --interval N" (minimum 60 s), which writes the
+# interval to /etc/systemd/system/shadow-anon-rotate.timer.d/interval.conf.
+# The timer only asks Tor for new circuits: it never changes the network
+# (MAC) address; that happens only when you choose "Rotate identity".
 [Timer]
-OnBootSec=30s
-OnUnitActiveSec=30s
-AccuracySec=1s
+OnBootSec=300s
+OnUnitActiveSec=300s
+AccuracySec=5s
 [Install]
 WantedBy=timers.target

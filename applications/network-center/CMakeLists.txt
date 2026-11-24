@@ -18,6 +18,7 @@ shadow_add_app(shadow-network-center
         recordmodel.cpp recordmodel.h
         netstate.cpp netstate.h
         nmclient.cpp nmclient.h
+        netprivacy.cpp netprivacy.h
         sockets.cpp sockets.h
         diagnostics.cpp diagnostics.h
         capturestream.cpp capturestream.h

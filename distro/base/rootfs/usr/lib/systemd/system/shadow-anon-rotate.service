@@ -1,6 +1,7 @@
 [Unit]
-Description=Shadow OS Hide Me — rotate network identity
-After=network.target tor.service
+Description=Shadow OS Hide Me — new Tor circuits
+After=network.target tor.service tor@default.service
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/shadow-anon rotate
+# New circuits only (Tor NEWNYM), at most once a minute; never a new MAC address.
+ExecStart=/usr/bin/shadow-anon tor-newnym

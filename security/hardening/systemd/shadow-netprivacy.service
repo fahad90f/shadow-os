@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Escape hatch of Shadow OS's encrypted DNS and MAC privacy: with
+# shadow.netprivacy=off on the kernel command line, this boot uses the
+# network's own DNS servers without encryption and every device keeps its own
+# MAC address (overrides in /run, gone at the next boot). Without that
+# parameter the unit is skipped.
+[Unit]
+Description=Shadow OS network privacy off for this boot (shadow.netprivacy=off)
+Documentation=man:systemd-resolved.service(8)
+DefaultDependencies=no
+ConditionKernelCommandLine=shadow.netprivacy=off
+After=local-fs.target
+Before=systemd-resolved.service NetworkManager.service network-pre.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/shadow-netprivacy boot
+
+[Install]
+WantedBy=sysinit.target

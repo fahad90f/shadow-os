@@ -138,6 +138,7 @@ bool Manifests::load(const QString &dirPath)
             tool.desktopId = t.value(QLatin1String("desktop-id")).toString();
             tool.notes = t.value(QLatin1String("notes")).toString();
             tool.architectures = stringList(t.value(QLatin1String("architectures")));
+            tool.optional = t.value(QLatin1String("optional")).toBool(false);
             if (tool.package.isEmpty() || tool.name.isEmpty()) {
                 m_warnings << tr("%1: a tool without package or name was skipped").arg(name);
                 continue;

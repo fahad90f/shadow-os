@@ -41,6 +41,14 @@ Shortcuts::Shortcuts(QObject *parent)
     add("media-play", tr("Play or pause media"), {K(Qt::Key_MediaPlay), K(Qt::Key_MediaTogglePlayPause)});
     add("media-next", tr("Next track"), {K(Qt::Key_MediaNext)});
     add("media-previous", tr("Previous track"), {K(Qt::Key_MediaPrevious)});
+    // Panic: cut every network connection, lock the screen, clear the
+    // clipboard (src/panic.h). Ctrl+Alt+Shift+Escape is free in KWin 6.3 and
+    // in this list; the Escape combinations next to it are taken (KWin:
+    // Meta+Ctrl+Esc kill window, Meta+Shift+Esc disable input capture; here:
+    // Ctrl+Shift+Esc task manager). Three modifiers make it hard to press by
+    // accident: releasing a panic needs an administrator.
+    add("panic", tr("Panic: cut every network connection, lock the screen and clear the clipboard"),
+        {K(Qt::CTRL | Qt::ALT | Qt::SHIFT | Qt::Key_Escape)});
 }
 
 void Shortcuts::add(const char *name, const QString &description, const QList<QKeySequence> &keys)
@@ -75,6 +83,20 @@ void Shortcuts::add(const char *name, const QString &description, const QList<QK
             KGlobalAccel::self()->setShortcut(action, keys, KGlobalAccel::NoAutoloading);
     }
     const QString id = action->objectName();
+    // A default key another component already owns is not given to this
+    // action. If that leaves it without any key, the shell reports it
+    // (unbound); an action the user unbound on purpose is not reported.
+    bool bound = false;
+    for (const QKeySequence &k : KGlobalAccel::self()->shortcut(action))
+        bound = bound || (!k.isEmpty() && k[0].key() != Qt::Key_unknown);
+    bool taken = false;
+    for (const QKeySequence &k : keys)
+        taken = taken || (!bound && !KGlobalAccel::isGlobalShortcutAvailable(k, QStringLiteral("shadow-horizon")));
+    if (!bound && taken) {
+        m_unbound << id;
+        qWarning("horizon-shell: the global shortcut \"%s\" has no key: its default is taken by another component",
+                 qPrintable(id));
+    }
     connect(action, &QAction::triggered, this, [this, id] { Q_EMIT triggered(id); });
     m_actions.append(action);
 }

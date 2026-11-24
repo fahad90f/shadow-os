@@ -107,6 +107,26 @@ in_chroot() {
         mount -t sysfs -o ro,nosuid,nodev,noexec sysfs "$root/sys"
         mount --rbind /dev "$root/dev"
         mount -t tmpfs -o mode=755,nosuid,nodev tmpfs "$root/run"
+        # With systemd-resolved in the image, /etc/resolv.conf is a link into
+        # /run (../run/systemd/resolve/stub-resolv.conf), which is the empty
+        # tmpfs just mounted: nothing in the chroot could look up a name
+        # (apt-get in the hooks). For this command only, the link gets a
+        # target on that throw-away /run: a copy of the build host resolver
+        # configuration. Nothing in the image changes.
+        if [ -L "$root/etc/resolv.conf" ]; then
+            target=$(readlink "$root/etc/resolv.conf")
+            case "$target" in /*) ;; *) target="/etc/$target" ;; esac
+            target=$(realpath -m -s -- "$target")
+            case "$target" in
+                /run/*)
+                    if [ -e /etc/resolv.conf ]; then
+                        mkdir -p "$root$(dirname -- "$target")"
+                        cat /etc/resolv.conf > "$root$target"
+                    else
+                        echo "in_chroot: the build host has no /etc/resolv.conf; names will not resolve in $root" >&2
+                    fi ;;
+            esac
+        fi
         i=0
         while [ "$i" -lt "$nbinds" ]; do
             spec="$1"; shift; i=$((i+1))

@@ -162,7 +162,7 @@ CONFIG_NAME=value [amd64]        # only checked for the named architecture(s)
 dependencies are not met. The check turns that into a build failure with the
 required and the found value printed.
 
-The list has two parts:
+The list has three parts:
 
 * the SHADOW hardening and responsiveness options from the fragments;
 * options a distribution kernel must not lose — boot, live medium,
@@ -171,7 +171,21 @@ The list has two parts:
   `VFAT_FS`, `NF_TABLES`, `USER_NS`, `CGROUPS`, `KVM`, `DRM`, `SND`, `WLAN`,
   `BT`, `USB_STORAGE`, `NVME_CORE`, `VIRTIO_BLK`. These come from Debian's
   configuration and are listed so that a mistake in a fragment is caught at
-  build time and not at boot.
+  build time and not at boot;
+* what the kill switch, panic and Hide Me need
+  ([../security/kill-switch.md](../security/kill-switch.md)), also from
+  Debian's configuration: `NF_TABLES_INET`, `NFT_CT`, `NF_CONNTRACK`,
+  `NF_CT_NETLINK` (`conntrack -F`), `INET_DIAG`, `INET_TCP_DIAG`,
+  `INET_UDP_DIAG`, `INET_DIAG_DESTROY` (`ss -K`), `TUN`, `WIREGUARD`,
+  `RFKILL`, and for Hide Me's iptables-nft nat rules `NFT_COMPAT`, `NFT_NAT`,
+  `NF_NAT`, `NETFILTER_XT_MATCH_OWNER`, `NETFILTER_XT_TARGET_REDIRECT`
+  (iptables-nft loads `-m owner` and `-j REDIRECT` as xt compat expressions).
+  Debian's 6.12.116 amd64 configuration has every one of them with exactly
+  this value; the arm64 configuration was not checked. `NF_TABLES_BRIDGE`
+  (the bridge tables of the kill switch and the panic, for bridged virtual
+  machines) was added later and has not been checked against Debian's file
+  (it was available in the test kernel); without it the tools load their
+  inet tables alone and warn.
 
 ## Patch policy
 

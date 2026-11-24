@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# A panic lasts until it is released or the computer restarts. NetworkManager
+# (NetworkingEnabled) and systemd-rfkill (radio soft blocks) keep their state
+# across a restart, so a panic that was not released would otherwise leave
+# networking off and the radios blocked. Before either of them starts, this
+# puts back what shadow-panic recorded in /var/lib/shadow-os/panic-pending.json.
+[Unit]
+Description=Undo a Shadow OS panic left from the previous boot
+DefaultDependencies=no
+After=local-fs.target
+Before=NetworkManager.service systemd-rfkill.service network-pre.target shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/var/lib/shadow-os/panic-pending.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/shadow-panic boot
+
+[Install]
+WantedBy=sysinit.target

@@ -13,6 +13,7 @@ class BatteryBackend;
 class BluetoothBackend;
 class BrightnessBackend;
 class CalendarBackend;
+class KillSwitchBackend;
 class MediaBackend;
 class NetworkBackend;
 class NightLightBackend;
@@ -32,6 +33,7 @@ class RadioBackend;
 //   status.media          current media player        (MPRIS2)
 //   status.nightLight     Night Light                 (KWin)
 //   status.calendar       dates for the calendar popup
+//   status.killSwitch     network kill switch and panic (/run/shadow/*.json)
 class Service : public QObject
 {
     Q_OBJECT
@@ -45,6 +47,7 @@ class Service : public QObject
     Q_PROPERTY(QObject *media READ media CONSTANT)
     Q_PROPERTY(QObject *nightLight READ nightLight CONSTANT)
     Q_PROPERTY(QObject *calendar READ calendar CONSTANT)
+    Q_PROPERTY(QObject *killSwitch READ killSwitch CONSTANT)
 
 public:
     explicit Service(QObject *parent = nullptr);
@@ -59,6 +62,7 @@ public:
     QObject *media() const;
     QObject *nightLight() const;
     QObject *calendar() const;
+    QObject *killSwitch() const;
 
     // True once every back-end has finished its first query.
     bool allReady() const;
@@ -86,6 +90,7 @@ private:
     MediaBackend *m_media;
     NightLightBackend *m_nightLight;
     CalendarBackend *m_calendar;
+    KillSwitchBackend *m_killSwitch;
 };
 
 } // namespace StatusModule

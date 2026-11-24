@@ -20,6 +20,7 @@ NxWindow {
         { key: "interfaces",  title: qsTr("Interfaces"),         icon: "ethernet", section: qsTr("Network"),       source: "pages/InterfacesPage.qml" },
         { key: "ip",          title: qsTr("IP configuration"),   icon: "sliders",  section: qsTr("Configuration"), source: "pages/IpConfigPage.qml" },
         { key: "dns",         title: qsTr("DNS"),                icon: "globe",    section: qsTr("Configuration"), source: "pages/DnsPage.qml" },
+        { key: "privacy",     title: qsTr("Privacy"),            icon: "privacy",  section: qsTr("Configuration"), source: "pages/PrivacyPage.qml" },
         { key: "routes",      title: qsTr("Routing table"),      icon: "network",  section: qsTr("Monitoring"),    source: "pages/RoutesPage.qml" },
         { key: "connections", title: qsTr("Active connections"), icon: "plug",     section: qsTr("Monitoring"),    source: "pages/ConnectionsPage.qml" },
         { key: "vpn",         title: qsTr("VPN"),                icon: "shield",   section: qsTr("Security and tools"), source: "pages/VpnPage.qml" },

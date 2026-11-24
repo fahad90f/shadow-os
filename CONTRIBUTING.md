@@ -184,6 +184,8 @@ python3 tests/installation/test_plan.py          # installer planner; needs no r
 python3 scripts/gen-tokens.py check              # design tokens
 python3 arsenal/tools/validate.py                # Arsenal manifests
 python3 desktop/themes/tools/generate.py --check # generated theme files are up to date
+tests/run-suites.sh                              # unit, packaging and static suites (CI job "tests")
+sudo tests/run-suites.sh --no-skip               # also the network-namespace suites; a skip fails
 ```
 
 For changes to the build system, boot chain, installer engine or session,

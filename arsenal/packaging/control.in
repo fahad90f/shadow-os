@@ -285,30 +285,34 @@ Depends:
  debsecan,
  fail2ban,
  firejail,
- firewalld,
  lnav,
  lynis,
  nftables,
  openscap-scanner,
  psad,
- python3-opensnitch-ui,
  rkhunter,
  sshguard,
  suricata,
  timeshift,
- ufw,
  usbguard,
  wireshark,
  yara
-Suggests: shadow-arsenal
+Suggests:
+ shadow-arsenal,
+ firewalld,
+ ufw
 Description: SHADOW Arsenal profile - Blue Team
  Tools for defenders and system owners: network and host intrusion detection,
  file-integrity and rootkit checks, log analysis, security auditing and
  benchmarking, sandboxing and firewalls. All are open-source packages from
  Debian; they help you watch, harden and audit systems you administer.
  .
- This metapackage depends on the 25 tools of the profile, all from Debian
+ This metapackage depends on the 22 tools of the profile, all from Debian
  main; APT installs every one of them with it.
+ .
+ Suggested only, not installed with the profile, because they run a second
+ firewall next to Shadow's own: firewalld, UFW. Install one of them on its own
+ only to replace shadow-firewall.
  .
  Not included, because they are not in Debian main: Zeek, Wazuh, Velociraptor,
  Elastic Stack (ELK), Trivy, Grype, Chainsaw, Hayabusa, Falco, OpenVAS /
@@ -528,7 +532,7 @@ Description: SHADOW Arsenal profile - Complete Arsenal
  most users are better served installing the specific profiles they need. The
  tools are referenced from the other profiles, not duplicated here.
  .
- This metapackage depends on the metapackages of the profiles it combines (255
+ This metapackage depends on the metapackages of the profiles it combines (252
  tools in total).
  .
  These tools are for authorised security testing, research, defence and

@@ -79,6 +79,20 @@ def wifi_level(bars: int) -> str:
     return lit + (dim(unlit) if unlit else "")
 
 
+def spinner() -> str:
+    """Eight spokes; the leading one lit, the ones behind it fading out
+    counter-clockwise, so the glyph reads as turning clockwise."""
+    fade = (1.0, 0.3, 0.3, 0.36, 0.46, 0.58, 0.7, 0.85)       # from the top, clockwise
+    parts = []
+    for i, opacity in enumerate(fade):
+        a = math.radians(-90 + 45 * i)
+        x1, y1 = 12 + 4.2 * math.cos(a), 12 + 4.2 * math.sin(a)
+        x2, y2 = 12 + 8.3 * math.cos(a), 12 + 8.3 * math.sin(a)
+        spoke = p(f"M{x1:.2f} {y1:.2f}L{x2:.2f} {y2:.2f}")
+        parts.append(spoke if opacity == 1.0 else f'<g opacity="{opacity}">{spoke}</g>')
+    return "".join(parts)
+
+
 BATTERY_BODY = r(3, 8, 15.5, 8, 2) + p("M21 10.7v2.6")
 
 
@@ -109,6 +123,11 @@ ICONS: dict[str, str] = {
     "more-vertical": dot(12, 6, 1.5) + dot(12, 12, 1.5) + dot(12, 18, 1.5),
     "grip": "".join(dot(x, y, 1.2) for x in (9, 15) for y in (6.5, 12, 17.5)),
     "refresh": p("M19.6 12a7.6 7.6 0 1 1-1.1-4") + p("M18.5 3.5V8H14"),
+    # Turning something clockwise about its own centre (the dot): three
+    # quarters of a circle ending in an arrowhead, open at the lower right.
+    "rotate-cw": p("M10.9 19a7 7 0 1 1 7-7") + p("M15.3 9.4l2.6 2.6 2.6-2.6") + dot(10.9, 12, 1.3),
+    # Work in progress (a static spinner; NxButton's busy state animates).
+    "loader": spinner(),
     "undo": p("M8 5L4 9l4 4") + p("M4 9h10a5.5 5.5 0 0 1 0 11h-3"),
     "redo": p("M16 5l4 4-4 4") + p("M20 9H10a5.5 5.5 0 0 0 0 11h3"),
     "external-link": p("M13.5 5H19v5.5M19 5l-8 8") + p("M10 6.5H6.5a1.5 1.5 0 0 0-1.5 1.5v9.5A1.5 1.5 0 0 0 6.5 19H16a1.5 1.5 0 0 0 1.5-1.5V14"),
@@ -227,6 +246,9 @@ ICONS: dict[str, str] = {
     "ethernet": r(9, 3.5, 6, 5, 1) + r(3.5, 15.5, 6, 5, 1) + r(14.5, 15.5, 6, 5, 1) + p("M12 8.5V12M6.5 15.5V12h11v3.5"),
     "globe": c(12, 12, 8.5) + p("M3.5 12h17M12 3.5c2.4 2.3 3.6 5.2 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.2-3.6-8.5s1.2-6.2 3.6-8.5z"),
     "bluetooth": p("M7 7.5l10 9-5 4.5V3l5 4.5-10 9"),
+    # The rune's own upper-left stroke becomes the set's 4,4-20,20 slash; the
+    # strokes it crosses at the centre are cut back so the slash reads on top.
+    "bluetooth-off": p("M7 16.5l3.6-3.2M13.4 10.7L17 7.5 12 3v6.3M12 14.7V21l4.8-4.2M4 4l16 16"),
     "airplane": p("M10.5 3.8a1.5 1.5 0 0 1 3 0V9l7 4.2v2l-7-2.2v4.4l2.2 1.6v1.7L12 19.6l-3.7 1.1V19l2.2-1.6V13l-7 2.2v-2l7-4.2z"),
     # Signal strength of the connected / listed network, 0 (no signal) to 4 bars.
     "wifi-0": wifi_level(0),
@@ -287,6 +309,12 @@ ALIASES = {
     "recovery": "life-buoy",
     "lab": "flask",
     "screenshot": "camera",
+    # Other common spellings of glyphs the set already has.
+    "hard-drive": "harddrive",
+    "trash-2": "trash",
+    "x": "close",
+    "unlock": "lock-open",
+    "refresh-cw": "refresh",
 }
 
 

@@ -95,6 +95,11 @@ def own_tools(manifest):
     return list(manifest.get("tools", []))
 
 
+def is_optional(tool):
+    """An optional tool belongs to the profile but is only suggested by its metapackage."""
+    return tool.get("optional") is True
+
+
 def effective_tools(profiles, ident):
     """The profile's own tools followed by those of the profiles it includes.
 

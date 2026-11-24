@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Shadow OS network kill switch, applied before any network interface is
+# configured (NetworkManager and systemd-networkd are ordered after
+# network-pre.target). It loads the mode saved in
+# /etc/shadow-os/killswitch.json ("off" loads nothing).
+#
+# Escape hatch: the kernel parameter shadow.killswitch=off keeps the kill
+# switch off for one boot without changing the configuration.
+# From a root shell: shadow-killswitch set off
+#
+# A failure is recorded in /run/shadow/killswitch.json and makes this unit
+# fail; it never holds up the boot. Stopping the unit does not open the
+# network: the table stays loaded until "shadow-killswitch set off".
+[Unit]
+Description=Shadow OS network kill switch
+DefaultDependencies=no
+After=local-fs.target
+Wants=network-pre.target
+Before=network-pre.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/shadow-killswitch boot
+
+[Install]
+WantedBy=sysinit.target

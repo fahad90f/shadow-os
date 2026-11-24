@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Shadow OS kill switch and panic watchdog, started every 20 seconds by
+# shadow-killswitch-watch.timer.
+#
+# Anything that runs "nft flush ruleset" (an /etc/nftables.conf loaded by
+# hand, a VPN client or container tool that flushes, an administrator) removes
+# the kill switch (inet and bridge shadow_egress) and a panic (inet and bridge
+# shadow_panic) along with every other table. Each check below puts its tables
+# back only if they were loaded in this boot and one is now missing or no
+# longer exactly the same; it then logs one line (as a warning: something
+# removed it). While both are in force nothing is written and nothing is
+# logged. Hide Me's nat redirects (SHADOWTOR, SHADOWDNS) are not checked here.
+#
+# Neither check engages anything by itself: the kill switch is restored only
+# in the mode recorded in this boot (so shadow.killswitch=off and
+# "set off --runtime" stay off), a panic only while it is engaged and not
+# being released. A check that finds another shadow-killswitch or
+# shadow-panic changing the table skips that round.
+# See docs/security/kill-switch.md ("The watchdog").
+[Unit]
+Description=Shadow OS kill switch and panic watchdog
+After=shadow-killswitch.service
+
+[Service]
+Type=oneshot
+# The panic first: it is the stronger cut. Its failure is logged and recorded
+# in /run/shadow/panic.json; the kill switch is still checked after it.
+ExecStart=-/usr/sbin/shadow-panic reassert
+ExecStart=/usr/sbin/shadow-killswitch reassert --watch
+# Every run is otherwise logged three times by systemd ("Starting",
+# "Finished", "Consumed ... CPU time"), all at level info: keep only what is
+# notice or more important, and log what the tools print as warnings.
+LogLevelMax=notice
+SyslogLevel=warning
+# The checks only talk to the kernel's netfilter over netlink and write
+# /run/shadow.
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes

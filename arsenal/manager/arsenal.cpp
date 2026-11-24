@@ -260,6 +260,7 @@ QVariantMap Controller::toolMap(const Tool &tool) const
         {QStringLiteral("command"), tool.command},
         {QStringLiteral("desktopId"), tool.desktopId},
         {QStringLiteral("notes"), tool.notes},
+        {QStringLiteral("optional"), tool.optional},
         {QStringLiteral("architectures"), tool.architectures},
         {QStringLiteral("supported"), tool.availableOn(m_arch)},
         {QStringLiteral("state"), toolStateKey},
@@ -285,6 +286,10 @@ QStringList Controller::missingTools(const QString &profileId) const
 {
     QStringList names;
     for (const Tool &tool : m_manifests.effectiveTools(profileId)) {
+        // Optional tools (a second firewall, ...) are only suggested by the
+        // metapackage; installing "the profile's tools" leaves them out too.
+        if (tool.optional)
+            continue;
         const PackageState state = m_db.state(tool.package);
         if (tool.availableOn(m_arch) && state.available && !state.installed)
             names << tool.package;
@@ -302,6 +307,8 @@ QVariantMap Controller::profileMap(const Profile &profile) const
             ++unsupported;
             continue;
         }
+        if (tool.optional)      // not part of the profile's installation (see missingTools)
+            continue;
         ++supported;
         ++perCategory[tool.category];
         if (tool.interface != QLatin1String("cli"))

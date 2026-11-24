@@ -132,6 +132,7 @@ KDE's global-shortcut service, your binding is kept.
 | **Microphone Mute** key | Mute the microphone | status module |
 | **Brightness Up** / **Brightness Down** keys | Screen brightness | status module |
 | **Play/Pause**, **Next**, **Previous** media keys | Media control | status module (MPRIS players) |
+| **Ctrl+Alt+Shift+Escape** | Panic | cuts every network connection, locks the screen, clears the clipboard (see [Panic](#panic)) |
 
 When a shortcut names a program that is not installed, the shell shows a
 short message such as "shadow-terminal is not installed." This currently
@@ -144,6 +145,62 @@ Shadow Horizon session KWin provides it.
 `horizon-shell --dump shortcuts` prints the registered shortcuts and their
 current keys as JSON.
 
+The panic key was chosen because it is free in KWin 6.3's own registry
+(checked in a nested session's `kglobalshortcutsrc`; the shortcuts of
+KWin's effects are registered only with GPU compositing and were not in it,
+and the effects' QML handles Escape only while an effect is open) and in
+this list, and needs three modifiers: the Escape combinations next to it are taken (KWin:
+**Meta+Ctrl+Escape** kills a window, **Meta+Shift+Escape** disables input
+capture; the shell: **Ctrl+Shift+Escape** opens the task manager). If
+another program holds the key when the shell starts, the shell says so in a
+message instead of leaving a panic key that does nothing.
+
+## Panic
+
+**Ctrl+Alt+Shift+Escape** (the shell core, `desktop/horizon-shell/src/panic.h`)
+does three things at once:
+
+1. asks systemd to start `shadow-panic.service`
+   (`org.freedesktop.systemd1.Manager.StartUnit`, system bus). The service
+   cuts every connection with an nftables table (see
+   [security/kill-switch.md](../security/kill-switch.md#panic)). A polkit rule
+   lets a local, active member of `sudo` start exactly this unit without a
+   password; the shell never asks for one in a panic. If systemd refuses,
+   the shell turns NetworkManager networking off instead and says plainly
+   that this is not a firewall cut;
+2. locks the screen (the screen locker, or logind if that fails);
+3. clears the clipboard and the primary selection with `wl-copy --clear`
+   (wl-clipboard) and checks with `wl-paste` that nothing is left. This uses
+   KWin's data-control protocol, so it works whatever window has the focus.
+
+`/etc/shadow-os/panic.json` can turn off the lock (`"lock_session": false`)
+or the clipboard step (`"clear_clipboard": false`).
+
+A full-width banner at the top of the screen shows what is true, from the
+panic service's own status file: white on red while the computer is cut
+off; black on amber when the panic is not what was asked for (the service
+did not start, it reports a problem, or it has not confirmed the cut after
+15 seconds). It also says whether the screen was locked and the clipboard
+cleared. **Restore network…** runs `pkexec /usr/sbin/shadow-panic release`:
+an administrator must authenticate, every time. A release made elsewhere
+(the Control Center's **Reconnect…** on its Privacy page, or
+`sudo shadow-panic release`) also takes the banner away as soon as the
+panic service reports it. Pressing the panic key while a release from the
+banner is still running cancels that release if the administrator has not
+authenticated yet; if they have, the release (running as root) cannot be
+stopped, so the shell starts the panic service again as soon as it has
+finished: the panic, pressed last, wins. A panic also ends with the next
+restart.
+
+The banner takes the keyboard only when it is clicked. Its buttons are also
+at the top of **quick settings** while they are shown: **Meta+A**, **Tab**,
+then **Space** or **Return**; the banner says so.
+
+The key does nothing while the screen is locked or while an application
+that grabs the keyboard (a virtual machine, a remote desktop) has inhibited
+global shortcuts; use `sudo systemctl start shadow-panic.service` from a
+terminal then.
+
 ## Quick settings
 
 **Meta+A** or a click on the status item. Provided by the status module
@@ -151,7 +208,8 @@ current keys as JSON.
 exists on the machine:
 
 * tiles: Wi-Fi (or a read-only "Network" tile without Wi-Fi hardware),
-  Bluetooth, airplane mode, Do Not Disturb, Night Light, dark mode;
+  Bluetooth, airplane mode, kill switch, Do Not Disturb, Night Light, dark
+  mode;
 * sliders: volume with mute, microphone, screen brightness;
 * battery state and power profile;
 * a media card for the playing media player (play/pause, next, previous);
@@ -161,6 +219,18 @@ The **calendar** opens from the clock: a month view with week numbers and
 keyboard navigation. It shows no events.
 
 Volume, brightness and media keys show a small on-screen display.
+
+**Kill switch.** While the network kill switch is on (see
+[security/kill-switch.md](../security/kill-switch.md)), the panel shows a
+lock next to the network icon. A warning shield in red means the kill switch
+is not what it claims: its firewall table is not loaded, the tool reports an
+error, or its status cannot be read; an open lock in amber means the escape
+hatch `shadow.killswitch=off` kept it off in this boot. The quick-settings
+tile shows the mode (Tor only, VPN only, Tor or VPN) and opens the Control
+Center's privacy page: changing the kill switch needs an administrator, so
+the tile does not switch it. With the panel set to hide while windows are
+open (the default), the indicator is hidden with the panel; the tile and
+the panic banner are not affected.
 
 Tested against a real PipeWire and a test media player; against fixtures for
 NetworkManager, UPower and power profiles; not tested at all for Bluetooth,

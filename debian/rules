@@ -50,15 +50,33 @@ override_dh_installsystemd-arch:
 	dh_installsystemd -a -Nshadow-updater
 	dh_installsystemd -pshadow-updater --no-start
 
-# The Hide Me rotation timer (shadow-hardening) changes the MAC address and
-# hostname every few seconds: only the user turns it on (shadow-anon start).
+# The Hide Me rotation timer (shadow-hardening) asks Tor for new circuits
+# (at most once a minute, never a new MAC address): only the user turns it on
+# (shadow-anon start).
 # shadow-anon-boot.service is enabled and also run on install and upgrade: it
 # puts back DNS-over-Tor's redirect (a system that restarted with DNS
 # protection on has no working DNS until it runs) and is harmless otherwise.
+# Kill switch and panic (docs/security/kill-switch.md): shadow-killswitch.service
+# is enabled on a fresh install but never started by the package: starting it
+# applies the saved mode, and installing must not engage anything (the
+# postinst reloads an already loaded kill switch instead). The panic reset runs
+# at boot only. shadow-panic.service has no [Install]: it is started on demand.
+# shadow-killswitch-watch.timer is enabled and started: its service only puts
+# back a kill switch or panic table that was loaded in this boot and went
+# missing, so it never engages anything on install; the service itself is
+# only ever started by the timer.
+# shadow-netprivacy.service is enabled but does nothing unless the kernel
+# command line has shadow.netprivacy=off (the escape hatch of encrypted DNS and
+# MAC privacy, docs/security/private-dns.md); installing never starts it.
 override_dh_installsystemd-indep:
 	dh_installsystemd -i -Nshadow-hardening
 	dh_installsystemd -pshadow-hardening shadow-anon-boot.service
 	dh_installsystemd -pshadow-hardening --no-enable --no-start shadow-anon-rotate.service shadow-anon-rotate.timer
+	dh_installsystemd -pshadow-hardening --no-start shadow-killswitch.service shadow-panic-reset.service
+	dh_installsystemd -pshadow-hardening --no-enable --no-start shadow-panic.service
+	dh_installsystemd -pshadow-hardening shadow-killswitch-watch.timer
+	dh_installsystemd -pshadow-hardening --no-enable --no-start shadow-killswitch-watch.service
+	dh_installsystemd -pshadow-hardening --no-start shadow-netprivacy.service
 
 # ---- architecture-independent packages: nothing to compile ------------------
 override_dh_auto_configure-indep override_dh_auto_test-indep:

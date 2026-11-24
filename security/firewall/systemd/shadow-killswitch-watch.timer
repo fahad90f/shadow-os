@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Runs shadow-killswitch-watch.service: puts the kill switch and a panic back
+# within about 20 seconds after something flushed the nftables ruleset.
+#
+#   OnBootSec=30s        the boot already loads both (shadow-killswitch.service
+#                        at sysinit, nftables.service's ExecStartPost); the
+#                        first check waits until the start-up rush is over.
+#   OnUnitActiveSec=20s  the longest a flushed kill switch stays gone. A check
+#                        that finds everything in place is two short Python
+#                        runs and at most one "nft --json list table" each
+#                        (measured: about 0.15 s of CPU together) and writes
+#                        nothing.
+#   AccuracySec=2s       systemd's default of one minute would let the gap
+#                        grow to 80 seconds; 2 s still lets it batch wake-ups.
+[Unit]
+Description=Check every 20 seconds that the Shadow OS kill switch and a panic are still loaded
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=20s
+AccuracySec=2s
+
+[Install]
+WantedBy=timers.target

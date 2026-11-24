@@ -59,7 +59,7 @@ architectures.
 | `20-boot` | GRUB common files, `efibootmgr`, `os-prober`, `mokutil`, signed shim and GRUB for UEFI, `grub-pc-bin` for BIOS; snapper for the opt-in btrfs snapshots (inert on ext4) |
 | `30-live` | live-boot, live-config, live-tools, user-setup |
 | `40-desktop` | Plymouth, SDDM, portals, KWin and Xwayland, Mesa, PipeWire, BlueZ, UPower, power-profiles-daemon, UDisks2, AccountsService, PackageKit, AppStream, fwupd, fonts, Firefox ESR, tools the SHADOW applications call |
-| `45-security-core` | Tor, torsocks, proxychains, WireGuard and OpenVPN, KeePassXC, GnuPG, age, cryptsetup, MAC and metadata privacy tools, restic (encrypted backups) |
+| `45-security-core` | Tor, torsocks, proxychains, WireGuard and OpenVPN, systemd-resolved (encrypted DNS, configured by `shadow-hardening`; not in the minimal image, where Debian's defaults would answer LLMNR and send plain DNS), KeePassXC, GnuPG, age, cryptsetup, MAC and metadata privacy tools, restic (encrypted backups) |
 | `50-dev-languages` | C and C++ (GCC, Clang, GDB, CMake), assembly (NASM, YASM, GNU as), Python 3 with pip and venv, Node.js and npm, Go, Rust and Cargo, Ruby, Lua 5.4 and LuaRocks, PHP (CLI, no web server) and Composer, Swift, Kotlin with the default JDK, SQL (SQLite, PostgreSQL and MariaDB clients). No database servers |
 
 Packages are installed **without Recommends and Suggests** in both the base

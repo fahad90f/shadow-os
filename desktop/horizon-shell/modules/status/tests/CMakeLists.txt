@@ -23,3 +23,13 @@ target_link_libraries(status-test-mpris-player PRIVATE Qt6::Core Qt6::DBus)
 
 add_executable(status-test-dbus-fixture dbus-fixture.cpp)
 target_link_libraries(status-test-dbus-fixture PRIVATE Qt6::Core Qt6::DBus)
+
+# Self test of the kill switch / panic state source (parser and directory
+# watcher); needs nothing but Qt Core. Run it directly:
+#   /build/modstatus-tests/bin/status-test-killswitch
+add_executable(status-test-killswitch killswitch-selftest.cpp
+    ../statuskillswitch.cpp ../statuskillswitch.h ../statusbackend.cpp ../statusbackend.h)
+set_target_properties(status-test-killswitch PROPERTIES AUTOMOC ON)
+target_include_directories(status-test-killswitch PRIVATE ..)
+target_compile_definitions(status-test-killswitch PRIVATE QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
+target_link_libraries(status-test-killswitch PRIVATE Qt6::Core)

@@ -5,7 +5,7 @@
 #
 # This profile confines the Python program itself to the files it manages.
 # The system tools it drives (NetworkManager's nmcli, systemctl, iptables/nft,
-# ip, hostnamectl, …) reconfigure the whole machine by design; they run under
+# shadow-killswitch, resolvectl, ip, hostnamectl, …) reconfigure the whole machine by design; they run under
 # their own profile when one exists and unconfined otherwise (PUx), exactly
 # as when an administrator types them. Confining them inside this profile
 # broke every feature: on Debian /bin is a link to /usr/bin, /bin/sh is dash,
@@ -36,8 +36,8 @@
   capability setgid,
   capability linux_immutable,
 
-  # The leak test talks to the network (curl, torsocks); iptables and ip use
-  # netlink.
+  # The leak test talks to the network (curl, also through Tor's SOCKS
+  # port); iptables and ip use netlink.
   network inet,
   network inet6,
   network netlink raw,
@@ -72,7 +72,22 @@
   /etc/terminfo/**                  r,
 
   # ---- State ------------------------------------------------------------------
+  # (written through a temporary file and renamed; one changing run at a time)
   /run/shadow-anon-state.json       rw,
+  /run/.shadow-anon-state.json.*    rw,
+  /run/shadow-anon.lock             rwk,
+  # The address-rotation salt, for this boot only.
+  /run/shadow/                      rw,
+  /run/shadow/mac-salt              rw,
+  /run/shadow/.mac-salt.*           rw,
+  # The status documents of the kill switch and panic (shadow-killswitch,
+  # shadow-panic; world-readable). Only read: those tools write them, and
+  # they run outside this profile (PUx below).
+  /run/shadow/*.json                r,
+  # DNS protection's choice, kept across a restart.
+  /etc/shadow-os/                   rw,
+  /etc/shadow-os/hide-me.json       rw,
+  /etc/shadow-os/.hide-me.json.*    rw,
 
   # ---- Tor ----------------------------------------------------------------------
   /etc/tor/                         rw,
@@ -81,6 +96,12 @@
   /var/lib/tor/**                   r,
   /run/tor/                         r,
   /run/tor/**                       r,
+  # New circuits (SIGNAL NEWNYM) on Tor's control socket.
+  /run/tor/control                  rw,
+  # Tor's SOCKS port moved below 1024 (/etc/tor/torrc.d/00-shadow-socks.conf):
+  # proxychains4 is pointed at it (torsocks.conf is in /etc/tor).
+  /etc/proxychains4.conf            rw,
+  /etc/.proxychains4.conf.*         rw,
   /usr/lib/@{multiarch}/torsocks/** mr,
   /usr/lib/torsocks/**              mr,
 
@@ -105,8 +126,15 @@
   /run/NetworkManager/resolv.conf   rw,
   /run/NetworkManager/no-stub-resolv.conf rw,
   /run/systemd/resolve/*.conf       rw,
+  # DNS-over-Tor with systemd-resolved: a runtime drop-in.
+  /run/systemd/resolved.conf.d/     rw,
+  /run/systemd/resolved.conf.d/**   rw,
 
   # ---- Log wipe ----------------------------------------------------------------
+  # Each home is wiped by a child with the uid and gid of the home's owner
+  # (capability setuid/setgid above), opening the histories with O_NOFOLLOW:
+  # a link a user plants there (~/.bash_history -> /etc/...) reaches nothing
+  # that user could not change, whatever these rules allow.
   /var/log/                         r,
   /var/log/**                       rw,
   /home/                            r,
@@ -154,7 +182,7 @@
   /usr/bin/ip                       PUx,
   /usr/bin/hostname                 PUx,
   /usr/bin/chattr                   PUx,
-  /usr/bin/macchanger               PUx,
+  /usr/bin/resolvectl               PUx,
   /usr/sbin/xtables-nft-multi       PUx,
   /usr/sbin/xtables-legacy-multi    PUx,
   /usr/sbin/iptables*               PUx,
@@ -162,7 +190,8 @@
   /usr/sbin/nft                     PUx,
   /usr/sbin/sysctl                  PUx,
   /usr/sbin/rfkill                  PUx,
-  /usr/sbin/macchanger              PUx,
+  # The kill switch (Ghost Mode, the transparent proxy) is this tool's job.
+  /usr/sbin/shadow-killswitch       PUx,
   /usr/sbin/modprobe                PUx,
 
   # Site-specific additions.

@@ -22,6 +22,9 @@ Sections:
     audit        auditd state, loaded rules, event counts by rule key
     hardening    kernel hardening settings compared with the SHADOW baseline,
                  CPU vulnerability mitigations, boot-loader refresh state
+    killswitch   network kill switch: recorded mode and state, and whether its
+                 nftables table is really loaded
+    panic        network panic: engaged? and whether its table is really loaded
     recommendations  findings derived from the sections above
 
 It needs root to see everything (other users' sockets, AppArmor profile list,
@@ -43,7 +46,7 @@ import sys
 import time
 
 SECTIONS = ["firewall", "apparmor", "encryption", "secureboot", "updates", "listening", "connections",
-            "services", "logins", "audit", "hardening"]
+            "services", "logins", "audit", "hardening", "killswitch", "panic"]
 
 BASELINE_SYSCTL = "/usr/lib/sysctl.d/60-shadow-hardening.conf"
 BASELINE_CMDLINE = "/etc/default/grub.d/20-shadow-hardening.cfg"
@@ -64,6 +67,15 @@ BOOT = "/boot"
 APT_HISTORY_GLOB = "/var/log/apt/history.log*"
 DPKG_LOG_GLOB = "/var/log/dpkg.log*"
 FIREWALL_TABLE = ("inet", "shadow_filter")
+# Kill switch and panic (security/firewall/shadow-killswitch, shadow-panic):
+# the state they record in /run, and the tables they load.
+KILLSWITCH_TOOL = "/usr/sbin/shadow-killswitch"
+KILLSWITCH_STATUS = "/run/shadow/killswitch.json"
+KILLSWITCH_CONFIG = "/etc/shadow-os/killswitch.json"
+KILLSWITCH_TABLE = ("inet", "shadow_egress")
+PANIC_TOOL = "/usr/sbin/shadow-panic"
+PANIC_STATUS = "/run/shadow/panic.json"
+PANIC_TABLE = ("inet", "shadow_panic")
 
 
 def run(argv, timeout=20):
@@ -1032,6 +1044,78 @@ def section_hardening():
     return info
 
 
+# --------------------------------------------------------------------------- kill switch and panic
+def _table_present(table):
+    """Is the nftables table in the live ruleset? (value, reason) when it cannot be told."""
+    rc, out, err = run(["nft", "list", "table", *table])
+    if rc == 0:
+        return True
+    text = (err or out).strip()
+    if "No such file or directory" in text:
+        return False
+    return None, (text.splitlines()[0] if text else f"nft exited with status {rc}")
+
+
+def _recorded(path, info):
+    """The JSON a tool recorded in /run, or None (info["recorded_reason"] says why)."""
+    raw = read(path)
+    if raw is None:
+        info["recorded_reason"] = "nothing recorded in this boot"
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError as exc:
+        info["recorded_reason"] = f"{path} is not valid JSON: {exc}"
+        return None
+    if not isinstance(data, dict):
+        info["recorded_reason"] = f"{path} is not a JSON object"
+        return None
+    return data
+
+
+def section_killswitch():
+    if not os.path.exists(KILLSWITCH_TOOL):
+        return unavailable("shadow-killswitch is not installed")
+    info = {"available": True}
+    rec = _recorded(KILLSWITCH_STATUS, info)
+    info["recorded"] = rec
+    probe(info, "table_present", lambda: _table_present(KILLSWITCH_TABLE))
+    rec = rec or {}
+    info["mode"] = rec.get("mode")
+    info["active"] = bool(rec.get("active"))
+    info["error"] = rec.get("error")
+    info["escape_hatch"] = bool(rec.get("escape_hatch"))
+    try:
+        cfg = json.loads(read(KILLSWITCH_CONFIG) or '{"mode": "off"}')
+        info["configured_mode"] = cfg.get("mode") if isinstance(cfg, dict) else None
+    except ValueError:
+        info["configured_mode"] = None
+        info["configured_mode_reason"] = f"{KILLSWITCH_CONFIG} is not valid JSON"
+    # Protected only when the tool says it is on AND loaded AND the table is
+    # in the kernel now; None when the ruleset could not be read.
+    present = info["table_present"]
+    info["protected"] = None if present is None else bool(info["active"] and rec.get("loaded") and present)
+    info["consistent"] = None if present is None else (present == info["active"])
+    info["service"] = unit_state("shadow-killswitch.service")
+    return info
+
+
+def section_panic():
+    if not os.path.exists(PANIC_TOOL):
+        return unavailable("shadow-panic is not installed")
+    info = {"available": True}
+    rec = _recorded(PANIC_STATUS, info)
+    info["recorded"] = rec
+    probe(info, "table_present", lambda: _table_present(PANIC_TABLE))
+    rec = rec or {}
+    info["engaged"] = bool(rec.get("engaged"))
+    info["since"] = rec.get("since")
+    info["error"] = rec.get("error")
+    present = info["table_present"]
+    info["consistent"] = None if present is None else (present == info["engaged"])
+    return info
+
+
 # --------------------------------------------------------------------------- recommendations
 def recommendations(r):
     out = []
@@ -1115,6 +1199,28 @@ def recommendations(r):
             "The kernel reports a vulnerable state for: "
             + "; ".join(f"{m['name']} ({', '.join(m.get('vulnerable_parts') or [m['status']])})" for m in vulnerable)
             + ". A firmware/microcode update or a change of the SMT setting may be required.")
+
+    ks = r.get("killswitch", {})
+    if ks.get("available") and ks.get("active") and ks.get("table_present") is False:
+        add("killswitch-not-loaded", "high", "The kill switch is on but not loaded",
+            f"Mode {ks.get('mode')} is configured, but its nftables table is not in the kernel: traffic is NOT "
+            "blocked. Run 'sudo shadow-killswitch reassert', then 'sudo shadow-killswitch status'.")
+    elif ks.get("available") and ks.get("active") and ks.get("error"):
+        add("killswitch-error", "high", "The kill switch reports a problem", ks["error"])
+    if ks.get("available") and ks.get("escape_hatch"):
+        add("killswitch-escape-hatch", "medium", "The kill switch is disabled for this boot",
+            f"shadow.killswitch=off is on the kernel command line, so the configured mode "
+            f"({ks.get('configured_mode')}) is not in force. Restart without it to turn the kill switch back on.")
+    pn = r.get("panic", {})
+    if pn.get("available") and pn.get("engaged"):
+        if pn.get("table_present") is False:
+            add("panic-not-loaded", "high", "Panic is engaged but not loaded",
+                "The panic is recorded as engaged, but its nftables table is not in the kernel: this computer is "
+                "NOT cut off. Start shadow-panic.service again, or release the panic.")
+        else:
+            add("panic-engaged", "medium", "Panic mode is on: every network connection is blocked",
+                "It lasts until it is released (administrator: pkexec shadow-panic release) or the computer "
+                "restarts.")
 
     lg = r.get("logins", {})
     if (lg.get("failed_count_7d") or 0) >= 10:

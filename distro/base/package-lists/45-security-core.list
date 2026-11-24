@@ -14,6 +14,17 @@ openvpn
 network-manager-openvpn
 network-manager-openvpn-gnome
 
+# The system resolver: encrypted DNS (DNS-over-TLS, DNSSEC), no LLMNR and no
+# multicast DNS - all configured by shadow-hardening. Only in images that
+# install shadow-hardening: with Debian's own settings it answers its host
+# name over LLMNR on every network and sends DNS in plain text (the minimal
+# image therefore has no resolved; NetworkManager writes /etc/resolv.conf).
+# Also provides the resolvconf command that wg-quick and OpenVPN scripts
+# call. Its Recommends (libnss-resolve, libnss-myhostname) are not
+# installed: nsswitch stays "files dns", so every lookup goes through
+# /etc/resolv.conf (docs/security/private-dns.md).
+systemd-resolved
+
 # Encryption, secrets, secure comms
 keepassxc
 gnupg

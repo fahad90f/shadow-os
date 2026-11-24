@@ -525,13 +525,94 @@ class Firewall(Base):
         self.assertEqual([c[0] for c in self.calls], ["shadow-firewall"])
 
 
+# --------------------------------------------------------------------------- kill switch + panic
+class KillSwitchAndPanic(Base):
+    def setUp(self):
+        super().setUp()
+        for name in ("KILLSWITCH_TOOL", "PANIC_TOOL"):
+            setattr(self.t, name, os.path.join(self.tmp, name))
+            write(getattr(self.t, name), "#!/bin/sh\n")
+        self.t.KILLSWITCH_STATUS = os.path.join(self.tmp, "run", "killswitch.json")
+        self.t.KILLSWITCH_CONFIG = os.path.join(self.tmp, "etc", "killswitch.json")
+        self.t.PANIC_STATUS = os.path.join(self.tmp, "run", "panic.json")
+        self.t.unit_state = lambda unit: {"active": True, "enabled": True}
+
+    def nft(self, tables):
+        def fake(argv):
+            if argv[1:3] == ["list", "table"] and tuple(argv[3:5]) in tables:
+                return 0, f"table {argv[3]} {argv[4]} {{\n}}\n", ""
+            return 1, "", "Error: No such file or directory; did you mean table 'shadow_filter' in family inet?"
+        return fake
+
+    def test_on_and_loaded_is_protected(self):
+        write(self.t.KILLSWITCH_STATUS, json.dumps({"mode": "tor", "active": True, "loaded": True, "error": None}))
+        write(self.t.KILLSWITCH_CONFIG, json.dumps({"version": 1, "mode": "tor"}))
+        self.fake_run({"nft": self.nft({("inet", "shadow_egress")})})
+        info = self.t.section_killswitch()
+        self.assertTrue(info["protected"])
+        self.assertTrue(info["consistent"])
+        self.assertEqual(info["configured_mode"], "tor")
+        self.assertEqual(self.t.recommendations({"killswitch": info}), [])
+
+    def test_recorded_on_but_table_gone_is_not_protected(self):
+        # The status file still says loaded (someone flushed the ruleset since).
+        write(self.t.KILLSWITCH_STATUS, json.dumps({"mode": "vpn", "active": True, "loaded": True, "error": None}))
+        self.fake_run({"nft": self.nft(set())})
+        info = self.t.section_killswitch()
+        self.assertIs(info["table_present"], False)
+        self.assertIs(info["protected"], False)
+        self.assertIs(info["consistent"], False)
+        ids = [r["id"] for r in self.t.recommendations({"killswitch": info})]
+        self.assertEqual(ids, ["killswitch-not-loaded"])
+
+    def test_unreadable_ruleset_is_unknown_not_protected(self):
+        write(self.t.KILLSWITCH_STATUS, json.dumps({"mode": "tor", "active": True, "loaded": True}))
+        self.fake_run({"nft": (1, "", "Error: Operation not permitted")})
+        info = self.t.section_killswitch()
+        self.assertIsNone(info["table_present"])
+        self.assertIn("Operation not permitted", info["table_present_reason"])
+        self.assertIsNone(info["protected"])
+
+    def test_nothing_recorded_and_escape_hatch(self):
+        self.fake_run({"nft": self.nft(set())})
+        info = self.t.section_killswitch()
+        self.assertIsNone(info["recorded"])
+        self.assertEqual(info["recorded_reason"], "nothing recorded in this boot")
+        self.assertFalse(info["active"])
+        self.assertEqual(info["configured_mode"], "off")
+        write(self.t.KILLSWITCH_STATUS, json.dumps({"mode": "off", "active": False, "loaded": False,
+                                                    "escape_hatch": True}))
+        write(self.t.KILLSWITCH_CONFIG, json.dumps({"mode": "tor"}))
+        info = self.t.section_killswitch()
+        self.assertEqual([r["id"] for r in self.t.recommendations({"killswitch": info})],
+                         ["killswitch-escape-hatch"])
+
+    def test_not_installed(self):
+        os.unlink(self.t.KILLSWITCH_TOOL)
+        os.unlink(self.t.PANIC_TOOL)
+        self.assertEqual(self.t.section_killswitch()["available"], False)
+        self.assertEqual(self.t.section_panic()["available"], False)
+
+    def test_panic(self):
+        write(self.t.PANIC_STATUS, json.dumps({"engaged": True, "since": "2026-01-01T00:00:00Z", "error": None}))
+        self.fake_run({"nft": self.nft({("inet", "shadow_panic")})})
+        info = self.t.section_panic()
+        self.assertTrue(info["engaged"])
+        self.assertTrue(info["consistent"])
+        self.assertEqual([r["id"] for r in self.t.recommendations({"panic": info})], ["panic-engaged"])
+        self.fake_run({"nft": self.nft(set())})
+        info = self.t.section_panic()
+        self.assertEqual([r["id"] for r in self.t.recommendations({"panic": info})], ["panic-not-loaded"])
+
+
 class WholeProgram(unittest.TestCase):
     def test_runs_and_keeps_every_documented_key(self):
         p = subprocess.run([sys.executable, TOOL], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
         self.assertEqual(p.returncode, 0, p.stderr.decode())
         report = json.loads(p.stdout)
         for name in ["generated", "privileged", "firewall", "apparmor", "encryption", "secureboot", "updates",
-                     "listening", "connections", "services", "logins", "audit", "hardening", "recommendations"]:
+                     "listening", "connections", "services", "logins", "audit", "hardening", "killswitch",
+                     "panic", "recommendations"]:
             self.assertIn(name, report)
         for section in report.values():
             if isinstance(section, dict):

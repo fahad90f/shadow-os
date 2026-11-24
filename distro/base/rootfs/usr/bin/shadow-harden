@@ -12,7 +12,17 @@ Commands:
   aide-check        Run an AIDE integrity check; report changes.
   enforce-apparmor  Put all AppArmor profiles into enforce mode.
   boot-harden       Write 24 kernel boot parameters to GRUB; run update-grub.
-  fs-harden         Remount /proc (hidepid=2), /tmp and /dev/shm (noexec+nosuid+nodev).
+  fs-harden         Remount /proc (hidepid=2; the group "proc", which polkitd
+                    joins, still sees every process), /tmp and /dev/shm
+                    (noexec+nosuid+nodev). The kernel parameter
+                    shadow.hidepid=off skips the /proc part at boot.
+  migrate-hidepid [--offline]
+                    Used by the package (postinst): rewrite a
+                    proc-shadow-hidepid.service of an older version (hidepid=2
+                    without the group, which broke pkexec at every start) the
+                    way fs-harden writes it now, and give /proc the group now.
+                    Nothing else of fs-harden. --offline (a chroot): the files
+                    only. Without the group, the unit is disabled instead.
   level [NAME]      Show, or set to NAME, the hardening level
                     (standard | hardened | paranoid). With no NAME, prints the
                     current level and what each one changes.
@@ -20,7 +30,9 @@ Commands:
 
 import sys
 import os
+import grp
 import json
+import pwd
 import subprocess
 import shutil
 import datetime
@@ -38,6 +50,19 @@ GRUB_DIR     = Path("/etc/default/grub.d")
 GRUB_CFG     = GRUB_DIR / "90-shadow-hardening.cfg"
 AUDIT_RULES  = Path("/etc/audit/rules.d/90-shadow-audit.rules")
 POLKIT_RULE  = Path("/etc/polkit-1/rules.d/50-shadow-harden.rules")
+
+# /proc with hidepid=2 hides other users' processes. polkitd runs as its own
+# unprivileged user and must read /proc/<pid> of every process that asks for
+# an authorisation; without access, pkexec and every polkit-checked action
+# fail. Members of PROC_GROUP (gid= mount option) still see every process,
+# so polkitd is added to it.
+PROC_GROUP     = "proc"
+POLKIT_USER    = "polkitd"
+POLKIT_UNIT    = "polkit.service"
+HIDEPID_UNIT   = Path("/etc/systemd/system/proc-shadow-hidepid.service")
+HIDEPID_ESCAPE = "shadow.hidepid=off"
+MOUNTINFO      = Path("/proc/self/mountinfo")
+FSTAB          = Path("/etc/fstab")
 
 # Hardening levels. These sysctl keys trade compatibility for security, so they
 # are chosen here rather than fixed in 91-shadow-extreme.conf. The level file is
@@ -128,6 +153,80 @@ def _now() -> str:
     return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _run(argv):
+    """Run a program without a shell; (returncode, combined output). 127: not installed."""
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    except FileNotFoundError:
+        return 127, f"{argv[0]} is not installed"
+    except subprocess.TimeoutExpired:
+        return 124, f"{argv[0]} did not finish within 60 s"
+    return r.returncode, (r.stderr or r.stdout).strip()
+
+
+def render_hidepid_unit(gid: int) -> str:
+    """proc-shadow-hidepid.service: hidepid=2 at every boot, group gid sees all."""
+    return (
+        "# Written by `shadow-harden fs-harden`; run it again rather than editing.\n"
+        "# hidepid=2 hides other users' processes; members of the group with\n"
+        f"# gid {gid} ({PROC_GROUP}, which polkitd joins) still see all of them.\n"
+        f"# The kernel parameter {HIDEPID_ESCAPE} skips it for one boot.\n"
+        "[Unit]\n"
+        "Description=Shadow OS: remount /proc with hidepid=2\n"
+        "After=systemd-remount-fs.service\n"
+        "DefaultDependencies=no\n"
+        f"ConditionKernelCommandLine=!{HIDEPID_ESCAPE}\n\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        f"ExecStart=/bin/mount -o remount,hidepid=2,gid={gid} /proc\n"
+        "RemainAfterExit=yes\n\n"
+        "[Install]\n"
+        "WantedBy=sysinit.target\n"
+    )
+
+
+def proc_mount_state(mountinfo_text: str) -> dict:
+    """hidepid mode and gid of the /proc mount, from /proc/self/mountinfo."""
+    state = {"mounted": False, "hidepid": "off", "gid": None}
+    for line in mountinfo_text.splitlines():
+        fields = line.split()
+        if len(fields) < 5 or fields[4] != "/proc" or " - proc " not in line:
+            continue
+        state["mounted"] = True
+        options = line.split(" - ", 1)[1].split()
+        opts = options[2].split(",") if len(options) > 2 else []
+        for opt in opts:
+            key, _, value = opt.partition("=")
+            if key == "hidepid":
+                state["hidepid"] = {"0": "off", "1": "noaccess", "2": "invisible",
+                                    "4": "ptraceable"}.get(value, value)
+            elif key == "gid" and value.isdigit():
+                state["gid"] = int(value)
+    return state
+
+
+def hidepid_status() -> dict:
+    """What /proc looks like now, and whether polkitd can still see processes."""
+    try:
+        state = proc_mount_state(MOUNTINFO.read_text())
+    except OSError:
+        state = {"mounted": False, "hidepid": "unknown", "gid": None}
+    try:
+        group = grp.getgrnam(PROC_GROUP)
+        state["group"] = PROC_GROUP
+        state["group_gid"] = group.gr_gid
+        state["polkitd_in_group"] = POLKIT_USER in group.gr_mem
+    except KeyError:
+        state["group"] = None
+        state["group_gid"] = None
+        state["polkitd_in_group"] = False
+    # pkexec keeps working when nothing is hidden, or polkitd is in the gid= group.
+    state["polkit_can_see_processes"] = (
+        state["hidepid"] == "off"
+        or (state["gid"] is not None and state["gid"] == state["group_gid"] and state["polkitd_in_group"]))
+    return state
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -166,6 +265,9 @@ def cmd_status() -> None:
 
     # Boot hardening
     s["boot_hardened"] = GRUB_CFG.exists()
+
+    # /proc hidepid (fs-harden): what is mounted now, not what was asked for.
+    s["proc_hidepid"] = hidepid_status()
 
     # Hardening level
     s["hardening_level"] = current_level()
@@ -338,11 +440,60 @@ def cmd_boot_harden() -> None:
     print("Boot hardening applied. A reboot is required to activate all parameters.")
 
 
+def ensure_proc_group(live: bool = True) -> tuple:
+    """The PROC_GROUP gid, with polkitd as a member (and polkit restarted so it
+    has the group; not with live=False, in a chroot). Returns (gid, problem);
+    problem is None when all is well."""
+    try:
+        gid = grp.getgrnam(PROC_GROUP).gr_gid
+    except KeyError:
+        rc, out = _run(["groupadd", "--system", PROC_GROUP])
+        if rc != 0:
+            return None, f"could not create the group {PROC_GROUP}: {out}"
+        try:
+            gid = grp.getgrnam(PROC_GROUP).gr_gid
+        except KeyError:
+            return None, f"the group {PROC_GROUP} does not exist after groupadd"
+        print(f"  Created the system group {PROC_GROUP} (gid {gid}).")
+    try:
+        pwd.getpwnam(POLKIT_USER)
+    except KeyError:
+        print(f"  Note: no user {POLKIT_USER} (polkit is not installed); nothing to add to {PROC_GROUP}.")
+        return gid, None
+    if POLKIT_USER not in grp.getgrnam(PROC_GROUP).gr_mem:
+        rc, out = _run(["gpasswd", "-a", POLKIT_USER, PROC_GROUP])
+        if rc != 0:
+            return gid, f"could not add {POLKIT_USER} to the group {PROC_GROUP}: {out}"
+        print(f"  Added {POLKIT_USER} to the group {PROC_GROUP}.")
+        if not live:
+            return gid, None
+        # A running polkitd keeps the groups it started with.
+        rc, out = _run(["systemctl", "try-restart", POLKIT_UNIT])
+        if rc != 0:
+            return gid, f"could not restart {POLKIT_UNIT} so that it joins {PROC_GROUP}: {out}"
+    return gid, None
+
+
 def cmd_fs_harden() -> None:
     """Remount filesystems with strict options and make persistent."""
+    problems = []
+
+    # /proc: only once polkitd can still see the processes it authorises,
+    # otherwise pkexec (and every Shadow tool started through it) stops working.
+    gid, problem = ensure_proc_group()
+    if problem:
+        problems.append(problem)
+        print(f"  NOT applied: hidepid on /proc ({problem})", file=sys.stderr)
+    elif Path("/proc").is_mount():
+        rc, out = _run(["mount", "-o", f"remount,hidepid=2,gid={gid}", "/proc"])
+        if rc == 0:
+            print(f"  Applied hide other users' processes on /proc (group {PROC_GROUP} sees all)")
+        else:
+            problems.append(f"/proc: {out}")
+            print(f"  Note (/proc): {out}", file=sys.stderr)
+
     remounts = [
         # (path, options, description)
-        ("/proc",    "remount,hidepid=2",                "hide other users' processes"),
         ("/tmp",     "remount,noexec,nosuid,nodev",       "no-exec /tmp"),
         ("/dev/shm", "remount,noexec,nosuid,nodev",       "no-exec /dev/shm"),
     ]
@@ -361,7 +512,7 @@ def cmd_fs_harden() -> None:
             print(f"  Note ({path}): {r.stderr.strip()}", file=sys.stderr)
 
     # Persistent fstab entries
-    fstab_path = Path("/etc/fstab")
+    fstab_path = FSTAB
     try:
         fstab = fstab_path.read_text()
     except Exception:
@@ -386,29 +537,96 @@ def cmd_fs_harden() -> None:
     else:
         print("  fstab entries already present.")
 
-    # /proc hidepid persistent via systemd unit override is more reliable;
-    # write a tmpfiles.d / mount unit note for the user
-    proc_override = Path("/etc/systemd/system/proc-shadow-hidepid.service")
-    if not proc_override.exists():
-        proc_override.write_text(
-            "[Unit]\n"
-            "Description=Shadow OS: remount /proc with hidepid=2\n"
-            "After=systemd-remount-fs.service\n"
-            "DefaultDependencies=no\n\n"
-            "[Service]\n"
-            "Type=oneshot\n"
-            "ExecStart=/bin/mount -o remount,hidepid=2 /proc\n"
-            "RemainAfterExit=yes\n\n"
-            "[Install]\n"
-            "WantedBy=sysinit.target\n"
-        )
-        subprocess.run(["systemctl", "enable", "proc-shadow-hidepid.service"], check=False)
-        print("  Installed proc-shadow-hidepid.service for persistent hidepid=2.")
+    # /proc hidepid at every boot: a unit (fstab cannot remount /proc with a
+    # gid reliably). Rewritten when it differs, so that units written by older
+    # versions (hidepid=2 without gid=, which broke pkexec) are replaced.
+    if gid is not None and not problem:
+        text = render_hidepid_unit(gid)
+        try:
+            current = HIDEPID_UNIT.read_text()
+        except OSError:
+            current = None
+        if current != text:
+            HIDEPID_UNIT.write_text(text)
+            for argv in (["systemctl", "daemon-reload"], ["systemctl", "enable", HIDEPID_UNIT.name]):
+                rc, out = _run(argv)
+                if rc != 0:
+                    problems.append(f"{' '.join(argv)}: {out}")
+            print(f"  Installed {HIDEPID_UNIT.name} (hidepid=2, gid={gid}) for every boot.")
 
     s = load_state()
-    s["filesystems_hardened"] = True
+    s["filesystems_hardened"] = not problems
     save_state(s)
+    if problems:
+        print("Filesystem hardening incomplete:", file=sys.stderr)
+        for message in problems:
+            print(f"  - {message}", file=sys.stderr)
+        sys.exit(1)
     print("Filesystem hardening applied.")
+
+
+def cmd_migrate_hidepid() -> None:
+    """Package upgrade: bring a proc-shadow-hidepid.service of an older version
+    up to date (the /proc part of fs-harden only; /tmp, /dev/shm and fstab are
+    left alone). The shadow-harden of Shadow OS 0.2.0 (not yet in the package)
+    wrote it with hidepid=2, no gid= and no escape hatch: polkitd could not see
+    the processes asking it for an authorisation, so pkexec failed at every
+    start. --offline (postinst in a chroot): only the files; nothing is
+    remounted, no service is restarted."""
+    live = "--offline" not in sys.argv[2:]
+    try:
+        current = HIDEPID_UNIT.read_text()
+    except FileNotFoundError:
+        print(f"No {HIDEPID_UNIT.name}: fs-harden was never used; nothing to do.")
+        return
+    except OSError as exc:
+        print(f"Cannot read {HIDEPID_UNIT}: {exc.strerror}", file=sys.stderr)
+        sys.exit(1)
+
+    gid, problem = ensure_proc_group(live=live)
+    if problem is None and current == render_hidepid_unit(gid):
+        print(f"{HIDEPID_UNIT.name} is up to date.")
+        return
+
+    if problem is not None:
+        # Hiding processes from polkitd breaks pkexec: rather nothing hidden.
+        _run(["systemctl", "disable", HIDEPID_UNIT.name])
+        try:
+            HIDEPID_UNIT.unlink()
+        except FileNotFoundError:
+            pass
+        if live:
+            if hidepid_status()["hidepid"] not in ("off", "unknown"):
+                rc, out = _run(["mount", "-o", "remount,hidepid=0", "/proc"])
+                if rc != 0:
+                    print(f"  Note (/proc): {out}", file=sys.stderr)
+            _run(["systemctl", "daemon-reload"])
+        print(f"WARNING: {problem}. {HIDEPID_UNIT.name} was removed so that pkexec keeps working: "
+              "other users' processes are visible again. Run 'sudo shadow-harden fs-harden' once "
+              "the problem is solved.", file=sys.stderr)
+        sys.exit(1)
+
+    # The unit keeps its enabled or disabled state; only its text changes.
+    HIDEPID_UNIT.write_text(render_hidepid_unit(gid))
+    print(f"Rewrote {HIDEPID_UNIT.name}: hidepid=2, gid={gid} ({PROC_GROUP}), skipped with {HIDEPID_ESCAPE}.")
+    if not live:
+        return
+    problems = []
+    rc, out = _run(["systemctl", "daemon-reload"])
+    if rc != 0:
+        problems.append(f"systemctl daemon-reload: {out}")
+    state = hidepid_status()
+    if state["hidepid"] not in ("off", "unknown") and state["gid"] is None:
+        # /proc is mounted the old way right now: pkexec works again at once.
+        rc, out = _run(["mount", "-o", f"remount,hidepid=2,gid={gid}", "/proc"])
+        if rc == 0:
+            print(f"  /proc remounted with gid={gid}: polkit sees every process again.")
+        else:
+            problems.append(f"/proc: {out}")
+    if problems:
+        for message in problems:
+            print(f"  - {message}", file=sys.stderr)
+        sys.exit(1)
 
 
 def current_level() -> str:
@@ -477,6 +695,7 @@ COMMANDS = {
     "enforce-apparmor": cmd_enforce_apparmor,
     "boot-harden":      cmd_boot_harden,
     "fs-harden":        cmd_fs_harden,
+    "migrate-hidepid":  cmd_migrate_hidepid,
     "level":            cmd_level,
 }
 

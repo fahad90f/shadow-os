@@ -54,6 +54,7 @@ qt_add_executable(horizon-shell
     src/workspaces.cpp src/workspaces.h
     src/session.cpp src/session.h
     src/shortcuts.cpp src/shortcuts.h
+    src/panic.cpp src/panic.h
     src/polkitagent.cpp src/polkitagent.h
     src/effects.cpp src/effects.h
     src/module.cpp src/module.h

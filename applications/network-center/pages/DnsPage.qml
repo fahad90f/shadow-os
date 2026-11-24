@@ -128,6 +128,13 @@ NxPage {
             value: page.resolved ? page.dotText(page.resolvedInfo.dnsOverTls) : qsTr("Not available")
         }
         NxRow {
+            icon: "privacy"
+            title: qsTr("Encrypted DNS for the whole computer")
+            subtitle: qsTr("The provider, DNS-over-TLS or DNS-over-HTTPS, and DNSSEC are chosen on the Privacy page.")
+            chevron: true
+            onClicked: ApplicationWindow.window.openPage("privacy")
+        }
+        NxRow {
             visible: page.resolved
             icon: "shield-check"
             title: qsTr("DNSSEC validation")

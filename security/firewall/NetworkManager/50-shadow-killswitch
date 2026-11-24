@@ -1,0 +1,18 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# NetworkManager dispatcher script (installed in
+# /usr/lib/NetworkManager/dispatcher.d, and linked from its pre-up.d so it
+# also runs before an interface or VPN is reported as connected).
+#
+# Keeps the kill switch's tunnel interfaces and VPN endpoints in step with
+# NetworkManager: shadow-killswitch sync reads the active WireGuard/tun
+# connections and the saved OpenVPN profiles (IP literals only; names are
+# never resolved). It does nothing while the kill switch is off or in Tor mode.
+# Nothing about the connection is logged.
+case "$2" in
+    up|down|pre-up|vpn-up|vpn-down|vpn-pre-up) ;;
+    *) exit 0 ;;
+esac
+[ -x /usr/sbin/shadow-killswitch ] || exit 0
+exec /usr/sbin/shadow-killswitch sync

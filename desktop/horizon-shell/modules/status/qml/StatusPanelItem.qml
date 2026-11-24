@@ -13,6 +13,7 @@ Item {
     readonly property var net: status.network
     readonly property var audio: status.audio
     readonly property var battery: status.battery
+    readonly property var ks: status.killSwitch
 
     // ---- network --------------------------------------------------------------
     readonly property bool netConnecting: net.available && net.state === "connecting"
@@ -76,8 +77,35 @@ Item {
         return percent + qsTr(", plugged in")
     }
 
-    readonly property string summary: [netText, net.available && net.vpnActive ? qsTr("VPN: %1").arg(net.vpnName) : "",
-                                       volumeText, batteryText].filter(line => line !== "").join("\n")
+    // ---- network kill switch and panic (shadow-killswitch, shadow-panic) -------------
+    // Shown only when it matters: the kill switch is on, or something is
+    // wrong (an error, a mode whose firewall table is not loaded, a status
+    // file that cannot be read), or the escape hatch kept it off in this boot.
+    readonly property string ksIcon: ks.state === "error" ? "shield-alert" : ks.state === "bypassed" ? "lock-open" : "lock"
+    readonly property color ksColor: ks.state === "error" ? Theme.danger : ks.state === "bypassed" ? Theme.warning
+        : button.checked ? Theme.accent : Theme.textPrimary
+    function modeName(mode) {
+        switch (mode) {
+        case "tor": return qsTr("Tor only")
+        case "vpn": return qsTr("VPN only")
+        case "tor-or-vpn": return qsTr("Tor or VPN")
+        default: return mode
+        }
+    }
+    readonly property string ksText: {
+        if (!ks.present) return ""
+        switch (ks.state) {
+        case "on": return qsTr("Kill switch on: %1").arg(modeName(ks.mode)) + (ks.lan ? qsTr(", local network allowed") : "")
+        case "error": return qsTr("Kill switch problem: %1").arg(ks.errorText)
+        case "bypassed": return qsTr("Kill switch off for this boot (escape hatch); saved mode: %1").arg(modeName(ks.persistentMode))
+        default: return qsTr("Kill switch off")
+        }
+    }
+    readonly property string panicText: ks.panicState === "engaged" ? qsTr("Panic: every network connection is cut")
+        : ks.panicState === "error" ? qsTr("Panic problem: %1").arg(ks.panicErrorText) : ""
+
+    readonly property string summary: [panicText, netText, net.available && net.vpnActive ? qsTr("VPN: %1").arg(net.vpnName) : "",
+                                       ksText, volumeText, batteryText].filter(line => line !== "").join("\n")
 
     implicitWidth: indicators.implicitWidth + Theme.spaceMd * 2
     implicitHeight: Theme.panelHeight
@@ -134,6 +162,18 @@ Item {
             name: "shield-check"
             size: Theme.iconSmall
             color: button.checked ? Theme.accent : Theme.textPrimary
+        }
+        // Kill switch: a lock while it is in force, a warning shield when it
+        // is not what it claims (never a lock for a table that is not loaded).
+        NxIcon {
+            objectName: "killSwitchIndicator"
+            visible: root.ks.indicatorVisible
+            anchors.verticalCenter: parent.verticalCenter
+            name: root.ksIcon
+            size: Theme.iconSmall
+            color: root.ksColor
+            Accessible.role: Accessible.Indicator
+            Accessible.name: root.ksText
         }
         NxIcon {
             anchors.verticalCenter: parent.verticalCenter

@@ -3,20 +3,21 @@
 This file covers five pages of `shadow-control-center`
 (`pages/{Users,Privacy,Firewall,Security,Updates}Page.qml`,
 `backends/{users,privacy,firewall,security,updates}backend.{h,cpp}`,
+`backends/privacykillswitchbackend.{h,cpp}` (Privacy: kill switch and panic),
 `helpers/{users,updates}-helper`,
 `helpers/org.shadow.controlcenter.{users,updates}.policy`). The other pages
 are documented by their authors (`README-network-hardware.md`, …).
 
 Open a page with `shadow-control-center <key>`; the data behind it is printed
-by `shadow-control-center --dump <key>` (keys: `users privacy firewall security
-updates`).
+by `shadow-control-center --dump <key>` (keys: `users privacy killswitch
+firewall security updates`).
 
 ## What each page does and where its data comes from
 
 | Page | Functions | Sources and sinks |
 |---|---|---|
 | Users (`users`) | list of human accounts; add (full name, user name, password, administrator); remove with or without the home folder (typed confirmation); full name; password; administrator role; automatic sign-in; picture | AccountsService `org.freedesktop.Accounts` on the system bus: `ListCachedUsers`, properties of `…Accounts.User`, `CreateUser`, `DeleteUser`, `User.SetRealName`, `User.SetAccountType` (administrator = `sudo` group on Debian), `User.SetIconFile`, signals `UserAdded`/`UserDeleted`/`User.Changed`. Passwords: see below. Automatic sign-in: SDDM `[Autologin] User`, read from `/usr/lib/sddm/sddm.conf.d/*.conf`, `/etc/sddm.conf.d/*.conf`, `/etc/sddm.conf` (SDDM's order, last wins), written by `users-helper`. Signed-in users: `org.freedesktop.login1.Manager.ListUsers`. |
-| Privacy (`privacy`) | screen lock (automatic lock, delay, lock on resume, grace period); clear the recently-used-files list; clear the launcher's usage counters; empty the trash, delete the thumbnail cache and old temporary files, with measured sizes; effective MAC-address and IPv6 privacy defaults of NetworkManager (read-only) | `kscreenlockerrc` `[Daemon] Autolock, Timeout, LockOnResume, LockGrace` through KConfig (so `/etc/xdg/kscreenlockerrc` supplies the defaults), applied with `org.kde.screensaver /ScreenSaver configure`; `~/.local/share/recently-used.xbel` (+ `~/.local/share/RecentDocuments/*.desktop`); `~/.config/shadow/horizon-usage.conf` `[Launches]`; `~/.local/share/Trash`, `~/.cache/thumbnails`, the user's own regular files in `/tmp` and `/var/tmp` not modified for 24 h (`lstat`, in a worker thread); NetworkManager configuration files |
+| Privacy (`privacy`) | network kill switch: state in force (checked against the kernel), mode Off / Tor only / VPN only / Tor or VPN, allow the local network, keep after a restart, reload a table that is not loaded; panic: state, reconnect (release), the shortcut, the options (read-only); screen lock (automatic lock, delay, lock on resume, grace period); clear the recently-used-files list; clear the launcher's usage counters; empty the trash, delete the thumbnail cache and old temporary files, with measured sizes; effective MAC-address and IPv6 privacy defaults of NetworkManager (read-only) | `kscreenlockerrc` `[Daemon] Autolock, Timeout, LockOnResume, LockGrace` through KConfig (so `/etc/xdg/kscreenlockerrc` supplies the defaults), applied with `org.kde.screensaver /ScreenSaver configure`; `~/.local/share/recently-used.xbel` (+ `~/.local/share/RecentDocuments/*.desktop`); `~/.config/shadow/horizon-usage.conf` `[Launches]`; `~/.local/share/Trash`, `~/.cache/thumbnails`, the user's own regular files in `/tmp` and `/var/tmp` not modified for 24 h (`lstat`, in a worker thread); NetworkManager configuration files; kill switch and panic: `/run/shadow/killswitch.json`, `/run/shadow/panic.json`, `/etc/shadow-os/{killswitch,panic}.json`, `/run/shadow-anon-state.json`, `pkexec shadow-security-status --section killswitch,panic`, `pkexec /usr/sbin/shadow-killswitch set …|reassert`, `pkexec /usr/sbin/shadow-panic release`, KGlobalAccel `shortcut(["shadow-horizon","panic",…])` on the session bus |
 | Firewall (`firewall`) | state (active, starts at boot, policies, rule count, foreign nftables tables); turn on / off (warning first); opened ports; open a port or range with description (validated); close one (confirmation); close all (confirmation); reload | `/usr/sbin/shadow-firewall` (`security/firewall/shadow-firewall`) |
 | Security (`security`) | read-only: recommendations as the tool words them, and one row per examined area (firewall, AppArmor, disk encryption, Secure Boot, updates, listening services, system services, login activity, audit, kernel hardening) with the state and the evidence the report contains; "Open Security Center" when `shadow-security-center` is in `PATH` | `/usr/sbin/shadow-security-status --section firewall,apparmor,encryption,secureboot,updates,listening,services,logins,audit,hardening,recommendations` (`security/audit/shadow-security-status`) |
 | Updates (`updates`) | automatic check on/off and interval; result of the last check; "Check now"; unattended-upgrades state and the two `APT::Periodic` switches; restart-required notice; "Open SHADOW Updater" | `~/.config/shadow/updater.conf` (`Updates/AutoCheck`, `Updates/CheckIntervalHours`, read-only `LastCheck/*`; same `QSettings` store as SHADOW Updater); `shadow-updater --check`; `/usr/bin/unattended-upgrade` (installed?); `apt-config dump` (effective `APT::Periodic::Update-Package-Lists` / `Unattended-Upgrade`; `/etc/apt/apt.conf.d/20auto-upgrades` parsed directly when `apt-config` is missing); `systemctl is-enabled apt-daily-upgrade.timer` when systemd runs; `/run/reboot-required` |
@@ -45,10 +46,144 @@ Details worth knowing:
   `/etc/NetworkManager/NetworkManager.conf`, `/etc/NetworkManager/conf.d/*.conf`.
   For each of `[device] wifi.scan-rand-mac-address`,
   `[connection] wifi.cloned-mac-address`, `ethernet.cloned-mac-address`,
-  `ipv6.ip6-privacy` it shows the value and the file it comes from, or says
-  that it is not set. Whether `80-shadow-privacy.conf` is present (in either
-  directory) is stated. Nothing is changed here; per-network overrides are on
-  the Wi-Fi page.
+  `ipv6.ip6-privacy` it shows the value, the file it comes from and, when it
+  is not the plain `[connection]`/`[device]`, the section; or says that it is
+  not set. The value is the one NetworkManager applies to every device: named
+  `[connection-…]`/`[device-…]` sections are searched before the plain one
+  (later files first, within a file top to bottom), a named section without
+  `match-device` applies to every device, one with `match-device` (some
+  devices only, e.g. the shipped `[connection-shadow-mac-fixed-drivers]`) is
+  not evaluated, and `stop-match=yes` without `match-device` leaves the rest
+  unset. A boot with `shadow.netprivacy=off` is one such case:
+  `/run/NetworkManager/conf.d/93-shadow-escape.conf` has
+  `[connection-shadow-escape]` with `*.cloned-mac-address=preserve`, so the
+  rows read "Unchanged" from that file and the section says "Real addresses
+  for this boot" (as Network Center → Privacy does) instead of naming the
+  SHADOW defaults. Whether `80-shadow-privacy.conf` is present (in either
+  directory) is stated otherwise. Nothing is changed here; per-network
+  overrides are on the Wi-Fi page.
+* **Privacy → Network kill switch and Panic** (`backends/privacykillswitchbackend.h`;
+  the tools and files are described in
+  [docs/security/kill-switch.md](../../docs/security/kill-switch.md)).
+  * *State.* Read from `/run/shadow/killswitch.json` and
+    `/run/shadow/panic.json` (both world-readable, rewritten atomically by the
+    tools; their directories are watched, plus a 10-second timer). The rule of
+    the contract is applied as in the shell's status module: only `active &&
+    loaded && error == null` in a sound document counts as protected. A file
+    that cannot be read, a field of the wrong type, a document that
+    contradicts itself (mode `tor` with `active: false`) or an unknown mode is
+    an error that is shown, never "protected". Error, escape-hatch
+    (`shadow.killswitch=off`), "no status recorded" and "not installed" each
+    have their own text. The mode after a restart comes from the status
+    (`persistent_mode`), else from `/etc/shadow-os/killswitch.json`; a broken
+    configuration file is reported together with what the tool then does at
+    start-up (fail closed, Tor or VPN).
+  * *Checked against the kernel.* When the page opens and after every change,
+    `pkexec shadow-security-status --section killswitch,panic` (no password for
+    an active local session) says whether the tables are in the kernel now. A
+    status file that says "loaded" while the kernel has no table (for example
+    a table deleted by hand, or `nft flush ruleset`) is shown as "not
+    protected". A check made before the status file last changed is marked as
+    such and not used.
+  * *Changing.* The mode control runs `pkexec /usr/sbin/shadow-killswitch set
+    MODE --lan|--no-lan` (plus `--runtime` while "Keep after a restart" is
+    off); turning it on, or a stricter mode, first asks for confirmation,
+    because the tool then closes connections (the same rule as its
+    `needs_flush`). "Allow the local network" can only be changed while the
+    kill switch is on. "Keep after a restart" follows the state (a `--runtime`
+    mode in force shows it off); switching it on while a runtime mode is in
+    force saves that mode for start-up at once (it neither loosens nor
+    tightens anything now); switching it off only changes how the next change
+    is made — there is no way to un-save a mode without loading another one,
+    and loading `off` first would open a gap. A failed change shows the tool's
+    own message without its warnings (those are in the status file and shown
+    under "Last change"); a refused authorisation says so. A change the tool
+    could not make while the previous mode stayed in force is its
+    `change_error` (and a warning), not an `error`: the previous mode is still
+    shown as protected. "Load again" (`reassert`) is offered while the kill
+    switch is on and has a problem; it reports success only if the status it
+    then reads has none left. The problem banner says "Traffic may leave
+    outside Tor or the VPN" only when the mode's table is not in force
+    (`trafficMayLeave` in `--dump killswitch`), otherwise "Kill switch
+    problem" (for example a broken configuration while it fails closed).
+  * *Hide Me.* When `/run/shadow-anon-state.json` says Hide Me engaged the kill
+    switch (`killswitch_by`) and the mode is still `tor`, the page says for
+    what and that Hide Me puts the previous mode back.
+  * *Panic.* State, and "Reconnect…" (`pkexec /usr/sbin/shadow-panic release`,
+    administrator every time) while a panic is engaged or its table is
+    loaded. Engaging is left to the shortcut (the shell starts
+    `shadow-panic.service`). The key shown is the one KGlobalAccel has bound to
+    the shell's `panic` action in this session (method `shortcut` of
+    `org.kde.KGlobalAccel`, only when the service is already running, never by
+    D-Bus activation); otherwise the shell's default Ctrl+Alt+Shift+Esc with a
+    note. The options (radios, lock, clipboard) come from
+    `/etc/shadow-os/panic.json`, read with the tool's own rules (missing or
+    broken: all on, and the page says why). They are shown read-only:
+    `shadow-panic` has no command that changes them.
+  * Development hooks: `SHADOW_KILLSWITCH_TOOL`, `SHADOW_PANIC_TOOL`,
+    `SHADOW_SECURITY_STATUS_TOOL`, `SHADOW_NETGUARD_RUN_DIR`,
+    `SHADOW_NETGUARD_CONFIG_DIR`, `SHADOW_ANON_STATE`.
+* **Privacy → Hide Me** (`backends/privacybackend.{h,cpp}`, the
+  `shadow-anon` part) runs `pkexec /usr/bin/shadow-anon COMMAND` (the tool
+  directly as root) and reads `/run/shadow-anon-state.json` and the rotation
+  timer's drop-in.
+  * *Exit status.* 0: done, with a message saying what happened. 3: the tool
+    could not switch a protection on or off; the page shows the tool's own
+    last stderr line (`shadow-anon: error: …` without the prefix), and the
+    state record's `error` stays on the page as a warning until a later change
+    works (it also reports failures of the boot unit and the rotation timer).
+    1 or 2 (not root, bad use) are failures too, shown the same way. pkexec's
+    126 (authentication cancelled or refused) and 127 (not authorised, or the
+    program cannot be run) say that nothing was changed. The same mapping
+    applies to `shadow-harden`, which exits 1 when something could not be
+    applied (that used to be taken for a cancelled dialog and not shown).
+  * *Kill switch.* "Kill switch: Tor only" runs `shadow-anon kill-switch-on`
+    / `kill-switch-off` (never `--persist`), which hand over to
+    `shadow-killswitch` mode `tor` and put the previous mode back. Its state is
+    read from the same document as the Network kill switch section
+    (`KillSwitchBackend`, `/run/shadow/killswitch.json`), never from Hide Me's
+    own record, so the two cannot disagree: another mode in force is named;
+    "Tor only" chosen in the Network section is shown as on there and is
+    changed there, but not with the local network allowed: that is shown as
+    "Tor only, local network allowed", is not counted as Hide Me's Tor only,
+    and the switch stays usable to make it strict (`set tor --no-lan`); a Ghost Mode whose kill switch is no longer in force is
+    reported as such (danger banner, row in red); the transparent proxy shows
+    "ACTIVE, no kill switch" in that case. Each section is disabled while the
+    other one is changing something.
+  * *Tor status.* "Tor: running" / "Tor: stopped" on the Rotate identity row
+    (`torRunning`, also in `--dump privacy`) is `systemctl is-active --quiet
+    tor@default`, the check shadow-anon's `tor_running()` makes, asked each
+    time the page reads its state (when it opens, after every Hide Me action
+    and on "Measure again"). Debian's `tor.service` is a oneshot running `/bin/true` that
+    stays active for the whole boot while `tor@default` fails, so it is never
+    asked; no answer within 2 s counts as stopped.
+  * *Texts* follow the reworked tool: Ghost Mode engages the kill switch first
+    and changes nothing else when that fails; the threat levels never change
+    the network address (Maximum is Ghost Mode without that step); "Rotate
+    identity" gives each connected network a new address that stays stable
+    for that network, at most once in 5 minutes; the timer ("Auto-rotate Tor
+    circuits", interval read from its drop-in) only renews Tor circuits, at
+    least 60 s apart (`startAutoRotate` raises anything shorter to 60, as the
+    tool does); USB storage blocking does not stop other USB devices. Ghost
+    Mode and threat level Maximum ask for confirmation first (they close
+    connections outside Tor and wipe logs).
+  * *OS integrity → Filesystem hardening* says that `fs-harden` creates the
+    group `proc` and adds polkitd to it (`hidepid=2,gid=proc`), so polkit and
+    pkexec keep working, and names the escape hatch `shadow.hidepid=off`.
+    That is what `/usr/bin/shadow-harden` of the same version does: it is in
+    the package `shadow-hardening`, which the Control Center depends on at
+    its own version or later (in 0.2.0 the tool was only copied into the
+    image, and upgrades kept the old one); the package upgrade also rewrites
+    a boot unit the old tool wrote without the group.
+  * Development hooks: `SHADOW_ANON_TOOL`, `SHADOW_HARDEN_TOOL`,
+    `SHADOW_ANON_STATE`, `SHADOW_ANON_TIMER_DROPIN`, and
+    `SHADOW_NM_CONFIG_ROOT` (read in place of `/` for NetworkManager's
+    configuration files and `/usr/sbin/NetworkManager`, for Network
+    identity). `--dump privacy` has a `hideMe` object and a `network` object
+    (`settings` with `group` per value, `netPrivacyEscapeFile`).
+* **Privacy → Network identity** also shows `connection.stable-id`
+  (`${CONNECTION}/${BOOT}`: a new private address at every boot) and points to
+  Network Center → Privacy, where the policy is changed.
 * **Location services**: Shadow OS ships none (no GeoClue anywhere in the
   repository), so the Privacy page has no such section.
 * **Users → blocks** (enforced in the back-end as well as in the UI): the
@@ -218,6 +353,67 @@ directly, not through `pkexec`.
   `horizon-usage.conf` kept); trash emptied (`files`/`info` kept), thumbnails
   deleted, old temporary files deleted while the fresh and the foreign file
   stayed (confirmation dialogs `ccsec-priv-c3.png`, `-c6.png`).
+* **Privacy → Hide Me** (lab chroot, the program as `nobody` through a stand-in
+  `pkexec` that records its arguments or exits 126/127):
+  `tests/test_hideme_backend.py` with `tests/harness/cchideme` — 28 tests, all
+  passing: the exact command line of every control, no `--persist` from the
+  page, the 60 s minimum of the rotation timer, the tool's last stderr line on
+  exit 3 and 1, the state record's `error` shown and cleared, pkexec 126 and
+  127, the tool not installed, `shadow-harden` failures reported, the state
+  record and the timer drop-in read (also through `--dump privacy`), the Tor
+  status from `tor@default` through a stand-in `systemctl` (stopped while
+  `tor.service` is active and `tor@default` failed, running when
+  `tor@default` is active, stopped when systemctl does not answer; also
+  through `--dump privacy`), the Network identity values, root
+  running the tools without pkexec. Run like the kill switch tests below, with
+  `SHADOW_CC_HIDEME_HARNESS=/tmp/cc-harness/cchideme`. Screenshots (Ghost Mode
+  on; Ghost Mode whose kill switch was turned off elsewhere, with a recorded
+  error; VPN only set in the Network section), dark and light, were reviewed
+  during development.
+* **Privacy → kill switch and panic** (a Debian trixie lab chroot of the work
+  tree; the program ran as the user `nobody`, so every
+  privileged call went through a stand-in `pkexec` that records its arguments):
+  * `tests/test_killswitch_backend.py` — 33 tests, all passing:
+    `--dump killswitch` for every kind of document (protected, on but not
+    loaded, off but loaded, the tool's own error, contradictions, invalid
+    JSON, wrong types, unknown mode, a file that is too large, a dangling link,
+    a directory, escape hatch, mode after a restart from the status / the
+    configuration / a broken configuration, live check agreeing, contradicting,
+    refused and failing, every panic state, the panic options, Hide Me), and
+    `tests/harness/cckillswitch` for the actions (exact `pkexec … set` command
+    lines with and without `--runtime` and `--lan`, saving a runtime mode for
+    start-up, the local-network switch refused while off, the tool's failure
+    message without its warnings, pkexec 126/127, reassert, release, which
+    changes close connections, a status file replaced by another program
+    while the page is open, root running the tool without pkexec). Three of
+    the tests read documents that the **real** `shadow-killswitch`,
+    `shadow-panic` and `shadow-security-status` of this tree published in a
+    throw-away network namespace with real nftables (kill switch on with panic
+    engaged; both off; a table deleted behind the tool's back, which the page
+    reports as not protected).
+  * GUI in the lab's HORIZON session (KWin 6.3, xdotool): choosing "Tor only"
+    opens the confirmation; "Turn on" runs `pkexec … shadow-killswitch set tor
+    --no-lan`, the toast and the new state appear, and the live check that
+    follows is shown. The panic shortcut row read Ctrl+Alt+Shift+Esc from the
+    session's KGlobalAccel (the shell registers `panic`). Screenshots of the
+    sections in dark and light theme, and of the error, escape-hatch and
+    not-installed states were reviewed during development.
+  * Smoke list: 21 of 21 pages without QML warnings (after fixing three
+    undefined `Theme` properties in `WifiPage.qml`/`WifiAuditPage.qml`).
+  * To run them (build chroot, from the top of the tree; `BUILD` is a build
+    directory of the Control Center):
+
+    ```sh
+    cmake -S applications/control-center/tests/harness -B /tmp/cc-harness -G Ninja -DSHADOW_SRC="$PWD"
+    ninja -C /tmp/cc-harness
+    sudo applications/control-center/tests/real-tool-documents.sh /tmp/cc-docs   # optional; root, a throw-away netns
+    SHADOW_CC_BIN=$BUILD/bin/shadow-control-center SHADOW_CC_HARNESS=/tmp/cc-harness/cckillswitch \
+      SHADOW_CC_CONTRACT_DIR=/tmp/cc-docs PYTHONDONTWRITEBYTECODE=1 \
+      python3 applications/control-center/tests/test_killswitch_backend.py -v
+    ```
+
+    As root the programs are started as `nobody` (setpriv), so the pkexec
+    path is the one tested; without the variables the tests are skipped.
 
 ## Not tested
 
@@ -233,3 +429,6 @@ directly, not through `pkexec`.
   that finds updates (the Updater's own tests cover its result format).
 * The pages inside a full build with all other pages, and in a real SHADOW
   HORIZON session.
+* Kill switch and panic against the real tools on a running system: the
+  pkexec prompts of `org.shadow.killswitch.manage` and `org.shadow.panic.release`,
+  and `org.shadow.security.read-status` answering without a prompt.

@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Shadow OS panic: cut every network connection now (shadow-panic engage).
+#
+# The desktop's panic shortcut starts this unit over D-Bus
+# (org.freedesktop.systemd1.Manager.StartUnit "shadow-panic.service"
+# "replace"); the polkit rule 49-shadow-panic.rules lets a local, active
+# member of the group sudo do exactly that without a password. Nothing else
+# about this unit is allowed without authentication.
+#
+# Every start engages again (no RemainAfterExit), so a second start after a
+# release works. Releasing needs an administrator:
+#     pkexec /usr/sbin/shadow-panic release
+# A panic also ends with the next restart (shadow-panic-reset.service).
+[Unit]
+Description=Shadow OS panic: cut every network connection
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/shadow-panic engage

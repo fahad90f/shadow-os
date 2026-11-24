@@ -17,7 +17,8 @@
 # Running it again is safe: what is already fixed is left alone.
 #
 #   --yes           no questions (Hide Me's Ghost Mode is turned off if no
-#                   traffic gets through Tor)
+#                   traffic gets through Tor). Without --yes and without a
+#                   terminal to ask in, nothing Hide Me does is turned off.
 #   --keep-hide-me  never change Hide Me (Ghost Mode, kill switch, Tor DNS,
 #                   identity rotation)
 #   --report-only   change nothing: only test and write the report
@@ -46,6 +47,19 @@
 #  4. A blocked Wi-Fi radio, Wi-Fi power saving, and (Realtek, MediaTek) chip
 #     power-saving that drops the connection. -> unblocked / switched off, one
 #     at a time, testing after each, keeping only what was needed.
+#  5. DNS. Newer images look names up through systemd-resolved (encrypted
+#     DNS; /etc/resolv.conf is a link to its stub, 127.0.0.53). If resolved is
+#     not running, it is started; the link is never replaced by a file with
+#     plain DNS servers. With strict DNS-over-TLS on a network that blocks
+#     port 853, that one network may answer names itself (the change is
+#     listed and undone by undo.sh); everywhere else DNS stays encrypted.
+#  6. The kill switch (shadow-killswitch: nothing leaves except through Tor or
+#     a VPN) and a panic (shadow-panic: cut off from every network) block
+#     traffic on purpose. -> named as the cause, with the command that turns
+#     them off. This script never turns them off (that would let traffic out
+#     without Tor or the VPN) and never flushes the firewall. With a panic
+#     engaged it changes nothing at all. A kill switch that Hide Me turned on
+#     for Ghost Mode is Hide Me's (3. above).
 #
 # Everything is written to ~/.local/state/shadow-fix-network/ (only you can
 # read it): last-run.log, report.txt (what to send if it still fails; no
@@ -67,7 +81,7 @@ for a in "$@"; do
         --yes|-y) YES=1 ;;
         --keep-hide-me) KEEP_HIDE_ME=1 ;;
         --report-only) REPORT_ONLY=1 ;;
-        -h|--help) sed -n '2,46p' "$SCRIPT"; exit 0 ;;
+        -h|--help) sed -n '2,/^$/p' "$SCRIPT"; exit 0 ;;
         *) echo "unknown option '$a' (see --help)" >&2; exit 2 ;;
     esac
 done
@@ -101,6 +115,11 @@ NM_DNS_LOCK=$R/etc/NetworkManager/conf.d/90-shadow-dns.conf
 RESOLV=$R/etc/resolv.conf
 RESOLV_ANON_BACKUP=$R/etc/resolv.conf.shadow-backup
 NM_RESOLV=/run/NetworkManager/resolv.conf
+# systemd-resolved (shadow-hardening): the stub link, the daemon, and Hide Me's
+# runtime setting that sends its DNS to Tor.
+RESOLVED_STUB=../run/systemd/resolve/stub-resolv.conf
+RESOLVED_BIN=$R/usr/lib/systemd/systemd-resolved
+RESOLVED_HIDE_ME=$R/run/systemd/resolved.conf.d/95-shadow-anon.conf
 MODPROBE_FIX=$R/etc/modprobe.d/shadow-wifi-fix.conf
 HOSTS=$R/etc/hosts
 SYS_NET=$R/sys/class/net
@@ -151,8 +170,12 @@ rep()   { printf '%s\n' "$*" >>"$REPORT"; }
 have()  { command -v "$1" >/dev/null 2>&1; }
 pause() { sleep "$(awk -v s="$1" -v k="$WAIT_SCALE" 'BEGIN { printf "%.2f", s * k }')"; }
 
-ask() {   # ask "question" -> 0 for yes (the default)
-    if [ "$INTERACTIVE" = 0 ]; then return 0; fi
+ask() {   # ask "question" -> 0 for yes (the default); --yes is yes, no terminal to ask in is no
+    if [ "$YES" = 1 ]; then return 0; fi
+    if [ "$INTERACTIVE" = 0 ]; then
+        info "not done without asking (no terminal; --yes allows it): $1"
+        return 1
+    fi
     local reply
     printf '  ?     %s [Y/n] ' "$1"
     read -r reply </dev/tty || reply=""
@@ -228,12 +251,156 @@ nat_chain_hooked() {   # is a Hide Me iptables chain in use?
     iptables -t "$1" -S OUTPUT 2>/dev/null | grep -q -- "-j $2\b"
 }
 rotation_on() { systemctl is-active --quiet shadow-anon-rotate.timer 2>/dev/null || systemctl is-enabled --quiet shadow-anon-rotate.timer 2>/dev/null; }
-kill_switch_on()   { nat_chain_hooked filter SHADOWKILL; }
+# Hide Me's kill switch: its old iptables chain, or the Shadow kill switch in
+# the Tor mode Hide Me turned on (egress_probe sets KS_HIDE_ME).
+kill_switch_on()   { nat_chain_hooked filter SHADOWKILL || [ "${KS_HIDE_ME:-0}" = 1 ]; }
 tproxy_on()        { nat_chain_hooked nat SHADOWTOR; }
 tor_dns_redirect() { nat_chain_hooked nat SHADOWDNS || nat_chain_hooked nat SHADOWTOR; }
 resolv_is_tor() { grep -q 'DNS routed through Tor' "$RESOLV" 2>/dev/null; }
+
+# The Shadow kill switch (shadow-killswitch, nftables table inet shadow_egress)
+# and a panic (shadow-panic, inet shadow_panic). Only read here: this script
+# never turns either off, never runs "nft" other than "list table", never
+# flushes the ruleset.
+HIDE_ME_STATE=$R/run/shadow-anon-state.json
+json_fields() {   # json_fields KEY... <JSON -> "v1|v2|..." (true/false, text, a list's length, "" if missing)
+    have python3 || return 1
+    python3 -c 'import json, sys
+try:
+    d = json.load(sys.stdin)
+except ValueError:
+    d = None
+d = d if isinstance(d, dict) else {}
+def f(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if v is None:
+        return ""
+    if isinstance(v, (list, dict)):
+        return str(len(v))
+    return " ".join(str(v).replace("|", "/").split())
+print("|".join(f(d.get(k)) for k in sys.argv[1:]))' "$@" 2>/dev/null
+}
+egress_probe() {   # -> KS_TABLE (1: inet shadow_egress is in the kernel), KS_MODE, KS_LAN, KS_ERROR, KS_HATCH, KS_HIDE_ME
+    KS_TABLE=0 KS_MODE="" KS_LAN="" KS_ERROR="" KS_HATCH="" KS_HIDE_ME=0
+    local json active="" loaded="" text by
+    if have shadow-killswitch; then
+        # As root it re-checks the kernel (exit 0, or 3 when something is wrong).
+        json=$(shadow-killswitch status --json 2>/dev/null)
+        IFS='|' read -r KS_MODE active loaded KS_LAN KS_ERROR KS_HATCH \
+            < <(printf '%s' "$json" | json_fields mode active loaded lan error escape_hatch)
+        [ "$loaded" = true ] && KS_TABLE=1
+        # On, but not the table its configuration produces: a table changed by hand still blocks.
+        if [ "$active" = true ] && [ "$loaded" != true ] && have nft &&
+           nft list table inet shadow_egress >/dev/null 2>&1; then KS_TABLE=1; fi
+    elif have nft && text=$(nft list table inet shadow_egress 2>/dev/null); then
+        KS_TABLE=1
+        KS_MODE=$(printf '%s\n' "$text" | sed -n 's/.*comment "shadow-killswitch mode=\([a-z-]*\).*/\1/p' | head -n1)
+        case "$(printf '%s\n' "$text" | sed -n 's/.*comment "shadow-killswitch .*lan=\(yes\|no\).*/\1/p' | head -n1)" in
+            yes) KS_LAN=true ;; no) KS_LAN=false ;;
+        esac
+        [ -n "$KS_MODE" ] || KS_MODE=unknown
+    fi
+    # Turned on by Hide Me (Ghost Mode, its kill switch, the transparent proxy):
+    # Hide Me's own "off" puts back the mode that was in force before it.
+    if [ "$KS_TABLE" = 1 ] && [ "$KS_MODE" = tor ] && [ -s "$HIDE_ME_STATE" ]; then
+        by=$(json_fields killswitch_by <"$HIDE_ME_STATE")
+        case "$by" in ""|0) ;; *) KS_HIDE_ME=1 ;; esac
+    fi
+    return 0
+}
+panic_probe() {   # -> PANIC_ON (1: a panic is engaged or its table is loaded), PANIC_TABLE (1: inet shadow_panic is loaded)
+    PANIC_ON=0 PANIC_TABLE=0
+    local json engaged="" loaded=""
+    if have shadow-panic; then
+        json=$(shadow-panic status --json 2>/dev/null)
+        IFS='|' read -r engaged loaded < <(printf '%s' "$json" | json_fields engaged loaded)
+        [ "$loaded" = true ] && PANIC_TABLE=1
+        [ "$engaged" = true ] && PANIC_ON=1
+    fi
+    if [ "$PANIC_TABLE" = 0 ] && have nft && nft list table inet shadow_panic >/dev/null 2>&1; then PANIC_TABLE=1; fi
+    [ "$PANIC_TABLE" = 1 ] && PANIC_ON=1
+    return 0
+}
+ks_way() {   # the way out the kill switch in force leaves open
+    case "$KS_MODE" in
+        tor) echo "Tor" ;;
+        vpn) echo "the VPN" ;;
+        tor-or-vpn) echo "Tor or the VPN" ;;
+        *) echo "its rules" ;;
+    esac
+}
+ks_lets() {   # "the kill switch lets out only ..."
+    case "$KS_MODE" in
+        tor) echo "Tor's traffic" ;;
+        vpn) echo "traffic through the VPN" ;;
+        tor-or-vpn) echo "Tor's traffic and traffic through the VPN" ;;
+        off) echo "loopback traffic (its table is loaded although the kill switch is off)" ;;
+        *) echo "what its rules allow (its mode is not known)" ;;
+    esac
+}
+ks_advice() {   # the lines that tell how to get out of a blocking kill switch (never done by this script)
+    case "$KS_MODE" in
+        tor|tor-or-vpn) say "  - is Tor running and connected? systemctl status tor@default (Hide Me shows it too)" ;;
+    esac
+    case "$KS_MODE" in
+        vpn|tor-or-vpn) say "  - connect the VPN (top bar or Network Center); a VPN server the kill switch does not know is blocked too (docs/security/kill-switch.md, \"VPNs and NetworkManager\")" ;;
+    esac
+    case "$KS_MODE" in
+        tor|vpn|tor-or-vpn)
+            say "  - or turn the kill switch off until the next restart, knowing that programs then reach the internet without $(ks_way):"
+            say "      pkexec shadow-killswitch set off --runtime     (or Control Center -> Privacy -> Network kill switch)" ;;
+        off)
+            say "  - its table is loaded although the kill switch is off; remove it with:"
+            say "      pkexec shadow-killswitch set off" ;;
+        *)
+            if have shadow-killswitch; then
+                # A table deleted with nft is put back within ~20 s by shadow-killswitch-watch.timer
+                # while a mode is recorded; "set off" records the change, so it stays off.
+                say "  - its table (inet shadow_egress) is loaded but shadow-killswitch cannot say which mode; turn it off with:"
+                say "      sudo shadow-killswitch set off --runtime     (until the next restart; without --runtime also after it)"
+            else
+                say "  - its table (inet shadow_egress) is loaded but shadow-killswitch is not installed; remove it with:"
+                say "      sudo nft delete table inet shadow_egress; sudo nft delete table bridge shadow_egress"
+            fi ;;
+    esac
+}
 resolv_immutable() { lsattr -d "$RESOLV" 2>/dev/null | awk '{ exit !($1 ~ /i/) }'; }
-something_on_53() { have ss && ss -lnuH 'sport = :53' 2>/dev/null | grep -q '127\.0\.0\.1:53\|\*:53\|0\.0\.0\.0:53'; }
+listening() {   # listening ip port -> 0 if a UDP socket is bound to ip:port (or to every address)
+    have ss || return 1
+    ss -lnuH "sport = :$2" 2>/dev/null | awk -v ip="$1" -v port="$2" '
+        { a = $4; sub(/%[^:]*:/, ":", a) }
+        a == ip ":" port || a == "*:" port || a == "0.0.0.0:" port || a == "[::]:" port { found = 1 }
+        END { exit !found }'
+}
+something_on_53() { listening 127.0.0.1 53; }      # what a resolv.conf with "nameserver 127.0.0.1" reaches
+hide_me_tor_port() {   # Tor's DNSPort as Hide Me's drop-in names it (DNS=127.0.0.1:PORT; shadow-anon's DNS_PORT)
+    local port
+    port=$(sed -n 's/^DNS=127\.0\.0\.1:\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$RESOLVED_HIDE_ME" 2>/dev/null | tail -n 1)
+    echo "${port:-26}"
+}
+# systemd-resolved
+resolved_installed() { [ -e "$RESOLVED_BIN" ]; }
+resolved_active() { systemctl is-active --quiet systemd-resolved.service 2>/dev/null; }
+resolv_is_stub() {
+    [ -L "$RESOLV" ] || return 1
+    case "$(readlink "$RESOLV")" in ../run/systemd/resolve/stub-resolv.conf|/run/systemd/resolve/stub-resolv.conf) return 0 ;; esac
+    return 1
+}
+resolved_prop() {   # resolved_prop DNSOverTLS -> yes | opportunistic | no | (empty: unknown)
+    busctl get-property org.freedesktop.resolve1 /org/freedesktop/resolve1 \
+        org.freedesktop.resolve1.Manager "$1" 2>/dev/null | sed -n 's/^s "\(.*\)"$/\1/p'
+}
+global_dns_ip() {   # first IPv4 address of resolved's global DNS servers (the provider)
+    resolvectl dns 2>/dev/null | awk '$1 == "Global:" {
+        for (i = 2; i <= NF; i++) { ip = $i; sub(/#.*/, "", ip); sub(/:[0-9]+$/, "", ip)
+            if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) { print ip; exit } } }'
+}
+port853_open() {   # port853_open iface ip -> 0 if a TCP connection to ip:853 opens over iface
+    local t
+    t=$(curl -s -o /dev/null --connect-timeout 5 -m 8 --interface "$1" -w '%{time_connect}' "https://$2:853/" 2>/dev/null)
+    awk -v t="${t:-0}" 'BEGIN { exit !(t + 0 > 0) }'
+}
 
 # ---- tests ----------------------------------------------------------------------
 # Each prints one line of findings and returns 0 when the test passed.
@@ -267,6 +434,32 @@ gw_reachable() {   # gw_reachable iface gw -> 0 if the router answers (ping or A
     ip neigh show "$2" dev "$1" 2>/dev/null | grep -qE 'REACHABLE|STALE|DELAY|PROBE'
 }
 dns_check() { getent ahosts deb.debian.org >/dev/null 2>&1 || getent ahosts debian.org >/dev/null 2>&1; }
+# Tor's SOCKS port on loopback, which the kill switch lets through: shadow-anon's
+# TOR_SOCKS_PORT (/etc/tor/torrc.d/00-shadow-socks.conf), below 1024 so only
+# root may listen there (Tor binds it as root). Debian's 9050 is not Tor's any
+# more: any local user may listen there and answer for Tor.
+TOR_SOCKS_PORT=39
+TOR_SOCKS=127.0.0.1:$TOR_SOCKS_PORT
+tor_socks_is_tors() {   # -> 0 if tor@default runs and the listener on Tor's SOCKS port is root's (or debian-tor's)
+    local line tor_uid
+    systemctl is-active --quiet tor@default 2>/dev/null || return 1
+    have ss || return 1
+    line=$(ss -Hltne "sport = :$TOR_SOCKS_PORT" 2>/dev/null | awk -v a="$TOR_SOCKS" '$4 == a { print; exit }')
+    [ -n "$line" ] || return 1
+    case " $line " in
+        *" uid:"*)   # ss prints no uid for root's sockets
+            tor_uid=$(id -u debian-tor 2>/dev/null) || return 1
+            [[ " $line " == *" uid:$tor_uid "* ]] ;;
+        *) return 0 ;;
+    esac
+}
+tor_check() {   # tor_check -> 0 if a connectivity check answers through Tor (names resolved by Tor)
+    local body code
+    tor_socks_is_tors || return 1         # never an answer from whoever else listens there
+    body=$(curl -sS -m 30 --socks5-hostname "$TOR_SOCKS" -w '\n%{http_code}' "$CHECK1_URL" 2>/dev/null) || return 1
+    code=${body##*$'\n'}; body=${body%$'\n'*}
+    [ "$code" = 200 ] && [[ "$(printf '%s' "$body" | tr -d '\r\n')" == "$CHECK1_BODY"* ]]
+}
 
 # test_iface iface -> sets T_RESULT (pass|noaddr|nogw|noinet|portal) and T_TEXT
 test_iface() {
@@ -339,6 +532,14 @@ snapshot() {   # snapshot "title"
     rep "routes: $(ip -4 route show default 2>/dev/null | sed -E 's/via [0-9.]+/via GW/g; s/src [0-9.]+/src X/g' | tr '\n' ';')"
     rep "rp_filter all/default: $(sysctl_get net.ipv4.conf.all.rp_filter)/$(sysctl_get net.ipv4.conf.default.rp_filter)"
     rep "resolv.conf: $(grep -E '^nameserver' "$RESOLV" 2>/dev/null | awk '{ print $2 }' | sed -E 's/^(192\.168|10|172)\..*/private-LAN/' | tr '\n' ' ') immutable=$(lsattr -d "$RESOLV" 2>/dev/null | cut -c5 | grep -q i && echo yes || echo no) link=$( [ -L "$RESOLV" ] && readlink "$RESOLV" || echo no)"
+    if resolved_installed; then
+        rep "resolver: systemd-resolved $(resolved_active && echo running || echo stopped) stub=$(listening 127.0.0.53 53 && echo listening || echo silent) dot=$(resolved_prop DNSOverTLS) dnssec=$(resolved_prop DNSSEC) hide-me-tor=$( [ -e "$RESOLVED_HIDE_ME" ] && echo on || echo off)"
+    else
+        rep "resolver: none (NetworkManager writes resolv.conf)"
+    fi
+    egress_probe; panic_probe
+    rep "killswitch: mode=${KS_MODE:-none} table=$( [ "$KS_TABLE" = 1 ] && echo loaded || echo none) lan=${KS_LAN:-?} by-hide-me=$( [ "$KS_HIDE_ME" = 1 ] && echo yes || echo no) escape-hatch=${KS_HATCH:-?} problem=$( [ -n "$KS_ERROR" ] && echo yes || echo no)"
+    rep "panic: $( [ "$PANIC_ON" = 1 ] && echo engaged || echo no) table=$( [ "$PANIC_TABLE" = 1 ] && echo loaded || echo none)"
     rep "hide-me: rotation=$(rotation_on && echo on || echo off) killswitch=$(kill_switch_on && echo on || echo off) tproxy=$(tproxy_on && echo on || echo off) tor-dns=$(tor_dns_redirect && echo on || echo off)"
     for line in $(rfkill -n -o TYPE,SOFT,HARD 2>/dev/null | awk '$1 == "wlan" { print $2 "/" $3 }'); do rep "rfkill wlan soft/hard: $line"; done
     rep "dns: $(dns_check && echo works || echo fails)"
@@ -391,6 +592,39 @@ fi
 
 # ---- 2. system-wide causes --------------------------------------------------------
 step "2/5  Shadow OS settings that break the network"
+
+# 2.0 A panic or the kill switch block traffic on purpose. A panic: nothing is
+#     tested or changed (turning the radio or NetworkManager back on would
+#     undo part of it). The kill switch: named here, never turned off.
+panic_probe
+if [ "$PANIC_ON" = 1 ]; then
+    bad "a panic is engaged: this computer is cut off from every network on purpose"
+    [ "$PANIC_TABLE" = 1 ] || info "(its firewall table is missing right now; the kill switch watchdog puts it back within 20 seconds)"
+    info "nothing can reach a network until it is released, so nothing was tested or changed"
+    RESULTS+=("FAIL|panic|engaged: every network is cut off on purpose")
+    for r in "${RESULTS[@]}"; do rep "result: $r"; done
+    [ "$INVOKER" = root ] || chown "$INVOKER": "$LOG" "$REPORT" 2>/dev/null
+    say ""
+    say "Nothing was changed."
+    say ""
+    say "${C_FAIL}FAIL${C_OFF} - a panic is engaged: every network is cut off on purpose. This script does not release it."
+    say "To reconnect (administrator password), then run this again if something still fails:"
+    say "      pkexec shadow-panic release     (or Control Center -> Privacy -> Panic -> Reconnect)"
+    exit 1
+fi
+egress_probe
+if [ "$KS_TABLE" = 1 ] && [ "$KS_HIDE_ME" = 1 ]; then
+    :   # Hide Me's, for Ghost Mode: below (2c)
+elif [ "$KS_TABLE" = 1 ]; then
+    case "$KS_MODE" in
+        off) warn "the kill switch's firewall table is loaded although the kill switch is off: it blocks traffic" ;;
+        tor|vpn|tor-or-vpn) warn "the kill switch is on (mode $KS_MODE): it lets out only $(ks_lets)" ;;
+        *) warn "the kill switch's firewall table (inet shadow_egress) is loaded: it lets out only $(ks_lets)" ;;
+    esac
+elif [ -n "$KS_MODE" ] && [ "$KS_MODE" != off ]; then
+    warn "the kill switch is set to mode $KS_MODE but its table is not loaded: it does not protect this computer right now${KS_ERROR:+ ($KS_ERROR)}"
+    info "it comes back within 20 seconds (shadow-killswitch-watch.timer), or now with: sudo shadow-killswitch reassert"
+fi
 
 # 2a. Strict reverse-path filtering drops Wi-Fi answers when the cable is in.
 rp_all=$(sysctl_get net.ipv4.conf.all.rp_filter)
@@ -465,6 +699,8 @@ else
                 shadow-anon dns-protect-off >/dev/null 2>&1
             fi
             # If shadow-anon could not (or is missing), remove its chains directly.
+            # Never the Shadow kill switch's table: only Hide Me's "off" may
+            # change it, because it puts back the mode in force before Ghost Mode.
             for t in iptables ip6tables; do
                 have "$t" || continue
                 while $t -D OUTPUT -j SHADOWKILL 2>/dev/null; do :; done
@@ -474,46 +710,147 @@ else
                 while iptables -t nat -D OUTPUT -j "$c" 2>/dev/null; do :; done
                 iptables -t nat -F "$c" 2>/dev/null; iptables -t nat -X "$c" 2>/dev/null
             done
-            ok "Ghost Mode's network part is off (turn it on again in Hide Me)"
-            changed "Hide Me Ghost Mode network part turned off: Tor could not get through"
+            if have ip6tables; then   # DNS protection's IPv6 side (it refuses IPv6 DNS)
+                while ip6tables -t nat -D OUTPUT -j SHADOWDNS 2>/dev/null; do :; done
+                ip6tables -t nat -F SHADOWDNS 2>/dev/null; ip6tables -t nat -X SHADOWDNS 2>/dev/null
+            fi
+            egress_probe
+            if [ "$KS_HIDE_ME" = 1 ]; then
+                bad "Hide Me could not turn its kill switch off (the kill switch is still in its Tor mode)"
+            else
+                ok "Ghost Mode's network part is off (turn it on again in Hide Me)"
+                changed "Hide Me Ghost Mode network part turned off: Tor could not get through"
+                if [ "$KS_TABLE" = 1 ] && [ "$KS_MODE" != off ]; then
+                    warn "the kill switch is back in mode $KS_MODE, as before Ghost Mode: it lets out only $(ks_lets)"
+                fi
+            fi
         else
             HIDE_NOTE="Ghost Mode is on and nothing gets through Tor: that alone stops the internet."
         fi
     fi
 fi
 
-# 2d. DNS locked to Tor without Tor answering (DNS-over-Tor, then a restart).
-dns_lock=0
-if resolv_is_tor || [ -e "$NM_DNS_LOCK" ]; then dns_lock=1
-elif resolv_immutable && ! dns_check; then dns_lock=2
-elif [ -L "$RESOLV" ] && [ ! -e "$RESOLV" ]; then dns_lock=3; fi
-if [ "$dns_lock" != 0 ]; then
-    if [ "$KEEP_HIDE_ME" = 0 ] && ! tor_dns_redirect && ! something_on_53; then
-        if [ "$dns_lock" = 1 ]; then warn "DNS is locked to Tor (Hide Me) but nothing answers there any more - names cannot be looked up"
-        elif [ "$dns_lock" = 2 ]; then warn "/etc/resolv.conf is locked (chattr +i) and names cannot be looked up"
-        else warn "/etc/resolv.conf points at $(readlink "$RESOLV"), which does not exist: names cannot be looked up"; fi
-        if [ "$REPORT_ONLY" = 0 ]; then
-            backup_file "$RESOLV"
-            backup_file "$NM_DNS_LOCK"
-            [ -e "$RESOLV_ANON_BACKUP" ] && backup_file "$RESOLV_ANON_BACKUP"
-            chattr -i "$RESOLV" 2>/dev/null || true
-            rm -f "$NM_DNS_LOCK" "$RESOLV_ANON_BACKUP" "$RESOLV"
-            # NetworkManager writes /etc/resolv.conf itself when it is a plain
-            # file or missing (Shadow OS has no systemd-resolved).
-            nm_reload
-            nmcli general reload dns-rc >/dev/null 2>&1 || true
-            pause 2
-            if [ ! -s "$RESOLV" ]; then
-                if [ -s "$R$NM_RESOLV" ]; then ln -sf "$NM_RESOLV" "$RESOLV"
-                else printf '%s\n# NetworkManager did not write DNS servers; public ones as a fallback.\nnameserver 9.9.9.9\nnameserver 1.1.1.1\n' "$MARK" >"$RESOLV"; fi
-            fi
-            ok "DNS handed back to NetworkManager (the network's own DNS servers)"
-            changed "DNS handed back to NetworkManager (the locked DNS no longer answered)"
+# 2d. DNS. With systemd-resolved (newer images) a stopped resolver looks
+#     exactly like "no internet": start it before anything else is tried.
+if resolved_installed && ! resolved_active; then
+    warn "the DNS service (systemd-resolved) is not running - names cannot be looked up"
+    if [ "$REPORT_ONLY" = 0 ]; then
+        if systemctl restart systemd-resolved.service >/dev/null 2>&1 && { pause 2; resolved_active; }; then
+            ok "systemd-resolved started"
+            changed "DNS service systemd-resolved started (it was not running)"
+        else
+            bad "systemd-resolved does not start: see journalctl -u systemd-resolved -b"
         fi
-    elif [ "$KEEP_HIDE_ME" = 0 ]; then
-        ok "DNS goes through Tor (Hide Me) and Tor's redirect is in place"
     fi
 fi
+
+# DNS locked to Tor without Tor answering (DNS-over-Tor, then a restart), or
+# /etc/resolv.conf pointing nowhere or past systemd-resolved.
+dns_lock=0
+if resolv_is_tor || [ -e "$NM_DNS_LOCK" ]; then dns_lock=1
+elif [ -e "$RESOLVED_HIDE_ME" ] && ! dns_check; then dns_lock=4
+elif resolv_immutable && ! dns_check; then dns_lock=2
+elif [ -L "$RESOLV" ] && [ ! -e "$RESOLV" ]; then dns_lock=3
+elif resolved_installed && resolved_active && [ ! -L "$RESOLV" ] &&
+     ! grep -qE '^[[:space:]]*nameserver[[:space:]]+127\.0\.0\.53([[:space:]]|$)' "$RESOLV" 2>/dev/null; then dns_lock=5; fi
+hand_to_resolved() {   # /etc/resolv.conf -> resolved's stub link, never a file with plain DNS servers
+    rm -f "$RESOLV"
+    ln -s "$RESOLVED_STUB" "$RESOLV"
+    systemctl restart systemd-resolved.service >/dev/null 2>&1 ||
+        bad "systemd-resolved did not restart: see journalctl -u systemd-resolved -b"
+    nm_reload
+    pause 2
+}
+case "$dns_lock" in
+    1|2)
+        if [ "$KEEP_HIDE_ME" = 0 ] && ! tor_dns_redirect && ! something_on_53; then
+            if [ "$dns_lock" = 1 ]; then warn "DNS is locked to Tor (Hide Me) but nothing answers there any more - names cannot be looked up"
+            else warn "/etc/resolv.conf is locked (chattr +i) and names cannot be looked up"; fi
+            if [ "$REPORT_ONLY" = 0 ]; then
+                backup_file "$RESOLV"
+                backup_file "$NM_DNS_LOCK"
+                [ -e "$RESOLV_ANON_BACKUP" ] && backup_file "$RESOLV_ANON_BACKUP"
+                chattr -i "$RESOLV" 2>/dev/null || true
+                rm -f "$NM_DNS_LOCK" "$RESOLV_ANON_BACKUP" "$RESOLV"
+                if resolved_installed; then
+                    hand_to_resolved
+                    ok "DNS handed back to systemd-resolved (encrypted DNS)"
+                    changed "DNS handed back to systemd-resolved (the locked DNS no longer answered)"
+                else
+                    # No systemd-resolved (images up to 0.2.0): NetworkManager
+                    # writes /etc/resolv.conf itself when it is a plain file or missing.
+                    nm_reload
+                    nmcli general reload dns-rc >/dev/null 2>&1 || true
+                    pause 2
+                    if [ ! -s "$RESOLV" ]; then
+                        if [ -s "$R$NM_RESOLV" ]; then ln -sf "$NM_RESOLV" "$RESOLV"
+                        else printf '%s\n# NetworkManager did not write DNS servers; public ones as a fallback.\nnameserver 9.9.9.9\nnameserver 1.1.1.1\n' "$MARK" >"$RESOLV"; fi
+                    fi
+                    ok "DNS handed back to NetworkManager (the network's own DNS servers)"
+                    changed "DNS handed back to NetworkManager (the locked DNS no longer answered)"
+                fi
+            fi
+        elif [ "$KEEP_HIDE_ME" = 0 ]; then
+            ok "DNS goes through Tor (Hide Me) and Tor's redirect is in place"
+        fi ;;
+    4)  # Hide Me with systemd-resolved: resolved forwards to Tor's DNSPort.
+        if listening 127.0.0.1 "$(hide_me_tor_port)"; then
+            warn "Hide Me sends DNS to Tor; Tor's DNS port is open but lookups through it fail (Tor may still be connecting)"
+        elif [ "$KEEP_HIDE_ME" = 1 ]; then
+            HIDE_NOTE="Hide Me sends DNS to Tor, but Tor does not answer, so no name can be looked up. Turn DNS protection off in Hide Me, or run this without --keep-hide-me."
+        else
+            warn "Hide Me sends DNS to Tor, but Tor does not answer - names cannot be looked up"
+            if [ "$REPORT_ONLY" = 0 ]; then
+                have shadow-anon && shadow-anon dns-protect-off >/dev/null 2>&1
+                if [ -e "$RESOLVED_HIDE_ME" ]; then
+                    backup_file "$RESOLVED_HIDE_ME"
+                    rm -f "$RESOLVED_HIDE_ME"
+                fi
+                resolv_is_stub || backup_file "$RESOLV"
+                hand_to_resolved
+                ok "DNS handed back to systemd-resolved (encrypted DNS)"
+                changed "Hide Me's DNS-over-Tor turned off: Tor did not answer (turn it on again in Hide Me)"
+            fi
+        fi ;;
+    3)
+        warn "/etc/resolv.conf points at $(readlink "$RESOLV"), which does not exist: names cannot be looked up"
+        if [ "$REPORT_ONLY" = 0 ]; then
+            if resolved_installed; then
+                if resolv_is_stub; then
+                    # The link is right; only a running systemd-resolved can
+                    # fill it. Never replaced by a file with plain DNS servers.
+                    if resolved_active; then bad "systemd-resolved runs but has not written its stub file: see journalctl -u systemd-resolved -b"
+                    else bad "names cannot be looked up while systemd-resolved does not run"; fi
+                else
+                    backup_file "$RESOLV"
+                    hand_to_resolved
+                    ok "/etc/resolv.conf points at systemd-resolved again"
+                    changed "/etc/resolv.conf points at systemd-resolved again (it pointed at a missing file)"
+                fi
+            else
+                backup_file "$RESOLV"
+                rm -f "$RESOLV"
+                nm_reload
+                nmcli general reload dns-rc >/dev/null 2>&1 || true
+                pause 2
+                if [ ! -s "$RESOLV" ]; then
+                    if [ -s "$R$NM_RESOLV" ]; then ln -sf "$NM_RESOLV" "$RESOLV"
+                    else printf '%s\n# NetworkManager did not write DNS servers; public ones as a fallback.\nnameserver 9.9.9.9\nnameserver 1.1.1.1\n' "$MARK" >"$RESOLV"; fi
+                fi
+                ok "DNS handed back to NetworkManager (the network's own DNS servers)"
+                changed "DNS handed back to NetworkManager (/etc/resolv.conf pointed at a missing file)"
+            fi
+        fi ;;
+    5)
+        warn "/etc/resolv.conf lists DNS servers directly: every lookup bypasses systemd-resolved (no encryption)"
+        if [ "$REPORT_ONLY" = 0 ]; then
+            backup_file "$RESOLV"
+            chattr -i "$RESOLV" 2>/dev/null || true
+            hand_to_resolved
+            ok "/etc/resolv.conf points at systemd-resolved again (encrypted DNS)"
+            changed "/etc/resolv.conf points at systemd-resolved again (it bypassed encrypted DNS)"
+        fi ;;
+esac
 
 # 2e. This computer's own name does not resolve (Hide Me's random hostname
 #     was never added to /etc/hosts): sudo warns at every use.
@@ -601,10 +938,28 @@ show_results() {
     done
 }
 GHOST_ONLY=0
+KS_ONLY=0 KS_NET=""
+egress_probe
 if kill_switch_on || tproxy_on; then
     # Direct tests would be blocked or redirected by Ghost Mode on purpose.
     GHOST_ONLY=1
     if http_check; then ok "internet works (through Tor)"; else bad "no internet, even through Tor"; fi
+elif [ "$KS_TABLE" = 1 ]; then
+    # The kill switch drops a test of one connection on its own on purpose:
+    # only what leaves through Tor or the VPN can be tested.
+    # A program that does not use Tor gets through in the Tor modes only with
+    # Hide Me's transparent proxy; Tor itself is tested through its SOCKS port.
+    GHOST_ONLY=1 KS_ONLY=1 KS_NET=none
+    if http_check; then
+        KS_NET=direct
+        ok "internet works (the kill switch is on and lets out only $(ks_lets))"
+    elif [[ "$KS_MODE" == tor* ]] && tor_check; then
+        KS_NET=tor
+        ok "Tor works: programs that use Tor reach the internet (tested through Tor's SOCKS port)"
+        warn "every other program is cut off: the kill switch (mode $KS_MODE) lets out only $(ks_lets)"
+    else
+        bad "no internet: the kill switch lets out only $(ks_lets), and none of it gets through - the likely cause"
+    fi
 else
     # A disconnected Wi-Fi with a saved network: let NetworkManager pick it.
     for ifc in "${WIFI_IFS[@]}"; do
@@ -646,12 +1001,41 @@ repair_wifi() {   # repair_wifi iface
     IF_RESULT[$ifc]=$T_RESULT; IF_TEXT[$ifc]=$T_TEXT
     [ "$T_RESULT" = portal ] && return 1   # nothing to repair: the user must sign in
 
-    # b. The network's DNS server does not answer: public ones first for this
-    #    network (Quad9, then Cloudflare), the network's own after them.
-    if [ "$T_RESULT" = nodns ]; then
+    # b. Names do not resolve on this network.
+    #    With systemd-resolved every name goes to the DNS provider, encrypted
+    #    (port 853). Only if this network blocks the way to the provider may
+    #    this one network's own DNS server answer too ("~." on the profile),
+    #    and only if that helps; DNS stays encrypted everywhere else.
+    if [ "$T_RESULT" = nodns ] && resolved_installed && resolv_is_stub; then
+        local provider dot
+        provider=$(global_dns_ip)
+        dot=$(resolved_prop DNSOverTLS)
+        if [ -n "$provider" ] && ! port853_open "$ifc" "$provider"; then
+            if [ "$dot" = yes ]; then
+                info "'$name' blocks port 853, which encrypted DNS needs - letting this network's own DNS server answer on '$name' only..."
+            else
+                info "'$name' lets no DNS server but its own answer - using it on '$name' only..."
+            fi
+            if nmcli connection modify "$uuid" +ipv4.dns-search "~." 2>>"$LOG"; then
+                reconnect "$ifc" "$uuid"; pause 2
+                if test_iface "$ifc"; then
+                    IF_RESULT[$ifc]=pass; IF_TEXT[$ifc]=$T_TEXT
+                    undo_line "nmcli connection modify $uuid -ipv4.dns-search '~.'"
+                    changed "network '$name': its own DNS server answers there (it blocks encrypted DNS on port 853); every other network keeps encrypted DNS"
+                    wifi_fixed_note+=("this network's own DNS server (port 853 blocked)"); return 0
+                fi
+                IF_RESULT[$ifc]=$T_RESULT; IF_TEXT[$ifc]=$T_TEXT
+                nmcli connection modify "$uuid" -ipv4.dns-search "~." 2>>"$LOG"   # it did not help
+            fi
+        fi
+    elif [ "$T_RESULT" = nodns ]; then
+        # No systemd-resolved (images up to 0.2.0): the network's DNS server
+        # does not answer, so public ones first for this network (Quad9, then
+        # Cloudflare; with their TLS names, for DNS-over-TLS once resolved is
+        # installed), the network's own after them.
         local old_dns
         old_dns=$(con_get "$uuid" ipv4.dns)
-        nmcli connection modify "$uuid" ipv4.dns "9.9.9.9 1.1.1.1"
+        nmcli connection modify "$uuid" ipv4.dns "9.9.9.9#dns.quad9.net 1.1.1.1#cloudflare-dns.com"
         info "the network's DNS server does not answer - adding public ones for '$name'..."
         reconnect "$ifc" "$uuid"; pause 2
         if test_iface "$ifc"; then
@@ -663,6 +1047,9 @@ repair_wifi() {   # repair_wifi iface
         IF_RESULT[$ifc]=$T_RESULT; IF_TEXT[$ifc]=$T_TEXT
         nmcli connection modify "$uuid" ipv4.dns "$old_dns"   # it did not help
     fi
+    # Only names fail: the network itself carries traffic (tested by address),
+    # so power saving, the hardware address and the driver are not the cause.
+    [ "$T_RESULT" = nodns ] && return 1
 
     # c. Wi-Fi power saving off for this network.
     if [ "$old_ps" != 2 ] && [ "$old_ps" != disable ]; then
@@ -729,7 +1116,9 @@ repair_wifi() {   # repair_wifi iface
 }
 
 WIFI_TESTED=0
-if [ "$GHOST_ONLY" = 1 ]; then
+if [ "$KS_ONLY" = 1 ]; then
+    info "skipped while the kill switch lets out only $(ks_lets): a connection tested on its own would be dropped on purpose"
+elif [ "$GHOST_ONLY" = 1 ]; then
     info "skipped while Ghost Mode routes everything through Tor"
 elif [ "$REPORT_ONLY" = 1 ]; then
     info "skipped (--report-only)"
@@ -748,9 +1137,16 @@ fi
 # ---- 5. verdict ---------------------------------------------------------------------
 step "5/5  Result"
 dns_ok=0
-if dns_check; then dns_ok=1; ok "names are looked up (DNS works)"; else bad "names cannot be looked up (DNS)"; fi
+if dns_check; then dns_ok=1; ok "names are looked up (DNS works)"
+elif [ "$KS_ONLY" = 1 ]; then warn "names cannot be looked up except through $(ks_way): the kill switch drops other DNS on purpose"
+else bad "names cannot be looked up (DNS)"; fi
 VERDICT=PASS
-if [ "$GHOST_ONLY" = 1 ]; then
+if [ "$KS_ONLY" = 1 ]; then
+    if [ "$KS_NET" = none ]; then
+        VERDICT=FAIL
+        RESULTS+=("FAIL|kill switch|mode ${KS_MODE:-unknown}: it lets out only $(ks_lets), and none of it gets through")
+    fi
+elif [ "$GHOST_ONLY" = 1 ]; then
     http_check || VERDICT=FAIL
 else
     any_conn=0
@@ -790,7 +1186,15 @@ fi
 say ""
 case "$VERDICT" in
     PASS)
-        say "${C_OK}PASS${C_OFF} - the internet works on every connected network$( [ "$GHOST_ONLY" = 1 ] && echo ' (through Tor)')."
+        if [ "$KS_NET" = tor ]; then
+            say "${C_OK}PASS${C_OFF} - Tor works: programs that use Tor (Tor Browser, torsocks) reach the internet."
+            say "The kill switch (mode $KS_MODE) cuts off every other program on purpose; that is not a fault."
+            say "To let them out without Tor until the next restart: pkexec shadow-killswitch set off --runtime"
+        elif [ "$KS_ONLY" = 1 ]; then
+            say "${C_OK}PASS${C_OFF} - the internet works through $(ks_way) (the kill switch is on, so each connection was not tested on its own)."
+        else
+            say "${C_OK}PASS${C_OFF} - the internet works on every connected network$( [ "$GHOST_ONLY" = 1 ] && echo ' (through Tor)')."
+        fi
         eth_up=0
         for ifc in "${ETH_IFS[@]}"; do [ "${IF_RESULT[$ifc]:-down}" = pass ] && eth_up=1; done
         if [ ${#WIFI_IFS[@]} -gt 0 ] && [ "$eth_up" = 1 ]; then
@@ -810,7 +1214,13 @@ case "$VERDICT" in
         for r in "${RESULTS[@]}"; do
             case "$r" in FAIL*) IFS='|' read -r _ w d <<<"$r"; say "  - $w: $d" ;; esac
         done
-        [ "$dns_ok" = 0 ] && say "  - names cannot be looked up (DNS)"
+        [ "$dns_ok" = 0 ] && [ "$KS_ONLY" = 0 ] && say "  - names cannot be looked up (DNS)"
+        if [ "$KS_ONLY" = 1 ]; then
+            say ""
+            say "The kill switch is the likely cause. This script does not turn it off: that would let"
+            say "programs reach the internet without $(ks_way)."
+            ks_advice
+        fi
         [ "$RECONNECT_FAILED" = 1 ] && say "  - Wi-Fi could not reconnect by itself: join your network again from the top bar, then run this again"
         for ifc in "${WIFI_IFS[@]}"; do
             if [ "${IF_RESULT[$ifc]:-}" = noaddr ]; then

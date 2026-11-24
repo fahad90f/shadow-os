@@ -1,10 +1,13 @@
 [Unit]
-Description=Shadow OS Hide Me — keep DNS-over-Tor working after a restart
-# DNS protection's files (resolv.conf locked to Tor) survive a restart, its
-# redirect to Tor's DNSPort does not: without it every name lookup fails.
-# This puts it back (or hands DNS back to NetworkManager when Tor is gone)
-# before the network comes up, and records the real Hide Me state.
-After=local-fs.target
+Description=Shadow OS Hide Me — put DNS-over-Tor back after a restart
+# DNS protection is kept across a restart, its redirect to Tor's DNSPort and
+# systemd-resolved's runtime setting are not: this puts them back (or hands
+# DNS back when Tor is gone, or for one boot with shadow.hideme=off on the
+# kernel command line) before the network comes up. It also replaces the
+# kill switch chain of older versions (after the kill switch's own unit and
+# netfilter-persistent, which could restore such a chain) and records the
+# real Hide Me state.
+After=local-fs.target shadow-killswitch.service netfilter-persistent.service
 Before=network-pre.target
 Wants=network-pre.target
 

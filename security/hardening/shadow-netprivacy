@@ -1,0 +1,1102 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""shadow-netprivacy — encrypted DNS and MAC address policy of Shadow OS.
+
+    shadow-netprivacy status [--json]
+    shadow-netprivacy dns {dot|dot-strict|doh|off} [--provider P] [--dnssec D]
+    shadow-netprivacy mac {per-boot|per-network|hardware}
+    shadow-netprivacy mac-exception {add|remove} <NetworkManager connection UUID>
+    shadow-netprivacy boot
+
+DNS (systemd-resolved is the only resolver; NetworkManager hands it the DNS
+servers of every network):
+  dot          DNS-over-TLS to the provider when it answers on port 853,
+               plain DNS to the same provider otherwise (the default)
+  dot-strict   DNS-over-TLS only: no name resolves when port 853 is blocked
+  doh          DNS-over-HTTPS through dnscrypt-proxy (Debian package, opt-in)
+               on 127.0.2.1:53, chained behind systemd-resolved
+  off          the DNS servers of the network you are connected to
+  --provider   quad9 (default) | mullvad | cloudflare |
+               custom:<ip>#<tls name>[,<ip>#<tls name>...] (dot, dot-strict)
+  --dnssec     allow-downgrade (default) | yes | no
+In every mode except off, all names go to the provider and none, in plain
+text, to the network's own DNS server, which only answers for the network's
+own names (resolved's Domains=~.).
+
+MAC address (NetworkManager; nothing is reconnected, a network takes its new
+address the next time it connects):
+  per-boot     a private address per network, new at every boot (the default)
+  per-network  a private address per network that stays across boots
+  hardware     the device's real address
+  mac-exception add <uuid>  this network keeps one private address across
+               boots (connection.stable-id=${CONNECTION} on that profile)
+
+Files: the shipped defaults are /usr/lib/systemd/resolved.conf.d/
+80-shadow-privacy.conf and /usr/lib/NetworkManager/conf.d/80-shadow-privacy.conf.
+This program writes only /etc/systemd/resolved.conf.d/90-shadow-user.conf and
+/etc/NetworkManager/conf.d/90-shadow-mac.conf, and in doh mode
+/etc/shadow-os/dnscrypt-proxy.toml with the dnscrypt-proxy.service drop-in
+/etc/systemd/system/dnscrypt-proxy.service.d/50-shadow-netprivacy.conf.
+
+Safety properties:
+  * a DNS change is verified against what systemd-resolved reports after the
+    restart; if resolved does not come back with it, the previous file is put
+    back and the command fails;
+  * doh mode is switched on only after dnscrypt-proxy has answered a query;
+  * the kernel parameter shadow.netprivacy=off turns all of it off for one
+    boot (shadow-netprivacy.service runs "shadow-netprivacy boot", which
+    writes overrides into /run): the network's own DNS servers and the
+    devices' own MAC addresses are used;
+  * "status" reports what systemd-resolved and NetworkManager have in force,
+    never only what was asked for, and runs for any user;
+  * nothing about lookups or networks is logged.
+
+Graphical tools call this program through pkexec (polkit action
+org.shadow.netprivacy.manage); every command but "status" must run as root.
+"""
+import argparse
+import base64
+import fcntl
+import ipaddress
+import json
+import os
+import re
+import secrets
+import socket
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+
+# Every path below is prefixed with ROOT; tests point ROOT at a temporary
+# directory. Nothing is taken from the environment.
+ROOT = ""
+
+RESOLVED_BINARY = "/usr/lib/systemd/systemd-resolved"
+RESOLVED_MAIN = ("/etc/systemd/resolved.conf", "/run/systemd/resolved.conf",
+                 "/usr/local/lib/systemd/resolved.conf", "/usr/lib/systemd/resolved.conf")
+# Drop-in directories, highest priority first (a file of the same name in an
+# earlier directory hides the later one).
+RESOLVED_DROPINS = ("/etc/systemd/resolved.conf.d", "/run/systemd/resolved.conf.d",
+                    "/usr/local/lib/systemd/resolved.conf.d", "/usr/lib/systemd/resolved.conf.d")
+RESOLVED_DEFAULT = "/usr/lib/systemd/resolved.conf.d/80-shadow-privacy.conf"
+RESOLVED_USER = "/etc/systemd/resolved.conf.d/90-shadow-user.conf"
+RESOLVED_ESCAPE = "/run/systemd/resolved.conf.d/93-shadow-escape.conf"
+RESOLVED_HIDEME = "/run/systemd/resolved.conf.d/95-shadow-anon.conf"
+# Tor's DNSPort, the only server Hide Me's file sets (shadow-anon's DNS_PORT:
+# below 1024, so only root may bind it; 5353 before, which any user could).
+HIDEME_TOR_DNS = "127.0.0.1:26"
+RESOLVED_UNIT = "systemd-resolved.service"
+RESOLV_CONF = "/etc/resolv.conf"
+STUB_TARGETS = ("../run/systemd/resolve/stub-resolv.conf", "/run/systemd/resolve/stub-resolv.conf")
+NSSWITCH = "/etc/nsswitch.conf"
+
+NM_MAIN = "/etc/NetworkManager/NetworkManager.conf"
+NM_DROPINS = ("/etc/NetworkManager/conf.d", "/run/NetworkManager/conf.d", "/usr/lib/NetworkManager/conf.d")
+NM_DEFAULT = "/usr/lib/NetworkManager/conf.d/80-shadow-privacy.conf"
+NM_USER = "/etc/NetworkManager/conf.d/90-shadow-mac.conf"
+NM_ESCAPE = "/run/NetworkManager/conf.d/93-shadow-escape.conf"
+NM_UNIT = "NetworkManager.service"
+
+DNSCRYPT_BINARY = "/usr/sbin/dnscrypt-proxy"
+DNSCRYPT_CONFIG = "/etc/shadow-os/dnscrypt-proxy.toml"
+DNSCRYPT_DROPIN = "/etc/systemd/system/dnscrypt-proxy.service.d/50-shadow-netprivacy.conf"
+DNSCRYPT_UNITS = ("dnscrypt-proxy.socket", "dnscrypt-proxy.service")
+DNSCRYPT_RESOLVCONF_UNIT = "dnscrypt-proxy-resolvconf.service"
+# Where Debian's dnscrypt-proxy.socket listens (verified from the trixie
+# package 2.1.8+ds1-1+b4: ListenStream= and ListenDatagram= 127.0.2.1:53).
+DOH_LISTEN = ("127.0.2.1", 53)
+
+CMDLINE = "/proc/cmdline"
+ESCAPE_PARAM = "shadow.netprivacy"
+LOCK_FILE = "/run/shadow/netprivacy.lock"
+
+MODES = ("dot", "dot-strict", "doh", "off")
+DNSSEC_VALUES = ("allow-downgrade", "yes", "no")
+MAC_MODES = ("per-boot", "per-network", "hardware")
+DEFAULT_MODE, DEFAULT_PROVIDER, DEFAULT_DNSSEC, DEFAULT_MAC = "dot", "quad9", "allow-downgrade", "per-boot"
+DOT_SETTING = {"dot": "opportunistic", "dot-strict": "yes", "doh": "no", "off": "no"}
+
+STABLE_PER_BOOT = "${CONNECTION}/${BOOT}"
+STABLE_PER_NETWORK = "${CONNECTION}"
+EXCEPTION_STABLE_ID = "${CONNECTION}"
+MAC_FIXED_DRIVERS = ("eagle_sdio", "wl")
+MAC_TYPES = ("802-11-wireless", "802-3-ethernet")
+
+# DoH stamp properties (https://dnscrypt.info/stamps-specifications).
+STAMP_DNSSEC, STAMP_NOLOG, STAMP_NOFILTER = 1, 2, 4
+PROVIDERS = {
+    "quad9": {
+        "name": "Quad9",
+        "dot": ["9.9.9.9#dns.quad9.net", "149.112.112.112#dns.quad9.net",
+                "2620:fe::fe#dns.quad9.net", "2620:fe::9#dns.quad9.net"],
+        "doh": [("9.9.9.9", "dns.quad9.net", "/dns-query"), ("149.112.112.112", "dns.quad9.net", "/dns-query")],
+        "props": STAMP_DNSSEC | STAMP_NOLOG,
+    },
+    "mullvad": {
+        "name": "Mullvad",
+        "dot": ["194.242.2.2#dns.mullvad.net", "2a07:e340::2#dns.mullvad.net"],
+        "doh": [("194.242.2.2", "dns.mullvad.net", "/dns-query")],
+        "props": STAMP_DNSSEC | STAMP_NOLOG | STAMP_NOFILTER,
+    },
+    "cloudflare": {
+        "name": "Cloudflare",
+        "dot": ["1.1.1.1#cloudflare-dns.com", "1.0.0.1#cloudflare-dns.com",
+                "2606:4700:4700::1111#cloudflare-dns.com", "2606:4700:4700::1001#cloudflare-dns.com"],
+        "doh": [("1.1.1.1", "cloudflare-dns.com", "/dns-query"), ("1.0.0.1", "cloudflare-dns.com", "/dns-query")],
+        "props": STAMP_DNSSEC | STAMP_NOFILTER,
+    },
+}
+MAX_CUSTOM_SERVERS = 8
+TOOL_TIMEOUT = 30
+MARK = "# Written by shadow-netprivacy - do not edit."
+
+HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+                         r"[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+INFO_RE = re.compile(r"^# shadow-netprivacy: (.*)$", re.M)
+
+
+class Failure(Exception):
+    pass
+
+
+# --------------------------------------------------------------------------- helpers
+def p(path):
+    return ROOT + path
+
+
+def run(argv, check=True, timeout=TOOL_TIMEOUT):
+    """Run a program without a shell. Returns (rc, stdout, stderr); rc 127: missing, 124: timeout."""
+    env = dict(os.environ, LC_ALL="C.UTF-8", LANGUAGE="C", SYSTEMD_PAGER="cat", SYSTEMD_COLORS="0")
+    try:
+        proc = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              env=env, timeout=timeout)
+        rc, out, err = proc.returncode, proc.stdout.decode("utf-8", "replace"), proc.stderr.decode("utf-8", "replace")
+    except FileNotFoundError:
+        rc, out, err = 127, "", f"{argv[0]} is not installed"
+    except subprocess.TimeoutExpired:
+        rc, out, err = 124, "", f"{argv[0]} did not finish within {timeout} s"
+    if check and rc != 0:
+        raise Failure(f"{' '.join(argv)} failed: {(err or out).strip() or f'exit status {rc}'}")
+    return rc, out, err
+
+
+def read_text(path):
+    try:
+        with open(p(path), encoding="utf-8") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise Failure(f"cannot read {path}: {exc}")
+
+
+def write_atomic(path, text, mode=0o644):
+    target = p(path)
+    directory = os.path.dirname(target)
+    os.makedirs(directory, mode=0o755, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix="." + os.path.basename(target) + ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def remove(path):
+    try:
+        os.unlink(p(path))
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def restore(path, text):
+    """Put a file back as it was (None: it did not exist)."""
+    if text is None:
+        remove(path)
+    else:
+        write_atomic(path, text)
+
+
+def require_root():
+    if os.geteuid() != 0:
+        raise Failure("this command must run as root (use sudo, or pkexec from the desktop)")
+
+
+class Lock:
+    """Serialises the commands that change something.
+
+    The lock file is root-only and never a symbolic link (as shadow-killswitch's
+    and shadow-panic's): flock() works on a descriptor opened read-only, so a
+    file other users could open would let any of them hold the lock and keep
+    every DNS and MAC change from being made.
+    """
+    def __enter__(self):
+        path = p(LOCK_FILE)
+        os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+        try:
+            self.fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        except OSError as exc:
+            raise Failure(f"cannot open the lock file {path}: {exc.strerror}")
+        os.fchmod(self.fd, 0o600)      # a file left by an older version, or a umask
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(self.fd)
+            raise Failure("another shadow-netprivacy command is running; try again in a moment")
+        return self
+
+    def __exit__(self, *exc):
+        os.close(self.fd)
+
+
+def cmdline_escape():
+    text = read_text(CMDLINE) or ""
+    return f"{ESCAPE_PARAM}=off" in text.split()
+
+
+def unit_active(unit):
+    rc, out, _ = run(["systemctl", "is-active", unit], check=False)
+    return out.strip() == "active"
+
+
+# --------------------------------------------------------------------------- validation
+def parse_server(spec):
+    """'<ip>#<tls name>' -> normalised string; raises Failure."""
+    if spec.count("#") != 1:
+        raise Failure(f"'{spec}': expected <ip>#<tls name>, e.g. 192.0.2.53#dns.example.net")
+    addr_text, name = spec.split("#")
+    try:
+        addr = ipaddress.ip_address(addr_text)
+    except ValueError:
+        raise Failure(f"'{addr_text}' is not an IP address (host names are not accepted: "
+                      "the server must be reachable before any name can be looked up)")
+    if addr.is_unspecified or addr.is_multicast:
+        raise Failure(f"'{addr_text}' cannot be a DNS server")
+    if addr.is_loopback:
+        raise Failure(f"'{addr_text}' is this computer; a local resolver would loop back to systemd-resolved")
+    if not HOSTNAME_RE.match(name):
+        raise Failure(f"'{name}' is not a valid TLS server name (a fully qualified host name)")
+    return f"{addr.compressed}#{name.lower()}"
+
+
+def parse_provider(spec):
+    """--provider value -> {"id", "name", "dot": [...], "doh": [...]}."""
+    spec = (spec or DEFAULT_PROVIDER).strip()
+    if spec in PROVIDERS:
+        entry = dict(PROVIDERS[spec])
+        entry["id"] = spec
+        return entry
+    if spec.startswith("custom:"):
+        items = [item.strip() for item in spec[len("custom:"):].split(",") if item.strip()]
+        if not items:
+            raise Failure("custom provider: give at least one <ip>#<tls name>")
+        if len(items) > MAX_CUSTOM_SERVERS:
+            raise Failure(f"custom provider: at most {MAX_CUSTOM_SERVERS} servers")
+        servers = []
+        for item in items:
+            server = parse_server(item)
+            if server not in servers:
+                servers.append(server)
+        return {"id": "custom", "name": "custom", "dot": servers, "doh": [], "props": 0}
+    raise Failure(f"unknown provider '{spec}'; choose quad9, mullvad, cloudflare or custom:<ip>#<tls name>[,...]")
+
+
+def validate_dns_request(mode, provider_spec, dnssec):
+    if mode not in MODES:
+        raise Failure(f"unknown DNS mode '{mode}'; choose one of {', '.join(MODES)}")
+    dnssec = dnssec or DEFAULT_DNSSEC
+    if dnssec not in DNSSEC_VALUES:
+        raise Failure(f"--dnssec must be one of {', '.join(DNSSEC_VALUES)}")
+    provider = parse_provider(provider_spec)
+    if mode == "doh" and not provider["doh"]:
+        raise Failure("DNS-over-HTTPS works with the providers quad9, mullvad and cloudflare; "
+                      "a custom server needs dot or dot-strict")
+    if mode == "off" and provider_spec:
+        raise Failure("'off' uses the network's own DNS servers; --provider does not apply")
+    return provider, dnssec
+
+
+# --------------------------------------------------------------------------- rendering
+def render_resolved(mode, provider, dnssec):
+    """Text of /etc/systemd/resolved.conf.d/90-shadow-user.conf."""
+    info = f"mode={mode} provider={provider['id'] if mode != 'off' else 'network'} dnssec={dnssec}"
+    lines = [MARK,
+             "# Change it with: sudo shadow-netprivacy dns {dot|dot-strict|doh|off} [--provider ...] [--dnssec ...]",
+             f"# shadow-netprivacy: {info}",
+             "",
+             "[Resolve]",
+             "DNS="]
+    if mode in ("dot", "dot-strict"):
+        lines.append("DNS=" + " ".join(provider["dot"]))
+    elif mode == "doh":
+        lines.append(f"DNS={DOH_LISTEN[0]}")
+    lines.append("Domains=")
+    if mode != "off":
+        # Every name goes to the servers above, none to the network's own
+        # server in plain text (it keeps answering for the network's domains).
+        lines.append("Domains=~.")
+    lines += ["FallbackDNS=",
+              f"DNSOverTLS={DOT_SETTING[mode]}",
+              f"DNSSEC={dnssec}",
+              "LLMNR=no",
+              "MulticastDNS=no"]
+    return "\n".join(lines) + "\n"
+
+
+def doh_stamp(addr, hostname, path, props):
+    """A DNS-over-HTTPS server stamp (protocol 0x02) without certificate pins."""
+    def lp(text):
+        data = text.encode("ascii")
+        if len(data) > 255:
+            raise Failure(f"stamp field too long: {text}")
+        return bytes([len(data)]) + data
+    raw = bytes([0x02]) + struct.pack("<Q", props) + lp(addr) + b"\x00" + lp(hostname) + lp(path)
+    return "sdns://" + base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def parse_stamp(stamp):
+    """Inverse of doh_stamp (for status and tests): {"addr", "hostname", "path", "props"}."""
+    if not stamp.startswith("sdns://"):
+        raise ValueError("not a stamp")
+    body = stamp[len("sdns://"):]
+    raw = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
+    if raw[0] != 0x02:
+        raise ValueError("not a DoH stamp")
+    props = struct.unpack("<Q", raw[1:9])[0]
+    pos = 9
+
+    def take():
+        nonlocal pos
+        length = raw[pos]
+        value = raw[pos + 1:pos + 1 + length].decode("ascii")
+        pos += 1 + length
+        return value
+    addr = take()
+    while raw[pos] & 0x80:                       # skip certificate hashes
+        pos += 1 + (raw[pos] & 0x7F)
+    pos += 1 + raw[pos]
+    hostname = take()
+    path = take()
+    return {"addr": addr, "hostname": hostname, "path": path, "props": props}
+
+
+def render_dnscrypt(provider):
+    names = [f"shadow-{provider['id']}-{i + 1}" for i in range(len(provider["doh"]))]
+    first_ip = provider["doh"][0][0]
+    lines = [MARK,
+             "# DNS-over-HTTPS mode of shadow-netprivacy; dnscrypt-proxy.service reads this file",
+             "# through /etc/systemd/system/dnscrypt-proxy.service.d/50-shadow-netprivacy.conf.",
+             f"# shadow-netprivacy: provider={provider['id']}",
+             "",
+             "# dnscrypt-proxy.socket listens on 127.0.2.1:53 (socket activation).",
+             "listen_addresses = []",
+             "server_names = [" + ", ".join(f"'{n}'" for n in names) + "]",
+             "ipv4_servers = true",
+             "ipv6_servers = false",
+             "dnscrypt_servers = false",
+             "doh_servers = true",
+             "odoh_servers = false",
+             "require_dnssec = false",
+             "require_nolog = false",
+             "require_nofilter = false",
+             "# The servers below are given by address: no resolver list is downloaded",
+             "# and no name has to be looked up before the first query.",
+             f"bootstrap_resolvers = ['{first_ip}:53']",
+             "ignore_system_dns = true",
+             f"netprobe_address = '{first_ip}:53'",
+             "netprobe_timeout = 60",
+             "block_ipv6 = false",
+             "cache = true",
+             "# No [query_log] and no [nx_log]: lookups are never written anywhere.",
+             "",
+             "[static]"]
+    for name, (addr, hostname, path) in zip(names, provider["doh"]):
+        lines += [f"  [static.'{name}']", f"  stamp = '{doh_stamp(addr, hostname, path, provider['props'])}'"]
+    return "\n".join(lines) + "\n"
+
+
+def render_dnscrypt_dropin():
+    return "\n".join([
+        MARK,
+        "# Present only while shadow-netprivacy is in DNS-over-HTTPS mode.",
+        "[Service]",
+        "ExecStart=",
+        f"ExecStart={DNSCRYPT_BINARY} -config {DNSCRYPT_CONFIG}",
+    ]) + "\n"
+
+
+def render_mac(mode):
+    """Text of /etc/NetworkManager/conf.d/90-shadow-mac.conf (None: shipped default)."""
+    if mode == "per-boot":
+        return None
+    lines = [MARK, "# Change it with: sudo shadow-netprivacy mac {per-boot|per-network|hardware}",
+             f"# shadow-netprivacy: mac={mode}", "", "[connection]"]
+    if mode == "per-network":
+        lines += ["# A private address per network that stays the same across boots.",
+                  f"connection.stable-id={STABLE_PER_NETWORK}",
+                  "wifi.cloned-mac-address=stable",
+                  "ethernet.cloned-mac-address=stable"]
+    elif mode == "hardware":
+        lines += ["# The device's real hardware address on every network (scanning",
+                  "# still uses random addresses).",
+                  "wifi.cloned-mac-address=permanent",
+                  "ethernet.cloned-mac-address=permanent"]
+    else:
+        raise Failure(f"unknown MAC mode '{mode}'")
+    return "\n".join(lines) + "\n"
+
+
+def render_escape_resolved():
+    return "\n".join([
+        "# shadow.netprivacy=off on the kernel command line (shadow-netprivacy boot):",
+        "# for this boot, the DNS servers of the network are used without encryption.",
+        "[Resolve]",
+        "DNS=",
+        "Domains=",
+        "DNSOverTLS=no",
+        "DNSSEC=no",
+    ]) + "\n"
+
+
+def render_escape_nm():
+    return "\n".join([
+        "# shadow.netprivacy=off on the kernel command line (shadow-netprivacy boot):",
+        "# for this boot, every device keeps its own MAC address.",
+        "[connection-shadow-escape]",
+        "wifi.cloned-mac-address=preserve",
+        "ethernet.cloned-mac-address=preserve",
+        "connection.dns-over-tls=0",
+    ]) + "\n"
+
+
+# --------------------------------------------------------------------------- configuration reading
+def parse_ini(text):
+    """[(section, key, value)] in file order; comments and blank lines skipped."""
+    entries, section = [], None
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or line[0] in "#;":
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip()
+            continue
+        if "=" in line and section is not None:
+            key, value = line.split("=", 1)
+            entries.append((section, key.strip(), value.strip()))
+    return entries
+
+
+def dropin_files(directories):
+    """Drop-in files in effect, in the order they are applied (systemd and NetworkManager rules)."""
+    chosen = {}
+    for directory in reversed(directories):         # lowest priority first, overridden below
+        full = p(directory)
+        try:
+            names = os.listdir(full)
+        except OSError:
+            continue
+        for name in names:
+            if name.endswith(".conf") and not name.startswith("."):
+                chosen[name] = os.path.join(directory, name)
+    return [chosen[name] for name in sorted(chosen)]
+
+
+RESOLVED_LISTS = ("DNS", "FallbackDNS", "Domains")
+
+
+def resolved_config():
+    """Effective [Resolve] settings and the files they come from."""
+    files = []
+    for main in RESOLVED_MAIN:
+        if os.path.exists(p(main)):
+            files.append(main)
+            break
+    files += dropin_files(RESOLVED_DROPINS)
+    conf = {"DNS": [], "FallbackDNS": [], "Domains": []}
+    for path in files:
+        for section, key, value in parse_ini(read_text(path)):
+            if section != "Resolve":
+                continue
+            if key in RESOLVED_LISTS:
+                if value == "":
+                    conf[key] = []
+                else:
+                    conf[key] += value.split()
+            else:
+                conf[key] = value
+    return conf, files
+
+
+def nm_config():
+    """Effective NetworkManager [main], [device] and literal [connection] keys we report."""
+    files = [NM_MAIN] if os.path.exists(p(NM_MAIN)) else []
+    files += dropin_files(NM_DROPINS)
+    merged = {}
+    named_sections = []
+    for path in files:
+        for section, key, value in parse_ini(read_text(path)):
+            if section in ("main", "device", "connection"):
+                merged[(section, key)] = value
+            elif section.startswith("connection-"):
+                named_sections.append((path, section, key, value))
+    return merged, named_sections, files
+
+
+def info_of(text):
+    """The '# shadow-netprivacy: a=b c=d' line of a file we wrote."""
+    match = INFO_RE.search(text or "")
+    if not match:
+        return {}
+    return dict(item.split("=", 1) for item in match.group(1).split() if "=" in item)
+
+
+def classify_provider(servers):
+    for ident, entry in PROVIDERS.items():
+        if servers == entry["dot"]:
+            return ident
+    if not servers:
+        return "network"
+    return "custom"
+
+
+def configured_dns(conf):
+    dot = (conf.get("DNSOverTLS") or "no").lower()
+    servers = conf["DNS"]
+    if dot in ("yes", "true", "1", "on"):
+        mode = "dot-strict"
+    elif dot == "opportunistic":
+        mode = "dot"
+    elif servers == [DOH_LISTEN[0]] or servers == [f"{DOH_LISTEN[0]}:{DOH_LISTEN[1]}"]:
+        mode = "doh"
+    elif servers and servers != [DOH_LISTEN[0]]:
+        mode = "plain"            # global servers without encryption (e.g. Hide Me's Tor DNSPort)
+    else:
+        mode = "off"
+    provider = classify_provider(servers)
+    if mode == "doh":
+        doh = info_of(read_text(DNSCRYPT_CONFIG))
+        provider = doh.get("provider", "unknown")
+    return {"mode": mode,
+            "provider": provider,
+            "servers": list(servers),
+            "dns_over_tls": {"1": "yes", "true": "yes", "on": "yes", "0": "no", "false": "no", "off": "no"}.get(dot, dot),
+            "dnssec": {"1": "yes", "true": "yes", "on": "yes", "0": "no", "false": "no", "off": "no"}.get(
+                (conf.get("DNSSEC") or "no").lower(), (conf.get("DNSSEC") or "no").lower()),
+            "all_names_to_provider": "~." in conf["Domains"],
+            "fallback_servers": list(conf["FallbackDNS"]),
+            "llmnr": (conf.get("LLMNR") or "yes").lower(),
+            "mdns": (conf.get("MulticastDNS") or "yes").lower()}
+
+
+def configured_mac(merged):
+    stable_id = merged.get(("connection", "connection.stable-id"), "")
+    wifi = merged.get(("connection", "wifi.cloned-mac-address"), "preserve")
+    ethernet = merged.get(("connection", "ethernet.cloned-mac-address"), "preserve")
+    if wifi in ("permanent", "preserve") and ethernet in ("permanent", "preserve"):
+        mode = "hardware"
+    elif wifi == "stable" and ethernet == "stable":
+        mode = "per-boot" if "${BOOT}" in stable_id else "per-network"
+    elif "random" in (wifi, ethernet):
+        mode = "random"
+    else:
+        mode = "custom"
+    scan = merged.get(("device", "wifi.scan-rand-mac-address"), "yes").lower() in ("yes", "true", "1", "on")
+    return {"mode": mode, "stable_id": stable_id, "wifi": wifi, "ethernet": ethernet,
+            "scan_randomization": scan}
+
+
+# --------------------------------------------------------------------------- live state
+def busctl_properties(names):
+    """Properties of org.freedesktop.resolve1.Manager, or None when resolved does not answer."""
+    rc, out, _ = run(["busctl", "--json=short", "get-property", "org.freedesktop.resolve1",
+                      "/org/freedesktop/resolve1", "org.freedesktop.resolve1.Manager", *names],
+                     check=False, timeout=10)
+    if rc != 0:
+        return None
+    values = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            values.append(json.loads(line))
+        except ValueError:
+            return None
+    if len(values) != len(names):
+        return None
+    return dict(zip(names, values))
+
+
+def server_text(entry):
+    """CurrentDNSServerEx (iiayqs) -> '9.9.9.9#dns.quad9.net' (None for no server)."""
+    try:
+        _ifindex, family, raw, port, name = entry
+        if not raw:
+            return None
+        addr = ipaddress.ip_address(bytes(raw))
+        text = f"[{addr}]:{port}" if (port and port != 53 and family == socket.AF_INET6) else (
+            f"{addr}:{port}" if port and port != 53 else str(addr))
+        return f"{text}#{name}" if name else text
+    except (TypeError, ValueError):
+        return None
+
+
+def live_dns():
+    props = busctl_properties(["DNSOverTLS", "DNSSEC", "LLMNR", "MulticastDNS", "CurrentDNSServerEx"])
+    if props is None:
+        return None
+    return {"dns_over_tls": props["DNSOverTLS"].get("data"),
+            "dnssec": props["DNSSEC"].get("data"),
+            "llmnr": props["LLMNR"].get("data"),
+            "mdns": props["MulticastDNS"].get("data"),
+            "current_server": server_text(props["CurrentDNSServerEx"].get("data"))}
+
+
+def resolv_conf_state():
+    path = p(RESOLV_CONF)
+    if os.path.islink(path):
+        target = os.readlink(path)
+        if target in STUB_TARGETS:
+            kind = "stub"
+        elif target.endswith("/run/systemd/resolve/resolv.conf"):
+            kind = "resolved-uplinks"
+        elif target.endswith("/run/NetworkManager/resolv.conf"):
+            kind = "networkmanager"
+        else:
+            kind = "other-link"
+        return {"kind": kind, "target": target, "dangling": not os.path.exists(path)}
+    if os.path.exists(path):
+        text = read_text(RESOLV_CONF) or ""
+        servers = re.findall(r"^\s*nameserver\s+(\S+)", text, re.M)
+        kind = "stub-copy" if servers == ["127.0.0.53"] else "file"
+        return {"kind": kind, "target": None, "dangling": False}
+    return {"kind": "missing", "target": None, "dangling": False}
+
+
+def nss_resolve_enabled():
+    for line in (read_text(NSSWITCH) or "").splitlines():
+        line = line.split("#", 1)[0]
+        if line.strip().startswith("hosts:"):
+            return re.search(r"\bresolve\b", line) is not None
+    return False
+
+
+def nm_exceptions():
+    """UUIDs of Wi-Fi/Ethernet profiles pinned to one address (stable-id ${CONNECTION}); None: unknown."""
+    rc, out, _ = run(["nmcli", "-t", "-f", "UUID,TYPE", "connection", "show"], check=False, timeout=15)
+    if rc != 0:
+        return None
+    found = []
+    for line in out.splitlines():
+        uuid, _, kind = line.partition(":")
+        if not UUID_RE.match(uuid) or kind not in MAC_TYPES:
+            continue
+        rc, value, _ = run(["nmcli", "-g", "connection.stable-id", "connection", "show", uuid],
+                           check=False, timeout=15)
+        if rc == 0 and value.strip() == EXCEPTION_STABLE_ID:
+            found.append(uuid)
+    return found
+
+
+def status():
+    errors, warnings = [], []
+    conf, resolved_files = resolved_config()
+    dns = configured_dns(conf)
+    installed = os.path.exists(p(RESOLVED_BINARY))
+    active = installed and unit_active(RESOLVED_UNIT)
+    override = None
+    if os.path.exists(p(RESOLVED_HIDEME)):
+        override = "hide-me"
+    if os.path.exists(p(RESOLVED_ESCAPE)):
+        override = "escape"
+    user_text = read_text(RESOLVED_USER)
+    dns.update({
+        "source": "user" if user_text is not None else ("default" if os.path.exists(p(RESOLVED_DEFAULT)) else "none"),
+        "override": override,
+        "resolver_installed": installed,
+        "resolver_active": active,
+        "resolv_conf": resolv_conf_state(),
+        "nss_resolve": nss_resolve_enabled(),
+        "files": resolved_files,
+        "live": live_dns() if active else None,
+    })
+    doh_installed = os.path.exists(p(DNSCRYPT_BINARY))
+    dns["doh"] = {"installed": doh_installed,
+                  "configured": os.path.exists(p(DNSCRYPT_DROPIN)),
+                  "active": doh_installed and any(unit_active(u) for u in DNSCRYPT_UNITS),
+                  "listen": f"{DOH_LISTEN[0]}:{DOH_LISTEN[1]}"}
+
+    # How much of the DNS traffic is encrypted, from what is in force.
+    live = dns["live"]
+    # Hide Me's file counts only when Tor's DNSPort is the only global server
+    # (DNS= adds up across files) and, as far as resolved reports it, in use.
+    hide_me_tor = (override == "hide-me" and dns["servers"] == [HIDEME_TOR_DNS]
+                   and (live is None or live["current_server"] in (None, HIDEME_TOR_DNS)))
+    if not active:
+        encrypted = "unknown"
+        if installed:
+            errors.append("systemd-resolved is not running: no name can be looked up "
+                          "(sudo systemctl restart systemd-resolved)")
+        else:
+            errors.append("systemd-resolved is not installed: DNS is not encrypted")
+    elif hide_me_tor:
+        encrypted = "tor"
+    elif dns["mode"] == "doh":
+        encrypted = "always" if dns["all_names_to_provider"] else "partly"
+        if not dns["doh"]["active"]:
+            errors.append("dnscrypt-proxy is not running: no name can be looked up in DNS-over-HTTPS mode")
+    elif live is None:
+        encrypted = "unknown"
+        errors.append("systemd-resolved does not answer on the system bus")
+    elif live["dns_over_tls"] == "yes":
+        encrypted = "always" if dns["all_names_to_provider"] else "partly"
+    elif live["dns_over_tls"] == "opportunistic":
+        encrypted = "opportunistic" if dns["all_names_to_provider"] else "partly"
+    else:
+        encrypted = "no"
+    dns["encrypted"] = encrypted
+    if active and override == "hide-me" and not hide_me_tor:
+        in_use = f"; in use: {live['current_server']}" if live and live.get("current_server") else ""
+        errors.append("Hide Me's DNS-over-Tor is not in force: systemd-resolved's global DNS servers are "
+                      f"{' '.join(dns['servers']) or 'none'}{in_use}, not Tor's DNSPort alone "
+                      "(turn DNS protection off and on again in Hide Me)")
+    if live is not None and live.get("dns_over_tls") != dns["dns_over_tls"] and override is None:
+        warnings.append("systemd-resolved runs with other settings than its files: "
+                        "sudo systemctl restart systemd-resolved")
+    if dns["resolv_conf"]["kind"] not in ("stub", "stub-copy"):
+        warnings.append("/etc/resolv.conf does not point at systemd-resolved's stub "
+                        f"({dns['resolv_conf']['kind']}): programs reading it bypass encrypted DNS")
+    elif dns["resolv_conf"]["dangling"] and active:
+        warnings.append("/etc/resolv.conf points at a file systemd-resolved has not written")
+    if dns["nss_resolve"]:
+        warnings.append("libnss-resolve is enabled in /etc/nsswitch.conf: lookups bypass /etc/resolv.conf "
+                        "and Hide Me's DNS redirect")
+    if dns["fallback_servers"]:
+        warnings.append("fallback DNS servers are configured: they are asked when the provider fails")
+
+    merged, named, nm_files = nm_config()
+    mac = configured_mac(merged)
+    mac["source"] = "user" if os.path.exists(p(NM_USER)) else (
+        "default" if os.path.exists(p(NM_DEFAULT)) else "none")
+    mac["override"] = "escape" if os.path.exists(p(NM_ESCAPE)) else None
+    if mac["override"] == "escape":
+        mac["mode"] = "hardware"
+    mac["fixed_drivers"] = sorted({d for _, section, key, value in named if key == "match-device"
+                                   for d in re.findall(r"driver:([A-Za-z0-9_.-]+)", value)})
+    exceptions = nm_exceptions()
+    mac["exceptions"] = exceptions if exceptions is not None else []
+    mac["exceptions_known"] = exceptions is not None
+    mac["dns_plugin"] = merged.get(("main", "dns"), "default")
+    mac["files"] = nm_files
+    if mac["mode"] == "random":
+        warnings.append("a new random MAC address at every connection is configured: networks then "
+                        "block the 'new device' and DHCP pools run out (shadow-netprivacy mac per-boot)")
+    if mac["dns_plugin"] not in ("systemd-resolved", "default"):
+        warnings.append(f"NetworkManager's DNS plugin is '{mac['dns_plugin']}', not systemd-resolved")
+    return {"version": 1, "escape_hatch": cmdline_escape(), "dns": dns, "mac": mac,
+            "errors": errors, "warnings": warnings}
+
+
+def print_status(info):
+    dns, mac = info["dns"], info["mac"]
+    names = {"dot": "DNS-over-TLS when the provider offers it",
+             "dot-strict": "DNS-over-TLS only",
+             "doh": "DNS-over-HTTPS (dnscrypt-proxy)",
+             "off": "the network's own DNS servers",
+             "plain": "fixed servers without encryption"}
+    print(f"DNS:        {names.get(dns['mode'], dns['mode'])}"
+          + (f", provider {dns['provider']}" if dns["mode"] not in ("off",) else ""))
+    print(f"            DNSSEC {dns['dnssec']}; encrypted: {dns['encrypted']}"
+          + (f"; live: DNSOverTLS={dns['live']['dns_over_tls']} DNSSEC={dns['live']['dnssec']}"
+             if dns["live"] else ""))
+    if dns["override"] == "hide-me":
+        print("            Hide Me sends DNS through Tor right now")
+    print(f"MAC:        {mac['mode']}" + (f" (stable-id {mac['stable_id']})" if mac["stable_id"] else "")
+          + f"; {len(mac['exceptions'])} network(s) with a fixed address")
+    if info["escape_hatch"]:
+        print("            shadow.netprivacy=off is on the kernel command line: all of the above is off for this boot")
+    for message in info["errors"]:
+        print(f"ERROR:      {message}")
+    for message in info["warnings"]:
+        print(f"WARNING:    {message}")
+
+
+# --------------------------------------------------------------------------- DoH
+def dns_probe(addr, port, timeout=3.0):
+    """Send '. IN NS' and return True when a NOERROR answer with our id comes back."""
+    query_id = secrets.randbits(16)
+    packet = struct.pack(">HHHHHH", query_id, 0x0100, 1, 0, 0, 0) + b"\x00" + struct.pack(">HH", 2, 1)
+    family = socket.AF_INET6 if ":" in addr else socket.AF_INET
+    with socket.socket(family, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(timeout)
+        try:
+            sock.sendto(packet, (addr, port))
+            data, _ = sock.recvfrom(4096)
+        except OSError:
+            return False
+    if len(data) < 12:
+        return False
+    rid, flags = struct.unpack(">HH", data[:4])
+    return rid == query_id and bool(flags & 0x8000) and (flags & 0x000F) == 0
+
+
+def wait_for_doh(attempts=5, pause=2.0):
+    for attempt in range(attempts):
+        if dns_probe(*DOH_LISTEN):
+            return True
+        if attempt + 1 < attempts:
+            time.sleep(pause)
+    return False
+
+
+def doh_setup(provider):
+    """Configure, start and test dnscrypt-proxy. Returns an undo function."""
+    if not os.path.exists(p(DNSCRYPT_BINARY)):
+        raise Failure("DNS-over-HTTPS needs the dnscrypt-proxy package: sudo apt install dnscrypt-proxy")
+    old_config, old_dropin = read_text(DNSCRYPT_CONFIG), read_text(DNSCRYPT_DROPIN)
+    was_active = any(unit_active(u) for u in DNSCRYPT_UNITS)
+
+    def undo():
+        restore(DNSCRYPT_CONFIG, old_config)
+        restore(DNSCRYPT_DROPIN, old_dropin)
+        run(["systemctl", "daemon-reload"], check=False)
+        if old_dropin is None:
+            run(["systemctl", "disable", "--now", *DNSCRYPT_UNITS], check=False)
+        elif was_active:
+            run(["systemctl", "restart", *DNSCRYPT_UNITS], check=False)
+
+    write_atomic(DNSCRYPT_CONFIG, render_dnscrypt(provider))
+    try:
+        rc, out, err = run([DNSCRYPT_BINARY, "-config", p(DNSCRYPT_CONFIG), "-check"], check=False)
+        if rc != 0:
+            raise Failure("dnscrypt-proxy rejected the configuration: " + (err or out).strip())
+        write_atomic(DNSCRYPT_DROPIN, render_dnscrypt_dropin())
+        run(["systemctl", "daemon-reload"])
+        # Debian's helper hands 127.0.2.1 to resolvconf; here systemd-resolved
+        # forwards to it instead, so the helper stays off.
+        run(["systemctl", "disable", "--now", DNSCRYPT_RESOLVCONF_UNIT], check=False)
+        run(["systemctl", "enable", *DNSCRYPT_UNITS])
+        run(["systemctl", "restart", *DNSCRYPT_UNITS])
+        if not wait_for_doh():
+            raise Failure("dnscrypt-proxy does not answer on 127.0.2.1:53 (no connection to the DNS-over-HTTPS "
+                          "server? 'journalctl -u dnscrypt-proxy'); DNS settings were not changed")
+    except BaseException:
+        undo()
+        raise
+    return undo
+
+
+def doh_teardown():
+    """Leave DNS-over-HTTPS mode: stop dnscrypt-proxy and remove our files."""
+    problems = []
+    rc, out, err = run(["systemctl", "disable", "--now", *DNSCRYPT_UNITS], check=False)
+    if rc != 0:
+        problems.append("could not stop dnscrypt-proxy: " + (err or out).strip())
+    remove(DNSCRYPT_DROPIN)
+    remove(DNSCRYPT_CONFIG)
+    rc, out, err = run(["systemctl", "daemon-reload"], check=False)
+    if rc != 0:
+        problems.append("systemctl daemon-reload failed: " + (err or out).strip())
+    return problems
+
+
+# --------------------------------------------------------------------------- commands
+def restart_resolved_and_verify():
+    """Restart resolved; return None when it runs with the configured DNSOverTLS, else an error text."""
+    rc, out, err = run(["systemctl", "restart", RESOLVED_UNIT], check=False)
+    if rc != 0:
+        return "systemd-resolved did not restart: " + (err or out).strip()
+    conf, _ = resolved_config()
+    configured = configured_dns(conf)
+    want = (configured["dns_over_tls"], configured["dnssec"])
+    for _ in range(10):
+        live = live_dns()
+        if live is not None and (live["dns_over_tls"], live["dnssec"]) == want:
+            return None
+        time.sleep(0.5)
+    live = live_dns()
+    if live is None:
+        return "systemd-resolved does not answer after the restart"
+    return (f"systemd-resolved reports DNSOverTLS={live['dns_over_tls']} DNSSEC={live['dnssec']}, "
+            f"the files say DNSOverTLS={want[0]} DNSSEC={want[1]}")
+
+
+def is_default_dns(mode, provider, dnssec):
+    return mode == DEFAULT_MODE and provider["id"] == DEFAULT_PROVIDER and dnssec == DEFAULT_DNSSEC
+
+
+def cmd_dns(mode, provider_spec, dnssec):
+    provider, dnssec = validate_dns_request(mode, provider_spec, dnssec)
+    require_root()
+    if not os.path.exists(p(RESOLVED_BINARY)):
+        raise Failure("systemd-resolved is not installed (sudo apt install systemd-resolved)")
+    with Lock():
+        conf, _ = resolved_config()
+        was_doh = configured_dns(conf)["mode"] == "doh" or os.path.exists(p(DNSCRYPT_DROPIN))
+        old_user = read_text(RESOLVED_USER)
+        undo_doh = doh_setup(provider) if mode == "doh" else None
+        try:
+            if is_default_dns(mode, provider, dnssec) and os.path.exists(p(RESOLVED_DEFAULT)):
+                remove(RESOLVED_USER)
+            else:
+                write_atomic(RESOLVED_USER, render_resolved(mode, provider, dnssec))
+            error = restart_resolved_and_verify()
+            if error:
+                restore(RESOLVED_USER, old_user)
+                again = restart_resolved_and_verify()
+                raise Failure(error + "; the previous setting was put back"
+                              + ("" if again is None else f" (but: {again})"))
+        except BaseException:
+            if undo_doh:
+                undo_doh()
+            raise
+        problems = doh_teardown() if (was_doh and mode != "doh") else []
+    shown = {"dot": "DNS-over-TLS (falls back to plain DNS where port 853 is blocked)",
+             "dot-strict": "DNS-over-TLS only", "doh": "DNS-over-HTTPS through dnscrypt-proxy",
+             "off": "the network's own DNS servers"}[mode]
+    print(f"DNS: {shown}" + ("" if mode == "off" else f", provider {provider['name']}") + f", DNSSEC {dnssec}.")
+    if os.path.exists(p(RESOLVED_HIDEME)):
+        print("Note: Hide Me sends DNS through Tor right now; this setting applies when its DNS protection is off.")
+    if cmdline_escape():
+        print("Note: shadow.netprivacy=off is on the kernel command line; this setting applies from the next boot.")
+    if problems:
+        raise Failure("DNS changed, but leaving DNS-over-HTTPS mode was incomplete: " + "; ".join(problems))
+
+
+def reload_nm():
+    """Make NetworkManager read its configuration; None when done or not running, else an error."""
+    if not unit_active(NM_UNIT):
+        return None
+    rc, out, err = run(["nmcli", "general", "reload", "conf"], check=False)
+    if rc != 0:
+        return "NetworkManager did not reload its configuration: " + (err or out).strip()
+    return None
+
+
+def cmd_mac(mode):
+    if mode not in MAC_MODES:
+        raise Failure(f"unknown MAC mode '{mode}'; choose one of {', '.join(MAC_MODES)}")
+    require_root()
+    with Lock():
+        text = render_mac(mode)
+        if text is None:
+            remove(NM_USER)
+        else:
+            write_atomic(NM_USER, text)
+        error = reload_nm()
+    print({"per-boot": "MAC address: a private address per network, new at every boot.",
+           "per-network": "MAC address: a private address per network that stays the same across boots.",
+           "hardware": "MAC address: the device's real hardware address."}[mode])
+    print("Nothing was reconnected: each network takes its new address the next time it connects.")
+    if error:
+        raise Failure(error + " (the file is written; it applies when NetworkManager restarts)")
+
+
+def nm_get(uuid, field):
+    rc, out, err = run(["nmcli", "-g", field, "connection", "show", uuid], check=False, timeout=15)
+    if rc != 0:
+        raise Failure(f"no NetworkManager connection with UUID {uuid}: {(err or out).strip()}")
+    return out.rstrip("\n")
+
+
+def cmd_mac_exception(action, uuid):
+    if action not in ("add", "remove"):
+        raise Failure("expected add or remove")
+    if not UUID_RE.match(uuid or ""):
+        raise Failure(f"'{uuid}' is not a connection UUID (nmcli -f NAME,UUID connection show)")
+    require_root()
+    uuid = uuid.lower()
+    with Lock():
+        kind = nm_get(uuid, "connection.type")
+        if kind not in MAC_TYPES:
+            raise Failure(f"connection {uuid} is a {kind} connection; MAC addresses apply to Wi-Fi and Ethernet")
+        current = nm_get(uuid, "connection.stable-id")
+        if action == "add":
+            if current == EXCEPTION_STABLE_ID:
+                print("This network already keeps its address across boots.")
+                return
+            if current:
+                raise Failure(f"connection {uuid} already has its own stable-id ('{current}'); "
+                              "clear it first: nmcli connection modify <uuid> connection.stable-id ''")
+            run(["nmcli", "connection", "modify", uuid, "connection.stable-id", EXCEPTION_STABLE_ID])
+            check = nm_get(uuid, "connection.stable-id")
+            if check != EXCEPTION_STABLE_ID:
+                raise Failure(f"NetworkManager did not store the exception (stable-id is '{check}')")
+            print("This network keeps one private address across boots, from its next connection on.")
+        else:
+            if current != EXCEPTION_STABLE_ID:
+                raise Failure(f"connection {uuid} has no MAC exception")
+            run(["nmcli", "connection", "modify", uuid, "connection.stable-id", ""])
+            check = nm_get(uuid, "connection.stable-id")
+            if check:
+                raise Failure(f"NetworkManager did not remove the exception (stable-id is '{check}')")
+            print("This network follows the MAC policy again, from its next connection on.")
+
+
+def cmd_boot():
+    """shadow-netprivacy.service: honour shadow.netprivacy=off for this boot."""
+    if cmdline_escape():
+        write_atomic(RESOLVED_ESCAPE, render_escape_resolved())
+        write_atomic(NM_ESCAPE, render_escape_nm())
+        print("shadow.netprivacy=off: encrypted DNS and MAC privacy are off for this boot")
+    else:
+        removed = remove(RESOLVED_ESCAPE) | remove(NM_ESCAPE)
+        if removed:
+            print("removed the overrides of an earlier shadow.netprivacy=off")
+
+
+# --------------------------------------------------------------------------- main
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="shadow-netprivacy",
+                                     description="Encrypted DNS and MAC address policy of Shadow OS.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    st = sub.add_parser("status", help="show what is in force")
+    st.add_argument("--json", action="store_true")
+    dn = sub.add_parser("dns", help="choose how names are looked up")
+    dn.add_argument("mode", choices=MODES)
+    dn.add_argument("--provider", default=None)
+    dn.add_argument("--dnssec", default=None, choices=DNSSEC_VALUES)
+    mc = sub.add_parser("mac", help="choose the MAC address policy")
+    mc.add_argument("mode", choices=MAC_MODES)
+    ex = sub.add_parser("mac-exception", help="keep one network's address across boots")
+    ex.add_argument("action", choices=("add", "remove"))
+    ex.add_argument("uuid")
+    sub.add_parser("boot", help="used by shadow-netprivacy.service at boot")
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "status":
+            info = status()
+            if args.json:
+                print(json.dumps(info, indent=2, sort_keys=True))
+            else:
+                print_status(info)
+            return 0
+        if args.command == "dns":
+            cmd_dns(args.mode, args.provider, args.dnssec)
+        elif args.command == "mac":
+            cmd_mac(args.mode)
+        elif args.command == "mac-exception":
+            cmd_mac_exception(args.action, args.uuid)
+        elif args.command == "boot":
+            require_root()
+            cmd_boot()
+        return 0
+    except Failure as exc:
+        print(f"shadow-netprivacy: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

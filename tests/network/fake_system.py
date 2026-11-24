@@ -2,8 +2,9 @@
 """A simulated laptop for tests/network/fix-network-test.sh.
 
 One program that answers as nmcli, ip, curl, ping, getent, rfkill, systemctl,
-iptables, ip6tables, ss, modinfo, sysctl, chattr, lsattr, shadow-anon and
-update-initramfs (dispatch on the name it is called by). The machine's state
+iptables, ip6tables, ss, modinfo, sysctl, chattr, lsattr, shadow-anon,
+shadow-killswitch, shadow-panic, nft and update-initramfs (dispatch on the
+name it is called by). The machine's state
 lives in $FAKE_STATE (JSON); system files live under $FAKE_ROOT, the same
 directory scripts/fix-network.sh gets as SHADOW_NETFIX_ROOT.
 
@@ -18,6 +19,33 @@ each of which reaches the internet unless the scenario's fault applies:
   rotation    Hide Me's rotation timer keeps tearing Wi-Fi down
   portal      the Wi-Fi network shows a log-in page
   driver      nothing helps: the chip itself does not pass traffic
+  dot853      the Wi-Fi network blocks port 853 (DNS-over-TLS) and every
+              DNS server but its own
+
+systemd-resolved (newer images) is simulated when the state has "resolved":
+{"active": bool, "dot": "opportunistic"|"yes", "fails": bool}; it is
+installed when $FAKE_ROOT/usr/lib/systemd/systemd-resolved exists. Its stub
+file (run/systemd/resolve/stub-resolv.conf) exists while it runs. Names go to
+its global server (the provider, a documentation address) unless the active
+Wi-Fi profile carries the routing domain "~." (then its own server answers too).
+
+The Shadow kill switch and panic (nftables tables inet shadow_egress and
+inet shadow_panic) are simulated when the state has
+  "egress": {"mode": "off"|"tor"|"vpn"|"tor-or-vpn", "table": bool, "lan": bool,
+             "changed": bool (the table was edited by hand: loaded=false),
+             "escape_hatch": bool, "error": str}
+  "panic":  {"engaged": bool, "table": bool}
+A panic table drops everything. The kill switch table drops every test bound
+to one interface and lets the rest out only through Tor in the Tor modes
+(Tor works, "tor_ok", and Hide Me's transparent proxy SHADOWTOR sends a
+program's traffic to it) or through the VPN ("vpn_up") in the VPN modes.
+"curl --socks5-hostname" goes to Tor's SOCKS port on loopback (127.0.0.1:39,
+shadow-anon's TOR_SOCKS_PORT): it works when "tor_ok", whatever the kill
+switch, and never during a panic; "socks_answers" is something else that
+answers on any SOCKS port (a local user's listener) while Tor may not run.
+tor@default is active when "tor_ok" (or "tor_running"); "ss -t" lists Tor's
+SOCKS listener then, owned by root, or by "socks_uid" if set. "nft" only lists
+tables; every other nft command is refused and recorded in "nft_refused".
 """
 import json
 import os
@@ -164,6 +192,58 @@ def ghost_blocks(st, bound):
     return hooked(st, "filter", "SHADOWKILL") or (hooked(st, "nat", "SHADOWTOR") and not st.get("tor_ok"))
 
 
+def egress_blocks(st, bound):
+    """The Shadow panic or kill switch: True = blocked, False = let through (Tor/VPN), None = no table."""
+    if st.get("panic", {}).get("table"):
+        return True
+    e = st.get("egress") or {}
+    if not e.get("table"):
+        return None
+    if bound:
+        return True
+    mode = e.get("mode")
+    through = (mode in ("tor", "tor-or-vpn") and st.get("tor_ok") and hooked(st, "nat", "SHADOWTOR")) or \
+        (mode in ("vpn", "tor-or-vpn") and st.get("vpn_up"))
+    return not through
+
+
+PROVIDER = "192.0.2.53"       # resolved's global DNS server in these tests (RFC 5737)
+STUB = "run/systemd/resolve/stub-resolv.conf"
+
+
+def resolved_installed():
+    return os.path.exists(rpath("usr/lib/systemd/systemd-resolved"))
+
+
+def resolved_set_active(st, active):
+    st.setdefault("resolved", {})["active"] = active
+    stub = rpath(STUB)
+    if active:
+        os.makedirs(os.path.dirname(stub), exist_ok=True)
+        with open(stub, "w") as f:
+            f.write("nameserver 127.0.0.53\noptions edns0 trust-ad\n")
+    elif os.path.exists(stub):
+        os.unlink(stub)
+
+
+def resolved_dns_ok(st):
+    """A lookup through systemd-resolved (resolv.conf is its stub or 127.0.0.53)."""
+    r = st.get("resolved", {})
+    if not resolved_installed() or not r.get("active"):
+        return False
+    hideme = rpath("run/systemd/resolved.conf.d/95-shadow-anon.conf")
+    if os.path.exists(hideme):
+        return bool(st.get("tor_ok") and st.get("tor_listening"))
+    dev = best_dev(st)
+    if dev is None or not internet(st, dev, False):
+        return False
+    d = st["devices"][dev]
+    if d["type"] == "wifi" and st["scenario"] == "dot853":
+        # Only the network's own DNS server answers here.
+        return "~." in st["cons"][d["con"]].get("search", [])
+    return True
+
+
 def resolv_text():
     p = rpath("etc/resolv.conf")
     if os.path.islink(p) and not os.path.exists(p):
@@ -182,9 +262,14 @@ def dns_ok(st):
     servers = re.findall(r"^nameserver\s+(\S+)", txt, re.M)
     if not servers:
         return False
+    k = egress_blocks(st, False)
+    if k is not None:
+        return not k
     g = ghost_blocks(st, False)
     if g is not None:
         return not g
+    if servers == ["127.0.0.53"]:
+        return resolved_dns_ok(st)
     if servers == ["127.0.0.1"]:
         tor = (hooked(st, "nat", "SHADOWDNS") or hooked(st, "nat", "SHADOWTOR")) and st.get("tor_ok")
         return bool(tor or st.get("listen53"))
@@ -193,13 +278,18 @@ def dns_ok(st):
         return False
     if st["scenario"] == "routerdns":
         return any(s in ("9.9.9.9", "1.1.1.1") for s in servers)
+    if st["scenario"] == "dot853":
+        return False                      # this network answers only from its own server, not listed here
     return True
 
 
 def nm_rewrite(st):
     """NetworkManager writes /etc/resolv.conf when it manages DNS and the file
-    is a plain file or missing (rc-manager=auto without systemd-resolved)."""
+    is a plain file or missing (rc-manager=auto without systemd-resolved). With
+    the systemd-resolved plugin and resolved installed it never touches it."""
     if os.path.exists(rpath("etc/NetworkManager/conf.d/90-shadow-dns.conf")):
+        return
+    if nm_conf_value("dns") == "systemd-resolved" and resolved_installed():
         return
     p = rpath("etc/resolv.conf")
     if st.get("immutable") or os.path.islink(p):
@@ -208,7 +298,7 @@ def nm_rewrite(st):
     for n, d in st["devices"].items():
         if d["state"] == "connected" and d.get("con"):
             for s in filter(None, st["cons"][d["con"]].get("dns", "").split(",")):
-                lines.append(f"nameserver {s}")
+                lines.append(f"nameserver {s.split('#')[0]}")    # NetworkManager drops the TLS name
     lines.append(f"nameserver {GW}")
     txt = "\n".join(lines) + "\n"
     with open(p, "w") as f:
@@ -282,7 +372,8 @@ def cmd_nmcli(st, a):
         val = {"connection.id": c["id"],
                "802-11-wireless.cloned-mac-address": c.get("mac", ""),
                "802-11-wireless.powersave": PS_NAMES[c.get("powersave", "0")],
-               "ipv4.dns": c.get("dns", "")}[key]
+               "ipv4.dns": c.get("dns", ""),
+               "ipv4.dns-search": ",".join(c.get("search", []))}[key]
         print(val)
         return 0
     if a[:2] == ["connection", "modify"]:
@@ -294,6 +385,15 @@ def cmd_nmcli(st, a):
             c["powersave"] = PS_IN.get(val, val)
         elif prop == "ipv4.dns":
             c["dns"] = ",".join(val.replace(",", " ").split())
+        elif prop == "+ipv4.dns-search":
+            if val not in c.setdefault("search", []):
+                c["search"].append(val)
+        elif prop == "-ipv4.dns-search":
+            if val in c.get("search", []):
+                c["search"].remove(val)
+        else:
+            print(f"fake nmcli: unknown property {prop}", file=sys.stderr)
+            return 2
         return 0
     if a[:2] == ["connection", "up"]:
         uuid = a[2]
@@ -349,12 +449,15 @@ def cmd_curl(st, a):
     out = None
     fmt = ""
     url = None
+    socks = None
     i = 0
     while i < len(a):
         x = a[i]
         if x == "--interface":
             iface = a[i + 1]; i += 2; continue
-        if x in ("-m",):
+        if x == "--socks5-hostname":
+            socks = a[i + 1]; i += 2; continue
+        if x in ("-m", "--connect-timeout"):
             i += 2; continue
         if x == "-o":
             out = a[i + 1]; i += 2; continue
@@ -366,17 +469,42 @@ def cmd_curl(st, a):
     host = re.sub(r"^https?://([^/]+).*", r"\1", url)
 
     def fail():
-        sys.stdout.write(fmt.replace("%{http_code}", "000"))
+        sys.stdout.write(fmt.replace("%{http_code}", "000").replace("%{time_connect}", "0.000000"))
         return 7
+
+    if url.endswith(":853/"):
+        # A TCP connection to the DNS provider's DNS-over-TLS port: it opens
+        # (then HTTP over it fails) unless this network blocks the port.
+        dev = iface or best_dev(st)
+        if dev is None or not internet(st, dev, iface is not None):
+            return fail()
+        if st["scenario"] == "dot853" and st["devices"].get(dev, {}).get("type") == "wifi":
+            sys.stdout.write(fmt.replace("%{time_connect}", "0.000000"))
+            return 28
+        sys.stdout.write(fmt.replace("%{time_connect}", "0.012000"))
+        return 52
+
+    if socks is not None:                 # through Tor: Tor resolves the name and connects
+        dev = best_dev(st)
+        if st.get("panic", {}).get("table") or dev is None or not internet(st, dev, False):
+            return fail()
+        if not st.get("socks_answers") and (socks != "127.0.0.1:39" or not st.get("tor_ok")):
+            return fail()
+        st["tor_checks"] = st.get("tor_checks", 0) + 1
+        sys.stdout.write("NetworkManager is online\n" + fmt.replace("%{http_code}", "200"))
+        return 0
 
     by_ip = re.fullmatch(r"[0-9.]+", host) is not None
     if not by_ip and not dns_ok(st):
         return fail()
     g = ghost_blocks(st, iface is not None)
-    if g is True:
+    k = egress_blocks(st, iface is not None)
+    if g is True or k is True:
         return fail()
     dev = iface or best_dev(st)
-    if g is None:
+    if k is False and (dev is None or not internet(st, dev, False)):
+        return fail()                     # the tunnel needs a working network under it
+    if g is None and k is None:
         if dev is None or not internet(st, dev, iface is not None):
             return fail()
     if st["scenario"] == "portal" and st["devices"].get(dev, {}).get("type") == "wifi":
@@ -395,6 +523,8 @@ def cmd_curl(st, a):
 
 def cmd_ping(st, a):
     dev = a[a.index("-I") + 1]
+    if egress_blocks(st, True) and not (st.get("egress", {}).get("lan") and not st.get("panic", {}).get("table")):
+        return 1                          # the ARP check (ip neigh) still sees the router
     return 0 if gw_answers(st, dev) else 1
 
 
@@ -432,10 +562,28 @@ def cmd_rfkill(st, a):
     return 0
 
 
+def tor_running(st):
+    return bool(st.get("tor_running", st.get("tor_ok")))
+
+
 def cmd_systemctl(st, a):
     a = [x for x in a if x != "--quiet"]
     if a[0] in ("is-active", "is-enabled") and a[1] == "shadow-anon-rotate.timer":
         return 0 if st.get("rotation") else 3
+    if a == ["is-active", "tor@default"]:
+        return 0 if tor_running(st) else 3
+    if a[-1] == "systemd-resolved.service":
+        if not resolved_installed():
+            return 5
+        if a[0] == "is-active":
+            return 0 if st.get("resolved", {}).get("active") else 3
+        if a[0] in ("start", "restart"):
+            if st.get("resolved", {}).get("fails"):
+                resolved_set_active(st, False)
+                return 1
+            resolved_set_active(st, True)
+            st["resolved_restarts"] = st.get("resolved_restarts", 0) + 1
+            return 0
     if a[0] == "disable" and a[-1] == "shadow-anon-rotate.timer":
         st["rotation"] = False
         return 0
@@ -484,9 +632,46 @@ def cmd_iptables(st, a, v6=False):
 
 
 def cmd_ss(st, a):
+    if a and a[0].startswith("-") and "t" in a[0]:       # TCP listeners: Tor's SOCKS port
+        if tor_running(st):
+            owner = " uid:%d" % st["socks_uid"] if st.get("socks_uid") else ""   # root: no uid field
+            print("LISTEN 0 4096 127.0.0.1:39 0.0.0.0:*%s ino:4711 sk:1 cgroup:/system.slice/tor@default.service <->"
+                  % owner)
+        return 0
     if st.get("listen53"):
         print("UNCONN 0 0 127.0.0.1:53 0.0.0.0:*")
+    if st.get("resolved", {}).get("active") and resolved_installed():
+        print("UNCONN 0 0 127.0.0.53%lo:53 0.0.0.0:*")
+        print("UNCONN 0 0 127.0.0.54:53 0.0.0.0:*")
+    if st.get("tor_listening"):                 # Tor's DNSPort (shadow-anon's DNS_PORT)
+        print("UNCONN 0 0 127.0.0.1:%d 0.0.0.0:*" % st.get("tor_port", 26))
+    if st.get("avahi"):                         # mDNS on every address (Tor's DNSPort was 5353 before)
+        print("UNCONN 0 0 0.0.0.0:5353 0.0.0.0:*")
     return 0
+
+
+def cmd_busctl(st, a):
+    r = st.get("resolved", {})
+    if not resolved_installed() or not r.get("active"):
+        print("Failed to get property: Unit dbus-org.freedesktop.resolve1.service not found.", file=sys.stderr)
+        return 1
+    prop = a[-1]
+    value = {"DNSOverTLS": r.get("dot", "opportunistic"), "DNSSEC": "allow-downgrade"}.get(prop)
+    if value is None:
+        return 1
+    print(f's "{value}"')
+    return 0
+
+
+def cmd_resolvectl(st, a):
+    r = st.get("resolved", {})
+    if not resolved_installed() or not r.get("active"):
+        return 1
+    if a[:1] == ["dns"]:
+        print(f"Global: {PROVIDER}#dns.example.net 2001:db8::53#dns.example.net")
+        print(f"Link 3 (wlan0): {GW}")
+        return 0
+    return 1
 
 
 MODPARAMS = {"rtw88_core": ["disable_lps_deep:Set Y to disable Deep PS (bool)", "support_bf:Set Y to enable beamformee support (bool)"],
@@ -526,15 +711,90 @@ def cmd_lsattr(st, a):
     return 0
 
 
+KS_MARKER = "shadow-killswitch mode={mode} lan={lan} sha=0123abcd"
+
+
+def cmd_nft(st, a):
+    """Lists the two Shadow tables; refuses (and records) everything else."""
+    if a[:3] == ["list", "table", "inet"] and len(a) == 4:
+        if a[3] == "shadow_egress" and st.get("egress", {}).get("table"):
+            e = st["egress"]
+            marker = KS_MARKER.format(mode=e.get("mode", "tor"), lan="yes" if e.get("lan") else "no")
+            print("table inet shadow_egress {\n\tcomment \"%s\"\n\tchain output {\n"
+                  "\t\ttype filter hook output priority -50; policy drop;\n\t}\n}" % marker)
+            return 0
+        if a[3] == "shadow_panic" and st.get("panic", {}).get("table"):
+            print("table inet shadow_panic {\n\tcomment \"shadow-panic\"\n}")
+            return 0
+        print(f"Error: No such file or directory\nlist table inet {a[3]}", file=sys.stderr)
+        return 1
+    st.setdefault("nft_refused", []).append(" ".join(a))
+    print("fake nft: only 'list table inet NAME' is allowed here", file=sys.stderr)
+    return 1
+
+
+def cmd_shadow_killswitch(st, a):
+    e = st.get("egress")
+    if a[:2] == ["status", "--json"]:
+        if e is None:
+            e = {"mode": "off", "table": False}
+        mode = e.get("mode", "off")
+        active = mode != "off"
+        loaded = bool(e.get("table")) and not e.get("changed")
+        error = e.get("error")
+        if active and not loaded and not error:
+            error = "the kill switch table is not loaded" if not e.get("table") else \
+                "the loaded kill switch table is not the one this configuration produces"
+        if not active and e.get("table") and not error:
+            error = "the kill switch is off but its table is still loaded"
+        print(json.dumps({"mode": mode, "active": active, "loaded": loaded if active else bool(e.get("table")),
+                          "since": None, "lan": bool(e.get("lan")), "endpoints": 0, "error": error,
+                          "escape_hatch": bool(e.get("escape_hatch")), "version": 1,
+                          "persistent_mode": e.get("persistent_mode", mode), "runtime_override": False}))
+        return 3 if error else 0
+    if a[:1] == ["set"]:                  # fix-network.sh must never do this
+        st.setdefault("egress", {}).update({"mode": a[1], "table": a[1] != "off", "changed": False})
+        return 0
+    return 2
+
+
+def cmd_shadow_panic(st, a):
+    p = st.get("panic") or {"engaged": False, "table": False}
+    if a[:2] == ["status", "--json"]:
+        print(json.dumps({"engaged": bool(p.get("engaged")), "loaded": bool(p.get("table")), "error": None,
+                          "since": None, "steps": {}, "version": 1}))
+        return 0
+    if a[:1] == ["release"]:              # fix-network.sh must never do this
+        st["panic"] = {"engaged": False, "table": False}
+        return 0
+    return 2
+
+
 def cmd_shadow_anon(st, a):
     hooks = st.setdefault("hooks", {})
     if a[0] == "kill-switch-off":
         for t in hooks.values():
             if "SHADOWKILL" in t:
                 t.remove("SHADOWKILL")
+        # The Shadow kill switch, if Hide Me turned it on: back to the mode before it.
+        state_file = rpath("run/shadow-anon-state.json")
+        if os.path.exists(state_file) and not st.get("anon_ks_off_fails"):
+            with open(state_file) as f:
+                anon = json.load(f)
+            if anon.get("killswitch_by") and st.get("egress", {}).get("mode") == "tor":
+                before = (anon.get("killswitch_before") or {}).get("mode") or "off"
+                st["egress"].update({"mode": before, "table": before != "off", "changed": False})
+                for k in ("killswitch_by", "killswitch_before", "killswitch_persisted"):
+                    anon.pop(k, None)
+                anon["kill_switch"] = False
+                with open(state_file, "w") as f:
+                    json.dump(anon, f)
     elif a[0] == "transparent-proxy-off":
         if "SHADOWTOR" in hooks.get("nat", []):
             hooks["nat"].remove("SHADOWTOR")
+    elif a[0] == "dns-protect-off" and os.path.exists(rpath("run/systemd/resolved.conf.d/95-shadow-anon.conf")):
+        # Hide Me with systemd-resolved: only its runtime resolved setting.
+        os.unlink(rpath("run/systemd/resolved.conf.d/95-shadow-anon.conf"))
     elif a[0] == "dns-protect-off":
         st["immutable"] = False
         if "SHADOWDNS" in hooks.get("nat", []):
@@ -563,6 +823,8 @@ def main():
         "iptables": cmd_iptables, "ip6tables": lambda s, x: cmd_iptables(s, x, True),
         "ss": cmd_ss, "modinfo": cmd_modinfo, "sysctl": cmd_sysctl, "chattr": cmd_chattr,
         "lsattr": cmd_lsattr, "shadow-anon": cmd_shadow_anon,
+        "shadow-killswitch": cmd_shadow_killswitch, "shadow-panic": cmd_shadow_panic, "nft": cmd_nft,
+        "busctl": cmd_busctl, "resolvectl": cmd_resolvectl,
         "update-initramfs": lambda s, x: 0,
         "hostname": lambda s, x: print(s.get("hostname", "shadow-3ebrpj3t")) or 0,
         "journalctl": lambda s, x: print("NetworkManager[1]: <info> dhcp4 (wlo1): activation: beginning transaction\n"

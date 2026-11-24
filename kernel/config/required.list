@@ -81,3 +81,39 @@ CONFIG_BT=m
 CONFIG_USB_STORAGE=m
 CONFIG_NVME_CORE=m
 CONFIG_VIRTIO_BLK=m
+
+# The kill switch, panic and Hide Me (security/firewall/shadow-killswitch,
+# security/firewall/shadow-panic, distro/base/rootfs/usr/bin/shadow-anon;
+# docs/security/kill-switch.md). Without them a mode cannot load (the tools
+# then report "not loaded") or existing connections are not cut.
+# "table inet": one table for IPv4 and IPv6 (selects NF_TABLES_IPV4/IPV6).
+CONFIG_NF_TABLES_INET=y
+# "ct state established,related" (replies from a VPN tunnel to a forwarded VM).
+CONFIG_NFT_CT=m
+CONFIG_NF_CONNTRACK=m
+# "conntrack -F" when a mode is engaged or a panic starts (ctnetlink).
+CONFIG_NF_CT_NETLINK=m
+# "ss -K": closing the sockets a stricter mode or a panic blocks.
+CONFIG_INET_DIAG=m
+CONFIG_INET_TCP_DIAG=m
+CONFIG_INET_UDP_DIAG=m
+CONFIG_INET_DIAG_DESTROY=y
+# The bridge tables of the kill switch and the panic: frames a bridge forwards
+# (virtual machines, containers bridged to the network card) never reach the
+# inet hooks without br_netfilter. Without it the tools load the inet table
+# alone and warn that bridged guests are not covered.
+CONFIG_NF_TABLES_BRIDGE=m
+# The tunnels the "vpn" mode lets out (OpenVPN's tun devices, WireGuard).
+CONFIG_TUN=m
+CONFIG_WIREGUARD=m
+# The panic soft-blocks radios through /sys/class/rfkill.
+CONFIG_RFKILL=m
+# Hide Me's transparent Tor proxy and DNS redirect are iptables-nft nat rules.
+# iptables-nft loads "-m owner" and "-j REDIRECT" as xt compat expressions
+# ([match owner], [target REDIRECT]; checked with iptables 1.8.10), not as
+# nft's native redirect (CONFIG_NFT_REDIR, which nothing here uses).
+CONFIG_NFT_COMPAT=m
+CONFIG_NFT_NAT=m
+CONFIG_NF_NAT=m
+CONFIG_NETFILTER_XT_MATCH_OWNER=m
+CONFIG_NETFILTER_XT_TARGET_REDIRECT=m

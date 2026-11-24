@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Shadow OS panic: let a person at the computer cut every network connection
+// without a password, from the desktop's panic shortcut.
+//
+// The grant is exactly:
+//   * the action org.freedesktop.systemd1.manage-units,
+//   * for the unit "shadow-panic.service" and the verb "start" only (systemd
+//     passes both as action details) — not stop, restart, enable or mask, and
+//     no other unit,
+//   * for a local, active session of a member of the group "sudo".
+// Engaging is one-way: it can only cut the network, never open it, so the
+// worst a process of that session can do with it is cut its own network.
+// Releasing needs an administrator (action org.shadow.panic.release).
+polkit.addRule(function(action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units")
+        return polkit.Result.NOT_HANDLED;
+    if (action.lookup("unit") !== "shadow-panic.service" || action.lookup("verb") !== "start")
+        return polkit.Result.NOT_HANDLED;
+    if (!subject.local || !subject.active || !subject.isInGroup("sudo"))
+        return polkit.Result.NOT_HANDLED;
+    return polkit.Result.YES;
+});

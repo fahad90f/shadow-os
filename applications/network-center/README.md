@@ -11,6 +11,7 @@ tools needed to find out why a connection does not work.
 | Interfaces | every kernel interface: state, addresses, MAC, MTU, speed, driver, counters, live rx/tx rates with a 60 s history; connect / disconnect through NetworkManager |
 | IP configuration | per profile: method, addresses, gateway, DNS, search domains for IPv4 and IPv6; validated, reviewed, then applied |
 | DNS | resolver configuration in effect (resolv.conf, systemd-resolved), DNS per device, DNS settings and DNS-over-TLS mode per profile |
+| Privacy | encrypted DNS for the whole computer (Automatic DoT / Strict DoT / DoH / Off, provider, DNSSEC) and the hardware (MAC) address policy (new address every boot / stable per network / real address, and "keep this network's address" per Wi-Fi or wired profile), through `shadow-netprivacy` |
 | Routing table | all routes of all tables (view only), neighbours |
 | Active connections | TCP/UDP sockets with owning processes, filter and sort; listeners bound beyond loopback are highlighted |
 | VPN | WireGuard and plug-in VPN profiles: connect, disconnect, autoconnect, remove; import WireGuard / OpenVPN files |
@@ -18,7 +19,7 @@ tools needed to find out why a connection does not work.
 | Packet capture | capture to file with filter, size/time limits, ring buffer, live counters, stop; open in Wireshark |
 
 `shadow-network-center <page>` (or `--page <page>`) opens a page directly:
-`overview wifi interfaces ip dns routes connections vpn diagnostics capture`.
+`overview wifi interfaces ip dns privacy routes connections vpn diagnostics capture`.
 
 ## Data sources
 
@@ -32,6 +33,7 @@ tools needed to find out why a connection does not work.
 | NetworkManager | D-Bus, see below |
 | Diagnostics | `ping -n -c N -W 2 [-4/-6] -- HOST`; `traceroute` (or `tracepath`); `dig` (else `resolvectl query`, else the C library resolver); port check and the HTTPS step are connections made by the application itself (QTcpSocket / QSslSocket) |
 | Capture | `dumpcap` as the user when the account may use it (group `wireshark`), otherwise `tcpdump` through the helper |
+| Encrypted DNS, MAC policy | `/usr/sbin/shadow-netprivacy status --json` (package `shadow-hardening`; runs for any user, reports what systemd-resolved and NetworkManager have in force); the list of profiles comes from NetworkManager (below) |
 
 Every host name, address, port, interface name and UUID that reaches a tool is
 validated first (`netutil.cpp`) and passed as one element of an argument
@@ -73,6 +75,33 @@ NetworkManager's own polkit policy decides what the user may do.
   connectivity figure is then only derived from the routing table.
 
 ## Privileged operations
+
+### Encrypted DNS and MAC policy (`netprivacy.cpp`, page `privacy`)
+
+Changes run `pkexec /usr/sbin/shadow-netprivacy …` (polkit action
+`org.shadow.netprivacy.manage` from `shadow-hardening`, administrator, kept
+for a short time; root runs the tool directly), never the Network Center
+helper:
+
+| Control | Command |
+|---|---|
+| Encrypted DNS: mode, provider, DNSSEC, then "Apply" (one change, one prompt) | `dns {dot\|dot-strict\|doh\|off} [--provider quad9\|mullvad\|cloudflare\|custom:<ip>#<name>,…] --dnssec {allow-downgrade\|yes\|no}` (no `--provider` for `off`) |
+| Hardware address policy | `mac {per-boot\|per-network\|hardware}` |
+| "Keep this network's address" | `mac-exception {add\|remove} <connection UUID>` |
+
+Everything is checked here first with the tool's own rules (custom servers:
+IP literal, not loopback/multicast/unspecified, a full TLS host name, at most
+8; DoH not with a custom server, nor without dnscrypt-proxy; UUIDs), and passed
+as one argument each. The tool's confirmation (stdout) is the success message;
+its error (stderr, without the `shadow-netprivacy: ` prefix) the failure
+message. After every change the status is read again. The page shows what is
+in force — `encrypted` and the live DNSSEC value come from systemd-resolved —
+with the tool's `errors` and `warnings`, the Hide Me override and the escape
+hatch (`shadow.netprivacy=off`). A status field of an unexpected type is
+reported on the page, not guessed; an unreadable document shows "could not be
+read". Development hook: `SHADOW_NETPRIVACY_TOOL` replaces the tool's path.
+
+### Network Center helper
 
 One helper, `/usr/libexec/shadow/network-helper` (Python 3, standard library),
 started through `pkexec`. Policy: `org.shadow.networkcenter.policy`, generated
@@ -124,7 +153,8 @@ Recommended: `traceroute` (or `iputils-tracepath`), `bind9-dnsutils` (`dig`),
 `tcpdump` (capture; without it and without usable `dumpcap` the page says
 capture is not possible).
 
-Optional: `wireshark` ("Open in Wireshark"), `wireshark-common` (`dumpcap`,
+Optional: `shadow-hardening` (`shadow-netprivacy`, for the Privacy page;
+without it the page says it is not available), `wireshark` ("Open in Wireshark"), `wireshark-common` (`dumpcap`,
 capture without authentication for members of group `wireshark`),
 `network-manager-openvpn` (OpenVPN import and activation).
 
@@ -144,6 +174,9 @@ capture without authentication for members of group `wireshark`),
 * Capture through the helper produces classic pcap; pcapng only with dumpcap.
 * Sockets: `ss` has no JSON output; the fixed-column `-H -O` form is parsed.
 * `tests/` holds developer test aids (not built, not installed).
+* Privacy: the hardware address of a network is changed by NetworkManager the
+  next time it connects; the page does not reconnect anything. The policy
+  applies to Wi-Fi and wired profiles only.
 
 ## What was tested, and how
 
@@ -162,6 +195,29 @@ polkit, no hardware).
   * operations through the D-Bus code (`tests/nm-operations.sh`): activate, deactivate, connect/disconnect device, delete, autoconnect, IP/DNS/search/DoT change with and without re-activation (verified with `nmcli connection show`, `ip addr`, `ip route`, ping over the veth), update of a Wi-Fi profile keeps its stored passphrase, Wi-Fi radio off/on, WireGuard import, refused imports, failure messages (no suitable device, DHCP timeout, kernel without WireGuard);
   * GUI against it (Xvfb + xdotool): IP page edit → review dialog → "Save and re-activate" → verified with `nmcli` (`netcenter-nm-ip-edit.png`, `-review.png`, `-applied.png`); pages `netcenter-nm-overview|interfaces|ip|dns|vpn|wifi.png`.
 
+* **Privacy page** (osf lab chroot, Network Center running as the user
+  `nobody`, so every change went through a stand-in `pkexec` that records its
+  arguments): `tests/test_netprivacy_backend.py` — 17 tests, all passing:
+  `--dump privacy` with the tool missing, failing, printing something
+  unreadable, a document with fields of the wrong type (reported, not guessed)
+  and with errors, warnings and the escape hatch; `tests/harness/ncprivacy`
+  for the exact `pkexec … shadow-netprivacy dns|mac|mac-exception` command
+  lines, normalised custom servers, 16 kinds of input refused before anything
+  runs, the tool's own success and failure messages, pkexec 126/127, root
+  without pkexec, and the status read again after a change. Two tests run the
+  **real** `security/hardening/shadow-netprivacy` of this tree: on the chroot
+  (no resolved: its error is shown, every field read) and on a directory with
+  the shipped defaults (Automatic DoT, Quad9, allow-downgrade, a new address
+  every boot). GUI in the lab's HORIZON session (KWin, xdotool): choosing
+  Strict DoT and "Apply" ran `pkexec … dns dot-strict --provider quad9 --dnssec
+  allow-downgrade` and the page then showed the new state as "Encrypted".
+  Smoke list 11 of 11 without QML warnings. Screenshots (dark and light,
+  normal, problems, not installed) were reviewed during development.
+  To run: build `tests/harness` with `-DSHADOW_SRC=<tree>` (target
+  `ncprivacy`), then `SHADOW_NC_BIN=<build>/bin/shadow-network-center
+  SHADOW_NC_HARNESS=<harness build>/ncprivacy PYTHONDONTWRITEBYTECODE=1 python3
+  tests/test_netprivacy_backend.py -v` (skipped without the variables).
+
 ## Not tested
 
 * **Wi-Fi against hardware:** scan (`RequestScan`, access-point list), connecting to a new network with a password (`AddAndActivateConnection` with a `802-11-wireless-security` setting), wrong-password handling, OWE/SAE selection, hidden networks, the current-link section. There is no wireless device in the chroot; only saved Wi-Fi profiles (list, update, forget) and the radio switch were exercised.
@@ -171,4 +227,9 @@ polkit, no hardware).
 * **NetworkManager as an unprivileged user** (its polkit prompts, permission errors).
 * **dumpcap** back-end and **Wireshark** hand-over (neither is installed in the chroot).
 * **systemd-resolved** (`org.freedesktop.resolve1`) part of the DNS page.
+* **Privacy page against a running system:** the real `shadow-netprivacy`
+  changing systemd-resolved and NetworkManager from the page, its polkit prompt
+  (`org.shadow.netprivacy.manage`), and the per-network list with real
+  NetworkManager profiles (the lab has no NetworkManager; only exceptions
+  reported by the tool were listed).
 * In the namespace used for the NetworkManager tests `/sys` still shows the outer namespace, so per-interface counters of the test interfaces read "—" there; on a normal system the counters were verified on eth0.

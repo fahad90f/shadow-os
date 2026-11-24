@@ -733,7 +733,7 @@ NxPage {
                 Layout.fillWidth: true
                 visible: bruteAudit.phase === "found"
                 height: foundRow.implicitHeight + Theme.spaceMd * 2
-                radius: Theme.radius
+                radius: Theme.radiusMd
                 color: Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.12)
                 border.color: Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.35)
                 RowLayout {
@@ -750,7 +750,7 @@ NxPage {
                         text: bruteAudit.result
                         color: Theme.success
                         font.bold: true
-                        font.family: Theme.monoFamily
+                        font.family: Theme.fontMono
                         font.pixelSize: Theme.fontSizeBody + 2
                     }
                 }
@@ -763,7 +763,7 @@ NxPage {
                 text: bruteAudit.log.length > 0 ? bruteAudit.log[bruteAudit.log.length - 1] : ""
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSizeSmall
-                font.family: Theme.monoFamily
+                font.family: Theme.fontMono
                 elide: Text.ElideRight
             }
 

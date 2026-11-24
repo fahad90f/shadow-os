@@ -3,6 +3,12 @@
 # Shadow OS — OS hardening setup hook.
 # Runs during distro build (live-build hook) as root inside the chroot.
 # Best-effort: failures are logged but do not abort the build.
+#
+# Nothing here may change the running kernel: the build chroot shares the
+# build host's kernel, /proc/sys, /dev and network namespace, so "sysctl -p",
+# loading AppArmor profiles, rfkill, modprobe or firewall commands would change
+# the build machine, not the image. The image applies its settings at boot
+# (systemd-sysctl reads /etc/sysctl.d, apparmor.service loads the profiles).
 
 set +e
 set -u
@@ -42,21 +48,22 @@ log "Enabling AppArmor…"
 systemctl enable apparmor 2>/dev/null || warn "apparmor enable failed."
 
 if command -v aa-enforce >/dev/null 2>&1; then
-    aa-enforce /etc/apparmor.d 2>/dev/null || warn "aa-enforce had errors (non-fatal)."
-    log "AppArmor profiles set to enforce mode."
+    # --no-reload: only the profile files change; without it aa-enforce loads
+    # every profile into the kernel, which here is the build host's.
+    aa-enforce --no-reload /etc/apparmor.d 2>/dev/null || warn "aa-enforce had errors (non-fatal)."
+    log "AppArmor profiles set to enforce mode (loaded at boot by apparmor.service)."
 else
     warn "aa-enforce not found; AppArmor profiles left in complain mode."
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Apply extreme sysctl parameters immediately
+# 4. Extreme sysctl parameters: applied at every boot by systemd-sysctl
+#    ("sysctl -p" here would have changed the build host's kernel instead)
 # ---------------------------------------------------------------------------
 if [ -f /etc/sysctl.d/91-shadow-extreme.conf ]; then
-    log "Applying 91-shadow-extreme.conf sysctl params…"
-    sysctl -p /etc/sysctl.d/91-shadow-extreme.conf 2>/dev/null \
-        || warn "Some sysctl params not supported by build kernel (non-fatal)."
+    log "91-shadow-extreme.conf in place (applied at boot by systemd-sysctl)."
 else
-    warn "91-shadow-extreme.conf not found; sysctl step skipped."
+    warn "91-shadow-extreme.conf not found."
 fi
 
 # ---------------------------------------------------------------------------

@@ -203,6 +203,11 @@ apt remove <package>
 apt-mark hold <package>
 ```
 
+The chroot shares the live session's network and `/run`. Removing or
+reconfiguring `shadow-hardening` here changes only the installed system's
+files: its maintainer scripts recognise the chroot and leave the live
+session's kill switch, panic and Hide Me settings alone.
+
 ### Step 6: leave and restart
 
 ```sh
@@ -271,6 +276,26 @@ journalctl -D /mnt/var/log/journal -b -1 -p err      # from the live session, ou
 
 A filesystem named in `/etc/fstab` that no longer exists (a removed disk)
 stops the boot; comment its line out in `/mnt/etc/fstab`.
+
+### No network: the kill switch or a panic
+
+With the kill switch on, nothing leaves the computer unless Tor or the VPN
+works; a panic blocks everything. Both are visible in
+`shadow-killswitch status` and `shadow-panic status`. From a root shell — a
+terminal, or a text console with **Ctrl+Alt+F3** — turn them off:
+
+```sh
+sudo shadow-killswitch set off       # now and after restarts
+sudo shadow-panic release            # only if a panic is engaged
+```
+
+A panic also ends with a restart. If you cannot log in at all, boot once
+with the kill switch off: at the boot menu press **e**, append
+`shadow.killswitch=off` to the `linux` line, **Ctrl+X**. This does not change
+the saved setting; log in and run `sudo shadow-killswitch set off`, or fix
+Tor/the VPN and restart normally. From the live medium (section 3), set
+`"mode": "off"` in `/mnt/etc/shadow-os/killswitch.json`. Details:
+[../security/kill-switch.md](../security/kill-switch.md).
 
 ### The root filesystem needs checking
 

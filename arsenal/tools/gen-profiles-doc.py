@@ -7,7 +7,10 @@
     arsenal/tools/gen-profiles-doc.py --stdout
 
 Sizes are taken from profiles/sizes.json when that file exists (written by
-profile-size.py --write); without it the size column is left out.
+profile-size.py --write); without it the size column is left out. A profile
+entry there may carry its own "generated" date (its figures were recomputed
+alone, later); the document names those profiles and their dates, and the
+profiles whose figures were computed for a tool list other than today's.
 """
 import argparse
 import os
@@ -42,6 +45,30 @@ def load_sizes(profiles_dir):
         return None
 
 
+def size_caveats(profiles, sizes):
+    """Paragraphs on figures that do not share the file's date or today's tool lists."""
+    date, arch = sizes.get("generated", "?"), sizes.get("architecture", "amd64")
+    later, stale = [], []
+    for ident, manifest in profiles.items():
+        figures = sizes.get("profiles", {}).get(ident)
+        if not figures:
+            continue
+        if figures.get("generated", date) != date:
+            later.append(f"{manifest['name']} ({figures['generated']})")
+        # The tools profile-size.py hands to APT: those of the architecture, not optional.
+        current = len([t for t in am.effective_tools(profiles, ident)
+                       if arch in am.tool_architectures(t) and not am.is_optional(t)])
+        if "tools" in figures and figures["tools"] != current:
+            stale.append(f"{manifest['name']} ({figures['tools']} tools; now {current})")
+    out = []
+    if later:
+        out += ["Computed separately, on another day and possibly with other packages installed, so not",
+                f"directly comparable with the other rows: {', '.join(later)}.", ""]
+    if stale:
+        out += [f"Out of date, computed for an earlier tool list: {', '.join(stale)}.", ""]
+    return out
+
+
 def generate(profiles, categories, sizes):
     category_name = {c["id"]: c["name"] for c in categories}
     category_order = [c["id"] for c in categories]
@@ -60,8 +87,9 @@ def generate(profiles, categories, sizes):
         rule += "---:|---:|"
     out += [header, rule]
     for ident, manifest in profiles.items():
+        installed_tools = [t for t in am.effective_tools(profiles, ident) if not am.is_optional(t)]
         row = (f"| [{cell(manifest['name'])}](#{ident}) | `{manifest['metapackage']}` | "
-               f"{len(am.effective_tools(profiles, ident))} | {len(am.effective_external(profiles, ident))} |")
+               f"{len(installed_tools)} | {len(am.effective_external(profiles, ident))} |")
         if sizes:
             figures = sizes.get("profiles", {}).get(ident)
             row += (f" {am.format_bytes(figures['downloadBytes'])} | {am.format_bytes(figures['installedBytes'])} |"
@@ -74,6 +102,7 @@ def generate(profiles, categories, sizes):
                 f"computed {sizes.get('generated', '?')} by `tools/profile-size.py`). A desktop installation",
                 "already has many of the libraries, so the real figures are lower; the Arsenal application",
                 "shows them for the running system.", ""]
+        out += size_caveats(profiles, sizes)
 
     for ident, manifest in profiles.items():
         out += [f'<a id="{ident}"></a>', f"## {manifest['name']}", "", manifest["description"], "",
@@ -93,8 +122,12 @@ def generate(profiles, categories, sizes):
                 if tool["category"] != category:
                     continue
                 arches = ", ".join(am.tool_architectures(tool))
+                what = cell(tool["summary"])
+                if am.is_optional(tool):
+                    # Only suggested by the metapackage; the notes say why.
+                    what += f". *{cell(tool['notes'])}*"
                 out.append(f"| [{cell(tool['name'])}]({tool['homepage']}) | `{tool['package']}` | "
-                           f"{INTERFACE[tool['interface']]} | {arches} | {cell(tool['summary'])} |")
+                           f"{INTERFACE[tool['interface']]} | {arches} | {what} |")
             out.append("")
         external = manifest.get("external", [])
         if external:

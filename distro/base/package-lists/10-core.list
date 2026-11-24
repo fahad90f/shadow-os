@@ -94,6 +94,8 @@ udisks2
 # networking
 network-manager
 wpasupplicant
+# (systemd-resolved is in 45-security-core.list: only images with
+# shadow-hardening, which configures it, get it.)
 wireless-regdb
 iw
 iproute2

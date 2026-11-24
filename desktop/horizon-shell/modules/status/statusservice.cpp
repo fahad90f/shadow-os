@@ -5,6 +5,7 @@
 #include "statusbluetooth.h"
 #include "statusbrightness.h"
 #include "statuscalendar.h"
+#include "statuskillswitch.h"
 #include "statusmedia.h"
 #include "statusnetwork.h"
 #include "statusnightlight.h"
@@ -25,6 +26,7 @@ Service::Service(QObject *parent)
     add("brightness", m_brightness = new BrightnessBackend(this));
     add("media", m_media = new MediaBackend(this));
     add("nightLight", m_nightLight = new NightLightBackend(this));
+    add("killSwitch", m_killSwitch = new KillSwitchBackend(this));
     m_calendar = new CalendarBackend(this);
 }
 
@@ -45,6 +47,7 @@ QObject *Service::brightness() const { return m_brightness; }
 QObject *Service::media() const { return m_media; }
 QObject *Service::nightLight() const { return m_nightLight; }
 QObject *Service::calendar() const { return m_calendar; }
+QObject *Service::killSwitch() const { return m_killSwitch; }
 
 bool Service::allReady() const
 {

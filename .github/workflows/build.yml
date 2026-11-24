@@ -1,5 +1,8 @@
 # Shadow OS build and test pipeline.
 #
+#   tests          the suites that need no build or image (tests/run-suites.sh):
+#                  unit tests with stand-ins and static checks as a user, then
+#                  as root with the network-namespace suites; a skip fails it
 #   iso-amd64      packages + desktop ISO, boot tests (UEFI, Secure Boot, BIOS,
 #                  graphical session), uploads the ISO
 #   install-amd64  the installer scenario matrix against that ISO, each one
@@ -42,6 +45,38 @@ env:
   SHADOW_REPO_URL: ""
 
 jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nftables iptables conntrack iproute2 util-linux \
+            shellcheck libxml2-utils
+
+      # Root-only parts of these suites skip themselves here; they run in the
+      # next step.
+      - name: Unit suites and static checks (as a user)
+        run: tests/run-suites.sh --user --log-dir "$RUNNER_TEMP/suites-user"
+
+      # The same suites as root, and the ones that send real packets. They
+      # work in private network, mount and pid namespaces and never change the
+      # runner's network. --no-skip: every requirement is installed above, so
+      # a suite that skips itself fails the step.
+      - name: Namespace suites (root)
+        run: sudo tests/run-suites.sh --root --no-skip --log-dir "$RUNNER_TEMP/suites-root"
+
+      - name: Upload suite logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-suite-logs
+          path: ${{ runner.temp }}/suites-*/*.log
+          if-no-files-found: ignore
+
   iso-amd64:
     runs-on: ubuntu-24.04
     timeout-minutes: 300
@@ -84,6 +119,20 @@ jobs:
 
       - name: Build chroot
         run: sudo -E build/chroot/create.sh --arch amd64
+
+      # in_chroot's resolver handling (build/lib/common.sh), which every image
+      # step relies on, on an overlay of the chroot just made (it stays
+      # unchanged). Exit 77 (skipped) fails the step too.
+      - name: Image build resolver test
+        run: sudo tests/build/in-chroot-resolver-test.sh build/work/chroot-build-amd64
+
+      # Every package the image's Arsenal metapackages depend on is in the
+      # chroot's APT sources; otherwise "Build desktop ISO" fails hours later
+      # (docs/limitations.md: control.in's shadow-arsenal-pentest).
+      - name: Arsenal dependencies in the image's sources
+        run: |
+          SHADOW_TEST_APT_LISTS=build/work/chroot-build-amd64/var/lib/apt/lists \
+            python3 tests/build/test_arsenal_image_packages.py -v
 
       - name: Build packages
         run: sudo -E build/packages/build.sh

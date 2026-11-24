@@ -137,6 +137,10 @@
           "type": "string",
           "minLength": 10,
           "maxLength": 300
+        },
+        "optional": {
+          "description": "true: part of the profile, but the metapackage only Suggests it and 'install the profile's tools' leaves it out, because it conflicts with part of Shadow OS. 'notes' must say why.",
+          "type": "boolean"
         }
       }
     },

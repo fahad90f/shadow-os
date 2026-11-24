@@ -210,6 +210,27 @@ rm -f "$MERGED/var/lib/dbus/machine-id"
 if grep -rIl -e "$SHADOW_BUILD_MIRROR" "$MERGED/etc/apt" 2>/dev/null | grep -q .; then
     die "build-time mirror URL leaked into the image's APT configuration"
 fi
+# DNS: the bootstrap copied the build host's /etc/resolv.conf into the image
+# (0.2.0 shipped its 8.8.8.8/8.8.4.4), and systemd-resolved's postinst kept
+# that copy as /etc/.resolv.conf.systemd-resolved.bak. Neither ships: the
+# image uses systemd-resolved's stub (encrypted DNS, see
+# docs/security/private-dns.md); without resolved NetworkManager writes the
+# file at the first connection.
+rm -f "$MERGED/etc/.resolv.conf.systemd-resolved.bak" "$MERGED/etc/resolv.conf"
+if [ -x "$MERGED/usr/lib/systemd/systemd-resolved" ]; then
+    ln -s ../run/systemd/resolve/stub-resolv.conf "$MERGED/etc/resolv.conf"
+else
+    warn "systemd-resolved is not in the image: DNS will not be encrypted"
+    printf '# Written by NetworkManager at the first connection.\n' > "$MERGED/etc/resolv.conf"
+fi
+# libnss-resolve (recommended by systemd-resolved) must not be in the image:
+# it sends lookups past /etc/resolv.conf, and so past Hide Me's DNS redirect.
+# shellcheck disable=SC2016  # a dpkg-query format, not shell
+nss_resolve="$(run -- dpkg-query -W -f='${db:Status-Status}' libnss-resolve 2>/dev/null || true)"
+[ "$nss_resolve" != installed ] || die "libnss-resolve is installed in the image (see docs/security/private-dns.md)"
+if grep -Eq '^[[:space:]]*hosts:.*[[:space:]]resolve([[:space:]]|\[|$)' "$MERGED/etc/nsswitch.conf" 2>/dev/null; then
+    die "/etc/nsswitch.conf of the image sends host lookups to nss-resolve"
+fi
 
 # ---- kernel + initramfs for the boot loader ----------------------------------
 KERNEL="$(find "$MERGED/boot" -maxdepth 1 -name 'vmlinuz-*' | sort -V | tail -n1)"

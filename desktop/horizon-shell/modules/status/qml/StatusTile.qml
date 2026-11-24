@@ -19,6 +19,14 @@ Rectangle {
     property string reason: ""
     property bool hasDetails: false
     property string detailsTooltip: ""
+    // false: the tile is a button that opens something (its state is shown,
+    // not switched here), so it is not announced as a toggle.
+    property bool checkable: true
+    // "" | "warning" | "danger": the state needs attention.
+    property string tone: ""
+    // Shown on hover while the tile can be used ('reason' while it cannot).
+    property string tooltip: ""
+    readonly property color toneColor: tone === "danger" ? Theme.danger : tone === "warning" ? Theme.warning : Theme.accent
 
     signal toggled()
     signal detailsRequested()
@@ -29,7 +37,7 @@ Rectangle {
     radius: Theme.radiusMd
     color: active ? Theme.accentFill : Theme.hoverOverlay
     border.width: main.activeFocus ? Theme.focusRing : Theme.borderWidth
-    border.color: main.activeFocus ? Theme.accent : active ? Theme.alpha(Theme.accent, 0.45) : Theme.borderSubtle
+    border.color: main.activeFocus ? Theme.accent : tone !== "" || active ? Theme.alpha(toneColor, 0.45) : Theme.borderSubtle
     Behavior on color { ColorAnimation { duration: Theme.motionFast } }
 
     RowLayout {
@@ -44,8 +52,8 @@ Rectangle {
             Accessible.role: Accessible.Button
             Accessible.name: root.title
             Accessible.description: root.subtitle
-            Accessible.checkable: root.switchable
-            Accessible.checked: root.active
+            Accessible.checkable: root.switchable && root.checkable
+            Accessible.checked: root.checkable && root.active
             Accessible.onPressAction: if (root.switchable) root.toggled()
             Keys.onReturnPressed: if (root.switchable) root.toggled()
             Keys.onSpacePressed: if (root.switchable) root.toggled()
@@ -67,13 +75,13 @@ Rectangle {
                     implicitWidth: Theme.controlHeight
                     implicitHeight: Theme.controlHeight
                     radius: width / 2
-                    color: root.active ? Theme.accent : Theme.bgPressed
+                    color: root.tone !== "" ? root.toneColor : root.active ? Theme.accent : Theme.bgPressed
                     Behavior on color { ColorAnimation { duration: Theme.motionFast } }
                     NxIcon {
                         anchors.centerIn: parent
                         name: root.icon
                         size: Theme.iconSmall + 2
-                        color: root.active ? Theme.textOnAccent : Theme.textPrimary
+                        color: root.tone !== "" || root.active ? Theme.textOnAccent : Theme.textPrimary
                     }
                 }
                 ColumnLayout {
@@ -88,13 +96,19 @@ Rectangle {
                         font.weight: Theme.weightSemibold
                         elide: Text.ElideRight
                     }
+                    // A tone shows in the icon circle and the border; the
+                    // caption-size text stays in text colours (warning and
+                    // danger as text are below 4.5:1 on the tile:
+                    // tests/tst_status_tile_contrast.qml).
                     Text {
+                        objectName: "statusTileSubtitle"
                         Layout.fillWidth: true
                         visible: text !== ""
                         text: root.subtitle
-                        color: Theme.textSecondary
+                        color: root.tone !== "" ? Theme.textPrimary : Theme.textSecondary
                         font.family: Theme.fontUi
                         font.pixelSize: Theme.fontSizeCaption
+                        font.weight: root.tone !== "" ? Theme.weightSemibold : Theme.weightRegular
                         elide: Text.ElideRight
                     }
                 }
@@ -110,7 +124,7 @@ Rectangle {
             }
 
             ToolTip.visible: hover.hovered && ToolTip.text !== ""
-            ToolTip.text: !root.switchable ? root.reason : ""
+            ToolTip.text: !root.switchable ? root.reason : root.tooltip
             ToolTip.delay: 500
         }
 

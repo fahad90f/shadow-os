@@ -1,0 +1,1360 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""shadow-killswitch — the Shadow OS network kill switch (egress guard).
+
+    shadow-killswitch status [--json]
+    shadow-killswitch set {off|tor|vpn|tor-or-vpn} [--lan|--no-lan] [--runtime]
+    shadow-killswitch vpn-endpoint {add|remove} <ip>:<port>/<udp|tcp>
+    shadow-killswitch sync
+    shadow-killswitch boot
+    shadow-killswitch reassert [--watch]
+
+With the kill switch on, no packet leaves this computer except through Tor or
+a VPN tunnel. It is the nftables table "inet shadow_egress", with an output
+and a forward chain at priority -50 (after the NAT redirect of Hide Me's
+transparent Tor proxy, before the host firewall), both ending in a drop, and
+a postrouting chain that drops a loopback destination about to leave by a
+real device (a socket bound with SO_BINDTODEVICE). Frames bridged to a
+network card (a virtual machine or container on a bridge with the card as a
+port) never reach those hooks; the table "bridge shadow_egress", loaded in
+the same transaction, drops every one that is not going to another local
+guest's port.
+
+  mode tor         loopback (which includes Tor's SOCKS, TransPort and
+                   DNSPort), sockets of the user debian-tor, DHCP, IPv6
+                   neighbour discovery; nothing is forwarded (virtual
+                   machines, containers)
+  mode vpn         loopback, tunnel interfaces (wg*, tun* and the devices of
+                   active NetworkManager WireGuard/tun connections, but only
+                   layer-3 tunnel devices or TAP devices: a VLAN or macvlan
+                   named tun7 is not a tunnel), the VPN endpoints (address .
+                   protocol . port), sockets of the user nm-openvpn, DHCP,
+                   neighbour discovery; forwarding only into a tunnel (and
+                   the replies)
+  mode tor-or-vpn  both of the above
+  mode off         the tables are removed
+  --lan            also allows the local networks (RFC 1918, link-local,
+                   unique-local), but never Tor's virtual onion range
+
+The configuration (/etc/shadow-os/killswitch.json) is applied at boot by
+shadow-killswitch.service, before any network interface is configured.
+"set --runtime" changes the mode until the next restart only.
+
+Safety properties:
+  * the table text is validated with "nft --check" before it replaces
+    anything; loading is one atomic transaction (the table is deleted and
+    re-created in the same batch), so the previous protection stays in force
+    when a new one fails to load;
+  * whether the table is really loaded is read back from the kernel after
+    every change and written to /run/shadow/killswitch.json; nothing claims
+    a protection that is not in the live ruleset;
+  * engaging, or changing to a stricter mode, flushes connection tracking
+    and closes the sockets the new mode blocks;
+  * the kernel command-line parameter shadow.killswitch=off keeps the kill
+    switch off for that boot (the configuration is not changed);
+  * "reassert --watch" (shadow-killswitch-watch.timer, every 20 s) puts the
+    table back when something removed or changed it, e.g. "nft flush ruleset";
+    it does nothing, and writes nothing, while the kernel matches;
+  * host names are never resolved: VPN endpoints are IP literals only;
+  * nothing about blocked or allowed traffic is logged, only counters.
+
+Graphical tools call this program through pkexec (polkit action
+org.shadow.killswitch.manage); it must run as root. "status" also works for
+other users, from the last recorded state, without re-checking the kernel.
+"""
+import argparse
+import datetime
+import fcntl
+import fnmatch
+import hashlib
+import ipaddress
+import json
+import os
+import pwd
+import re
+import subprocess
+import sys
+import tempfile
+import time
+
+# Paths and names are constants of the program (never taken from the
+# environment); tests/security/ and tests/network/ point them at temporary
+# directories and test users.
+CONFIG = "/etc/shadow-os/killswitch.json"
+RUN_DIR = "/run/shadow"
+CMDLINE = "/proc/cmdline"
+TABLE = ("inet", "shadow_egress")
+BRIDGE_TABLE = ("bridge", "shadow_egress")     # bridged frames (virtual machines, containers)
+PRIORITY = -50
+TOR_USER = "debian-tor"          # a user name or a numeric uid
+OPENVPN_USER = "nm-openvpn"      # NetworkManager runs openvpn as this user after start-up
+ESCAPE_PARAM = "shadow.killswitch"
+MODES = ("off", "tor", "vpn", "tor-or-vpn")
+# Mode used when /etc/shadow-os/killswitch.json exists but cannot be read: the
+# file says the kill switch was configured, so fail closed, in the mode that
+# still lets a working Tor or VPN through.
+FAIL_CLOSED_MODE = "tor-or-vpn"
+DEFAULT_TUNNEL_IFACES = ["wg*", "tun*"]
+# Device type ARPHRD_NONE: the layer-3 tunnels (WireGuard, tun, ovpn, xfrm).
+# Only those, and TAP devices (kind "tun"), count as tunnel interfaces: their
+# packets reach Tor/OpenVPN's sockets or are encapsulated and filtered again,
+# whereas a VLAN or macvlan named "tun7" would put them on the wire.
+ARPHRD_NONE = 65534
+# Tor's VirtualAddrNetworkIPv4 (automapped .onion addresses, see shadow-anon).
+# Never "LAN", even with --lan: such a packet means the Tor redirect is missing.
+TOR_VIRTUAL_NET = "10.192.0.0/10"
+LAN4 = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "224.0.0.0/24"]
+LAN6 = ["fc00::/7", "fe80::/10", "ff02::/16"]
+TOOL_TIMEOUT = 10
+MAX_ENDPOINTS = 256
+
+IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
+IFACE_PATTERN_RE = re.compile(r"^[A-Za-z0-9_.-]{2,14}\*$")
+ENDPOINT_RE = re.compile(r"^(?:\[(?P<v6>[0-9A-Fa-f:.]+)\]|(?P<v4>[0-9.]+)):(?P<port>\d{1,5})/(?P<proto>udp|tcp)$")
+
+
+class Failure(Exception):
+    pass
+
+
+# --------------------------------------------------------------------------- helpers
+def now_iso():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def run(argv, check=True, timeout=60):
+    """Run a program without a shell. Returns (rc, stdout, stderr); rc 127: missing, 124: timeout."""
+    env = dict(os.environ, LC_ALL="C.UTF-8", LANGUAGE="C")
+    try:
+        p = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           env=env, timeout=timeout)
+        rc, out, err = p.returncode, p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
+    except FileNotFoundError:
+        rc, out, err = 127, "", f"{argv[0]} is not installed"
+    except subprocess.TimeoutExpired:
+        rc, out, err = 124, "", f"{argv[0]} did not finish within {timeout} s"
+    if check and rc != 0:
+        raise Failure(f"{argv[0]} failed: {(err or out).strip()}")
+    return rc, out, err
+
+
+def path(name):
+    return os.path.join(RUN_DIR, name)
+
+
+def write_atomic(target, data, mode):
+    directory = os.path.dirname(target)
+    os.makedirs(directory, mode=0o755, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix="." + os.path.basename(target) + ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def write_json(target, obj, mode):
+    write_atomic(target, json.dumps(obj, indent=2, sort_keys=True) + "\n", mode)
+
+
+def read_json(target):
+    """The parsed file, or None if it does not exist. Raises OSError/ValueError otherwise."""
+    try:
+        with open(target, encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return None
+
+
+class Busy(Exception):
+    """The lock is held and the caller asked not to wait (the watchdog)."""
+
+
+class Lock:
+    """Serialises the commands that change state (boot unit, dispatcher and UI can race).
+
+    The lock file is root-only: a file other users could open would let any
+    of them hold the lock and keep the kill switch from being changed. The
+    wait is bounded, so a stuck holder gives an error instead of a hang.
+    With wait=0 a held lock raises Busy at once.
+    """
+    WAIT = 30.0
+
+    def __init__(self, wait=None):
+        self.wait = self.WAIT if wait is None else wait
+
+    def __enter__(self):
+        os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+        self.fd = os.open(path("killswitch.lock"), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        os.fchmod(self.fd, 0o600)
+        deadline = time.monotonic() + self.wait
+        while True:
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except BlockingIOError:
+                if self.wait <= 0:
+                    os.close(self.fd)
+                    raise Busy()
+                if time.monotonic() > deadline:
+                    os.close(self.fd)
+                    raise Failure(f"another shadow-killswitch has been running for {self.wait:.0f} s; try again")
+                time.sleep(0.1)
+
+    def __exit__(self, *exc):
+        fcntl.flock(self.fd, fcntl.LOCK_UN)
+        os.close(self.fd)
+
+
+def resolve_uid(user):
+    """A user name or numeric uid → uid, or None when there is no such user."""
+    if isinstance(user, int) or (isinstance(user, str) and user.isdigit()):
+        return int(user)
+    try:
+        return pwd.getpwnam(user).pw_uid
+    except KeyError:
+        return None
+
+
+def escape_hatch():
+    """True when the kernel command line says shadow.killswitch=off (or 0/no/false)."""
+    try:
+        with open(CMDLINE, encoding="utf-8", errors="replace") as fh:
+            words = fh.read().split()
+    except OSError:
+        return False
+    hatch = False
+    for word in words:                       # the last occurrence wins, as for kernel parameters
+        if word == "--":
+            break                            # what follows is for init, not for the kernel
+        if word.startswith(ESCAPE_PARAM + "="):
+            hatch = word.split("=", 1)[1].lower() in ("off", "0", "no", "false")
+    return hatch
+
+
+def _host(addr):
+    return f"[{addr.compressed}]" if addr.version == 6 else addr.compressed
+
+
+# --------------------------------------------------------------------------- configuration
+def parse_endpoint(spec):
+    """'192.0.2.10:51820/udp' or '[2001:db8::1]:443/tcp' → dict. Never resolves names."""
+    m = ENDPOINT_RE.match(str(spec).strip())
+    if not m:
+        raise Failure(f"'{spec}' is not a VPN endpoint; expected <ip>:<port>/<udp|tcp> "
+                      "(IPv6 in brackets: [2001:db8::1]:51820/udp); host names are not accepted")
+    try:
+        addr = ipaddress.ip_address(m.group("v6") or m.group("v4"))
+    except ValueError:
+        raise Failure(f"'{spec}': not an IP address")
+    if (m.group("v6") is not None) != (addr.version == 6):
+        raise Failure(f"'{spec}': write IPv6 addresses in brackets and IPv4 addresses without")
+    if addr.is_unspecified or addr.is_multicast or addr.is_loopback:
+        raise Failure(f"'{spec}': {addr} cannot be a VPN endpoint")
+    port = int(m.group("port"))
+    if not 1 <= port <= 65535:
+        raise Failure(f"'{spec}': the port must be between 1 and 65535")
+    return {"address": addr.compressed, "port": port, "protocol": m.group("proto")}
+
+
+def endpoint_text(ep):
+    return f"{_host(ipaddress.ip_address(ep['address']))}:{ep['port']}/{ep['protocol']}"
+
+
+def check_iface(name):
+    if not isinstance(name, str) or not (IFACE_RE.match(name) or IFACE_PATTERN_RE.match(name)):
+        raise Failure(f"'{name}' is not an interface name or pattern (letters, digits, _ . -, at most "
+                      "15 characters; a pattern is a prefix of at least 2 characters followed by '*')")
+    if fnmatch.fnmatchcase("lo", name):
+        raise Failure(f"'{name}': loopback is always allowed and cannot be a tunnel interface")
+    return name
+
+
+def normalise_ifaces(names):
+    """Sorted, without duplicates and without entries a wildcard already covers.
+
+    nftables refuses overlapping elements in an interval set ("wg*" with "wg0").
+    """
+    names = sorted(set(names))
+    prefixes = [n[:-1] for n in names if n.endswith("*")]
+    keep = []
+    for n in names:
+        wildcard = n.endswith("*")
+        base = n[:-1] if wildcard else n
+        if any(base.startswith(p) and (base != p or not wildcard) for p in prefixes):
+            continue
+        keep.append(n)
+    return keep
+
+
+def default_config():
+    return {"version": 1, "mode": "off", "lan": False, "vpn_endpoints": [],
+            "tunnel_ifaces": normalise_ifaces(DEFAULT_TUNNEL_IFACES)}
+
+
+def validate_config(data):
+    if not isinstance(data, dict):
+        raise Failure("the configuration is not a JSON object")
+    if data.get("version", 1) != 1:
+        raise Failure(f"unsupported configuration version {data.get('version')!r}")
+    cfg = default_config()
+    if data.get("mode", "off") not in MODES:
+        raise Failure(f"unknown mode {data.get('mode')!r}; expected one of {', '.join(MODES)}")
+    cfg["mode"] = data.get("mode", "off")
+    if not isinstance(data.get("lan", False), bool):
+        raise Failure("'lan' must be true or false")
+    cfg["lan"] = data.get("lan", False)
+    eps = data.get("vpn_endpoints", [])
+    if not isinstance(eps, list) or len(eps) > MAX_ENDPOINTS:
+        raise Failure(f"'vpn_endpoints' must be a list of at most {MAX_ENDPOINTS} entries")
+    for ep in eps:
+        if isinstance(ep, dict):
+            addr = str(ep.get("address", ""))
+            try:
+                addr = _host(ipaddress.ip_address(addr))
+            except ValueError:
+                pass                          # parse_endpoint rejects it with a message
+            ep = f"{addr}:{ep.get('port')}/{ep.get('protocol')}"
+        parsed = parse_endpoint(ep)
+        if parsed not in cfg["vpn_endpoints"]:
+            cfg["vpn_endpoints"].append(parsed)
+    ifaces = data.get("tunnel_ifaces", DEFAULT_TUNNEL_IFACES)
+    if not isinstance(ifaces, list) or not ifaces or len(ifaces) > 32:
+        raise Failure("'tunnel_ifaces' must be a non-empty list of at most 32 names or patterns")
+    cfg["tunnel_ifaces"] = normalise_ifaces([check_iface(i) for i in ifaces])
+    return cfg
+
+
+def load_config(strict=False):
+    """The configuration. A missing file means "off".
+
+    A file that exists but cannot be used yields the fail-closed mode with
+    cfg["config_error"] set, or raises Failure when strict.
+    """
+    try:
+        data = read_json(CONFIG)
+        if data is None:
+            return default_config()
+        return validate_config(data)
+    except (OSError, ValueError, Failure) as exc:
+        msg = f"{CONFIG} cannot be used: {exc}"
+        if strict:
+            raise Failure(msg + " (replace it with: shadow-killswitch set <mode>)")
+        cfg = default_config()
+        cfg["mode"] = FAIL_CLOSED_MODE
+        cfg["config_error"] = (msg + f"; the kill switch fails closed in mode {FAIL_CLOSED_MODE}. Replace "
+                               f"it with 'shadow-killswitch set <mode>', or boot with {ESCAPE_PARAM}=off")
+        return cfg
+
+
+def save_config(cfg):
+    write_json(CONFIG, {k: cfg[k] for k in ("version", "mode", "lan", "vpn_endpoints", "tunnel_ifaces")}, 0o644)
+
+
+# --------------------------------------------------------------------------- runtime state
+def load_state():
+    """The state in force in this boot (/run/shadow/killswitch-state.json), or None."""
+    try:
+        st = read_json(path("killswitch-state.json"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(st, dict) or st.get("mode") not in MODES or not isinstance(st.get("lan"), bool):
+        return None
+    for key, default in (("nm_ifaces", []), ("nm_endpoints", []), ("nm_skipped", 0)):
+        st.setdefault(key, default)
+    return st
+
+
+def save_state(st):
+    write_json(path("killswitch-state.json"), st, 0o600)
+
+
+def new_state(cfg, *, hatch=False):
+    """The state a boot starts from: the configured mode, unless the escape hatch says off."""
+    mode = "off" if hatch else cfg["mode"]
+    return {"mode": mode, "lan": cfg["lan"], "runtime": False, "escape_hatch": hatch,
+            "since": None if mode == "off" else now_iso(), "nm_ifaces": [], "nm_endpoints": [], "nm_skipped": 0}
+
+
+def current_state(cfg):
+    """The state in force: the recorded one, else what boot would choose."""
+    st = load_state()
+    return st if st is not None else new_state(cfg, hatch=escape_hatch())
+
+
+def allowances(mode, lan):
+    """What a mode lets out, to decide whether a change is only a loosening."""
+    a = set()
+    if mode in ("tor", "tor-or-vpn"):
+        a.add("tor")
+    if mode in ("vpn", "tor-or-vpn"):
+        a.add("vpn")
+    if lan:
+        a.add("lan")
+    return a
+
+
+def needs_flush(old_mode, old_lan, old_loaded, new_mode, new_lan):
+    """Flush unless the new mode only adds to what an already loaded mode allowed."""
+    if new_mode == "off":
+        return False
+    if not old_loaded or old_mode == "off":
+        return True
+    return not allowances(new_mode, new_lan) >= allowances(old_mode, old_lan)
+
+
+def merged_ifaces(cfg, st):
+    return normalise_ifaces(list(cfg["tunnel_ifaces"]) + list(st.get("nm_ifaces", [])))
+
+
+def merged_endpoints(cfg, st):
+    out = []
+    for e in list(cfg["vpn_endpoints"]) + list(st.get("nm_endpoints", [])):
+        if e not in out:
+            out.append(e)
+    return out[:MAX_ENDPOINTS]
+
+
+# --------------------------------------------------------------------------- rendering
+def render(mode, lan, ifaces, endpoints, tor_uid, vpn_uid, bridge=True):
+    """(tables text, marker) for an engaged mode. The marker is the tables' comment.
+
+    bridge: also the table "bridge shadow_egress" (False only on a kernel
+    without the nftables bridge family, see bridge_family()).
+    """
+    if mode not in MODES or mode == "off":
+        raise ValueError(mode)
+    tor = mode in ("tor", "tor-or-vpn")
+    vpn = mode in ("vpn", "tor-or-vpn")
+    body = []
+    if vpn:
+        body += ["\tset tunnel_ifaces {", "\t\ttype ifname", "\t\tflags interval",
+                 "\t\telements = { " + ", ".join(f'"{i}"' for i in normalise_ifaces(ifaces)) + " }", "\t}"]
+        for version, typ in ((4, "ipv4_addr"), (6, "ipv6_addr")):
+            elems = sorted({f"{ipaddress.ip_address(e['address']).compressed} . {e['protocol']} . {e['port']}"
+                            for e in endpoints if ipaddress.ip_address(e["address"]).version == version})
+            body += [f"\tset vpn_endpoints{version} {{", f"\t\ttype {typ} . inet_proto . inet_service"]
+            if elems:
+                body.append("\t\telements = { " + ", ".join(elems) + " }")
+            body.append("\t}")
+    if lan:
+        for version, typ, nets in ((4, "ipv4_addr", LAN4), (6, "ipv6_addr", LAN6)):
+            body += [f"\tset lan{version} {{", f"\t\ttype {typ}", "\t\tflags interval",
+                     "\t\telements = { " + ", ".join(nets) + " }", "\t}"]
+
+    # A tunnel interface is trusted by name AND type: a layer-3 tunnel device
+    # (ARPHRD_NONE) or a TAP device (kind "tun"), never an Ethernet-type device
+    # that only carries such a name (a macvlan or VLAN "tun7" on the network card).
+    tunnel = [f"oifname @tunnel_ifaces meta oiftype {ARPHRD_NONE}", 'oifname @tunnel_ifaces meta oifkind "tun"']
+    out = ["\tchain output {", f"\t\ttype filter hook output priority {PRIORITY}; policy drop;",
+           '\t\toif "lo" counter accept comment "loopback: Tor SOCKS, TransPort, DNSPort"',
+           # A packet that nat OUTPUT redirected to 127.0.0.1 (Hide Me's TransPort and DNSPort)
+           # keeps its original output device in the output hook's state, so `oif "lo"` does
+           # not match it; it is accepted by its loopback destination. Such a destination is
+           # not proof of the loopback device: a socket bound to a network card
+           # (SO_BINDTODEVICE, no privilege needed since Linux 5.7) sends it out of the card.
+           # The postrouting chain below, which sees the device after the NAT re-route,
+           # drops those.
+           '\t\tip daddr 127.0.0.0/8 counter accept comment "redirected to local Tor"',
+           '\t\tip6 daddr ::1 counter accept comment "redirected to local Tor"']
+    if tor and tor_uid is not None:
+        out.append(f'\t\tmeta skuid {tor_uid} counter accept comment "tor"')
+    if vpn:
+        out += [f'\t\t{tunnel[0]} counter accept comment "vpn tunnel"',
+                f'\t\t{tunnel[1]} counter accept comment "vpn tunnel (tap)"',
+                '\t\tip daddr . meta l4proto . th dport @vpn_endpoints4 counter accept comment "vpn endpoint"',
+                '\t\tip6 daddr . meta l4proto . th dport @vpn_endpoints6 counter accept comment "vpn endpoint"']
+        if vpn_uid is not None:
+            out.append(f'\t\tmeta skuid {vpn_uid} counter accept comment "openvpn"')
+    out += ['\t\tmeta nfproto ipv4 udp sport 68 udp dport 67 counter accept comment "dhcp"',
+            '\t\tmeta nfproto ipv6 udp sport 546 udp dport 547 counter accept comment "dhcpv6"',
+            "\t\ticmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 "
+            'counter accept comment "neighbour discovery"',
+            "\t\ticmpv6 type { mld-listener-report, mld2-listener-report } ip6 daddr ff02::/16 "
+            'counter accept comment "multicast listener reports"']
+    if lan:
+        out += [f'\t\tip daddr {TOR_VIRTUAL_NET} counter drop comment "onion range is never the LAN"',
+                '\t\tip daddr @lan4 counter accept comment "lan"',
+                '\t\tip6 daddr @lan6 counter accept comment "lan"']
+    out += ['\t\tcounter drop comment "kill switch"', "\t}"]
+
+    fwd = ["\tchain forward {", f"\t\ttype filter hook forward priority {PRIORITY}; policy drop;"]
+    if vpn:
+        fwd += [f'\t\t{tunnel[0]} counter accept comment "into the tunnel"',
+                f'\t\t{tunnel[1]} counter accept comment "into the tunnel (tap)"',
+                '\t\tiifname @tunnel_ifaces ct state established,related counter accept comment "tunnel replies"']
+    fwd += ['\t\tcounter drop comment "kill switch"', "\t}"]
+
+    # In postrouting, oif is the device the packet really leaves by (after a NAT
+    # re-route), which the output hook cannot know. Nothing but lo may carry a
+    # loopback destination; a device-bound socket would otherwise put it, with its
+    # payload and the real address, on the local network.
+    post = ["\tchain postrouting {", f"\t\ttype filter hook postrouting priority {PRIORITY}; policy accept;",
+            '\t\toif != "lo" ip daddr 127.0.0.0/8 counter drop comment "loopback destination on a real device"',
+            '\t\toif != "lo" ip6 daddr ::1 counter drop comment "loopback destination on a real device"', "\t}"]
+
+    inner = "\n".join(body + out + fwd + post)
+    digest_text = inner
+    if bridge:
+        # Frames a bridge forwards between its ports (a virtual machine or container
+        # bridged to the network card) pass none of the inet hooks unless br_netfilter
+        # is loaded. They may go to another local guest (a TAP or veth port) and
+        # nowhere else: a bridged guest cannot reach a tunnel, and every other port
+        # (a network card, a VLAN, a bond) leads off this computer.
+        bridge_inner = "\n".join([
+            "\tchain forward {", f"\t\ttype filter hook forward priority {PRIORITY}; policy drop;",
+            '\t\tmeta oifkind { "tun", "veth" } counter accept comment "to a local virtual machine or container"',
+            '\t\tcounter drop comment "kill switch"', "\t}"])
+        digest_text += "\n" + bridge_inner
+    marker = (f"shadow-killswitch mode={mode} lan={'yes' if lan else 'no'} "
+              f"sha={hashlib.sha256(digest_text.encode()).hexdigest()[:16]}")
+    text = f"table {TABLE[0]} {TABLE[1]} {{\n\tcomment \"{marker}\"\n{inner}\n}}\n"
+    if bridge:
+        text += f"table {BRIDGE_TABLE[0]} {BRIDGE_TABLE[1]} {{\n\tcomment \"{marker}\"\n{bridge_inner}\n}}\n"
+    return text, marker
+
+
+def removal_text(bridge=True):
+    """Deletes the tables whether or not they exist, in one transaction."""
+    text = f"table {TABLE[0]} {TABLE[1]} {{}}\ndelete table {TABLE[0]} {TABLE[1]}\n"
+    if bridge:
+        text += f"table {BRIDGE_TABLE[0]} {BRIDGE_TABLE[1]} {{}}\ndelete table {BRIDGE_TABLE[0]} {BRIDGE_TABLE[1]}\n"
+    return text
+
+
+def _nft_error(text):
+    """Only nft's 'Error: …' lines: the quoted ruleset context could contain endpoint addresses."""
+    lines = [ln.split("Error:", 1)[1].strip() for ln in text.splitlines() if "Error:" in ln]
+    return "; ".join(lines) or text.strip().splitlines()[0] if text.strip() else "no message"
+
+
+def nft_load(text):
+    """Validate, then load as one atomic batch. Raises Failure; the kernel is unchanged on failure."""
+    os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=RUN_DIR, prefix=".killswitch.", suffix=".nft")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.chmod(tmp, 0o600)
+        rc, out, err = run(["nft", "--check", "--file", tmp], check=False)
+        if rc == 127:
+            raise Failure("nft is not installed (package nftables)")
+        if rc != 0:
+            raise Failure("the kill switch ruleset was rejected by nft --check and NOT loaded: "
+                          + _nft_error(err or out))
+        rc, out, err = run(["nft", "--file", tmp], check=False)
+        if rc != 0:
+            raise Failure("loading the kill switch ruleset failed: " + _nft_error(err or out))
+        os.replace(tmp, path("killswitch.nft"))      # a copy of what is loaded, root-only
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+_BRIDGE_FAMILY = None
+NO_BRIDGE_WARNING = ("this kernel has no nftables bridge family (CONFIG_NF_TABLES_BRIDGE): virtual machines "
+                     "and containers bridged to a network card are NOT covered")
+
+
+def bridge_family():
+    """Can this kernel filter bridged frames (the nftables bridge family)?
+
+    Asked once per run, and only after a load that included the bridge table
+    failed: "nft --check" sends the batch to the kernel, which validates it
+    without applying anything.
+    """
+    global _BRIDGE_FAMILY
+    if _BRIDGE_FAMILY is None:
+        os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=RUN_DIR, prefix=".killswitch-bridge.", suffix=".nft")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(f"table {BRIDGE_TABLE[0]} {BRIDGE_TABLE[1]}_check {{\n\tchain forward {{\n"
+                         f"\t\ttype filter hook forward priority {PRIORITY}; policy accept;\n\t}}\n}}\n")
+            _BRIDGE_FAMILY = run(["nft", "--check", "--file", tmp], check=False)[0] == 0
+        finally:
+            os.unlink(tmp)
+    return _BRIDGE_FAMILY
+
+
+def nft_load_tables(build):
+    """Load build(bridge) (bridge: with the bridge table). Returns whether the bridge
+    table is part of what was loaded. Raises Failure; the kernel is unchanged then.
+
+    Without the bridge family (a kernel built without it) the inet table is loaded
+    alone rather than not at all, and nothing is claimed for bridged traffic.
+    """
+    try:
+        nft_load(build(True))
+        return True
+    except Failure:
+        if bridge_family():
+            raise
+    nft_load(build(False))
+    return False
+
+
+def table_digest(items):
+    """Fingerprint of a table as the kernel lists it (nft --json): every set,
+    element, chain, policy, priority and rule, without rule handles and
+    counter values. Two listings have the same digest exactly when the table
+    is the same, whatever it has counted."""
+    def clean(obj):
+        if isinstance(obj, dict):
+            return {k: (None if k == "counter" and isinstance(v, dict) else clean(v))
+                    for k, v in obj.items() if k != "handle"}
+        if isinstance(obj, list):
+            return [clean(v) for v in obj]
+        return obj
+    body = [clean(item) for item in items if isinstance(item, dict) and "metainfo" not in item]
+    return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+
+
+def _table_items(table):
+    """One table as "nft --json list table" gives it: (items, None); ([], None) when
+    there is no such table; (None, reason) when the ruleset cannot be read."""
+    rc, out, err = run(["nft", "--json", "list", "table", *table], check=False, timeout=TOOL_TIMEOUT)
+    if rc != 0:
+        text = (err or out).strip()
+        if "No such file or directory" in text:
+            return [], None
+        return None, (_nft_error(text) if text else f"nft exited with status {rc}")
+    return json.loads(out).get("nftables", []), None
+
+
+def _summarise(items):
+    """(present, marker, {hook: (prio, policy)}, packets counted by drop rules) of one table."""
+    hooks, dropped, present, marker = {}, 0, False, None
+    for item in items:
+        if "table" in item:
+            present = True
+            marker = item["table"].get("comment")
+        elif "chain" in item and item["chain"].get("hook"):
+            c = item["chain"]
+            hooks[c["hook"]] = (c.get("prio"), c.get("policy"))
+        elif "rule" in item:
+            expr = item["rule"].get("expr", [])
+            if expr and isinstance(expr[-1], dict) and "drop" in expr[-1]:
+                dropped += sum(int(e["counter"].get("packets", 0)) for e in expr
+                               if isinstance(e, dict) and isinstance(e.get("counter"), dict))
+    return present, marker, hooks, dropped
+
+
+def inspect_table():
+    """Read the live tables (inet and bridge shadow_egress) back from the kernel.
+
+    {"present": True|False|None, "marker", "chains_ok", "dropped", "digest", "reason",
+     "bridge_present", "bridge_marker", "bridge_ok"};
+    present None means it could not be determined (not root, nft missing ...).
+    The digest covers both tables.
+    """
+    info = {"present": None, "marker": None, "chains_ok": False, "dropped": None, "digest": None, "reason": None,
+            "bridge_present": None, "bridge_marker": None, "bridge_ok": False}
+    try:
+        items, reason = _table_items(TABLE)
+        if items is not None:
+            bitems, reason = _table_items(BRIDGE_TABLE)
+        if items is None or bitems is None:
+            info["reason"] = reason
+            return info
+        present, marker, hooks, dropped = _summarise(items)
+        bpresent, bmarker, bhooks, bdropped = _summarise(bitems)
+        info.update({
+            "present": present, "marker": marker, "dropped": dropped + bdropped,
+            "chains_ok": (all(hooks.get(h) == (PRIORITY, "drop") for h in ("output", "forward"))
+                          and hooks.get("postrouting") == (PRIORITY, "accept")),
+            "bridge_present": bpresent, "bridge_marker": bmarker,
+            "bridge_ok": bhooks.get("forward") == (PRIORITY, "drop"),
+            "digest": table_digest(items + bitems) if present else None})
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        info["present"] = None
+        info["reason"] = f"could not interpret the nft JSON output: {exc}"
+    return info
+
+
+# --------------------------------------------------------------------------- sockets and conntrack
+def _split_addr(text):
+    """'192.0.2.1:443' / '[2001:db8::1]:443' / '0.0.0.0%lo:53' → (ip_address|None, port|None)."""
+    host, _, port = text.rpartition(":")
+    host = host.strip("[]").split("%", 1)[0]
+    try:
+        return ipaddress.ip_address(host), int(port)
+    except ValueError:
+        return None, None
+
+
+def list_sockets(proto):
+    """Connected sockets of this network namespace: [(proto, laddr, lport, raddr, rport, uid)]."""
+    flag = "-t" if proto == "tcp" else "-u"
+    rc, out, err = run(["ss", "-H", "-n", "-e", flag, "state", "established"], check=False, timeout=TOOL_TIMEOUT)
+    if rc != 0:
+        raise Failure((err or out).strip() or f"ss exited with status {rc}")
+    socks = []
+    for line in out.splitlines():
+        tok = line.split()
+        if len(tok) < 4:
+            continue
+        laddr, lport = _split_addr(tok[2])
+        raddr, rport = _split_addr(tok[3])
+        if laddr is None or raddr is None:
+            continue
+        m = re.search(r"\buid:(\d+)\b", line)        # ss omits uid:0
+        socks.append((proto, laddr, lport, raddr, rport, int(m.group(1)) if m else 0))
+    return socks
+
+
+def kill_sockets(keep):
+    """Close (ss -K) every connected socket for which keep(socket) is false.
+
+    Best effort: returns (closed, left_open, reason). ss's exit status does
+    not say whether the kernel destroyed anything, so the sockets are counted
+    again afterwards. Only counts are reported, never addresses.
+    """
+    closed = left = 0
+    reasons = []
+    for proto in ("tcp", "udp"):
+        try:
+            targets = [s for s in list_sockets(proto) if not keep(s)]
+        except Failure as exc:
+            reasons.append(str(exc))
+            continue
+        if not targets:
+            continue
+        flag = "-t" if proto == "tcp" else "-u"
+        for i in range(0, len(targets), 40):
+            terms = [f"( src {_host(la)} and sport = :{lp} and dst {_host(ra)} and dport = :{rp} )"
+                     for _, la, lp, ra, rp, _ in targets[i:i + 40]]
+            run(["ss", "-K", "-H", "-n", flag, "state", "established", " or ".join(terms)],
+                check=False, timeout=TOOL_TIMEOUT)
+        try:
+            wanted = {s[1:5] for s in targets}
+            remaining = sum(1 for s in list_sockets(proto) if s[1:5] in wanted)
+        except Failure as exc:
+            reasons.append(str(exc))
+            continue
+        left += remaining
+        closed += len(targets) - remaining
+    if left:
+        reasons.append(f"{left} connection(s) could not be closed (kernel without SOCK_DESTROY?)")
+    return closed, left, "; ".join(reasons) or None
+
+
+def flush_conntrack():
+    """conntrack -F. Returns None on success, else the reason."""
+    rc, out, err = run(["conntrack", "-F"], check=False, timeout=TOOL_TIMEOUT)
+    if rc == 0:
+        return None
+    return (err or out).strip() or f"conntrack exited with status {rc}"
+
+
+def tunnel_addresses(patterns):
+    """Local addresses of the tunnel interfaces: a name that matches the patterns and,
+    as in the rules, a layer-3 tunnel device (link type none) or a TAP (kind tun)."""
+    rc, out, _ = run(["ip", "-d", "-j", "address", "show"], check=False, timeout=TOOL_TIMEOUT)
+    addrs = set()
+    if rc != 0:
+        return addrs
+    try:
+        for link in json.loads(out):
+            kind = (link.get("linkinfo") or {}).get("info_kind")
+            if link.get("link_type") != "none" and kind != "tun":
+                continue
+            if any(fnmatch.fnmatchcase(link.get("ifname", ""), p) for p in patterns):
+                for a in link.get("addr_info", []):
+                    try:
+                        addrs.add(ipaddress.ip_address(a.get("local", "")))
+                    except ValueError:
+                        pass
+    except (ValueError, AttributeError):
+        pass
+    return addrs
+
+
+def make_keep(mode, lan, ifaces, endpoints, tor_uid, vpn_uid):
+    """Predicate: is this connected socket allowed by the mode (so it must not be closed)?"""
+    tor = mode in ("tor", "tor-or-vpn")
+    vpn = mode in ("vpn", "tor-or-vpn")
+    eps = {(ipaddress.ip_address(e["address"]), e["protocol"], e["port"]) for e in endpoints}
+    tun_addrs = tunnel_addresses(ifaces) if vpn else set()
+    lan_nets = [ipaddress.ip_network(n) for n in LAN4 + LAN6]
+    onion = ipaddress.ip_network(TOR_VIRTUAL_NET)
+
+    def keep(s):
+        proto, la, lp, ra, rp, uid = s
+        if ra.is_loopback or (ra.version == 6 and ra.ipv4_mapped is not None and ra.ipv4_mapped.is_loopback):
+            return True
+        if tor and tor_uid is not None and uid == tor_uid:
+            return True
+        if vpn and ((vpn_uid is not None and uid == vpn_uid) or (ra, proto, rp) in eps or la in tun_addrs):
+            return True
+        if proto == "udp" and lp in (68, 546):
+            return True
+        if lan and ra.version == 4 and ra in onion:
+            return False
+        return bool(lan and any(ra in n for n in lan_nets if n.version == ra.version))
+    return keep
+
+
+# --------------------------------------------------------------------------- NetworkManager
+def nm_split(line):
+    """One line of nmcli terse output → fields (':' separates, '\\' escapes ':' and '\\')."""
+    fields, cur, i = [], [], 0
+    while i < len(line):
+        ch = line[i]
+        if ch == "\\" and i + 1 < len(line):
+            cur.append(line[i + 1])
+            i += 2
+            continue
+        if ch == ":":
+            fields.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    fields.append("".join(cur))
+    return fields
+
+
+def nm_unescape(value):
+    """One terse value printed alone (nmcli -g): undo the '\\' escaping only."""
+    return re.sub(r"\\(.)", r"\1", value)
+
+
+def parse_vpn_data(text):
+    """vpn.data as nmcli prints it, 'key = value, key = value' with '\\,' in values → dict."""
+    items, cur, i = [], [], 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\" and i + 1 < len(text):
+            cur.append(text[i + 1])
+            i += 2
+            continue
+        if ch == ",":
+            items.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    items.append("".join(cur))
+    data = {}
+    for item in items:
+        key, sep, value = item.partition("=")
+        if sep:
+            data[key.strip()] = value.strip()
+    return data
+
+
+def openvpn_endpoints(data):
+    """Endpoints of an NM OpenVPN profile's vpn.data → (list, number of entries skipped)."""
+    default_port = data.get("port", "1194")
+    default_proto = "tcp" if data.get("proto-tcp", "no") == "yes" else "udp"
+    eps, skipped = [], 0
+    for remote in re.split(r"[,\s]+", data.get("remote", "").strip()):
+        if not remote:
+            continue
+        host, port, proto = remote, default_port, default_proto
+        if remote.startswith("["):
+            host, _, rest = remote[1:].partition("]")
+            parts = rest[1:].split(":") if rest.startswith(":") else []
+            port = parts[0] if parts and parts[0] else port
+            proto = parts[1] if len(parts) > 1 and parts[1] else proto
+        elif remote.count(":") <= 2:
+            parts = remote.split(":")
+            host = parts[0]
+            port = parts[1] if len(parts) > 1 and parts[1] else port
+            proto = parts[2] if len(parts) > 2 and parts[2] else proto
+        proto = "tcp" if proto.lower().startswith("tcp") else "udp"
+        try:
+            addr = ipaddress.ip_address(host)
+            eps.append(parse_endpoint(f"{_host(addr)}:{int(port)}/{proto}"))
+        except (ValueError, Failure):
+            skipped += 1               # a host name: never resolved here (see the documentation)
+    return eps, skipped
+
+
+def wg_endpoints(device):
+    """Peer endpoints of an active WireGuard device, from the kernel (wireguard-tools)."""
+    rc, out, _ = run(["wg", "show", device, "endpoints"], check=False, timeout=TOOL_TIMEOUT)
+    eps = []
+    if rc != 0:
+        return eps
+    for line in out.splitlines():
+        tok = line.split()
+        if len(tok) == 2 and tok[1] != "(none)":
+            addr, port = _split_addr(tok[1])
+            if addr is not None:
+                try:
+                    eps.append(parse_endpoint(f"{_host(addr)}:{port}/udp"))
+                except Failure:
+                    pass
+    return eps
+
+
+def nm_collect():
+    """Tunnel devices and VPN endpoints NetworkManager knows about → (ifaces, endpoints, skipped).
+
+    * devices of active WireGuard and tun connections are tunnel interfaces;
+    * WireGuard peers are read from the kernel for active devices (nmcli does
+      not show peers);
+    * every saved OpenVPN profile counts, active or not: openvpn talks to its
+      server as root before it drops to nm-openvpn, so the server must be
+      allowed before the tunnel exists.
+    Host names are skipped, never resolved. Raises Failure when nmcli fails.
+    """
+    rc, out, err = run(["nmcli", "-t", "-f", "UUID,TYPE,DEVICE", "connection", "show", "--active"],
+                       check=False, timeout=TOOL_TIMEOUT)
+    if rc != 0:
+        raise Failure("nmcli: " + ((err or out).strip() or f"exit status {rc}"))
+    ifaces, endpoints, skipped = [], [], 0
+    for line in out.splitlines():
+        f = nm_split(line)
+        if len(f) >= 3 and f[1] in ("wireguard", "tun") and IFACE_RE.match(f[2]) and f[2] != "lo":
+            ifaces.append(f[2])
+            if f[1] == "wireguard":
+                endpoints += wg_endpoints(f[2])
+    rc, out, err = run(["nmcli", "-t", "-f", "UUID,TYPE", "connection", "show"], check=False, timeout=TOOL_TIMEOUT)
+    if rc != 0:
+        raise Failure("nmcli: " + ((err or out).strip() or f"exit status {rc}"))
+    for line in out.splitlines():
+        f = nm_split(line)
+        if len(f) < 2 or f[1] != "vpn":
+            continue
+        rc, out2, _ = run(["nmcli", "-t", "-g", "vpn.service-type,vpn.data", "connection", "show", f[0]],
+                          check=False, timeout=TOOL_TIMEOUT)
+        lines = out2.splitlines()
+        if rc != 0 or len(lines) < 2 or not nm_unescape(lines[0]).endswith(".openvpn"):
+            continue
+        eps, sk = openvpn_endpoints(parse_vpn_data(nm_unescape(lines[1])))
+        endpoints += eps
+        skipped += sk
+    uniq = []
+    for e in endpoints:
+        if e not in uniq:
+            uniq.append(e)
+    return sorted(set(ifaces)), uniq[:MAX_ENDPOINTS], skipped
+
+
+def refresh_nm(st):
+    """Update st with what NetworkManager knows; keep the previous data when nmcli fails."""
+    try:
+        st["nm_ifaces"], st["nm_endpoints"], st["nm_skipped"] = nm_collect()
+        st.pop("nm_error", None)
+        return True
+    except Failure as exc:
+        st["nm_error"] = str(exc)
+        return False
+
+
+# --------------------------------------------------------------------------- status
+def expected_marker(cfg, st):
+    if st["mode"] == "off":
+        return None
+    return render(st["mode"], st["lan"], merged_ifaces(cfg, st), merged_endpoints(cfg, st),
+                  resolve_uid(TOR_USER), resolve_uid(OPENVPN_USER), bridge=st.get("bridge", True))[1]
+
+
+def in_force(cfg, st, insp):
+    """Does the live ruleset (insp) hold exactly the tables of the engaged state st
+    (both chains of the inet table and, unless the kernel has no bridge family, the
+    bridge table, with the comment this configuration produces)?"""
+    marker = expected_marker(cfg, st)
+    if not (insp["present"] and insp["chains_ok"] and insp["marker"] == marker):
+        return False
+    if st.get("bridge", True):
+        return bool(insp.get("bridge_present") and insp.get("bridge_ok") and insp.get("bridge_marker") == marker)
+    return True
+
+
+def build_status(cfg, st, inspection, error=None):
+    """The status of state st against what the kernel really has (inspection)."""
+    mode = st["mode"]
+    active = mode != "off"
+    vpn = mode in ("vpn", "tor-or-vpn")
+    present = inspection["present"]
+    if present is None:
+        loaded = False
+        error = error or f"cannot read the live ruleset: {inspection['reason']}"
+    elif active:
+        loaded = in_force(cfg, st, inspection)
+        if not loaded and not error:
+            error = ("the kill switch table is not loaded" if not present else
+                     "the loaded kill switch table is not the one this configuration produces")
+    else:
+        loaded = bool(present or inspection.get("bridge_present"))
+        if loaded and not error:
+            error = "the kill switch is off but its table is still loaded"
+    if cfg.get("config_error") and not error:
+        error = cfg["config_error"]
+    return {
+        # the fields of the contract (docs/security/kill-switch.md)
+        "mode": mode,
+        "active": active,
+        "loaded": loaded,
+        "since": st.get("since") if active else None,
+        "lan": st["lan"],
+        "endpoints": len(merged_endpoints(cfg, st)) if vpn else 0,
+        "error": error,
+        "escape_hatch": bool(st.get("escape_hatch")),
+        # additions
+        "version": 1,
+        "persistent_mode": cfg["mode"],
+        "runtime_override": bool(st.get("runtime")),
+        "tunnel_ifaces": len(merged_ifaces(cfg, st)) if vpn else 0,
+        "skipped_hostnames": st.get("nm_skipped", 0) if vpn else 0,
+        "dropped_packets": inspection.get("dropped") if loaded and active else None,
+        "updated": now_iso(),
+    }
+
+
+# What the last change did (or could not do): kept when the status is
+# re-checked, replaced by the next change.
+LAST_CHANGE_KEYS = ("warnings", "conntrack_flushed", "sockets_closed", "change_error")
+
+
+def publish(status):
+    write_json(path("killswitch.json"), status, 0o644)
+
+
+def apply(cfg, st, *, flush, previous=None):
+    """Make the kernel match state st; record st and the status. Returns the status.
+
+    On failure the kernel is unchanged (one atomic batch). With previous
+    (the state in force before), the status then describes that state, checked
+    against the kernel, and the failed change is "change_error" (and a
+    warning): it is the outcome of a request, not the health of what is in
+    force. Without previous, the status describes st as not loaded.
+    """
+    mode, lan = st["mode"], st["lan"]
+    warnings = []
+    tor_uid, vpn_uid = resolve_uid(TOR_USER), resolve_uid(OPENVPN_USER)
+    ifaces, endpoints = merged_ifaces(cfg, st), merged_endpoints(cfg, st)
+    error = None
+    try:
+        if mode == "off":
+            nft_load_tables(removal_text)
+        else:
+            if mode in ("tor", "tor-or-vpn") and tor_uid is None:
+                warnings.append(f"there is no user {TOR_USER} (Tor is not installed): Tor traffic is blocked too")
+            bridge = nft_load_tables(lambda b: removal_text(b) + render(mode, lan, ifaces, endpoints, tor_uid,
+                                                                        vpn_uid, bridge=b)[0])
+            st["bridge"] = bridge
+            if not bridge:
+                warnings.append(NO_BRIDGE_WARNING)
+    except Failure as exc:
+        error = str(exc)
+    if error and previous is not None:
+        prev_cfg, prev_st = previous
+        status = build_status(prev_cfg, prev_st, inspect_table())
+        status["change_error"] = f"could not change to mode {mode}: {error}"
+        status["warnings"] = warnings + [status["change_error"]]
+        publish(status)
+        return status
+    insp = inspect_table()
+    status = build_status(cfg, st, insp, error)
+    # What the watchdog (reassert --watch) keeps in force: only a load that
+    # worked, and exactly the table the kernel had right after it.
+    st["applied"] = error is None and insp["present"] is not None and status["loaded"] == status["active"]
+    st["table_digest"] = insp["digest"] if status["active"] and status["loaded"] else None
+    if flush and status["active"] and status["loaded"]:
+        reason = flush_conntrack()
+        status["conntrack_flushed"] = reason is None
+        if reason:
+            warnings.append("connection tracking was not flushed: " + reason)
+        closed, _left, reason = kill_sockets(make_keep(mode, lan, ifaces, endpoints, tor_uid, vpn_uid))
+        status["sockets_closed"] = closed
+        if reason:
+            warnings.append("closing connections: " + reason)
+    if st.get("nm_error"):
+        warnings.append("NetworkManager could not be asked: " + st["nm_error"])
+    status["warnings"] = warnings
+    save_state(st)
+    publish(status)
+    return status
+
+
+def report(status, quiet=False):
+    change = status.get("change_error")
+    if change:
+        print(f"shadow-killswitch: {change}", file=sys.stderr)
+    if status.get("error"):
+        print(f"shadow-killswitch: {status['error']}", file=sys.stderr)
+    elif change:
+        kept = (f"mode {status['mode']}" + (", local network allowed" if status["lan"] else "")
+                if status["active"] else "off")
+        print(f"shadow-killswitch: nothing was changed; the kill switch stays {kept}.", file=sys.stderr)
+    for w in status.get("warnings", []):
+        if w != change:
+            print(f"shadow-killswitch: warning: {w}", file=sys.stderr)
+    if not quiet and not status.get("error") and not change:
+        if status["active"]:
+            print(f"Kill switch on: mode {status['mode']}" + (", local network allowed" if status["lan"] else "")
+                  + (f", {status['endpoints']} VPN endpoint(s)" if status["mode"] != "tor" else "") + ".")
+        else:
+            print("Kill switch off.")
+    return 1 if status.get("error") or change else 0
+
+
+# --------------------------------------------------------------------------- commands
+def cmd_status(args):
+    if os.geteuid() != 0:
+        try:
+            status = read_json(path("killswitch.json"))
+        except (OSError, ValueError):
+            status = None
+        if not isinstance(status, dict):
+            status = {"mode": None, "active": None, "loaded": None, "error": "no status recorded in this boot"}
+        status["verified"] = False
+    else:
+        cfg = load_config()
+        with Lock():
+            st = current_state(cfg)
+            status = build_status(cfg, st, inspect_table())
+            try:
+                old = read_json(path("killswitch.json")) or {}
+            except (OSError, ValueError):
+                old = {}
+            for key in LAST_CHANGE_KEYS:
+                if key in old:
+                    status[key] = old[key]
+            publish(status)
+        status["verified"] = True
+    if args.json:
+        json.dump(status, sys.stdout, indent=2, sort_keys=True)
+        print()
+    else:
+        if status.get("active"):
+            print(f"Kill switch:     {'ON' if status.get('loaded') else 'ON BUT NOT LOADED'} "
+                  f"(mode {status.get('mode')})")
+        else:
+            hatch = f" ({ESCAPE_PARAM}=off on the kernel command line)" if status.get("escape_hatch") else ""
+            print("Kill switch:     off" + hatch)
+        if status.get("persistent_mode") is not None:
+            print(f"At start-up:     {status['persistent_mode']}"
+                  + ("  (a temporary mode is in force)" if status.get("runtime_override") else ""))
+        if status.get("active"):
+            print(f"Local network:   {'allowed' if status.get('lan') else 'blocked'}")
+            if status.get("mode") != "tor":
+                print(f"VPN endpoints:   {status.get('endpoints', 0)}")
+            if status.get("dropped_packets") is not None:
+                print(f"Blocked packets: {status['dropped_packets']}")
+        if status.get("error"):
+            print(f"Problem:         {status['error']}")
+        if status.get("change_error"):
+            print(f"Last change:     {status['change_error']} (nothing was changed)")
+        if not status.get("verified"):
+            print("(not re-checked against the kernel: run as root for a live check)")
+    if not status.get("verified"):
+        return 4
+    return 3 if status.get("error") else 0
+
+
+def cmd_set(args):
+    cfg = load_config()                  # a broken file is replaced by this command
+    cfg.pop("config_error", None)
+    with Lock():
+        prev = current_state(cfg)
+        insp = inspect_table()
+        prev_loaded = bool(insp["present"])
+        lan = prev["lan"] if args.lan is None else args.lan
+        st = {"mode": args.mode, "lan": lan, "runtime": bool(args.runtime), "escape_hatch": False,
+              "nm_ifaces": prev.get("nm_ifaces", []), "nm_endpoints": prev.get("nm_endpoints", []),
+              "nm_skipped": prev.get("nm_skipped", 0)}
+        same = (prev["mode"], prev["lan"]) == (args.mode, lan) and prev_loaded
+        st["since"] = None if args.mode == "off" else (prev.get("since") if same else now_iso())
+        if args.mode in ("vpn", "tor-or-vpn"):
+            refresh_nm(st)
+        new_cfg = dict(cfg)
+        if not args.runtime:
+            new_cfg["mode"], new_cfg["lan"] = args.mode, lan
+        status = apply(new_cfg, st, flush=needs_flush(prev["mode"], prev["lan"], prev_loaded, args.mode, lan),
+                       previous=(cfg, prev))
+        if status.get("error") or status.get("change_error"):
+            return report(status)        # the configuration file is left as it was
+        if not args.runtime:
+            save_config(new_cfg)
+    return report(status)
+
+
+def cmd_vpn_endpoint(args):
+    ep = parse_endpoint(args.endpoint)
+    cfg = load_config(strict=True)
+    with Lock():
+        eps = [e for e in cfg["vpn_endpoints"] if e != ep]
+        if args.action == "add":
+            if len(eps) >= MAX_ENDPOINTS:
+                raise Failure(f"at most {MAX_ENDPOINTS} VPN endpoints can be configured")
+            eps.append(ep)
+        elif len(eps) == len(cfg["vpn_endpoints"]):
+            raise Failure(f"{endpoint_text(ep)} is not a configured VPN endpoint")
+        new_cfg = dict(cfg, vpn_endpoints=eps)
+        st = current_state(cfg)
+        if st["mode"] in ("vpn", "tor-or-vpn"):
+            status = apply(new_cfg, st, flush=False, previous=(cfg, st))
+            if status.get("error") or status.get("change_error"):
+                return report(status)
+        save_config(new_cfg)
+    print(f"VPN endpoint {endpoint_text(ep)} {'added' if args.action == 'add' else 'removed'}.")
+    return 0
+
+
+def cmd_sync(args):
+    cfg = load_config()
+    with Lock():
+        st = current_state(cfg)
+        if st["mode"] not in ("vpn", "tor-or-vpn"):
+            return 0                       # NetworkManager changes nothing in this mode
+        before = (merged_ifaces(cfg, st), merged_endpoints(cfg, st))
+        nm_ok = refresh_nm(st)
+        if not nm_ok:
+            print(f"shadow-killswitch: warning: NetworkManager could not be asked, the previous tunnel "
+                  f"interfaces and endpoints stay in force: {st['nm_error']}", file=sys.stderr)
+        if (merged_ifaces(cfg, st), merged_endpoints(cfg, st)) == before:
+            insp = inspect_table()
+            if insp["present"] and in_force(cfg, st, insp):
+                save_state(st)
+                return 0 if nm_ok else 1
+        status = apply(cfg, st, flush=False)
+    return report(status, quiet=True) or (0 if nm_ok else 1)
+
+
+def cmd_boot(args):
+    cfg = load_config()
+    with Lock():
+        st = load_state()
+        if st is None:                    # first run in this boot: /run is empty
+            st = new_state(cfg, hatch=escape_hatch())
+        # Otherwise the unit was restarted (or the package upgraded) in this
+        # boot: keep the mode in force, which may be a runtime one.
+        status = apply(cfg, st, flush=False)
+    if st.get("escape_hatch"):
+        print(f"shadow-killswitch: {ESCAPE_PARAM}=off is on the kernel command line: the kill switch stays "
+              f"off in this boot (configured mode: {cfg['mode']}).", file=sys.stderr)
+    return report(status, quiet=True)
+
+
+def kernel_matches(cfg, st, insp):
+    """Does the live table (insp) already hold state st exactly?"""
+    if insp["present"] is None:
+        return False
+    if st["mode"] == "off":
+        return not insp["present"] and not insp.get("bridge_present")
+    if not in_force(cfg, st, insp):
+        return False
+    return st.get("table_digest") in (None, insp["digest"])      # None: recorded by an older version
+
+
+def refresh_status(cfg, st, insp):
+    """Publish a fresh status only if the recorded one disagrees with the kernel (no write otherwise).
+
+    "Disagrees" includes the error: one recorded while something was wrong
+    (an older version's failed change, an unreadable ruleset) is replaced by
+    the verified state once the kernel matches.
+    """
+    try:
+        old = read_json(path("killswitch.json"))
+    except (OSError, ValueError):
+        old = None
+    status = build_status(cfg, st, insp)
+    if isinstance(old, dict) and all(old.get(k) == status[k] for k in ("mode", "loaded", "error")):
+        return
+    for key in LAST_CHANGE_KEYS:
+        if isinstance(old, dict) and key in old:
+            status[key] = old[key]
+    publish(status)
+
+
+def cmd_reassert(args):
+    """Load the mode in force again, unless the kernel already has exactly that table.
+
+    --watch (shadow-killswitch-watch.timer): restore only what was loaded in
+    this boot; nothing before the boot unit or "set" ran, nothing after a load
+    that failed (it was reported then, and is not retried every 20 s), nothing
+    while another shadow-killswitch holds the lock (it is changing the table).
+    Silent and without writes while the kernel matches; one line when
+    something was put back.
+    """
+    if args.watch and load_state() is None:
+        return 0
+    cfg = load_config()
+    try:
+        with Lock(wait=0 if args.watch else None):
+            st = load_state()
+            if st is None:
+                if args.watch:
+                    return 0
+                st = current_state(cfg)
+                recorded = False
+            else:
+                recorded = True
+            if args.watch and st.get("applied") is False:
+                return 0
+            insp = inspect_table()
+            if recorded and kernel_matches(cfg, st, insp):
+                if st["mode"] != "off" and st.get("table_digest") is None:
+                    st["table_digest"] = insp["digest"]
+                    save_state(st)
+                refresh_status(cfg, st, insp)
+                return 0
+            if st["mode"] == "off":
+                what = "a kill switch table was loaded although the kill switch is off; it was removed"
+            elif not insp["present"]:
+                what = (f"the kill switch table had been removed (for example by 'nft flush ruleset'); "
+                        f"it is loaded again (mode {st['mode']})")
+            else:
+                what = f"the kill switch table had been changed; it is loaded again (mode {st['mode']})"
+            status = apply(cfg, st, flush=False)
+    except Busy:
+        return 0
+    if recorded and st.get("applied"):
+        print(f"shadow-killswitch: {what}.")
+    return report(status, quiet=True)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="shadow-killswitch", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("status", help="show the state (exit 0: consistent, 3: problem, 4: not re-checked)")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_status, needs_root=False)
+    p = sub.add_parser("set", help="change the mode (kept across restarts unless --runtime)")
+    p.add_argument("mode", choices=MODES)
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--lan", dest="lan", action="store_true", default=None, help="allow the local networks")
+    g.add_argument("--no-lan", dest="lan", action="store_false", help="block the local networks")
+    p.add_argument("--runtime", action="store_true", help="until the next restart only")
+    p.set_defaults(func=cmd_set, needs_root=True)
+    p = sub.add_parser("vpn-endpoint", help="allow or forget a VPN server, <ip>:<port>/<udp|tcp>")
+    p.add_argument("action", choices=("add", "remove"))
+    p.add_argument("endpoint")
+    p.set_defaults(func=cmd_vpn_endpoint, needs_root=True)
+    sub.add_parser("sync", help="refresh tunnel interfaces and endpoints from NetworkManager").set_defaults(
+        func=cmd_sync, needs_root=True)
+    sub.add_parser("boot", help=f"apply the configuration at start-up (honours {ESCAPE_PARAM}=off)").set_defaults(
+        func=cmd_boot, needs_root=True)
+    p = sub.add_parser("reassert", help="load the mode in force again, without closing connections "
+                                        "(nothing happens while the kernel already has it)")
+    p.add_argument("--watch", action="store_true",
+                   help="as the watchdog timer: only restore what was loaded in this boot, never wait for the lock")
+    p.set_defaults(func=cmd_reassert, needs_root=True)
+    args = ap.parse_args(argv)
+    if args.needs_root and os.geteuid() != 0:
+        print("shadow-killswitch: must run as root (use sudo, or the Control Center)", file=sys.stderr)
+        return 1
+    try:
+        return args.func(args)
+    except Failure as exc:
+        print(f"shadow-killswitch: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

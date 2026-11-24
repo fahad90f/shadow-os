@@ -96,8 +96,12 @@ taken from its sources.
 ## Control Center
 
 [`applications/control-center/README-network-hardware.md`](../../applications/control-center/README-network-hardware.md)
-covers the nine network and hardware pages. The directory is shared by
-several authors, which is why that file is not called `README.md`.
+covers the nine network and hardware pages;
+[`README-security.md`](../../applications/control-center/README-security.md)
+covers Users, Privacy (including the network kill switch and panic sections,
+[../security/kill-switch.md](../security/kill-switch.md#in-the-control-center)),
+Firewall, Security and Updates. The directory is shared by several authors,
+which is why neither file is called `README.md`.
 
 | | |
 |---|---|
@@ -123,9 +127,9 @@ tree but excluded from package builds; see [In progress](#in-progress).
 |---|---|
 | Purpose | state of the network, configuration through NetworkManager, and diagnostic tools |
 | Binary / package | `shadow-network-center` / `shadow-network-center` |
-| Pages | `overview`, `wifi`, `interfaces`, `ip`, `dns`, `routes`, `connections`, `vpn`, `diagnostics`, `capture` (`shadow-network-center <page>`) |
+| Pages | `overview`, `wifi`, `interfaces`, `ip`, `dns`, `privacy` (encrypted DNS and the MAC address policy), `routes`, `connections`, `vpn`, `diagnostics`, `capture` (`shadow-network-center <page>`) |
 | Data sources | `ip -j` (addresses, routes, neighbours), `/sys/class/net`, `/etc/resolv.conf` and systemd-resolved, `/sys/class/rfkill`, `ss` (sockets), NetworkManager's D-Bus API; diagnostics with `ping`, `traceroute`/`tracepath`, `dig`/`resolvectl`, and the application's own TCP/TLS connections; capture with `dumpcap` (members of group `wireshark`) or `tcpdump` through the helper |
-| Privileges | one helper, `/usr/libexec/shadow/network-helper` (Python 3), through `pkexec`. Action `org.shadow.networkcenter.sockets` (`ss` as root; `auth_admin_keep` for an active session) and `org.shadow.networkcenter.capture` (`tcpdump`; `auth_admin` every time, active local session only). The helper validates interface and filter, never writes files (the capture is a stream; the unprivileged application writes `~/Captures`, files mode 0600), drops capabilities and sets `no_new_privs`, and ends when its standard input closes. NetworkManager changes are authorised by NetworkManager's own polkit policy |
+| Privileges | the Privacy page runs `pkexec /usr/sbin/shadow-netprivacy` (`dns`, `mac`, `mac-exception`) (`shadow-hardening`, action `org.shadow.netprivacy.manage`; reading `status --json` needs nothing). Otherwise one helper, `/usr/libexec/shadow/network-helper` (Python 3), through `pkexec`. Action `org.shadow.networkcenter.sockets` (`ss` as root; `auth_admin_keep` for an active session) and `org.shadow.networkcenter.capture` (`tcpdump`; `auth_admin` every time, active local session only). The helper validates interface and filter, never writes files (the capture is a stream; the unprivileged application writes `~/Captures`, files mode 0600), drops capabilities and sets `no_new_privs`, and ends when its standard input closes. NetworkManager changes are authorised by NetworkManager's own polkit policy |
 | Limitations | Wi-Fi set-up for WPA/WPA2/WPA3 personal, OWE and open networks only; no permanent secret agent; static routes and MTU are not editable; VPN import for WireGuard and OpenVPN only; helper captures are classic pcap |
 | Verified (per README) | kernel data against `ip` and `ss`; diagnostics on loopback including hostile input; 28 hostile helper invocations refused and a real capture on `lo` with dropped privileges; NetworkManager read and change operations against a real daemon (1.52.1) in a private namespace |
 | Not verified | Wi-Fi against hardware; the secret prompt; OpenVPN; WireGuard activation; pkexec/polkit (action selection, prompts); NetworkManager as an unprivileged user; dumpcap and Wireshark hand-over; systemd-resolved |

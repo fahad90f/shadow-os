@@ -2,7 +2,8 @@
 //
 // The "status" shell module: status indicators in the panel, the quick
 // settings popup, the on-screen display of the volume, brightness and media
-// keys, and the calendar popup.
+// keys, the calendar popup, and the network kill switch / panic state (panel
+// indicator, quick-settings tile, panic banner).
 #include "module.h"
 #include "statusservice.h"
 
@@ -18,6 +19,9 @@ static void init(Horizon::ShellContext &ctx)
     ctx.addSurface(QStringLiteral("StatusQuickSettings.qml"));
     ctx.addSurface(QStringLiteral("StatusCalendar.qml"));
     ctx.addSurface(QStringLiteral("StatusOsd.qml"));
+    // The panic banner (state from status.killSwitch, actions of the core's
+    // "panic" object).
+    ctx.addSurface(QStringLiteral("StatusPanicBanner.qml"));
 }
 HORIZON_SHELL_MODULE(status, init)
 

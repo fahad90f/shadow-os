@@ -1,0 +1,30 @@
+#!/bin/sh
+set -e
+
+# True on the running system, false in a chroot of another root (see postrm;
+# the same function is in postinst).
+running_system() {
+    [ -d /run/systemd/system ] || return 1
+    root=$(stat -Lc %d:%i / 2>/dev/null) || return 1
+    [ "$root" = "$(stat -Lc %d:%i /proc/1/root/ 2>/dev/null)" ]
+}
+
+case "$1" in
+    remove)
+        # A panic turns NetworkManager networking off and soft-blocks the
+        # radios. NetworkManager and systemd-rfkill keep both across restarts,
+        # and only shadow-panic puts them back (at start-up through
+        # shadow-panic-reset.service), which go with this package: release an
+        # engaged panic while the program is still here. An upgrade keeps the
+        # panic. In a chroot the panic (if any) is the running system's, not
+        # this one's: left alone.
+        if running_system && [ -x /usr/sbin/shadow-panic ] && \
+           /usr/sbin/shadow-panic status --json 2>/dev/null | grep -q '"engaged": true'; then
+            /usr/sbin/shadow-panic release || \
+                echo "shadow-hardening: warning: could not release the panic; afterwards run: nmcli networking on; rfkill unblock all" >&2
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+exit 0

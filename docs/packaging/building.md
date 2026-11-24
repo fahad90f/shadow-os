@@ -135,13 +135,13 @@ From `debian/control` (source package `shadow-os`):
 
 | Package | Arch | Content |
 |---|---|---|
-| `shadow-base-files` | all | `os-release`, `issue`, `issue.net` (diverting Debian's), `/usr/share/shadow/shadow-release` |
+| `shadow-base-files` | all | `os-release`, `issue`, `issue.net` (diverting Debian's; `os-release` goes back at removal, the configuration files `issue` and `issue.net` at purge), `/usr/share/shadow/shadow-release` |
 | `shadow-archive-keyring` | all | repository public key and `shadow.sources` |
 | `shadow-boot` | all | `shadow-grub-install`, `/etc/default/grub`, `10-shadow.cfg`, dpkg trigger |
 | `shadow-installer` | all | installer engine |
 | `shadow-installer-gui` | any | graphical installer |
 | `shadow-live` | all | live-session configuration |
-| `shadow-hardening` | all | security baseline |
+| `shadow-hardening` | all | security baseline, including `shadow-harden` ([../security/hardening.md](../security/hardening.md#overview): diverted `/etc/nftables.conf`, removal, chroots) |
 | `shadow-artwork` | all | wallpapers, logos, GRUB and Plymouth themes |
 | `shadow-themes` | all | colour schemes, icon themes, SDDM theme, lock screen, `shadow-apply-appearance` |
 | `shadow-ui` | any | ShadowUI library, style and icons |

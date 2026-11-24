@@ -164,7 +164,7 @@ NxPage {
                 enabled: !audit.running
                 placeholderText: "AA:BB:CC:DD:EE:FF"
                 text: page.selectedBssid
-                font.family: Theme.monoFamily
+                font.family: Theme.fontMono
                 Accessible.name: qsTr("Manual BSSID")
                 onTextEdited: {
                     page.selectedBssid = text.toUpperCase()
@@ -437,7 +437,7 @@ NxPage {
                     verticalCenter: parent.verticalCenter
                 }
                 height: resultLabel.implicitHeight + Theme.spaceMd * 2
-                radius: Theme.radius
+                radius: Theme.radiusMd
                 color: Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.12)
                 border.color: Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.35)
 
@@ -461,7 +461,7 @@ NxPage {
                         color: Theme.success
                         font.pixelSize: Theme.fontSizeBody + 2
                         font.bold: true
-                        font.family: Theme.monoFamily
+                        font.family: Theme.fontMono
                     }
                     NxIconButton {
                         iconName: "copy"
@@ -507,7 +507,7 @@ NxPage {
                     text: modelData
                     color: Theme.textSecondary
                     font.pixelSize: Theme.fontSizeSmall
-                    font.family: Theme.monoFamily
+                    font.family: Theme.fontMono
                     wrapMode: Text.WrapAnywhere
                     elide: Text.ElideNone
                 }

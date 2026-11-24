@@ -45,6 +45,15 @@ HORIZON_SHELL_MODULE(notifications, init)
 
 `ShellContext` also gives access to the core services: `app`, `settings`,
 `applications`, `windows`, `workspaces`, `session`, `shortcuts`.
+Module QML can also use the core's context property `panic` (the panic
+action, `src/panic.h`: `phase`, `lockResult`, `clipboardResult`,
+`release()`, ...); a module that shows the panic state in a banner of its
+own sets `shell.panicBanner` to it (then `shell.panicBannerLoaded` is true
+and the core stops showing panic failures as toasts), and passes the state
+of `/run/shadow/panic.json` on with `panic.setServiceState()`, so that a
+release made elsewhere ends the core's request (the status module does
+both; its quick settings reuse the banner's buttons through
+`shell.panicBanner`).
 
 `init` runs once, on the GUI thread, before any QML is loaded. It must not
 block (no synchronous D-Bus calls that can time out) and must cope with a

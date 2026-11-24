@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "capture.h"
+#include "netprivacy.h"
 #include "netstate.h"
 #include "netutil.h"
 #include "nmclient.h"
@@ -19,7 +20,7 @@
 
 namespace {
 
-const char *kPages = "overview, wifi, interfaces, ip, dns, routes, connections, vpn, diagnostics, capture";
+const char *kPages = "overview, wifi, interfaces, ip, dns, privacy, routes, connections, vpn, diagnostics, capture";
 
 // "--page <key>" and "--page=<key>" are spellings of the positional page
 // argument. They are folded into it before the command line is parsed, so
@@ -90,6 +91,15 @@ int runDump(Shadow::App &app)
         if (!app.waitFor(&capture, SIGNAL(capabilityReady()), 30000))
             return timeout();
         return app.finishDump(capture.dump());
+    }
+
+    if (is("privacy")) {
+        // Encrypted DNS and the MAC address policy, as shadow-netprivacy reports them.
+        NetPrivacy privacy;
+        privacy.refresh();
+        if (!privacy.ready() && !app.waitFor(&privacy, SIGNAL(refreshed()), 90000))
+            return timeout();
+        return app.finishDump(privacy.dump());
     }
 
     if (is("connections") || is("vpn")) {
@@ -198,7 +208,7 @@ int main(int argc, char **argv)
     app.parser().addPositionalArgument(QStringLiteral("page"), QStringLiteral("Page to open: %1.").arg(QLatin1String(kPages)),
                                        QStringLiteral("[page]"));
     app.setDumpTopics({QStringLiteral("overview"), QStringLiteral("interfaces"), QStringLiteral("addresses"),
-                       QStringLiteral("routes"), QStringLiteral("dns"), QStringLiteral("sockets"), QStringLiteral("wifi"),
+                       QStringLiteral("routes"), QStringLiteral("dns"), QStringLiteral("privacy"), QStringLiteral("sockets"), QStringLiteral("wifi"),
                        QStringLiteral("connections"), QStringLiteral("vpn"), QStringLiteral("capture")});
     if (!app.processArguments())
         return 0;

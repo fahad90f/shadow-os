@@ -1,19 +1,26 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""shadow-anon — Shadow OS extreme-level identity protection engine.
+"""shadow-anon — Shadow OS identity protection engine (Hide Me).
 
-Extreme-level identity obliteration. Ghost Mode activates all protections
-simultaneously. Run as root (the Hide Me panel calls this via pkexec).
+Run as root (the Hide Me panel and Control Center → Privacy call it through
+pkexec). Ghost Mode switches every protection on at once.
 
 FEATURES
   Network layer
-    MAC randomization (every wired/wireless interface)
+    Network kill switch — handed to shadow-killswitch (mode "tor"): nothing
+      leaves except Tor's own traffic, loopback, DHCP and IPv6 neighbour
+      discovery; this covers IPv6 and routed, NAT and bridged virtual machines
+      and containers too (not macvtap/macvlan guests or passthrough cards)
+    Transparent Tor proxy — all TCP and DNS of every program through Tor,
+      .onion addresses included. It engages the kill switch first, because it
+      only redirects IPv4 TCP and DNS: UDP and IPv6 would otherwise go around
+    DNS-over-Tor — systemd-resolved forwards to Tor's DNSPort and every
+      IPv4 port-53 query is redirected there, every IPv6 one refused
+      (without systemd-resolved: resolv.conf)
+    Network address rotation — "Rotate identity" gives every connected
+      network a new MAC address (at most once in 5 minutes; never on a timer)
+    New Tor circuits (new apparent exit IP), optionally on a timer (≥ 60 s)
     IPv6 privacy (temporary addresses preferred)
-    Transparent Tor proxy — ALL TCP + DNS through Tor (iptables)
-    DNS-over-Tor — no DNS leaks (resolv.conf → Tor DNSPort)
-    Network kill switch — drop any non-Tor traffic, including all IPv6, so
-      nothing leaks the real IP if Tor stops (iptables + ip6tables)
-    New Tor circuits (new apparent exit IP)
     Tor bridge / obfs4 support for censored networks
 
   System layer
@@ -25,83 +32,232 @@ FEATURES
     USB storage kill switch (udev)
     Log wipe (journal rotate+vacuum, shell history, thumbnail cache, /tmp)
 
-  Threat presets
-    basic    — MAC random + IPv6 privacy + hostname
-    enhanced — basic + Tor + DNS protection
-    maximum  — enhanced + transparent proxy + kill switch + BT kill + kernel hardening
+  Threat presets (they never change the MAC address)
+    basic    — IPv6 privacy + hostname
+    enhanced — basic + new Tor circuits + DNS-over-Tor
+    maximum  — Ghost Mode: kill switch, transparent proxy, DNS-over-Tor,
+               Bluetooth kill, kernel hardening
 
   One-shot commands
-    rotate       — run current threat-level protections once
-    nuke         — ghost mode + wipe logs + new Tor exit
+    rotate       — "Rotate identity": new MAC address, hostname, Tor circuits
+    tor-newnym   — new Tor circuits only (what the rotation timer runs)
+    nuke         — Ghost Mode + new address + wipe logs + new Tor circuits
     leak-test    — show direct IP, Tor exit IP, DNS, IPv6 exposure
-    status       — full current-state report
+    status       — full current-state report (--json: the state record)
     boot         — run at every start (shadow-anon-boot.service): put DNS
-                   protection back and record the real state
+                   protection back, remove leftovers of older versions,
+                   record the real state
+    tor-socks    — Tor's SOCKS port 127.0.0.1:39 (and /run/tor/socks)
+                   instead of Debian's 9050, which any local user could
+                   take; torsocks and proxychains4 pointed at it, every
+                   connection to 127.0.0.1:9050 sent to Tor's port (one to
+                   [::1]:9050 refused), and a
+                   running Tor restarted for a changed file (boot does this
+                   too). --offline: only the files (the image build runs
+                   it so, in a chroot that shares the build machine's
+                   network)
 
 WHAT SURVIVES A RESTART
-  DNS protection does: its files (resolv.conf locked to Tor, NetworkManager
-  told to leave DNS alone) stay, and at every start "boot" puts back the
-  redirect to Tor's DNSPort that the files depend on (or hands DNS back to
-  NetworkManager when Tor is gone). The transparent proxy and the kill switch
-  are firewall rules only: they end with a restart, and so does Ghost Mode.
+  DNS protection does: the choice is kept (/etc/shadow-os/hide-me.json, or
+  the resolv.conf/NetworkManager files on systems without systemd-resolved)
+  and "boot" puts its runtime parts back (or hands DNS back when Tor is
+  gone). Ghost Mode, the transparent proxy and the kill switch end with a
+  restart, unless the kill switch was switched on with --persist.
+
+ESCAPE HATCH
+  shadow.hideme=off on the kernel command line: "boot" does not put DNS
+  protection back and hands DNS to the system resolver for that boot. The
+  kill switch has its own: shadow.killswitch=off.
+
+EXIT STATUS
+  0 done; 3 a protection could not be switched on or off (the reason is
+  printed and recorded as "error" in /run/shadow-anon-state.json, and the
+  state records only what is really in force); 1 not root or bad use.
 
 HONEST LIMITS
   Your real public IP is assigned by your ISP/router. What changes is your
   *apparent* exit IP when traffic goes through Tor. The transparent proxy
-  routes ALL TCP — not just browser traffic. UDP (except DNS) is blocked
-  while the proxy is active. Each rotation briefly drops connectivity.
+  routes ALL TCP — not just browser traffic; everything else (UDP, IPv6) is
+  blocked by the kill switch while it is on. A new MAC address means a new
+  DHCP lease and a short disconnection.
 """
-import argparse, json, os, random, shutil, string, subprocess, sys, time
+import argparse
+import fcntl
+import json
+import os
+import pwd
+import random
+import re
+import secrets
+import shutil
+import socket
+import stat
+import string
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 
 # ── utilities ─────────────────────────────────────────────────────────────────
 
+
+class Failure(Exception):
+    """A protection could not be switched on or off; the message says why."""
+
+
 def sh(cmd, timeout=30):
+    """Run a program (no shell). Returns (rc, stdout, stderr); never raises.
+
+    For queries whose failure is an answer. Steps that change protection go
+    through run(), which checks the return code.
+    """
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
         return r.returncode, r.stdout.strip(), r.stderr.strip()
     except FileNotFoundError:
-        return 127, "", "command not found"
+        return 127, "", f"{cmd[0]}: command not found"
     except subprocess.TimeoutExpired:
-        return 124, "", "timeout"
+        return 124, "", f"{cmd[0]}: timed out after {timeout} s"
+
+
+def run(cmd, what, timeout=30):
+    """Run a program; raise Failure("what: reason") unless it exits 0."""
+    rc, out, err = sh(cmd, timeout)
+    if rc != 0:
+        reason = (err or out or f"exit status {rc}").splitlines()[-1][:300]
+        raise Failure(f"{what}: {reason}")
+    return out
+
 
 def have(prog):
     return shutil.which(prog, path=os.environ.get("PATH", "") + ":/usr/sbin:/usr/bin:/sbin:/bin") is not None
+
 
 def need_root():
     if os.geteuid() != 0:
         sys.exit("shadow-anon: run as root (the Hide Me panel does this via pkexec).")
 
+
 def log(msg):  print(f"· {msg}",  flush=True)
 def ok(msg):   print(f"  ✓ {msg}", flush=True)
 def warn(msg): print(f"  ⚠ {msg}", flush=True)
 
+
+def write_atomic(target, text, mode=0o644):
+    """Write a file through a temporary file in the same directory and rename."""
+    directory = os.path.dirname(target)
+    os.makedirs(directory, mode=0o755, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix="." + os.path.basename(target) + ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _boottime():
+    """Seconds since boot, suspend included; immune to clock changes."""
+    return time.clock_gettime(time.CLOCK_BOOTTIME)
+
+
 STATE_FILE = "/run/shadow-anon-state.json"
+LOCK_FILE = "/run/shadow-anon.lock"
+CMDLINE = "/proc/cmdline"
+ESCAPE_PARAM = "shadow.hideme"
+
 
 def load_state():
     try:
-        return json.loads(Path(STATE_FILE).read_text())
-    except Exception:
+        s = json.loads(Path(STATE_FILE).read_text())
+        return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
         return {}
 
-def save_state(upd):
+
+def save_state(upd, drop=()):
     s = load_state()
     s.update(upd)
+    for key in drop:
+        s.pop(key, None)
     try:
-        Path(STATE_FILE).write_text(json.dumps(s, indent=2))
-        os.chmod(STATE_FILE, 0o644)
-    except Exception:
-        pass
+        write_atomic(STATE_FILE, json.dumps(s, indent=2, sort_keys=True) + "\n", 0o644)
+    except OSError as exc:
+        warn(f"{STATE_FILE}: {exc}")
+
+
+class Lock:
+    """One changing shadow-anon at a time (the panel, the timer, boot)."""
+    WAIT = 180.0
+
+    def __enter__(self):
+        self.fd = os.open(LOCK_FILE, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        deadline = time.monotonic() + self.WAIT
+        while True:
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except BlockingIOError:
+                if time.monotonic() > deadline:
+                    os.close(self.fd)
+                    raise Failure("another shadow-anon is still running; try again")
+                time.sleep(0.2)
+
+    def __exit__(self, *exc):
+        fcntl.flock(self.fd, fcntl.LOCK_UN)
+        os.close(self.fd)
+
+
+def escape_hatch():
+    """True when the kernel command line says shadow.hideme=off (or 0/no/false)."""
+    try:
+        words = Path(CMDLINE).read_text(errors="replace").split()
+    except OSError:
+        return False
+    hatch = False
+    for word in words:                       # the last occurrence wins
+        if word == "--":
+            break
+        if word.startswith(ESCAPE_PARAM + "="):
+            hatch = word.split("=", 1)[1].lower() in ("off", "0", "no", "false")
+    return hatch
+
+
+def user_exists(name):
+    try:
+        pwd.getpwnam(name)
+        return True
+    except KeyError:
+        return False
+
+
+def nm_unescape(value):
+    """A value printed by nmcli -g: undo its '\\' escaping."""
+    return re.sub(r"\\(.)", r"\1", value)
 
 # ── interfaces ────────────────────────────────────────────────────────────────
 
+
+SYS_NET = "/sys/class/net"
+
+
 def net_ifaces():
     out = []
-    for n in sorted(os.listdir("/sys/class/net")):
+    try:
+        names = sorted(os.listdir(SYS_NET))
+    except OSError:
+        return out
+    for n in names:
         if n == "lo":
             continue
         try:
-            tgt = os.readlink(f"/sys/class/net/{n}")
+            tgt = os.readlink(f"{SYS_NET}/{n}")
             if "virtual" in tgt and not n.startswith(("en", "eth", "wl")):
                 continue
         except OSError:
@@ -109,11 +265,30 @@ def net_ifaces():
         out.append(n)
     return out
 
+
 def nm_managed(iface):
     rc, out, _ = sh(["nmcli", "-g", "GENERAL.STATE", "device", "show", iface])
-    return rc == 0 and out and "unmanaged" not in out
+    return rc == 0 and bool(out) and "unmanaged" not in out
 
-# ── MAC randomization ─────────────────────────────────────────────────────────
+# ── Network address (MAC) rotation ────────────────────────────────────────────
+# NetworkManager derives a "stable" address from the connection's stable-id
+# and a secret of this computer. Shadow OS's default is a per-network (or
+# per-boot) stable address. "Rotate identity" adds a salt to the stable-id of
+# the active connections, for this boot only (nmcli --temporary): every
+# network then sees a new address, still stable for that network. It never
+# uses the "random" policy (a new address on every reconnection used up
+# DHCP pools), never runs on a timer, and changes the address at most once in
+# MAC_MIN_INTERVAL seconds. The old lease is released before the reconnection.
+
+MAC_SALT = "/run/shadow/mac-salt"
+MAC_MIN_INTERVAL = 300
+STABLE_ID_PREFIX = "${CONNECTION}/${BOOT}/"
+# A connection's own address policies that rotation may override (unset:
+# the system default). Any other value ("permanent", "preserve",
+# "stable-ssid", a fixed address) means the user decided for that network
+# (a MAC-filtered network, say): such a connection keeps its address.
+ROTATABLE_POLICIES = ("", "stable", "random", "default")
+
 
 def active_profile(iface):
     """UUID of the NetworkManager profile active on 'iface', or ''."""
@@ -126,44 +301,98 @@ def active_profile(iface):
             return uuid
     return ""
 
+
+def read_mac_salt():
+    try:
+        data = json.loads(Path(MAC_SALT).read_text())
+    except (OSError, ValueError):
+        return None
+    if (isinstance(data, dict) and re.fullmatch(r"[0-9a-f]{16}", str(data.get("salt", "")))
+            and isinstance(data.get("rotated"), (int, float))):
+        return data
+    return None
+
+
+def _nm_get(uuid, prop):
+    rc, out, err = sh(["nmcli", "-g", prop, "connection", "show", uuid])
+    if rc != 0:
+        raise Failure(f"nmcli cannot read the connection: {err or f'exit status {rc}'}")
+    value = nm_unescape(out).strip()
+    return "" if value == "--" else value          # "--": not set
+
+
+def _rotate_nm(ifc, stable_id):
+    kind = "802-11-wireless" if os.path.exists(f"{SYS_NET}/{ifc}/wireless") else "802-3-ethernet"
+    prop = f"{kind}.cloned-mac-address"
+    uuid = active_profile(ifc)
+    if not uuid:
+        ok(f"{ifc}: not connected — it gets the new address on its next connection")
+        return
+    policy, sid = _nm_get(uuid, prop), _nm_get(uuid, "connection.stable-id")
+    if policy not in ROTATABLE_POLICIES or (sid and not sid.startswith(STABLE_ID_PREFIX)):
+        ok(f"{ifc}: kept — this network has an address setting of its own (an exception you made)")
+        return
+    # 1. Release the current lease when the connection goes down (NetworkManager
+    #    otherwise just forgets it, and the network keeps it reserved).
+    rc, _, e = sh(["nmcli", "device", "modify", ifc, "ipv4.dhcp-send-release", "yes"])
+    if rc != 0:
+        warn(f"{ifc}: could not ask NetworkManager to release the DHCP lease first "
+             f"({e or f'exit status {rc}'}); the old lease runs out by itself")
+    # 2. The new address: a stable address for this network with a new salt.
+    run(["nmcli", "connection", "modify", "--temporary", uuid,
+         "connection.stable-id", stable_id, prop, "stable"],
+        f"{ifc}: NetworkManager refused the new address setting")
+    # 3. Reconnect: down (sends the release), up (new address, new lease).
+    run(["nmcli", "--wait", "30", "connection", "down", uuid], f"{ifc}: disconnecting failed", timeout=40)
+    run(["nmcli", "--wait", "30", "connection", "up", uuid],
+        f"{ifc}: reconnecting with the new address failed (NetworkManager may still reconnect by itself)",
+        timeout=40)
+    ok(f"{ifc}: new address, reconnected")
+
+
 def randomize_mac():
-    log("MAC address randomization")
+    """'Rotate identity' for the network address. True if it was changed."""
+    log("Network address (MAC) rotation")
+    prev = read_mac_salt()
+    now = _boottime()
+    if prev is not None and 0 <= now - prev["rotated"] < MAC_MIN_INTERVAL:
+        ago = int(now - prev["rotated"])
+        ok(f"kept: changed {ago} s ago, and the minimum interval is {MAC_MIN_INTERVAL} s "
+           f"(possible again in {MAC_MIN_INTERVAL - ago} s)")
+        return False
+    if not have("nmcli"):
+        raise Failure("NetworkManager (nmcli) is not installed: the address cannot be changed")
+    salt = secrets.token_hex(8)
+    # Recorded before anything changes: a failed attempt counts too, so a
+    # network is never asked for leases in quick succession.
+    write_atomic(MAC_SALT, json.dumps({"salt": salt, "rotated": now,
+                                       "count": int((prev or {}).get("count", 0)) + 1}) + "\n", 0o600)
+    failed = []
     for ifc in net_ifaces():
-        if have("nmcli") and nm_managed(ifc):
-            kind = "wifi" if os.path.exists(f"/sys/class/net/{ifc}/wireless") else "ethernet"
-            prop = f"{'802-11-wireless' if kind == 'wifi' else '802-3-ethernet'}.cloned-mac-address"
-            uuid = active_profile(ifc)
-            if not uuid:
-                ok(f"{ifc}: not connected — gets a random MAC on its next connection")
-                continue
-            # --temporary: the saved profile keeps its own setting; "random"
-            # means a new address on every activation.
-            rc, _, e = sh(["nmcli", "connection", "modify", "--temporary", uuid, prop, "random"])
-            if rc != 0:
-                warn(f"{ifc}: {e or 'nmcli refused the change'}")
-                continue
-            rc, _, e = sh(["nmcli", "--wait", "30", "connection", "up", uuid], timeout=40)
-            try:
-                mac = Path(f"/sys/class/net/{ifc}/address").read_text().strip()
-            except OSError:
-                mac = "?"
-            ok(f"{ifc} → {mac} (randomized, reconnected)") if rc == 0 else warn(f"{ifc}: reconnect failed: {e}")
-        elif have("macchanger"):
-            sh(["ip", "link", "set", ifc, "down"])
-            sh(["macchanger", "-r", ifc])
-            sh(["ip", "link", "set", ifc, "up"])
-            ok(f"{ifc} → randomized (macchanger)")
-        else:
-            warn(f"{ifc}: no randomization tool (install macchanger)")
+        if not nm_managed(ifc):
+            ok(f"{ifc}: not managed by NetworkManager — left as it is")
+            continue
+        try:
+            _rotate_nm(ifc, STABLE_ID_PREFIX + salt)
+        except Failure as exc:
+            warn(str(exc))
+            failed.append(ifc)
+    if failed:
+        raise Failure(f"the address of {', '.join(failed)} could not be changed (see above)")
+    return True
 
 # ── IPv6 privacy ──────────────────────────────────────────────────────────────
+
+
+PROC_IPV6_CONF = "/proc/sys/net/ipv6/conf"
+
 
 def ipv6_privacy():
     log("IPv6 privacy extensions")
     try:
-        Path("/proc/sys/net/ipv6/conf/all/use_tempaddr").write_text("2")
+        Path(f"{PROC_IPV6_CONF}/all/use_tempaddr").write_text("2")
         for ifc in net_ifaces():
-            p = f"/proc/sys/net/ipv6/conf/{ifc}/use_tempaddr"
+            p = f"{PROC_IPV6_CONF}/{ifc}/use_tempaddr"
             if os.path.exists(p):
                 Path(p).write_text("2")
         ok("temporary addresses preferred")
@@ -172,10 +401,14 @@ def ipv6_privacy():
 
 # ── Hostname randomization ────────────────────────────────────────────────────
 
+
+HOSTS_FILE = "/etc/hosts"
+
+
 def _sync_etc_hosts(name):
     """Point 127.0.1.1 at the current hostname so sudo/getaddrinfo resolve it."""
     try:
-        path = Path("/etc/hosts")
+        path = Path(HOSTS_FILE)
         lines = path.read_text().splitlines() if path.exists() else []
         out, replaced = [], False
         for line in lines:
@@ -191,7 +424,8 @@ def _sync_etc_hosts(name):
             out.insert(insert_at, f"127.0.1.1\t{name}")
         path.write_text("\n".join(out) + "\n")
     except OSError as exc:
-        warn(f"/etc/hosts: {exc}")
+        warn(f"{HOSTS_FILE}: {exc}")
+
 
 def random_hostname():
     log("Hostname randomization")
@@ -203,212 +437,834 @@ def random_hostname():
     else:
         warn(f"hostnamectl: {e}")
 
-# ── Tor circuits ──────────────────────────────────────────────────────────────
+# ── Tor ───────────────────────────────────────────────────────────────────────
+
 
 TORRC_D   = "/etc/tor/torrc.d"
 TORRC     = "/etc/tor/torrc"
+SOCKS_CF  = "/etc/tor/torrc.d/00-shadow-socks.conf"
 TPROXY_CF = "/etc/tor/torrc.d/shadow-tproxy.conf"
 TORDNS_CF = "/etc/tor/torrc.d/shadow-dns.conf"
 BRIDGE_CF = "/etc/tor/torrc.d/shadow-bridges.conf"
+TOR_USER  = "debian-tor"
+# Debian's tor@default reads /usr/share/tor/tor-service-defaults-torrc, which
+# opens this control socket with cookie authentication.
+TOR_CONTROL = "/run/tor/control"
+TOR_COOKIE  = "/run/tor/control.authcookie"
+NEWNYM_MIN_INTERVAL = 60
+# Tor's SOCKS ports. Debian's defaults file opens TCP 127.0.0.1:9050, a port
+# any local user may bind while Tor is stopped (every restart, and at boot
+# before tor@default starts): Tor then exits ("Could not bind ... Address
+# already in use") and never opens its other ports, and every SOCKS client
+# (torsocks, proxychains4, fix-network's Tor check) talks to that user, who
+# sees each destination and can relay it from the real address. A SocksPort
+# in torrc replaces the defaults' whole SocksPort list: SOCKS_CF, always
+# present (written by "boot" and before Hide Me changes Tor), keeps the
+# defaults' unix socket (in /run/tor, which only debian-tor may write) and
+# moves TCP to TOR_SOCKS_PORT, below 1024 like Tor's other ports (see
+# TPROXY_PORT). torsocks.conf and proxychains4.conf are pointed at it.
+# Whatever listens on 9050 now is not Tor, so every connection to 9050 on an
+# IPv4 loopback address is sent to Tor's port as well, and one to [::1]:9050
+# is refused (SOCKS_CHAIN): programs that use 9050 without a file to point
+# elsewhere (tor-resolve, sqlmap --tor, a user's own scripts, also as
+# "localhost:9050") reach Tor, never a user who binds 9050.
+TOR_SOCKS_PORT   = "39"
+TOR_SOCKS_SOCKET = "/run/tor/socks"
+OLD_SOCKS_PORT   = "9050"
+TOR_SOCKS        = f"127.0.0.1:{TOR_SOCKS_PORT}"
+TORSOCKS_CONF    = "/etc/tor/torsocks.conf"
+PROXYCHAINS_CONF = "/etc/proxychains4.conf"
+
+
+def _tor_socks_text():
+    return ("# Shadow OS: Tor's SOCKS ports (written by shadow-anon). This list replaces\n"
+            f"# the one of Debian's defaults (SocksPort {OLD_SOCKS_PORT}, a port any local user may\n"
+            "# take while Tor is stopped, so that Tor cannot start and SOCKS clients\n"
+            f"# reach that user). Port {TOR_SOCKS_PORT} is below 1024: only root may bind it.\n"
+            f"SocksPort unix:{TOR_SOCKS_SOCKET} WorldWritable\n"
+            f"SocksPort {TOR_SOCKS}\n"
+            + TOR_KEEP_BIND)
+
 
 def _ensure_torrc_d():
+    """/etc/tor/torrc.d exists and torrc includes it, and Tor's SOCKS ports
+    file (SOCKS_CF) is there. True if that file was written: Tor must then be
+    restarted (not reloaded) to use it."""
     Path(TORRC_D).mkdir(parents=True, exist_ok=True)
     try:
         torrc = Path(TORRC).read_text() if Path(TORRC).exists() else ""
         marker = "%include /etc/tor/torrc.d/*.conf"
         if marker not in torrc:
             Path(TORRC).write_text(torrc.rstrip() + f"\n\n{marker}\n")
-    except OSError:
-        pass
+    except OSError as exc:
+        warn(f"{TORRC}: {exc}")
+    return _write_if_changed(SOCKS_CF, _tor_socks_text())
 
-def restart_tor():
-    """(Re)start Tor so it reads /etc/tor/torrc.d; True on success."""
-    sh(["systemctl", "enable", "tor"])
+
+def _torsocks_text(text):
+    """torsocks.conf pointed at TOR_SOCKS_PORT, if it uses Tor's old port on
+    this machine (an explicit "TorPort 9050", or none: torsocks' default)."""
+    addr = None
+    for line in text.splitlines():
+        m = re.match(r"\s*TorAddress\s+(\S+)", line)
+        if m:
+            addr = m.group(1)
+    if addr not in (None, "127.0.0.1", "localhost"):
+        return text                                  # a Tor elsewhere: not ours
+    if not re.search(r"(?m)^[ \t]*TorPort[ \t]", text):
+        return text.rstrip("\n") + f"\n# Tor's SOCKS port on Shadow OS (shadow-anon)\nTorPort {TOR_SOCKS_PORT}\n"
+    return re.sub(rf"(?m)^([ \t]*TorPort[ \t]+){OLD_SOCKS_PORT}([ \t]*)$", rf"\g<1>{TOR_SOCKS_PORT}\g<2>", text)
+
+
+def _proxychains_text(text):
+    """proxychains4.conf: a proxy line for Tor's old port (Debian's default
+    "socks4 127.0.0.1 9050") becomes one for TOR_SOCKS_PORT."""
+    return re.sub(rf"(?m)^[ \t]*socks[45][ \t]+127\.0\.0\.1[ \t]+{OLD_SOCKS_PORT}[ \t]*$",
+                  f"socks5\t127.0.0.1 {TOR_SOCKS_PORT}", text)
+
+
+def point_socks_clients():
+    """torsocks and proxychains4 as Debian configures them use Tor's old
+    SOCKS port 9050 (see TOR_SOCKS_PORT): point them at Tor's port. Other
+    settings, and files that name another proxy, are left alone. Returns the
+    files changed."""
+    changed = []
+    for path, fix in ((TORSOCKS_CONF, _torsocks_text), (PROXYCHAINS_CONF, _proxychains_text)):
+        try:
+            if os.path.islink(path):
+                continue                             # not ours to replace by a file
+            text = Path(path).read_text()
+        except OSError:
+            continue                                 # not installed
+        new = fix(text)
+        if new != text:
+            write_atomic(path, new, stat.S_IMODE(os.stat(path).st_mode))
+            changed.append(path)
+    return changed
+
+
+def tor_socks(offline=False):
+    """'shadow-anon tor-socks [--offline]': Tor's SOCKS ports file, its
+    clients and the redirect of 9050 (SOCKS_CHAIN); a running Tor is
+    restarted (waited for) when the file changed, as boot() does: until then
+    it still serves 9050 while the clients use 39, and the file's
+    KeepBindCapabilities makes it exit on its next reload. offline (the
+    image build: its chroot shares the build machine's network namespace
+    and services): only the files; Tor uses them from its next start."""
+    need_root()
+    socks = _ensure_torrc_d()
+    clients = point_socks_clients()
+    ok(f"Tor's SOCKS port: {TOR_SOCKS} and {TOR_SOCKS_SOCKET}"
+       + (" (written)" if socks else "") + "".join(f"; {p} points at it" for p in clients))
+    if offline:
+        return
+    problems = []
+    try:
+        if _socks_redirect_ensure():                 # first: 9050 is free while Tor restarts
+            ok(_socks_redirect_note())
+    except Failure as exc:
+        problems.append(str(exc))
+    if socks and tor_running():
+        if restart_tor(enable=False):
+            ok(f"Tor restarted: it listens on {TOR_SOCKS}")
+        else:
+            problems.append(TOR_RESTART_FAILED)
+    if problems:
+        raise Failure("; ".join(problems))
+
+
+def restart_tor(enable=True):
+    """(Re)start Tor so it reads /etc/tor/torrc.d; True once tor@default runs.
+
+    A restart, not a reload: Tor binds its ports below 1024 as root before it
+    changes user, and exits on a reload that changes KeepBindCapabilities.
+    Only tor@default (Type=notify: ready once its ports are open; Tor exits
+    when one cannot be bound) says whether Tor runs. Every port it opens is
+    below 1024 (SOCKS_CF, TPROXY_PORT, DNS_PORT), so no local user can hold
+    one while it is stopped and keep it from starting. Debian's tor.service
+    is a oneshot that runs /bin/true: restarting it "succeeds" whatever Tor
+    does, so it is no fallback. When Tor does not run, the transparent
+    proxy's redirect (if any) stays and fails closed, but it is no longer
+    recorded as in force; what was asked for is kept ("ghost_wanted"), and
+    real_state() reports Ghost Mode again once Tor runs (so does the record
+    of the next action that succeeds: _record_success()). real_state() keeps
+    it the same way for a Tor that stopped without a restart of ours.
+    """
+    if enable:
+        sh(["systemctl", "enable", "tor"])
     rc, _, _ = sh(["systemctl", "restart", "tor@default"], timeout=60)
-    if rc != 0:
-        rc, _, _ = sh(["systemctl", "restart", "tor"], timeout=60)
-    return rc == 0
+    if rc == 0 and tor_running():
+        return True
+    if _nat_hooked(TPROXY_CHAIN):
+        st = load_state()
+        upd = {"transparent_proxy": False, "ghost_mode": False}
+        if st.get("ghost_mode") or st.get("ghost_wanted"):
+            upd["ghost_wanted"] = True
+        save_state(upd)
+    return False
+
+
+def tor_running():
+    return sh(["systemctl", "is-active", "--quiet", "tor@default"])[0] == 0
+
+
+def _tor_control(*commands):
+    """Speak Tor's control protocol on its socket (cookie authentication).
+
+    Raises OSError or Failure; replies other than 250 are failures.
+    """
+    cookie = Path(TOR_COOKIE).read_bytes()
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(10)
+        s.connect(TOR_CONTROL)
+        buf = b""
+        for line in (f"AUTHENTICATE {cookie.hex()}",) + commands + ("QUIT",):
+            s.sendall(line.encode() + b"\r\n")
+            while b"\r\n" not in buf:
+                chunk = s.recv(4096)
+                if not chunk:
+                    raise Failure("Tor closed its control connection")
+                buf += chunk
+            reply, _, buf = buf.partition(b"\r\n")
+            if not reply.startswith(b"250"):
+                raise Failure(f"Tor answered {reply.decode(errors='replace')[:120]!r} to {line.split()[0]}")
+
+
+def tor_newnym():
+    """New circuits for new connections. True on success.
+
+    NEWNYM on the control socket; without it, a reload (SIGHUP), which also
+    retires the circuits in use.
+    """
+    try:
+        _tor_control("SIGNAL NEWNYM")
+        return True
+    except (OSError, Failure) as exc:
+        reason = exc
+    rc, _, e = sh(["systemctl", "reload", "tor@default"], timeout=60)
+    if rc == 0:
+        return True
+    warn(f"Tor's control socket: {reason}; reload: {e or f'exit status {rc}'}")
+    return False
+
 
 def new_tor_identity():
     log("Tor circuits (new exit IP)")
     if not have("tor"):
         warn("tor is not installed")
         return
-    ok("new Tor circuit set requested") if restart_tor() else warn("Tor restart failed (journalctl -u tor@default)")
+    if tor_running() and tor_newnym():
+        save_state({"newnym_boottime": _boottime()})
+        ok("new Tor circuits for new connections")
+    elif restart_tor():
+        save_state({"newnym_boottime": _boottime()})
+        ok("Tor restarted: new circuits")
+    elif _nat_hooked(TPROXY_CHAIN):
+        # Every connection goes to Tor's dead TransPort: a failure, not a note.
+        raise Failure(TOR_DOWN)
+    else:
+        warn("Tor did not restart (journalctl -u tor@default)")
+
+
+def tor_newnym_timer():
+    """What shadow-anon-rotate.timer runs: new Tor circuits, nothing else."""
+    need_root()
+    last = load_state().get("newnym_boottime")
+    now = _boottime()
+    if isinstance(last, (int, float)) and 0 <= now - last < NEWNYM_MIN_INTERVAL:
+        print(f"new Tor circuits {int(now - last)} s ago; the minimum interval is {NEWNYM_MIN_INTERVAL} s")
+        return
+    if not have("tor") or not tor_running():
+        print("Tor is not running: no circuits to renew")
+        return
+    if not tor_newnym():
+        raise Failure("Tor did not accept the request for new circuits")
+    save_state({"newnym_boottime": now})
+    print("new Tor circuits for new connections")
+
 
 def set_tor_bridges(bridges):
     need_root()
     _ensure_torrc_d()
     if not bridges:
         Path(BRIDGE_CF).unlink(missing_ok=True)
-        restart_tor()
+        if not restart_tor():
+            raise Failure("Tor did not restart after removing the bridges (journalctl -u tor@default)")
         ok("Tor bridges disabled (direct connection)")
         return
     lines = ["UseBridges 1\n",
              "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy\n"]
     for b in bridges:
+        if "\n" in b or "\r" in b:
+            raise Failure("a bridge line must not contain line breaks")
         lines.append(f"Bridge {b}\n")
-    Path(BRIDGE_CF).write_text("".join(lines))
-    restart_tor()
+    write_atomic(BRIDGE_CF, "".join(lines), 0o644)
+    if not restart_tor():
+        raise Failure("Tor did not restart with the bridges (journalctl -u tor@default)")
     ok(f"configured {len(bridges)} Tor bridge(s)")
 
-# ── Transparent Tor proxy ─────────────────────────────────────────────────────
+# ── iptables nat chains (transparent proxy, DNS redirect) ─────────────────────
+# Owned by shadow-anon in the nat table (iptables-nft), hooked into nat OUTPUT.
+# Every insertion is checked; a chain is hooked only once it is complete.
 
 TPROXY_CHAIN = "SHADOWTOR"
-TPROXY_PORT  = "9040"
-DNS_PORT     = "5353"
+DNS_CHAIN    = "SHADOWDNS"
+# Tor's TransPort (TCP) and DNSPort (UDP) on loopback. Every redirected
+# connection and query goes there, so no one but Tor may hold them: both are
+# below net.ipv4.ip_unprivileged_port_start (1024 by default, and below the
+# 80 or 53 some setups lower it to), and binding them needs
+# CAP_NET_BIND_SERVICE, also with SO_REUSEADDR. Debian's tor@default binds
+# them as root before it becomes debian-tor and keeps that capability for
+# reloads (KeepBindCapabilities 1 in Hide Me's torrc.d files and SOCKS_CF;
+# Tor's SOCKS port is moved below 1024 too: Tor exits when it cannot bind
+# any one of its ports, so a user who held Debian's 9050 while Tor was
+# stopped kept it from opening these). The unit's
+# CapabilityBoundingSet has it, and so has Tor's AppArmor profile
+# (system_tor: abstractions/tor includes nameservice, which includes nis
+# with "capability net_bind_service"). Earlier versions used 9040 and
+# 5353 (OLD_TOR_PORTS), which any local user could take: Tor sets
+# SO_REUSEADDR on its UDP DNSPort, so a user's socket with SO_REUSEADDR
+# bound next to it and got every query (the kernel gives a datagram to the
+# socket bound last, or to one bound to "lo"), while Tor ran; and whoever
+# bound a port while Tor was stopped or restarting kept it (Tor then failed
+# to start) and got every connection or query. boot() moves older rules,
+# Tor's files and resolved's drop-in off those ports.
+TPROXY_PORT  = "40"
+DNS_PORT     = "26"
+OLD_TOR_PORTS = ("9040", "5353")
+# Tor's DNSPort answers UDP only. DNS over TCP is never sent to DNS_PORT; it
+# goes to this port instead, where nothing listens and which only root may
+# bind (privileged even where the limit is lowered, unless to 0 or 1): the
+# connection is refused at once, as Tor's DNSPort would refuse it.
+CLOSED_PORT  = "1"
+# A torrc line in each of Hide Me's torrc.d files (and in SOCKS_CF, which is
+# always there). Tor's default ("auto") drops CAP_NET_BIND_SERVICE when only
+# a DNSPort or TransPort is below 1024, and a reload that must bind such a
+# port then fails and Tor exits. Tor also exits on a reload that changes this
+# option, so Tor is restarted, never reloaded, when a file of Hide Me's is
+# written, changed or removed.
+TOR_KEEP_BIND = "KeepBindCapabilities 1\n"
+# Tor's VirtualAddrNetworkIPv4: the addresses Tor hands out for .onion names.
+ONION_NET    = "10.192.0.0/10"
+PRIVATE_NETS = ("127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")
+# The chains are IPv4 (iptables), except SHADOWDNS and SHADOWSOCKS, which
+# also have an IPv6 side (ip6tables) wherever the kernel has IPv6; see
+# dns6_rules() and socks6_rules().
+IPT, IP6T = "iptables", "ip6tables"
 
-def _write_tor_dns():
-    """Tor answers DNS on 127.0.0.1:DNS_PORT (used by DNS protection and the proxy)."""
-    _ensure_torrc_d()
-    Path(TORDNS_CF).write_text(
-        "# Shadow OS DNS-over-Tor — written by shadow-anon\n"
-        f"DNSPort 127.0.0.1:{DNS_PORT}\n"
-        "AutomapHostsOnResolve 1\n"
-        "VirtualAddrNetworkIPv4 10.192.0.0/10\n"
-    )
 
-def _nat_reset(chain):
+def ipv6_available():
+    """Does this kernel have IPv6 (not booted with ipv6.disable=1)?"""
+    return os.path.isdir(PROC_IPV6_CONF)
+
+
+def _nat_hooked(chain, ipt=IPT):
+    """Does nat OUTPUT jump to 'chain'?"""
+    rc, out, _ = sh([ipt, "-t", "nat", "-S", "OUTPUT"])
+    return rc == 0 and any(line.split()[-2:] == ["-j", chain] for line in out.splitlines())
+
+
+def _nat_rules(chain, ipt=IPT):
+    """The rules of a nat chain as 'iptables -S' prints them, or None."""
+    rc, out, _ = sh([ipt, "-t", "nat", "-S", chain])
+    return [ln for ln in out.splitlines() if ln.startswith("-A ")] if rc == 0 else None
+
+
+def _nat_reset(chain, ipt=IPT):
     """Create 'chain' in the nat table, or empty it if it exists."""
-    if sh(["iptables", "-t", "nat", "-N", chain])[0] != 0:
-        sh(["iptables", "-t", "nat", "-F", chain])
+    if sh([ipt, "-t", "nat", "-N", chain])[0] != 0:
+        run([ipt, "-t", "nat", "-F", chain], f"cannot create or empty the nat chain {chain} ({ipt})")
 
-def _nat_hook(chain):
+
+def _nat_hook(chain, ipt=IPT):
     """Jump from nat OUTPUT to 'chain' exactly once."""
-    if sh(["iptables", "-t", "nat", "-C", "OUTPUT", "-j", chain])[0] != 0:
-        sh(["iptables", "-t", "nat", "-I", "OUTPUT", "1", "-j", chain])
+    if sh([ipt, "-t", "nat", "-C", "OUTPUT", "-j", chain])[0] != 0:
+        run([ipt, "-t", "nat", "-I", "OUTPUT", "1", "-j", chain], f"cannot hook {chain} into nat OUTPUT ({ipt})")
 
-def _nat_remove(chain):
-    while sh(["iptables", "-t", "nat", "-D", "OUTPUT", "-j", chain])[0] == 0:
-        pass
-    sh(["iptables", "-t", "nat", "-F", chain])
-    sh(["iptables", "-t", "nat", "-X", chain])
 
-def transparent_proxy_on():
-    need_root()
-    log("Transparent Tor proxy (all TCP + DNS → Tor)")
-    _ensure_torrc_d()
-    Path(TPROXY_CF).write_text(
-        "# Shadow OS transparent proxy — written by shadow-anon\n"
-        f"TransPort 127.0.0.1:{TPROXY_PORT} IsolateClientAddr IsolateClientProtocol "
-        "IsolateDestAddr IsolateDestPort\n"
-        "VirtualAddrNetworkIPv4 10.192.0.0/10\n"
-        "AutomapHostsSuffixes .onion,.exit\n"
-        "AutomapHostsOnResolve 1\n"
-    )
-    _write_tor_dns()
-    if not restart_tor():
-        warn("Tor did not start — not redirecting traffic (it would all fail)")
-        Path(TPROXY_CF).unlink(missing_ok=True)
+def _nat_remove(chain, ipt=IPT):
+    """Unhook and delete 'chain'. Raises Failure if it is still hooked afterwards."""
+    for _ in range(32):
+        if sh([ipt, "-t", "nat", "-D", "OUTPUT", "-j", chain])[0] != 0:
+            break
+    sh([ipt, "-t", "nat", "-F", chain])
+    sh([ipt, "-t", "nat", "-X", chain])
+    if _nat_hooked(chain, ipt):
+        raise Failure(f"the nat chain {chain} could not be removed ({ipt})")
+
+
+def _load_chain(chain, rules, ipt=IPT):
+    """Fill 'chain' with 'rules' and hook it; on any failure remove it and raise."""
+    try:
+        _nat_reset(chain, ipt)
+        for r in rules:
+            run([ipt, "-t", "nat", "-A", chain] + r, f"{ipt} refused a rule of {chain}")
+        _nat_hook(chain, ipt)
+    except Failure:
+        try:
+            _nat_remove(chain, ipt)
+        except Failure as exc:
+            warn(str(exc))
+        raise
+
+
+# Tor's old SOCKS port. Tor no longer listens on Debian's 9050 (SOCKS_CF), so
+# any local user may bind it at any time, also while Tor runs, and programs
+# that use 9050 without a file to point elsewhere (tor-resolve, sqlmap
+# --tor, a user's own scripts) would hand that user every name and
+# connection, from the real address while Hide Me's kill switch is off.
+# SHADOWSOCKS sends every new TCP connection to port 9050 on a loopback
+# address to Tor's port (REDIRECT in nat OUTPUT rewrites to 127.0.0.1): a
+# user's listener there gets nothing, and while Tor is not running the
+# connection is refused (fail closed). Loaded by "boot" (every start,
+# install and upgrade) and "tor-socks", whatever Hide Me does; removed only
+# when the package is purged. It matches nothing SHADOWTOR and SHADOWDNS
+# change (both leave loopback TCP to ports other than 53 alone), so the
+# order of the hooks does not matter. Its IPv6 side (ip6tables, wherever
+# the kernel has IPv6; socks6_rules()) refuses [::1]:9050: clients that
+# name the proxy "localhost" (curl, PySocks as requests uses it) try ::1
+# first ("::1 localhost" in /etc/hosts, before 127.0.0.1 by RFC 6724) and
+# use 127.0.0.1:9050, i.e. Tor, only when ::1 refuses; a user who binds
+# [::1]:9050 or [::]:9050 got them otherwise.
+SOCKS_CHAIN = "SHADOWSOCKS"
+
+
+def socks_rules():
+    return [["-d", "127.0.0.0/8", "-p", "tcp", "--dport", OLD_SOCKS_PORT,
+             "-j", "REDIRECT", "--to-ports", TOR_SOCKS_PORT]]
+
+
+def socks6_rules():
+    """SHADOWSOCKS for IPv6 (ip6tables). Tor's SOCKS port is IPv4 only, so
+    [::1]:9050 goes to CLOSED_PORT (nothing listens, only root may bind it:
+    refused at once, as in dns6_rules()) and clients move on to
+    127.0.0.1:9050. One that tries only ::1 fails instead of leaking."""
+    return [["-d", "::1/128", "-p", "tcp", "--dport", OLD_SOCKS_PORT,
+             "-j", "REDIRECT", "--to-ports", CLOSED_PORT]]
+
+
+def _socks_side_active(ipt, rules):
+    """Is SHADOWSOCKS hooked in ipt's nat OUTPUT with exactly 'rules' (each
+    a list of option/value pairs; checked as 'iptables -S' prints them)?"""
+    have_rules = _nat_rules(SOCKS_CHAIN, ipt)
+    if not have_rules or len(have_rules) != len(rules) or not _nat_hooked(SOCKS_CHAIN, ipt):
+        return False
+    for line, rule in zip(have_rules, rules):
+        tok = line.split()
+        if not set(zip(rule[0::2], rule[1::2])) <= set(zip(tok, tok[1:])):
+            return False
+    return True
+
+
+def socks_redirect_active():
+    """Is SHADOWSOCKS in place: its IPv4 side, and its IPv6 side wherever the
+    kernel has IPv6 (an older version loaded IPv4 only)?"""
+    return _socks_side_active(IPT, socks_rules()) and (
+        not ipv6_available() or _socks_side_active(IP6T, socks6_rules()))
+
+
+def socks_redirect_on():
+    """Load what is missing of SHADOWSOCKS; a side in place is never emptied
+    (9050 is never left free). True if a side was loaded. Raises Failure:
+    if the IPv6 side cannot be loaded, the IPv4 side stays (unlike
+    SHADOWDNS's two sides, it protects 127.0.0.1:9050 on its own)."""
+    loaded = False
+    if not _socks_side_active(IPT, socks_rules()):
+        _load_chain(SOCKS_CHAIN, socks_rules())
+        loaded = True
+    if ipv6_available() and not _socks_side_active(IP6T, socks6_rules()):
+        if not have(IP6T):
+            raise Failure(f"ip6tables is not installed: [::1]:{OLD_SOCKS_PORT} is not refused, whoever "
+                          f"listens there gets the connections of clients that use localhost:{OLD_SOCKS_PORT}")
+        _load_chain(SOCKS_CHAIN, socks6_rules(), IP6T)
+        loaded = True
+    return loaded
+
+
+def _socks_redirect_note():
+    return (f"connections to 127.0.0.1:{OLD_SOCKS_PORT} go to Tor's SOCKS port {TOR_SOCKS_PORT}"
+            + (f", to [::1]:{OLD_SOCKS_PORT} are refused" if ipv6_available() else ""))
+
+
+def _socks_redirect_ensure():
+    """socks_redirect_on(). shadow-hardening only recommends iptables: when
+    it is missing, Failure, so that boot and tor-socks record it (the
+    state's "error", exit status 3); a warning in the journal was all
+    before, while Tor no longer held 9050. True if a side was loaded."""
+    if not have(IPT):
+        raise Failure(f"iptables is not installed: connections to 127.0.0.1:{OLD_SOCKS_PORT} are not sent "
+                      f"to Tor's port {TOR_SOCKS_PORT}, whoever listens on {OLD_SOCKS_PORT} gets them "
+                      "(install iptables)")
+    return socks_redirect_on()
+
+# ── Network kill switch (shadow-killswitch) ───────────────────────────────────
+# The kill switch is shadow-killswitch's nftables table (inet shadow_egress);
+# Hide Me only asks for mode "tor" and checks what the tool reports. The mode
+# in force before is recorded in the state file and put back on "off".
+# Older versions used their own iptables chain, SHADOWKILL; it is removed.
+
+KILLSWITCH = "shadow-killswitch"
+KS_TIMEOUT = 120
+KS_MODES = ("off", "tor", "vpn", "tor-or-vpn")
+LEGACY_KILL_CHAIN = "SHADOWKILL"
+
+
+def killswitch_status():
+    """'shadow-killswitch status --json' as a dict, with 'available' added.
+
+    Never raises: a missing or broken tool is a status with an error.
+    """
+    rc, out, err = sh([KILLSWITCH, "status", "--json"], timeout=KS_TIMEOUT)
+    if rc == 127:
+        return {"available": False, "mode": None, "active": False, "loaded": False,
+                "error": "shadow-killswitch is not installed (package shadow-hardening)"}
+    try:
+        st = json.loads(out)
+        if not isinstance(st, dict):
+            raise ValueError("not an object")
+    except ValueError:
+        return {"available": True, "mode": None, "active": False, "loaded": False,
+                "error": f"shadow-killswitch status failed: {(err or f'exit status {rc}')[:300]}"}
+    st["available"] = True
+    st["verified"] = rc in (0, 3)            # 4: not re-checked against the kernel (not root)
+    return st
+
+
+def killswitch_tor_active(st):
+    """Is Hide Me's kill switch (mode tor, local network blocked) really loaded?
+
+    Mode tor with the local network allowed is not "Tor only": the private
+    ranges and multicast leave directly (kill_switch_on sets it again).
+    """
+    return bool(st.get("mode") == "tor" and st.get("active") and st.get("loaded") and not st.get("lan"))
+
+
+def _ks_record(st):
+    return {k: st.get(k) for k in ("mode", "lan", "persistent_mode", "runtime_override", "escape_hatch")}
+
+
+def killswitch_restore_plan(before, now, persisted):
+    """The shadow-killswitch commands that put back the mode in force before Hide Me.
+
+    before: the status recorded when Hide Me engaged (or None); now: the
+    status now; persisted: Hide Me saved mode "tor" for start-up.
+    """
+    def lan(value):
+        return ["--lan"] if value else ["--no-lan"]
+    if before and before.get("mode") in KS_MODES:
+        mode, blan, saved = before["mode"], bool(before.get("lan")), before.get("persistent_mode")
+        if saved == mode and not before.get("runtime_override") and not before.get("escape_hatch"):
+            # The mode in force was the saved one: setting it again rewrites
+            # the same configuration and ends Hide Me's temporary mode.
+            return [[KILLSWITCH, "set", mode] + lan(blan)]
+        cmds = []
+        if persisted and saved in KS_MODES:
+            cmds.append([KILLSWITCH, "set", saved] + lan(blan))      # the saved mode back first
+        cmds.append([KILLSWITCH, "set", mode, "--runtime"] + lan(blan))
+        return cmds
+    # Nothing recorded (a restart since, or an older version engaged it).
+    if now.get("runtime_override") and now.get("persistent_mode") in KS_MODES:
+        return [[KILLSWITCH, "set", now["persistent_mode"]]]
+    return [[KILLSWITCH, "set", "off"]]
+
+
+def _legacy_chain_present(ipt):
+    rc, out, _ = sh([ipt, "-S", "OUTPUT"])
+    hooked = rc == 0 and any(line.split()[-2:] == ["-j", LEGACY_KILL_CHAIN] for line in out.splitlines())
+    exists = sh([ipt, "-S", LEGACY_KILL_CHAIN])[0] == 0
+    return hooked, exists
+
+
+def remove_legacy_killswitch():
+    """Delete the SHADOWKILL chains of older versions. Raises Failure if one stays."""
+    left = []
+    for ipt in ("iptables", "ip6tables"):
+        hooked, exists = _legacy_chain_present(ipt)
+        if not hooked and not exists:
+            continue
+        for _ in range(32):
+            if sh([ipt, "-D", "OUTPUT", "-j", LEGACY_KILL_CHAIN])[0] != 0:
+                break
+        sh([ipt, "-F", LEGACY_KILL_CHAIN])
+        sh([ipt, "-X", LEGACY_KILL_CHAIN])
+        if any(_legacy_chain_present(ipt)):
+            left.append(ipt)
+    if left:
+        raise Failure(f"the old kill switch chain {LEGACY_KILL_CHAIN} could not be removed ({', '.join(left)})")
+
+
+def migrate_legacy_killswitch():
+    """An older version's kill switch is still hooked (an upgrade while Ghost
+    Mode was on, or rules restored by netfilter-persistent): engage the new
+    kill switch first, then remove the old chains, so nothing leaks in
+    between. If engaging fails the old chains stay (fail closed)."""
+    if not any(_legacy_chain_present(ipt)[0] for ipt in ("iptables", "ip6tables")):
+        remove_legacy_killswitch()           # an unhooked leftover, if any
         return
-    time.sleep(2)
+    log(f"Replacing the kill switch of an older version ({LEGACY_KILL_CHAIN})")
+    kill_switch_on(by="user")
 
-    ipt = "iptables"
-    _nat_reset(TPROXY_CHAIN)
-    for cmd in [
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-m", "owner", "--uid-owner", "debian-tor", "-j", "RETURN"],
-        # DNS first: queries to 127.0.0.1:53 must still be sent to Tor.
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "udp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT],
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "tcp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT],
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "127.0.0.0/8",    "-j", "RETURN"],
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "10.0.0.0/8",     "-j", "RETURN"],
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "172.16.0.0/12",  "-j", "RETURN"],
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "192.168.0.0/16", "-j", "RETURN"],
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-d", "169.254.0.0/16", "-j", "RETURN"],
-        [ipt, "-t", "nat", "-A", TPROXY_CHAIN, "-p", "tcp", "--syn",         "-j", "REDIRECT", "--to-ports", TPROXY_PORT],
-    ]:
-        sh(cmd)
-    _nat_hook(TPROXY_CHAIN)
 
-    ok(f"all TCP → Tor:{TPROXY_PORT},  DNS → Tor:{DNS_PORT}")
+def kill_switch_on(persist=False, by="user"):
+    """Engage shadow-killswitch in mode tor; verify it. Raises Failure.
+
+    by: who needs it ("user", "proxy", "ghost"); the transparent proxy
+    releases a kill switch only it needed.
+    """
+    need_root()
+    log("Network kill switch (nothing leaves except through Tor)")
+    state = load_state()
+    now = killswitch_status()
+    if not now["available"]:
+        save_state({"kill_switch": False})
+        raise Failure(now["error"])
+    if "killswitch_before" not in state:
+        save_state({"killswitch_before": _ks_record(now)})       # before anything changes
+    persisted_already = now.get("persistent_mode") == "tor" and not now.get("runtime_override")
+    if killswitch_tor_active(now) and not now.get("error") and (not persist or persisted_already):
+        after = now
+    else:
+        # --no-lan: without a flag shadow-killswitch keeps a LAN setting saved
+        # earlier (e.g. "vpn --lan"); the mode before is put back with its own.
+        cmd = [KILLSWITCH, "set", "tor", "--no-lan"] + ([] if persist else ["--runtime"])
+        rc, out, err = sh(cmd, timeout=KS_TIMEOUT)
+        after = killswitch_status()
+        if rc != 0 or not killswitch_tor_active(after) or after.get("error"):
+            reason = after.get("error") or (err or out).strip() or f"exit status {rc}"
+            # Nothing changed and nothing of ours depends on it: forget the
+            # recorded mode, so the next attempt records the one then in force.
+            unchanged = after.get("mode") != "tor" and not state.get("killswitch_by")
+            save_state({"kill_switch": killswitch_tor_active(after)},
+                       drop=("killswitch_before",) if unchanged else ())
+            raise Failure(f"the kill switch could not be engaged: {reason[:400]}")
+    holders = sorted(set(state.get("killswitch_by", [])) | {by})
+    save_state({"kill_switch": True, "killswitch_by": holders,
+                "killswitch_persisted": bool(persist or state.get("killswitch_persisted"))})
+    remove_legacy_killswitch()
+    ok("kill switch ON — only Tor (plus loopback, DHCP and neighbour discovery) can send; "
+       "IPv6 and forwarded traffic included" + (" — kept after a restart" if persist else ""))
+
+
+def kill_switch_off():
+    """Put back the kill switch mode in force before Hide Me. Raises Failure."""
+    need_root()
+    log("Network kill switch off (back to the mode in force before Hide Me)")
+    problems = []
+    # Any SHADOWTOR, also an older version's (ports 9040/5353, between an
+    # upgrade's unpack and its "boot"): it must not stay without the kill switch.
+    if _tproxy_hooked():
+        warn("the transparent proxy needs the kill switch: turning the proxy off too")
+        try:
+            transparent_proxy_off(release_killswitch=False)
+        except Failure as exc:
+            problems.append(str(exc))
+    state = load_state()
+    forget = ("killswitch_before", "killswitch_by", "killswitch_persisted")
+    now = killswitch_status()
+    if not now["available"]:
+        save_state({"kill_switch": False}, drop=forget)
+        remove_legacy_killswitch()
+        warn(now["error"])
+    elif now.get("mode") != "tor":
+        save_state({"kill_switch": False}, drop=forget)
+        remove_legacy_killswitch()
+        ok(f"the kill switch is not in Hide Me's Tor mode (mode {now.get('mode')}); left as it is")
+    else:
+        plan = killswitch_restore_plan(state.get("killswitch_before"), now, state.get("killswitch_persisted"))
+        for cmd in plan:
+            rc, out, err = sh(cmd, timeout=KS_TIMEOUT)
+            if rc != 0:
+                save_state({"kill_switch": killswitch_tor_active(killswitch_status())})
+                raise Failure(f"'{' '.join(cmd)}' failed: {((err or out).strip() or f'exit status {rc}')[:400]}")
+        target = plan[-1][2]
+        after = killswitch_status()
+        if after.get("mode") != target or bool(after.get("loaded")) != (target != "off") or after.get("error"):
+            save_state({"kill_switch": killswitch_tor_active(after)})
+            raise Failure(f"the kill switch did not return to mode {target}: "
+                          f"{after.get('error') or 'mode ' + str(after.get('mode'))}")
+        save_state({"kill_switch": killswitch_tor_active(after)}, drop=forget)
+        remove_legacy_killswitch()
+        if target == "off":
+            ok("kill switch off")
+        else:
+            ok(f"kill switch back in mode {target}, as before Hide Me")
+    if problems:
+        raise Failure("; ".join(problems))
+
+
+def kill_switch_active():
+    return killswitch_tor_active(killswitch_status())
+
+
+def _release_killswitch_if_ours():
+    """Threat levels basic/enhanced: put back the kill switch if Hide Me engaged it."""
+    st = load_state()
+    if st.get("killswitch_by") or "killswitch_before" in st:
+        kill_switch_off()
+
+# ── Transparent Tor proxy ─────────────────────────────────────────────────────
+# All TCP (and DNS) of every program except Tor itself goes to Tor's
+# TransPort. It only sees IPv4 TCP and DNS, so it engages the kill switch
+# first: UDP (QUIC, WebRTC) and IPv6 are then dropped instead of going
+# around it. Tor maps .onion names to ONION_NET (a part of 10.0.0.0/8), so
+# that range is redirected before the private ranges are let through.
+
+
+def tproxy_rules():
+    redirect = ["-j", "REDIRECT", "--to-ports", TPROXY_PORT]
+    rules = [
+        ["-m", "owner", "--uid-owner", TOR_USER, "-j", "RETURN"],
+        # DNS first: queries to any server (127.0.0.53 included) go to Tor;
+        # over TCP they are refused (Tor's DNSPort has no TCP; see CLOSED_PORT).
+        ["-p", "udp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT],
+        ["-p", "tcp", "--dport", "53", "-j", "REDIRECT", "--to-ports", CLOSED_PORT],
+        # .onion addresses, before the 10.0.0.0/8 exemption below.
+        ["-d", ONION_NET, "-p", "tcp", "--syn"] + redirect,
+    ]
+    rules += [["-d", net, "-j", "RETURN"] for net in PRIVATE_NETS]
+    rules.append(["-p", "tcp", "--syn"] + redirect)
+    return rules
+
+
+def _redirects_to(rule, port):
+    tok = rule.split()
+    return ("--to-ports", port) in zip(tok, tok[1:])
+
+
+def transparent_proxy_active():
+    """Is SHADOWTOR hooked and redirecting to Tor's TransPort? (Whether Tor
+    runs is real_state()'s question.)"""
+    rules = _nat_rules(TPROXY_CHAIN)
+    return bool(rules) and _nat_hooked(TPROXY_CHAIN) and any(_redirects_to(r, TPROXY_PORT) for r in rules)
+
+
+def _tproxy_has_onion_rule():
+    return any(ONION_NET in r.split() and _redirects_to(r, TPROXY_PORT) for r in _nat_rules(TPROXY_CHAIN) or [])
+
+
+def _sends_tcp_to_dns_port(chain):
+    """Does 'chain' (as an older version loaded it) still redirect TCP to
+    Tor's DNSPort, which has no TCP?"""
+    for rule in _nat_rules(chain) or []:
+        tok = rule.split()
+        pairs = set(zip(tok, tok[1:]))
+        if ("-p", "tcp") in pairs and ("--to-ports", DNS_PORT) in pairs:
+            return True
+    return False
+
+
+def _redirects_to_old_ports(chain):
+    """Does 'chain' (as an older version loaded it) redirect to Tor's
+    old ports 9040/5353, which any local user may bind?"""
+    return any(_redirects_to(rule, port) for rule in _nat_rules(chain) or [] for port in OLD_TOR_PORTS)
+
+
+def _chain_outdated(chain):
+    return _sends_tcp_to_dns_port(chain) or _redirects_to_old_ports(chain)
+
+
+def _tproxy_hooked():
+    """Is a SHADOWTOR with rules hooked (this version's or an older one's)?"""
+    return bool(_nat_rules(TPROXY_CHAIN)) and _nat_hooked(TPROXY_CHAIN)
+
+
+def _tproxy_text():
+    return ("# Shadow OS transparent proxy — written by shadow-anon\n"
+            f"TransPort 127.0.0.1:{TPROXY_PORT} IsolateClientAddr IsolateClientProtocol "
+            "IsolateDestAddr IsolateDestPort\n"
+            + TOR_KEEP_BIND +
+            f"VirtualAddrNetworkIPv4 {ONION_NET}\n"
+            "AutomapHostsSuffixes .onion,.exit\n"
+            "AutomapHostsOnResolve 1\n")
+
+
+def _write_if_changed(path, text):
+    """Write 'path' unless it already holds 'text'. True if it was written."""
+    try:
+        if Path(path).read_text() == text:
+            return False
+    except OSError:
+        pass
+    write_atomic(path, text, 0o644)
+    return True
+
+
+def transparent_proxy_on(persist=False, _in_ghost=False):
+    need_root()
+    log("Transparent Tor proxy (all TCP + DNS → Tor; everything else blocked)")
+    if not have("tor"):
+        raise Failure("tor is not installed — the transparent proxy needs it")
+    had = set(load_state().get("killswitch_by", []))
+    kill_switch_on(persist=persist, by="proxy")            # first: no UDP/IPv6 around the proxy
+    try:
+        _ensure_torrc_d()
+        write_atomic(TPROXY_CF, _tproxy_text(), 0o644)
+        _write_tor_dns()
+        if not restart_tor():
+            Path(TPROXY_CF).unlink(missing_ok=True)
+            raise Failure("Tor did not start — not redirecting traffic (it would all fail)")
+        time.sleep(2)
+        _load_chain(TPROXY_CHAIN, tproxy_rules())
+    except (Failure, OSError) as exc:
+        # On its own, a failed proxy leaves things as they were; in Ghost
+        # Mode the kill switch stays on (fail closed).
+        if not _in_ghost and not had:
+            try:
+                kill_switch_off()
+            except Failure as exc2:
+                warn(str(exc2))
+        raise exc if isinstance(exc, Failure) else Failure(str(exc))
+    ok(f"all TCP → Tor:{TPROXY_PORT} (.onion included), DNS → Tor:{DNS_PORT}; UDP and IPv6 blocked")
     save_state({"transparent_proxy": True})
 
-def transparent_proxy_off():
+
+def transparent_proxy_off(release_killswitch=True):
     need_root()
     log("Disabling transparent Tor proxy")
-    ipt = "iptables"
     _nat_remove(TPROXY_CHAIN)
     Path(TPROXY_CF).unlink(missing_ok=True)
     if not dns_protection_configured():
         Path(TORDNS_CF).unlink(missing_ok=True)
-    restart_tor()
+    if not restart_tor():
+        warn("Tor did not restart (journalctl -u tor@default); its TransPort may stay open until it does")
     ok("transparent proxy disabled")
-    save_state({"transparent_proxy": False})
-
-def transparent_proxy_active():
-    rc, out, _ = sh(["iptables", "-t", "nat", "-L", TPROXY_CHAIN, "-n"])
-    return rc == 0 and TPROXY_PORT in out
-
-# ── Network kill switch ───────────────────────────────────────────────────────
-# Blocks every outbound packet that is NOT Tor's own traffic (or loopback /
-# the local network), so if Tor stops or the transparent-proxy rules are
-# flushed, applications cannot fall back to the real connection and leak the
-# direct IP. IPv6 is dropped outright (the Tor proxy here is IPv4-only), which
-# also closes the common IPv6 leak. The rules live in the filter table, so they
-# compose with the NAT-table transparent proxy above.
-
-KILL_CHAIN = "SHADOWKILL"
-
-def _kill_rules(ipt, v6):
-    """OUTPUT rules for the kill switch; order matters (first match wins)."""
-    rules = [
-        [ipt, "-A", KILL_CHAIN, "-o", "lo", "-j", "ACCEPT"],
-        [ipt, "-A", KILL_CHAIN, "-m", "owner", "--uid-owner", "debian-tor", "-j", "ACCEPT"],
-        [ipt, "-A", KILL_CHAIN, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"],
-    ]
-    if not v6:
-        # Let the machine get on the network at all: DHCP, and the private LAN.
-        rules += [
-            [ipt, "-A", KILL_CHAIN, "-p", "udp", "--dport", "67:68", "-j", "ACCEPT"],
-            [ipt, "-A", KILL_CHAIN, "-d", "127.0.0.0/8",    "-j", "ACCEPT"],
-            [ipt, "-A", KILL_CHAIN, "-d", "10.0.0.0/8",     "-j", "ACCEPT"],
-            [ipt, "-A", KILL_CHAIN, "-d", "172.16.0.0/12",  "-j", "ACCEPT"],
-            [ipt, "-A", KILL_CHAIN, "-d", "192.168.0.0/16", "-j", "ACCEPT"],
-            [ipt, "-A", KILL_CHAIN, "-d", "169.254.0.0/16", "-j", "ACCEPT"],
-        ]
-    # Everything else is a leak: drop it.
-    rules.append([ipt, "-A", KILL_CHAIN, "-j", "DROP"])
-    return rules
-
-def kill_switch_on():
-    need_root()
-    log("Network kill switch (block any non-Tor traffic)")
-    for ipt in ("iptables", "ip6tables"):
-        v6 = ipt == "ip6tables"
-        sh([ipt, "-N", KILL_CHAIN])
-        sh([ipt, "-F", KILL_CHAIN])
-        for cmd in _kill_rules(ipt, v6):
-            sh(cmd)
-        # Hook once.
-        rc, _, _ = sh([ipt, "-C", "OUTPUT", "-j", KILL_CHAIN])
-        if rc != 0:
-            sh([ipt, "-I", "OUTPUT", "1", "-j", KILL_CHAIN])
-    ok("kill switch ON — only Tor, loopback and the local network may send traffic")
-    save_state({"kill_switch": True})
-
-def kill_switch_off():
-    need_root()
-    log("Disabling network kill switch")
-    for ipt in ("iptables", "ip6tables"):
-        sh([ipt, "-D", "OUTPUT", "-j", KILL_CHAIN])
-        sh([ipt, "-F", KILL_CHAIN])
-        sh([ipt, "-X", KILL_CHAIN])
-    ok("kill switch off")
-    save_state({"kill_switch": False})
-
-def kill_switch_active():
-    rc, out, _ = sh(["iptables", "-L", KILL_CHAIN, "-n"])
-    return rc == 0 and "DROP" in out
+    st = load_state()
+    holders = sorted(set(st.get("killswitch_by", [])) - {"proxy"})
+    # Ghost Mode's network part is gone: a Ghost Mode that Tor's failure
+    # interrupted (ghost_wanted) is not brought back by a later plain proxy.
+    save_state({"transparent_proxy": False, "killswitch_by": holders}, drop=("ghost_wanted",))
+    if release_killswitch and not holders and "killswitch_before" in st:
+        kill_switch_off()            # the kill switch was there for the proxy only
 
 # ── DNS-over-Tor ──────────────────────────────────────────────────────────────
-# Kept in files that survive a restart (resolv.conf locked to 127.0.0.1 and
-# NetworkManager told to leave DNS alone) plus an iptables redirect of port 53
-# to Tor's DNSPort, which does not survive one: boot() puts it back.
+# Tor answers DNS on 127.0.0.1:DNS_PORT (a port only root may bind, see
+# TPROXY_PORT), over UDP only. Every UDP port-53 query of every program
+# except Tor is redirected there (SHADOWDNS), systemd-resolved's included;
+# DNS over TCP is refused (CLOSED_PORT): Tor's DNSPort has none. Over IPv6
+# every port-53 query (and resolved's DNS-over-TLS) is refused the same way
+# (ip6tables SHADOWDNS, dns6_rules()): resolved then asks the network's IPv4
+# server, which is redirected to Tor.
+#
+# With systemd-resolved (Shadow OS 0.3 and later): a runtime drop-in makes
+# Tor's DNSPort resolved's only global server (DNSSEC off: Tor's DNSPort has
+# none), resolv.conf stays resolved's stub. Turning it on checks that resolved
+# really runs with that server list. The choice survives a restart in
+# HIDEME_CONF; "boot" writes the drop-in again.
+#
+# Without systemd-resolved (older installs): resolv.conf points at
+# 127.0.0.1 and NetworkManager is told to leave DNS alone; those files are
+# the record of the choice. resolv.conf is no longer made immutable.
 
 RESOLV          = "/etc/resolv.conf"
 RESOLV_BACKUP   = "/etc/resolv.conf.shadow-backup"   # written by older versions
 NM_DNS_CONF     = "/etc/NetworkManager/conf.d/90-shadow-dns.conf"
 NM_RESOLV       = "/run/NetworkManager/resolv.conf"
+RESOLVED_DAEMON = "/usr/lib/systemd/systemd-resolved"
+RESOLVED_UNIT   = "systemd-resolved.service"
+RESOLVED_USER   = "systemd-resolve"
+RESOLVED_DROPIN = "/run/systemd/resolved.conf.d/95-shadow-anon.conf"
+STUB_TARGET     = "../run/systemd/resolve/stub-resolv.conf"
+HIDEME_CONF     = "/etc/shadow-os/hide-me.json"
 TOR_RESOLV_MARK = "DNS routed through Tor"
 RESOLV_TOR = (
     "# Shadow OS — DNS routed through Tor's DNSPort (written by shadow-anon;\n"
@@ -416,41 +1272,237 @@ RESOLV_TOR = (
     "nameserver 127.0.0.1\n"
     "options ndots:0 edns0\n"
 )
+TOR_DNS_SERVER  = f"127.0.0.1:{DNS_PORT}"
+# DNS=, Domains= and FallbackDNS= are lists that add up across resolved.conf.d
+# files: each is emptied first, or the provider of 80-shadow-privacy.conf (or
+# of the user's 90-shadow-user.conf) would stay in front of Tor and get every
+# name in plain text (DNSOverTLS=no applies to every global server).
+RESOLVED_DROPIN_TEXT = (
+    "# Shadow OS Hide Me — DNS-over-Tor (written by shadow-anon; removed when\n"
+    "# DNS protection is turned off). Tor's DNSPort has no DNSSEC. The empty\n"
+    "# assignments clear the servers and domains of earlier files.\n"
+    "[Resolve]\n"
+    "DNS=\n"
+    f"DNS={TOR_DNS_SERVER}\n"
+    "Domains=\n"
+    "Domains=~.\n"
+    "FallbackDNS=\n"
+    "DNSOverTLS=no\n"
+    "DNSSEC=no\n"
+)
 
-DNS_CHAIN = "SHADOWDNS"
 
-def _nat_hooked(chain):
-    """Does nat OUTPUT jump to 'chain'?"""
-    rc, out, _ = sh(["iptables", "-t", "nat", "-S", "OUTPUT"])
-    return rc == 0 and any(line.split()[-2:] == ["-j", chain] for line in out.splitlines())
+def _tor_dns_text():
+    return ("# Shadow OS DNS-over-Tor — written by shadow-anon\n"
+            f"DNSPort 127.0.0.1:{DNS_PORT}\n"
+            + TOR_KEEP_BIND +
+            "AutomapHostsOnResolve 1\n"
+            f"VirtualAddrNetworkIPv4 {ONION_NET}\n")
 
-def dns_protection_configured():
-    """DNS protection as far as the files are concerned (they survive a restart)."""
-    if Path(NM_DNS_CONF).exists():
-        return True
+
+def _write_tor_dns():
+    """Tor answers DNS on 127.0.0.1:DNS_PORT (used by DNS protection and the
+    proxy). True if the file was missing or different (Tor must then be
+    restarted, not reloaded)."""
+    _ensure_torrc_d()
+    return _write_if_changed(TORDNS_CF, _tor_dns_text())
+
+
+def _update_tor_config():
+    """Hide Me's torrc.d files as an older version wrote them (Tor's ports
+    on 9040/5353, which any user could bind; no KeepBindCapabilities) are
+    rewritten. True if one changed: Tor must then be restarted."""
+    changed = False
+    if os.path.exists(TPROXY_CF):
+        changed = _write_if_changed(TPROXY_CF, _tproxy_text())
+    if os.path.exists(TORDNS_CF):
+        changed = _write_tor_dns() or changed
+    return changed
+
+
+def resolved_in_use():
+    """Is systemd-resolved installed and not disabled? Then it is the resolver."""
+    if not os.path.exists(RESOLVED_DAEMON):
+        return False
+    return sh(["systemctl", "is-enabled", "--quiet", RESOLVED_UNIT])[0] == 0
+
+
+def _hideme_conf():
+    try:
+        data = json.loads(Path(HIDEME_CONF).read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _set_dns_choice(on):
+    if on:
+        write_atomic(HIDEME_CONF, json.dumps({"version": 1, "dns_over_tor": True}, indent=2) + "\n", 0o644)
+    else:
+        Path(HIDEME_CONF).unlink(missing_ok=True)
+
+
+def _legacy_resolv_ours():
     try:
         return TOR_RESOLV_MARK in Path(RESOLV).read_text()
     except OSError:
         return False
 
+
+def _legacy_dns_files():
+    return Path(NM_DNS_CONF).exists() or _legacy_resolv_ours()
+
+
+def dns_protection_configured():
+    """DNS protection is wanted (the record survives a restart)."""
+    return bool(_hideme_conf().get("dns_over_tor")) or _legacy_dns_files()
+
+
+def _dns_redirect_hooked():
+    """Is SHADOWDNS hooked: its IPv4 side, and its IPv6 side wherever the
+    kernel has IPv6 (without it IPv6 port-53 queries leave unchanged)?"""
+    return _nat_hooked(DNS_CHAIN) and (not ipv6_available() or _nat_hooked(DNS_CHAIN, IP6T))
+
+
+def _dns6_missing():
+    """SHADOWDNS hooked for IPv4 but not for IPv6 on a kernel with IPv6 (an
+    older version loaded IPv4 only)."""
+    return _nat_hooked(DNS_CHAIN) and ipv6_available() and not _nat_hooked(DNS_CHAIN, IP6T)
+
+
+def _dns_chain_present():
+    return any(_nat_hooked(DNS_CHAIN, ipt) or _nat_rules(DNS_CHAIN, ipt) is not None for ipt in (IPT, IP6T))
+
+
 def tor_dns_redirect_active():
-    """Is port 53 sent to Tor's DNSPort (by DNS protection or the proxy)?"""
-    return _nat_hooked(DNS_CHAIN) or _nat_hooked(TPROXY_CHAIN)
+    """Is port 53 sent to Tor's DNSPort (by DNS protection or the proxy)?
+    The proxy's chain is IPv4 only: the kill switch it engages drops IPv6."""
+    return _dns_redirect_hooked() or _nat_hooked(TPROXY_CHAIN)
+
+
+def resolved_global_dns():
+    """The global DNS servers systemd-resolved uses now ("resolvectl dns"),
+    or None when it does not answer."""
+    rc, out, _ = sh(["resolvectl", "dns"])
+    if rc != 0:
+        return None
+    for line in out.splitlines():
+        label, sep, servers = line.partition(":")
+        if sep and label.strip() == "Global":
+            return servers.split()
+    return []
+
+
+def resolved_forwards_to_tor(servers=None):
+    """Does resolved ask Tor's DNSPort, and nothing else, for global names?"""
+    return (resolved_global_dns() if servers is None else servers) == [TOR_DNS_SERVER]
+
+
+def _check_resolved_forwards_to_tor(attempts=10):
+    """Wait until resolved runs with Tor's DNSPort as its only global server.
+    Raises Failure naming the servers it uses instead."""
+    servers = None
+    for i in range(attempts):
+        if i:
+            time.sleep(0.5)
+        servers = resolved_global_dns()
+        if resolved_forwards_to_tor(servers):
+            return
+    raise Failure("systemd-resolved does not forward to Tor only: its global DNS servers are "
+                  + ((" ".join(servers) or "none") if servers is not None else "unknown (it does not answer)")
+                  + f" (a resolved.conf.d file read after {os.path.basename(RESOLVED_DROPIN)} may add servers)")
+
+
+def dns_protection_active():
+    """Configured, redirected, and (with resolved) resolved really asking
+    Tor's DNSPort only — not just our drop-in being there."""
+    if not dns_protection_configured() or not tor_dns_redirect_active():
+        return False
+    if Path(RESOLVED_DROPIN).exists() and resolved_forwards_to_tor():
+        return True
+    return _legacy_resolv_ours() and not resolved_in_use()
+
+
+def dns_rules():
+    rules = [["-m", "owner", "--uid-owner", TOR_USER, "-j", "RETURN"]]
+    if user_exists(RESOLVED_USER):
+        # systemd-resolved is NOT exempt. It asks Tor on 127.0.0.1:DNS_PORT
+        # (the drop-in), which the port-53 rules do not match; its port-53
+        # queries to a network's own server (names under that network's
+        # search domains, which win over "~.") go to Tor like everyone else's.
+        # Its TCP is refused (CLOSED_PORT; Tor's DNSPort has no TCP, and on
+        # the old port 5353 any local user could listen there, while
+        # opportunistic DoT checks no certificate):
+        # - DNS-over-TLS to such a server (NetworkManager's per-connection
+        #   opportunistic DoT): resolved falls back to UDP port 53, i.e. Tor;
+        # - TCP to its global server, Tor's DNSPort (after a truncated
+        #   answer, or once UDP went unanswered while Tor is not ready).
+        resolved = ["-m", "owner", "--uid-owner", RESOLVED_USER, "-p", "tcp"]
+        rules.append(resolved + ["--dport", "853", "-j", "REDIRECT", "--to-ports", CLOSED_PORT])
+        rules.append(resolved + ["-d", "127.0.0.1", "--dport", DNS_PORT,
+                                 "-j", "REDIRECT", "--to-ports", CLOSED_PORT])
+    rules.append(["-p", "udp", "--dport", "53", "-j", "REDIRECT", "--to-ports", DNS_PORT])
+    rules.append(["-p", "tcp", "--dport", "53", "-j", "REDIRECT", "--to-ports", CLOSED_PORT])
+    return rules
+
+
+def dns6_rules():
+    """SHADOWDNS for IPv6 (ip6tables). Nothing goes to Tor: its DNSPort is
+    IPv4 only (a DNSPort on [::1] would keep Tor from starting where ::1 is
+    missing). Every IPv6 port-53 query, and resolved's DNS-over-TLS, is
+    refused instead (CLOSED_PORT on ::1: nothing listens, ECONNREFUSED), so
+    resolved asks the network's IPv4 server, which is redirected to Tor.
+    Without it, names that resolved sends to a network's IPv6 server (its
+    search domains, from router advertisements or DHCPv6) left in plain
+    text, or over DNS-over-TLS without a certificate check. A network whose
+    only DNS server is IPv6 cannot resolve such names while it is on."""
+    refuse = ["-j", "REDIRECT", "--to-ports", CLOSED_PORT]
+    rules = [["-m", "owner", "--uid-owner", TOR_USER, "-j", "RETURN"]]
+    if user_exists(RESOLVED_USER):
+        rules.append(["-m", "owner", "--uid-owner", RESOLVED_USER, "-p", "tcp", "--dport", "853"] + refuse)
+    rules.append(["-p", "udp", "--dport", "53"] + refuse)
+    rules.append(["-p", "tcp", "--dport", "53"] + refuse)
+    return rules
+
 
 def _dns_redirect_on():
-    """Every DNS query (to 127.0.0.1 or any server) goes to Tor's DNSPort,
-    except Tor's own."""
-    _nat_reset(DNS_CHAIN)
-    sh(["iptables", "-t", "nat", "-A", DNS_CHAIN, "-m", "owner", "--uid-owner", "debian-tor", "-j", "RETURN"])
-    for proto in ("udp", "tcp"):
-        sh(["iptables", "-t", "nat", "-A", DNS_CHAIN, "-p", proto, "--dport", "53",
-            "-j", "REDIRECT", "--to-ports", DNS_PORT])
-    _nat_hook(DNS_CHAIN)
+    """Every DNS query (to 127.0.0.53, 127.0.0.1 or any server) goes to Tor's
+    DNSPort over UDP, except Tor's own; DNS over TCP, systemd-resolved's
+    DNS-over-TLS included, is refused, and so is every IPv6 query. Both
+    sides or neither: if the IPv6 side cannot be loaded, the IPv4 side is
+    removed again and Failure raised."""
+    _load_chain(DNS_CHAIN, dns_rules())
+    if ipv6_available():
+        try:
+            _load_chain(DNS_CHAIN, dns6_rules(), IP6T)
+        except Failure:
+            try:
+                _nat_remove(DNS_CHAIN)
+            except Failure as exc:
+                warn(str(exc))
+            raise
+
+
+def _dns_redirect_off():
+    """Remove SHADOWDNS, IPv4 and IPv6. Raises Failure if a side stays hooked."""
+    problems = []
+    for ipt in (IPT, IP6T):
+        try:
+            _nat_remove(DNS_CHAIN, ipt)
+        except Failure as exc:
+            problems.append(str(exc))
+    if problems:
+        raise Failure("; ".join(problems))
+
 
 def _start_tor_soon(config_changed):
     """Ask systemd to (re)start Tor without waiting for it (at boot Tor is
-    ordered after the network; waiting here would hold the boot up)."""
-    sh(["systemctl", "reload-or-restart" if config_changed else "start", "--no-block", "tor@default"])
+    ordered after the network; waiting here would hold the boot up). A
+    changed configuration means a restart: a reload cannot bind a new port
+    below 1024 without KeepBindCapabilities, and Tor exits on a reload that
+    changes that option."""
+    sh(["systemctl", "restart" if config_changed else "start", "--no-block", "tor@default"])
+
 
 def _resolv_usable():
     try:
@@ -460,14 +1512,43 @@ def _resolv_usable():
     return TOR_RESOLV_MARK not in txt and any(
         line.split()[:1] == ["nameserver"] for line in txt.splitlines())
 
-def _hand_dns_to_networkmanager():
-    """NetworkManager manages /etc/resolv.conf again: with its lock gone and
-    our file removed it writes the network's own DNS servers there (Shadow OS
-    has no systemd-resolved). A copy of the file from before DNS protection
-    (older versions restored it) is stale by now and is not used."""
-    sh(["chattr", "-i", RESOLV])
+
+def _ensure_stub_link():
+    """/etc/resolv.conf -> ../run/systemd/resolve/stub-resolv.conf (resolved's stub)."""
+    try:
+        target = os.readlink(RESOLV)
+    except OSError:
+        target = None
+    if target is not None and target.rstrip("/").endswith(("run/systemd/resolve/stub-resolv.conf",
+                                                           "run/systemd/resolve/resolv.conf")):
+        return
+    try:
+        if os.path.lexists(RESOLV):
+            os.unlink(RESOLV)
+        os.symlink(STUB_TARGET, RESOLV)
+    except OSError as exc:
+        raise Failure(f"{RESOLV}: could not point it at systemd-resolved's stub again: {exc}")
+
+
+def _unlock_old_resolv():
+    """Versions up to 0.2 made our resolv.conf immutable; only ours is unlocked."""
+    if os.path.lexists(RESOLV) and not os.path.islink(RESOLV) and _legacy_resolv_ours():
+        sh(["chattr", "-i", RESOLV])
+
+
+def _remove_legacy_dns_files():
+    """Undo the resolv.conf/NetworkManager method (and older versions' lock)."""
+    _unlock_old_resolv()
     Path(NM_DNS_CONF).unlink(missing_ok=True)
     Path(RESOLV_BACKUP).unlink(missing_ok=True)
+
+
+def _hand_dns_to_networkmanager():
+    """NetworkManager manages /etc/resolv.conf again (systems without
+    systemd-resolved): with our file removed it writes the network's own DNS
+    servers there. A copy of the file from before DNS protection (older
+    versions restored it) is stale by now and is not used."""
+    _remove_legacy_dns_files()
     try:
         ours = TOR_RESOLV_MARK in Path(RESOLV).read_text()
     except OSError:
@@ -502,38 +1583,112 @@ def _hand_dns_to_networkmanager():
     except OSError as exc:
         warn(f"{RESOLV}: {exc}")
 
-def dns_protect_on():
+
+def _hand_dns_to_resolved(restart=True, block=True):
+    """systemd-resolved alone again: no drop-in, resolv.conf its stub,
+    NetworkManager giving it the network's servers."""
+    legacy = _legacy_dns_files() or os.path.exists(RESOLV_BACKUP)
+    had_dropin = os.path.exists(RESOLVED_DROPIN)
+    Path(RESOLVED_DROPIN).unlink(missing_ok=True)
+    _remove_legacy_dns_files()
+    _ensure_stub_link()
+    if legacy:
+        # NetworkManager was told to leave DNS alone; it pushes the network's
+        # servers to resolved again once it re-reads its configuration.
+        if sh(["nmcli", "general", "reload", "conf"])[0] != 0:
+            sh(["systemctl", "reload", "NetworkManager"])
+    if restart and had_dropin:
+        cmd = ["systemctl", "restart"] + ([] if block else ["--no-block"]) + [RESOLVED_UNIT]
+        run(cmd, "systemd-resolved did not restart without the Tor setting", timeout=60)
+
+
+def _apply_dns_resolved(block=True):
+    """Redirect + resolved drop-in + restart resolved, then (block) check that
+    resolved asks Tor only. Rolls back on failure."""
+    try:
+        _dns_redirect_on()
+        if _legacy_dns_files():
+            _remove_legacy_dns_files()
+            _ensure_stub_link()
+            if sh(["nmcli", "general", "reload", "conf"])[0] != 0:
+                sh(["systemctl", "reload", "NetworkManager"])
+        write_atomic(RESOLVED_DROPIN, RESOLVED_DROPIN_TEXT, 0o644)
+        cmd = ["systemctl", "restart"] + ([] if block else ["--no-block"]) + [RESOLVED_UNIT]
+        run(cmd, "systemd-resolved did not restart with the Tor setting", timeout=60)
+        if block:
+            _check_resolved_forwards_to_tor()
+    except (Failure, OSError) as exc:
+        # Leave DNS as it was: resolved without the drop-in, no redirect.
+        if os.path.exists(RESOLVED_DROPIN):
+            Path(RESOLVED_DROPIN).unlink(missing_ok=True)
+            sh(["systemctl", "restart", "--no-block", RESOLVED_UNIT])
+        try:
+            _dns_redirect_off()
+        except Failure as exc2:
+            warn(str(exc2))
+        raise exc if isinstance(exc, Failure) else Failure(str(exc))
+
+
+def _apply_dns_legacy():
+    """resolv.conf → 127.0.0.1, NetworkManager hands off; no immutable flag."""
+    _dns_redirect_on()
+    try:
+        write_atomic(NM_DNS_CONF, "[main]\ndns=none\n", 0o644)
+        if sh(["systemctl", "reload", "NetworkManager"])[0] != 0:
+            sh(["nmcli", "general", "reload", "conf"])
+        if os.path.lexists(RESOLV):
+            _unlock_old_resolv()
+            if os.path.islink(RESOLV) or not Path(RESOLV).is_file():
+                os.unlink(RESOLV)
+        Path(RESOLV).write_text(RESOLV_TOR)
+    except OSError as exc:
+        _dns_redirect_off()
+        raise Failure(f"{RESOLV}: {exc}")
+
+
+def dns_protect_on(restart=True):
     need_root()
     log("DNS-over-Tor (no DNS leaks)")
     if not have("tor"):
-        warn("tor is not installed — DNS left unchanged")
-        return
+        raise Failure("tor is not installed — DNS left unchanged")
     _write_tor_dns()
-    if not restart_tor():
-        warn("Tor did not start — DNS left unchanged (it would stop working)")
-        return
-    _dns_redirect_on()
-    Path(NM_DNS_CONF).write_text("[main]\ndns=none\n")
-    sh(["systemctl", "reload", "NetworkManager"])
-    sh(["chattr", "-i", RESOLV])
-    if os.path.lexists(RESOLV) and (os.path.islink(RESOLV) or not Path(RESOLV).is_file()):
-        os.unlink(RESOLV)
-    Path(RESOLV).write_text(RESOLV_TOR)
-    sh(["chattr", "+i", RESOLV])
-    ok(f"DNS → 127.0.0.1:{DNS_PORT} (via Tor); kept after a restart")
-    save_state({"dns_protected": True})
+    if restart and not restart_tor():
+        raise Failure("Tor did not start — DNS left unchanged (it would stop working)")
+    if resolved_in_use():
+        _apply_dns_resolved()
+        method = "resolved"
+    else:
+        _apply_dns_legacy()
+        method = "resolv.conf"
+    _set_dns_choice(True)
+    ok(f"DNS → 127.0.0.1:{DNS_PORT} (via Tor, through {'systemd-resolved' if method == 'resolved' else 'resolv.conf'}); "
+       "kept after a restart")
+    save_state({"dns_protected": True, "dns_method": method})
+
 
 def dns_protect_off():
     need_root()
     log("Restoring system DNS")
-    _nat_remove(DNS_CHAIN)
-    if not transparent_proxy_active():
+    _dns_redirect_off()
+    # Any SHADOWTOR (an older version's too) still sends DNS to Tor's DNSPort.
+    if not _tproxy_hooked() and os.path.exists(TORDNS_CF):
         Path(TORDNS_CF).unlink(missing_ok=True)
-    _hand_dns_to_networkmanager()
-    ok("DNS handed back to NetworkManager (the network's own DNS servers)")
-    save_state({"dns_protected": False})
+        # Tor (if it runs) closes its DNSPort now. And it must not be reloaded
+        # with KeepBindCapabilities gone (see TOR_KEEP_BIND): it would exit.
+        sh(["systemctl", "try-restart", "--no-block", "tor@default"])
+    _set_dns_choice(False)
+    try:
+        if resolved_in_use():
+            _hand_dns_to_resolved()
+            ok("DNS handed back to systemd-resolved (encrypted DNS as configured)")
+        else:
+            _hand_dns_to_networkmanager()
+            ok("DNS handed back to NetworkManager (the network's own DNS servers)")
+    finally:
+        save_state({"dns_protected": dns_protection_active()}, drop=("dns_method",))
 
 # ── Bluetooth kill ────────────────────────────────────────────────────────────
+
 
 def kill_bluetooth(block=True):
     need_root()
@@ -544,7 +1699,8 @@ def kill_bluetooth(block=True):
     action = "block" if block else "unblock"
     rc, _, e = sh(["rfkill", action, "bluetooth"])
     ok(f"Bluetooth {'blocked' if block else 'unblocked'}") if rc == 0 else warn(f"rfkill: {e}")
-    save_state({"bt_killed": block})
+    save_state({"bt_killed": bluetooth_killed()})
+
 
 def bluetooth_killed():
     rc, out, _ = sh(["rfkill", "list", "bluetooth"])
@@ -554,7 +1710,9 @@ def bluetooth_killed():
 
 # ── USB storage kill ──────────────────────────────────────────────────────────
 
+
 USB_RULE = "/etc/udev/rules.d/90-shadow-nousb.rules"
+
 
 def kill_usb(block=True):
     need_root()
@@ -564,17 +1722,18 @@ def kill_usb(block=True):
             '# Shadow OS — USB storage disabled by shadow-anon\n'
             'SUBSYSTEM=="usb", DRIVER=="usb-storage", ACTION=="add", ATTR{authorized}="0"\n'
         )
-        sh(["udevadm", "control", "--reload-rules"])
+        run(["udevadm", "control", "--reload-rules"], "udev did not reload its rules")
         sh(["modprobe", "-r", "usb_storage"])
         ok("USB storage blocked (new devices rejected)")
     else:
         Path(USB_RULE).unlink(missing_ok=True)
-        sh(["udevadm", "control", "--reload-rules"])
+        run(["udevadm", "control", "--reload-rules"], "udev did not reload its rules")
         sh(["modprobe", "usb_storage"])
         ok("USB storage re-enabled")
     save_state({"usb_killed": block})
 
 # ── Kernel hardening ──────────────────────────────────────────────────────────
+
 
 SYSCTL_FILE = "/etc/sysctl.d/90-shadow-anon.conf"
 
@@ -598,6 +1757,7 @@ HARDENING = {
     "vm.swappiness":                             "1",
 }
 
+
 def harden_kernel(enable=True):
     need_root()
     if enable:
@@ -605,7 +1765,7 @@ def harden_kernel(enable=True):
         lines = ["# Shadow OS kernel hardening — written by shadow-anon\n"]
         for k, v in HARDENING.items():
             lines.append(f"{k} = {v}\n")
-        Path(SYSCTL_FILE).write_text("".join(lines))
+        write_atomic(SYSCTL_FILE, "".join(lines), 0o644)
         rc, _, e = sh(["sysctl", "-p", SYSCTL_FILE])
         ok(f"{len(HARDENING)} hardening parameters applied") if rc == 0 else warn(f"some params failed (non-fatal): {e[:160]}")
     else:
@@ -614,240 +1774,638 @@ def harden_kernel(enable=True):
         ok("removed (reboot to fully revert)")
     save_state({"kernel_hardened": enable})
 
+
 def kernel_hardened():
     return Path(SYSCTL_FILE).exists()
 
 # ── Timezone UTC ──────────────────────────────────────────────────────────────
 
+
 def lock_timezone_utc():
     log("Timezone → UTC")
-    sh(["timedatectl", "set-timezone", "UTC"])
-    ok("timezone set to UTC (prevents location inference)")
+    rc, _, e = sh(["timedatectl", "set-timezone", "UTC"])
+    ok("timezone set to UTC (prevents location inference)") if rc == 0 else warn(f"timedatectl: {e}")
 
 # ── Log wipe ──────────────────────────────────────────────────────────────────
+
+
+ROOT_HOME = "/root"
+HOME_BASE = "/home"
+TMP_DIR = "/tmp"
+HISTORY_FILES = (".bash_history", ".zsh_history", ".fish_history")
+
+
+def _real_dir(path, uid):
+    """lstat: a directory (not a link to one) owned by uid?"""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) and st.st_uid == uid
+
+
+def _wipe_home_files(home, uid, thumbnails=True):
+    """Empty the shell histories (and the thumbnail cache) of one home. Runs
+    with the rights of the home's owner (uid), so a link planted there reaches
+    nothing its owner could not change anyway; links, hard links and files of
+    another owner are skipped all the same."""
+    for name in HISTORY_FILES:
+        try:
+            fd = os.open(os.path.join(home, name),
+                         os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_NOCTTY | os.O_CLOEXEC)
+        except OSError:
+            continue                    # missing, a link (ELOOP), a FIFO (ENXIO), not writable
+        try:
+            st = os.fstat(fd)
+            if stat.S_ISREG(st.st_mode) and st.st_uid == uid and st.st_nlink == 1:
+                os.ftruncate(fd, 0)
+                os.fchmod(fd, 0o600)
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
+    cache = os.path.join(home, ".cache")
+    thumbs = os.path.join(cache, "thumbnails")
+    if not thumbnails or not (_real_dir(cache, uid) and _real_dir(thumbs, uid)):
+        return
+    try:
+        entries = list(os.scandir(thumbs))
+    except OSError:
+        return
+    for entry in entries:            # the directory itself stays, with its owner and mode
+        try:
+            if entry.is_dir(follow_symlinks=False):
+                shutil.rmtree(entry.path, ignore_errors=True)
+            else:
+                os.unlink(entry.path)
+        except OSError:
+            pass
+
+
+def _wipe_home(home, thumbnails=True):
+    """_wipe_home_files() for one home in a child process that has the uid
+    and gid of the home's owner. False if the home is not a directory (a link
+    is skipped) or the child failed."""
+    try:
+        st = os.lstat(home)
+    except OSError:
+        return False
+    if not stat.S_ISDIR(st.st_mode):
+        return False
+    sys.stdout.flush()
+    sys.stderr.flush()
+    pid = os.fork()
+    if pid == 0:
+        code = 1
+        try:
+            if st.st_uid != os.geteuid():
+                os.setgroups([])
+                os.setresgid(st.st_gid, st.st_gid, st.st_gid)
+                os.setresuid(st.st_uid, st.st_uid, st.st_uid)
+            _wipe_home_files(home, st.st_uid, thumbnails)
+            code = 0
+        except BaseException:
+            pass
+        finally:
+            os._exit(code)
+    _, wstatus = os.waitpid(pid, 0)
+    return os.waitstatus_to_exitcode(wstatus) == 0
+
 
 def wipe_logs():
     need_root()
     log("Log wipe")
-    sh(["journalctl", "--rotate"])
-    sh(["journalctl", "--vacuum-time=1s"])
-    ok("systemd journal vacuumed")
-    for home_base in [Path("/root")] + list(Path("/home").iterdir()):
-        if not home_base.is_dir():
-            continue
-        for hist in (".bash_history", ".zsh_history", ".fish_history"):
-            p = home_base / hist
-            if p.exists():
-                try:
-                    p.write_text("")
-                    p.chmod(0o600)
-                except OSError:
-                    pass
-    ok("shell histories cleared")
-    for d in Path("/home").iterdir():
-        tc = d / ".cache" / "thumbnails"
-        if tc.is_dir():
-            shutil.rmtree(tc, ignore_errors=True)
-            tc.mkdir(parents=True, exist_ok=True)
-    ok("thumbnail caches cleared")
-    sh(["find", "/tmp", "-maxdepth", "2", "-not", "-path", "/tmp",
+    rc1 = sh(["journalctl", "--rotate"])[0]
+    rc2 = sh(["journalctl", "--vacuum-time=1s"])[0]
+    ok("systemd journal vacuumed") if rc1 == rc2 == 0 else warn("the journal could not be vacuumed completely")
+    homes = [ROOT_HOME]
+    try:
+        homes += sorted(os.path.join(HOME_BASE, name) for name in os.listdir(HOME_BASE))
+    except OSError:
+        pass
+    # Each home with its owner's rights, never root's: as root, a link such as
+    # ~/.bash_history -> /etc/... would empty and chmod a system file.
+    skipped = [home for home in homes
+               if os.path.lexists(home) and not _wipe_home(home, thumbnails=home != ROOT_HOME)]
+    if skipped:
+        warn(f"skipped (not a directory, or its owner's rights could not be taken): {', '.join(skipped)}")
+    ok("shell histories and thumbnail caches cleared")
+    sh(["find", TMP_DIR, "-maxdepth", "2", "-not", "-path", TMP_DIR,
         "-not", "-name", "shadow-anon*", "-mmin", "+60", "-delete"])
-    ok("/tmp files older than 1 hour removed")
+    ok(f"{TMP_DIR} files older than 1 hour removed")
 
 # ── Ghost Mode ────────────────────────────────────────────────────────────────
 
-def ghost_mode_on():
+
+def ghost_mode_on(persist=False, rotate_mac=True):
+    """Every protection. The kill switch comes FIRST: nothing the later steps
+    do (reconnecting with a new address, restarting Tor) can leak. If a
+    network step fails the kill switch stays on (fail closed)."""
     need_root()
     print("╔═══════════════════════════════════════════╗")
     print("║   SHADOW OS — GHOST MODE ACTIVATING       ║")
     print("╚═══════════════════════════════════════════╝")
-    randomize_mac()
-    ipv6_privacy()
-    random_hostname()
-    lock_timezone_utc()
-    harden_kernel(True)
-    kill_bluetooth(True)
-    new_tor_identity()
-    time.sleep(2)
-    transparent_proxy_on()
-    dns_protect_on()
-    kill_switch_on()
-    wipe_logs()
-    save_state({"ghost_mode": True, "threat_model": "maximum"})
+    try:
+        kill_switch_on(persist=persist, by="ghost")
+        if rotate_mac:
+            try:
+                randomize_mac()
+            except Failure as exc:
+                warn(f"address rotation: {exc} (Ghost Mode continues)")
+        ipv6_privacy()
+        random_hostname()
+        lock_timezone_utc()
+        harden_kernel(True)
+        kill_bluetooth(True)
+        transparent_proxy_on(persist=persist, _in_ghost=True)      # restarts Tor: new circuits
+        dns_protect_on(restart=False)                            # Tor already has the DNSPort
+        wipe_logs()
+    except (Failure, OSError) as exc:
+        save_state({"ghost_mode": False, "kill_switch": kill_switch_active()}, drop=("ghost_wanted",))
+        msg = str(exc)
+        raise Failure(f"Ghost Mode is NOT on: {msg}" + ("; the kill switch stays on until Ghost Mode is turned off"
+                                                        if load_state().get("kill_switch") else ""))
+    save_state({"ghost_mode": True, "threat_model": "maximum"}, drop=("ghost_wanted",))
     print("\n╔═══════════════════════════════════════════╗")
     print("║  GHOST MODE ACTIVE  ·  identity obliterated ║")
     print("╚═══════════════════════════════════════════╝")
 
+
 def ghost_mode_off():
     need_root()
     log("Disabling Ghost Mode")
-    kill_switch_off()
-    transparent_proxy_off()
-    dns_protect_off()
-    kill_bluetooth(False)
-    save_state({"ghost_mode": False, "threat_model": "basic"})
+    problems = []
+    # Proxy and DNS first, the kill switch last: never a moment without it
+    # while traffic is still being redirected.
+    for step in (lambda: transparent_proxy_off(release_killswitch=False), dns_protect_off,
+                 kill_switch_off, lambda: kill_bluetooth(False)):
+        try:
+            step()
+        except (Failure, OSError) as exc:
+            warn(str(exc))
+            problems.append(str(exc))
+    save_state({"ghost_mode": False, "threat_model": "basic"}, drop=("ghost_wanted",))
+    if problems:
+        raise Failure("Ghost Mode was turned off, but: " + "; ".join(problems))
     ok("Ghost Mode disabled. Rebooting is recommended to fully reset kernel state.")
 
 # ── Threat model presets ──────────────────────────────────────────────────────
 
-def set_threat_model(model):
+
+def set_threat_model(model, persist=False):
+    """The presets never change the network address (that is "Rotate identity")."""
     need_root()
     model = model.lower().strip()
     if model not in ("basic", "enhanced", "maximum"):
         sys.exit(f"shadow-anon: unknown threat model '{model}' (basic|enhanced|maximum)")
     log(f"Setting threat model: {model}")
-    if model == "basic":
-        if kill_switch_active():
-            kill_switch_off()
-        if transparent_proxy_active():
-            transparent_proxy_off()
-        if load_state().get("dns_protected"):
-            dns_protect_off()
-        randomize_mac(); ipv6_privacy(); random_hostname()
-    elif model == "enhanced":
-        if kill_switch_active():
-            kill_switch_off()
-        if transparent_proxy_active():
-            transparent_proxy_off()
-        randomize_mac(); ipv6_privacy(); random_hostname()
+    if model == "maximum":
+        ghost_mode_on(persist=persist, rotate_mac=False)
+        return
+    # Any SHADOWTOR, also an older version's (ports 9040/5353, between an
+    # upgrade's unpack and its "boot"): the kill switch is released below.
+    if _tproxy_hooked():
+        transparent_proxy_off(release_killswitch=False)
+    if model == "basic" and dns_protection_configured():
+        dns_protect_off()
+    _release_killswitch_if_ours()
+    ipv6_privacy()
+    random_hostname()
+    if model == "enhanced":
         new_tor_identity()
         dns_protect_on()
-    elif model == "maximum":
-        ghost_mode_on()
-        return
-    save_state({"threat_model": model, "ghost_mode": model == "maximum"})
+    save_state({"threat_model": model, "ghost_mode": False}, drop=("ghost_wanted",))
 
 # ── Nuke ──────────────────────────────────────────────────────────────────────
 
-def nuke():
+
+def nuke(persist=False):
     need_root()
     print("\n!!! NUKE — maximum identity wipe + all logs cleared !!!\n")
-    ghost_mode_on()
+    ghost_mode_on(persist=persist)
     new_tor_identity()
     wipe_logs()
     print("\nNUKE complete. Recommend rebooting for full kernel state reset.")
 
 # ── Rotation + timer ──────────────────────────────────────────────────────────
 
+
+TIMER_DROPIN_DIR = "/etc/systemd/system/shadow-anon-rotate.timer.d"
+TIMER_MIN_INTERVAL = NEWNYM_MIN_INTERVAL
+
+
 def rotate():
+    """'Rotate identity' (a person asked for it): new address, hostname, circuits."""
     need_root()
     state = load_state()
     model = state.get("threat_model", "basic")
     print(f"Rotating identity @ {time.strftime('%H:%M:%S')}  (threat: {model})")
-    randomize_mac(); ipv6_privacy(); random_hostname()
-    if model in ("enhanced", "maximum"):
-        new_tor_identity()
-    if model == "maximum":
-        dns_protect_on()
+    problem = None
+    try:
+        randomize_mac()
+    except Failure as exc:
+        problem = exc
+    ipv6_privacy()
+    random_hostname()
+    if model in ("enhanced", "maximum") or tor_running():
+        try:
+            new_tor_identity()
+        except Failure as exc:          # Tor down while the proxy redirects to it
+            problem = exc if problem is None else Failure(f"{problem}; {exc}")
+    if problem:
+        raise problem
     print("done.")
+
+
+def _timer_dropin_text(interval):
+    return ("# Written by shadow-anon start: new Tor circuits at this interval\n"
+            f"[Timer]\nOnBootSec=\nOnUnitActiveSec=\nOnBootSec={interval}s\nOnUnitActiveSec={interval}s\n")
+
 
 def start(interval):
     need_root()
-    interval = max(5, int(interval))
-    td = Path("/etc/systemd/system/shadow-anon-rotate.timer.d")
-    td.mkdir(parents=True, exist_ok=True)
-    (td / "interval.conf").write_text(
-        "# Written by shadow-anon start\n"
-        f"[Timer]\nOnBootSec=\nOnUnitActiveSec=\nOnBootSec={interval}s\nOnUnitActiveSec={interval}s\n"
-    )
-    sh(["systemctl", "daemon-reload"])
-    sh(["systemctl", "enable", "shadow-anon-rotate.timer"])
-    rc, _, e = sh(["systemctl", "restart", "shadow-anon-rotate.timer"])
-    if rc != 0:
-        warn(f"the rotation timer did not start: {e}")
-        return
-    ok(f"auto-rotation every {interval}s")
+    interval = int(interval)
+    if interval < TIMER_MIN_INTERVAL:
+        warn(f"{interval} s is below the minimum of {TIMER_MIN_INTERVAL} s; using {TIMER_MIN_INTERVAL} s")
+        interval = TIMER_MIN_INTERVAL
+    write_atomic(os.path.join(TIMER_DROPIN_DIR, "interval.conf"), _timer_dropin_text(interval), 0o644)
+    run(["systemctl", "daemon-reload"], "systemd did not reload its units")
+    run(["systemctl", "enable", "shadow-anon-rotate.timer"], "the rotation timer could not be enabled")
+    run(["systemctl", "restart", "shadow-anon-rotate.timer"], "the rotation timer did not start")
+    ok(f"new Tor circuits every {interval} s (the timer never changes the network address)")
     save_state({"auto_rotate": True})
+
 
 def stop_rotate():
     need_root()
-    sh(["systemctl", "disable", "--now", "shadow-anon-rotate.timer"])
+    run(["systemctl", "disable", "--now", "shadow-anon-rotate.timer"], "the rotation timer could not be stopped")
     ok("auto-rotation disabled")
     save_state({"auto_rotate": False})
 
+
+def _fix_timer_dropin():
+    """Older versions allowed intervals down to 5 s: raise them to the minimum
+    (in effect from the next start of systemd; tor-newnym enforces it now)."""
+    path = os.path.join(TIMER_DROPIN_DIR, "interval.conf")
+    try:
+        text = Path(path).read_text()
+    except OSError:
+        return
+    values = [int(v) for v in re.findall(r"^OnUnitActiveSec=(\d+)s?\s*$", text, re.M)]
+    if values and min(values) < TIMER_MIN_INTERVAL:
+        try:
+            write_atomic(path, _timer_dropin_text(TIMER_MIN_INTERVAL), 0o644)
+            ok(f"rotation timer raised to the minimum interval of {TIMER_MIN_INTERVAL} s")
+        except OSError as exc:
+            warn(f"{path}: {exc}")
+
 # ── Start of the system ───────────────────────────────────────────────────────
 
-def real_state():
+
+TOR_DOWN = ("the transparent proxy is not in force: its redirect is in place, but Tor is not running, so "
+            "connections fail (journalctl -u tor@default)")
+DNS_TOR_DOWN = ("DNS protection sends every lookup to Tor, but Tor is not running, so lookups fail "
+                "(journalctl -u tor@default)")
+# What boot() and tor-socks record when Tor does not come up on a running system.
+TOR_RESTART_FAILED = "Tor did not restart with its new configuration (journalctl -u tor@default)"
+TOR_START_FAILED = "Tor did not start (journalctl -u tor@default)"
+
+
+def _without_tor_down(error):
+    """A recorded error without its parts that only said Tor was not running
+    (TOR_DOWN, DNS_TOR_DOWN, which real_state() re-checks, and a failed start
+    or restart of Tor once tor@default runs). boot() and rotate() join their
+    problems with "; "; the other parts are kept as they are."""
+    if not error or not isinstance(error, str):
+        return error or None
+    kept, tor_up = [], None
+    for part in error.split("; "):
+        if part in (TOR_DOWN, DNS_TOR_DOWN):
+            continue
+        if part in (TOR_RESTART_FAILED, TOR_START_FAILED):
+            tor_up = tor_running() if tor_up is None else tor_up
+            if tor_up:
+                continue
+        kept.append(part)
+    return "; ".join(kept) or None
+
+
+def real_state(problems=None, check_dns_tor=True):
     """The state file from what is actually in effect, not from what was
-    asked for earlier (/run is empty after a restart, and firewall rules may
-    have been removed by other tools)."""
+    asked for earlier (/run is empty after a restart, and rules may have
+    been removed by other tools). Never claims a protection not in force.
+    The proxy's redirect while Tor does not run is such a case (TOR_DOWN),
+    and DNS protection while Tor does not run fails every lookup
+    (DNS_TOR_DOWN; no leak, so it stays "in force"; not checked when
+    check_dns_tor is false: boot() has just queued Tor's start, which at
+    start-up waits for the network). Such a problem is added to 'problems'
+    if given, else recorded as the state's "error"; one recorded while Tor
+    was down is cleared once it runs, also from an error that joins several
+    problems (_without_tor_down). Ghost Mode that Tor's failure
+    interrupted ("ghost_wanted", see restart_tor) is in force again once
+    the proxy and the kill switch are; Ghost Mode whose redirect and kill
+    switch are in place while Tor does not run (also a Tor that stopped
+    outside shadow-anon) is kept as "ghost_wanted" the same way."""
     state = load_state()
-    tproxy, killsw = transparent_proxy_active(), kill_switch_active()
-    dns = dns_protection_configured() and tor_dns_redirect_active()
+    ks = killswitch_status()
+    redirect, killsw = transparent_proxy_active(), killswitch_tor_active(ks)
+    dns = dns_protection_active()
+    tor_up = (redirect or dns) and tor_running()
+    # Without Tor every redirected connection fails (nothing else may listen
+    # on Tor's ports): not "all TCP through Tor".
+    tproxy = redirect and tor_up
+    down = TOR_DOWN if redirect and not tproxy else DNS_TOR_DOWN if dns and check_dns_tor and not tor_up else None
+    if down and problems is None:
+        state["error"] = down
+    elif down:
+        problems.append(down)
+    else:
+        state["error"] = _without_tor_down(state.get("error"))
+    wanted = bool(state.get("ghost_mode") or state.get("ghost_wanted"))
+    ghost = wanted and tproxy and killsw
+    if wanted and redirect and killsw and not tor_up:
+        # Only Tor is missing: the wish is kept, as restart_tor() keeps it,
+        # also for a Tor that stopped on its own (a crash, "systemctl stop",
+        # an upgrade), which restart_tor() never saw; else the next record
+        # (_record_success(), boot) would say Ghost Mode off for good.
+        state["ghost_wanted"] = True
     state.update({
         "transparent_proxy": tproxy,
         "kill_switch": killsw,
+        "killswitch": {"mode": ks.get("mode"), "loaded": bool(ks.get("loaded")), "error": ks.get("error"),
+                       "persistent_mode": ks.get("persistent_mode")},
         "dns_protected": dns,
-        "ghost_mode": bool(state.get("ghost_mode")) and tproxy and killsw,
+        "ghost_mode": ghost,
         "kernel_hardened": kernel_hardened(),
         "usb_killed": Path(USB_RULE).exists(),
         "bt_killed": bluetooth_killed(),
     })
+    if ghost:
+        state.pop("ghost_wanted", None)
+        state["threat_model"] = "maximum"
+    if not dns:
+        state.pop("dns_method", None)
     if state.get("threat_model") == "maximum" and not state["ghost_mode"]:
         state["threat_model"] = "enhanced" if dns else "basic"
     state.setdefault("threat_model", "basic")
     return state
 
-def boot():
-    """At every start (shadow-anon-boot.service, also run after an upgrade of
-    the package): DNS protection's files survived the restart but its
-    redirect to Tor did not, and without it every name lookup fails. Put the
-    redirect back, or hand DNS back to NetworkManager when Tor is gone. Then
-    record the real state for the Hide Me panel."""
-    need_root()
-    if dns_protection_configured():
-        if have("tor"):
-            changed = not Path(TORDNS_CF).exists()
-            if changed:
-                _write_tor_dns()
-            _start_tor_soon(changed)
-            if not tor_dns_redirect_active():
-                _dns_redirect_on()
-            ok("DNS protection kept: DNS → Tor")
-        else:
-            warn("DNS protection was on but Tor is not installed — DNS handed back to NetworkManager")
-            _nat_remove(DNS_CHAIN)
-            _hand_dns_to_networkmanager()
+
+def _record_success(recheck=True):
+    """The record after a command that succeeded (called with the lock held).
+    While one of Hide Me's redirects to Tor is hooked, or a Ghost Mode that
+    Tor's failure interrupted waits ("ghost_wanted"), the state file is
+    re-checked as boot() does (real_state()): the actions' own records never
+    bring Ghost Mode and the proxy back once Tor runs again, and a Tor that
+    is still down stays recorded (TOR_DOWN, DNS_TOR_DOWN) instead of being
+    cleared by an unrelated success. Any other earlier error is cleared.
+    boot() writes its own re-checked record (recheck=False)."""
+    if not recheck or not (load_state().get("ghost_wanted") or _nat_hooked(TPROXY_CHAIN)
+                           or _nat_hooked(DNS_CHAIN)):
+        save_state({"error": None})
+        return
     state = real_state()
+    if state.get("error") not in (TOR_DOWN, DNS_TOR_DOWN):
+        state["error"] = None
     try:
-        Path(STATE_FILE).write_text(json.dumps(state, indent=2))
-        os.chmod(STATE_FILE, 0o644)
+        write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n", 0o644)
     except OSError as exc:
         warn(f"{STATE_FILE}: {exc}")
 
+
+def _system_starting():
+    """Is systemd still starting the system? Then boot() runs before the
+    network, and Tor's start, ordered after the network, cannot be waited
+    for. Anything else (running, degraded, ...) is a running system: an
+    install or upgrade, or boot run by hand."""
+    return sh(["systemctl", "is-system-running"])[1] in ("initializing", "starting")
+
+
+def boot():
+    """At every start (shadow-anon-boot.service, also run when the package is
+    installed or upgraded): remove what older versions left (their kill
+    switch chain, too-fast timers, a proxy without the .onion rule, nat rules
+    that send DNS over TCP to Tor's DNSPort, and Tor's ports 9040/5353 in
+    the rules, Tor's files and resolved's drop-in), put DNS protection's
+    runtime parts back (or hand DNS back when Tor is gone, or for this boot
+    when shadow.hideme=off), remove a DNS redirect nothing wants (an older
+    version's, restored by netfilter-persistent), then record the real
+    state. Tor's SOCKS ports file (SOCKS_CF) is written, torsocks and
+    proxychains4 are pointed at it and 9050 is redirected to it
+    (SOCKS_CHAIN; [::1]:9050 refused) whatever Hide Me does, with Tor
+    installed (without iptables that is a recorded problem). Tor is
+    (re)started only once the
+    rules and resolved point at the new ports (which only root may bind):
+    at start-up (systemd says so) it is queued, as Tor waits for the
+    network; on a running system (an install or upgrade, boot by hand) it
+    is waited for and a failure recorded: a restart when Tor runs and its
+    files changed, a start when it does not run and DNS protection or the
+    proxy needs it."""
+    need_root()
+    problems = []
+    hatch = escape_hatch()
+    try:
+        migrate_legacy_killswitch()
+    except Failure as exc:
+        warn(str(exc))
+        problems.append(str(exc))
+    _fix_timer_dropin()
+    tor = have("tor")
+    tor_changed = socks_changed = start_tor = check_resolved = queued = False
+    try:
+        if tor:
+            socks_changed = _ensure_torrc_d()
+            tor_changed = _update_tor_config()
+            for path in point_socks_clients():
+                ok(f"{path}: now uses Tor's SOCKS port {TOR_SOCKS} ({OLD_SOCKS_PORT} is not Tor's any more)")
+    except OSError as exc:
+        warn(f"Tor's configuration: {exc}")
+        problems.append(f"Tor's configuration: {exc}")
+    if tor:
+        try:
+            if _socks_redirect_ensure():
+                ok(_socks_redirect_note())
+        except Failure as exc:
+            warn(str(exc))
+            problems.append(str(exc))
+    proxy = _tproxy_hooked()
+    if proxy:
+        try:
+            if not _tproxy_has_onion_rule() or _chain_outdated(TPROXY_CHAIN):
+                _load_chain(TPROXY_CHAIN, tproxy_rules())
+                ok("transparent proxy: rules of an older version replaced")
+            if not kill_switch_active():
+                kill_switch_on(by="proxy")
+            if tor:
+                # The redirect needs Tor's TransPort and DNSPort (a chain can
+                # outlive the files: removed by hand, or an older version's).
+                tor_changed = _write_if_changed(TPROXY_CF, _tproxy_text()) or tor_changed
+                tor_changed = _write_tor_dns() or tor_changed
+        except (Failure, OSError) as exc:
+            warn(str(exc))
+            problems.append(str(exc))
+    if not dns_protection_configured() and _dns_chain_present():
+        # Nothing wants a DNS redirect: an older version's chain restored by
+        # netfilter-persistent (to 5353, which any user may bind next to
+        # avahi) or one left behind. It would send every lookup there.
+        try:
+            _dns_redirect_off()
+            ok("DNS redirect left without DNS protection removed")
+        except Failure as exc:
+            warn(str(exc))
+            problems.append(str(exc))
+    if dns_protection_configured():
+        resolved = resolved_in_use()
+        try:
+            if hatch or not tor:
+                if hatch:
+                    # For this boot only: with systemd-resolved the choice is
+                    # kept in HIDEME_CONF; the resolv.conf method's files are
+                    # the choice, so handing back forgets it.
+                    warn(f"{ESCAPE_PARAM}=off on the kernel command line: DNS protection is not put back")
+                else:
+                    warn("DNS protection was on but Tor is not installed — DNS handed back")
+                    _set_dns_choice(False)
+                _dns_redirect_off()
+                if resolved:
+                    _hand_dns_to_resolved(block=False)
+                else:
+                    _hand_dns_to_networkmanager()
+            else:
+                start_tor = True
+                tor_changed = _write_tor_dns() or tor_changed
+                if resolved:
+                    _apply_dns_resolved(block=False)
+                    _set_dns_choice(True)
+                    check_resolved = True
+                else:
+                    if not tor_dns_redirect_active() or _chain_outdated(DNS_CHAIN) or _dns6_missing():
+                        _dns_redirect_on()
+                    ok("DNS protection kept: DNS → Tor")
+        except (Failure, OSError) as exc:
+            warn(str(exc))
+            problems.append(str(exc))
+    # Tor last: the rules and resolved's drop-in point at its new ports by now.
+    changed = tor_changed or socks_changed
+    if tor and _system_starting():
+        # At start-up Tor waits for the network, which waits for this:
+        # queued, not waited for (DNS_TOR_DOWN is not checked below).
+        if start_tor or tor_changed or (changed and tor_running()):
+            _start_tor_soon(changed)
+            queued = True
+    elif tor and tor_running():
+        if changed:
+            # A running system (an upgrade): wait for Tor on its new ports,
+            # so the state below is the truth (DNS protection and the proxy
+            # fail while it does not run). Only enabled for Hide Me's own needs.
+            if not restart_tor(enable=tor_changed or start_tor):
+                warn(TOR_RESTART_FAILED)
+                problems.append(TOR_RESTART_FAILED)
+    elif tor and (start_tor or proxy):
+        # A running system whose Tor does not run (it failed, or was
+        # stopped) while DNS protection or the proxy sends to it: started and
+        # waited for, so that a Tor that does not come up is recorded (with
+        # DNS_TOR_DOWN or TOR_DOWN below), not erased by a record that only
+        # queued its start.
+        if not restart_tor():
+            warn(TOR_START_FAILED)
+            problems.append(TOR_START_FAILED)
+    if check_resolved:
+        try:
+            # resolved's restart was queued: wait for it (up to 20 s); if it
+            # does not take the setting it is reported, and the state below
+            # says DNS protection is off.
+            _check_resolved_forwards_to_tor(attempts=40)
+            ok("DNS protection kept: DNS → Tor")
+        except Failure as exc:
+            warn(str(exc))
+            problems.append(str(exc))
+    state = real_state(problems, check_dns_tor=not queued)
+    state["escape_hatch"] = hatch
+    state["error"] = "; ".join(problems) or None
+    try:
+        write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n", 0o644)
+    except OSError as exc:
+        warn(f"{STATE_FILE}: {exc}")
+    if problems:
+        raise Failure("; ".join(problems))
+
 # ── Leak test ─────────────────────────────────────────────────────────────────
+
+
+def _checked_state():
+    """What the leak test and the text status report: as root re-checked
+    (real_state(), not saved), else the state file."""
+    return real_state() if os.geteuid() == 0 else load_state()
+
+
+def _proxy_line(st, tor_up):
+    """tor_up: tor_running() now (a recorded TOR_DOWN may be older than that)."""
+    if st.get("transparent_proxy"):
+        return "ACTIVE — all TCP through Tor"
+    if TOR_DOWN in (st.get("error") or "") and not tor_up:
+        return "NOT IN FORCE — its redirect is in place but Tor is not running: connections fail"
+    return "inactive"
+
+
+def _exit_ip_via_tor(max_time):
+    """The exit address through Tor's SOCKS port (a port only root, i.e.
+    Tor, may bind; not torsocks, whose configuration may still name 9050)."""
+    _, ip, _ = sh(["curl", "-s", "--max-time", str(max_time), "--socks5-hostname", TOR_SOCKS,
+                   "https://api.ipify.org"], timeout=max_time + 5)
+    return ip
+
 
 def leak_test():
     print("Shadow OS — Identity Leak Test")
     print("=" * 44)
+    st = _checked_state()
+    tor_up = tor_running()
 
     print("\n[1] Direct IP (not through Tor):")
     if have("curl"):
         _, ip, _ = sh(["curl", "-s", "--max-time", "8", "https://api.ipify.org"], timeout=12)
-        print(f"    {ip or '(unavailable)'}")
+        print(f"    {ip or '(unavailable — blocked by the kill switch, or offline)'}")
     else:
         print("    curl not available")
 
     print("\n[2] Apparent IP via Tor:")
-    tor_rc, _, _ = sh(["systemctl", "is-active", "--quiet", "tor"])
-    if tor_rc != 0:
+    if not tor_up:
         print("    Tor is not running — start Tor first")
-    elif have("torsocks") and have("curl"):
-        _, ip, _ = sh(["torsocks", "curl", "-s", "--max-time", "15", "https://api.ipify.org"], timeout=20)
+    elif have("curl"):
+        ip = _exit_ip_via_tor(15)
         print(f"    {ip or '(circuit not ready yet — retry in a few seconds)'}")
     else:
-        print("    torsocks or curl not installed")
+        print("    curl not installed")
 
-    print("\n[3] DNS resolver (resolv.conf):")
-    try:
-        for line in Path(RESOLV).read_text().splitlines():
-            if line.startswith("nameserver"):
-                ns = line.split()[1]
-                tag = " ← DNS-over-Tor (protected)" if ns == "127.0.0.1" else \
-                      " ← WARNING: DNS leaks possible" if ns in ("1.1.1.1","8.8.8.8","9.9.9.9") else ""
-                print(f"    {ns}{tag}")
-    except OSError:
-        print("    cannot read /etc/resolv.conf")
+    print("\n[3] DNS:")
+    if st.get("dns_protected"):
+        print(f"    DNS-over-Tor active (every UDP port-53 query → Tor:{DNS_PORT}; DNS over TCP and "
+              "IPv6 port-53 queries refused)")
+        if not tor_up:              # Tor as it is now, not a recorded error (it may be older)
+            print("    WARNING: Tor is not running — every lookup fails until it runs")
+    if resolved_in_use():
+        servers = resolved_global_dns()
+        if not Path(RESOLVED_DROPIN).exists():
+            print("    resolver: systemd-resolved")
+        elif resolved_forwards_to_tor(servers):
+            print("    resolver: systemd-resolved (forwarding to Tor only)")
+        else:
+            print("    resolver: systemd-resolved — WARNING: Hide Me's Tor setting is not in force; global "
+                  f"servers: {' '.join(servers) if servers else 'none' if servers is not None else 'unknown'}")
+        rc, out, _ = sh(["resolvectl", "dns"])
+        for line in out.splitlines()[:6] if rc == 0 else []:
+            print(f"    {line.strip()}")
+    else:
+        try:
+            for line in Path(RESOLV).read_text().splitlines():
+                if line.startswith("nameserver"):
+                    ns = line.split()[1]
+                    tag = " ← DNS-over-Tor (protected)" if ns == "127.0.0.1" else \
+                          " ← WARNING: DNS leaks possible" if ns in ("1.1.1.1", "8.8.8.8", "9.9.9.9") else ""
+                    print(f"    {ns}{tag}")
+        except OSError:
+            print("    cannot read /etc/resolv.conf")
 
     print("\n[4] IPv6 addresses:")
     _, out, _ = sh(["ip", "-6", "addr", "show"])
@@ -870,71 +2428,114 @@ def leak_test():
             print("    IPv6 cannot reach the internet (good — no IPv6 leak)")
 
     print("\n[5] Transparent Tor proxy:")
-    print(f"    {'ACTIVE — all TCP through Tor' if transparent_proxy_active() else 'inactive'}")
+    print(f"    {_proxy_line(st, tor_up)}")
 
     print("\n[6] Network kill switch:")
-    if kill_switch_active():
-        print("    ON — non-Tor traffic is blocked")
+    ks = killswitch_status()
+    if killswitch_tor_active(ks):
+        print("    ON (Tor only) — non-Tor traffic is blocked" + ("" if ks.get("verified", True) else " (not re-checked)"))
         if have("curl"):
-            # With the kill switch on and Tor's own user excepted, a direct
-            # connection by THIS process (not debian-tor) should fail.
-            rc, _, _ = sh(["curl", "-s", "--max-time", "6", "-o", "/dev/null",
-                           "http://1.1.1.1"], timeout=10)
+            # Only Tor's own user is exempt: a direct connection by THIS process must fail.
+            rc, _, _ = sh(["curl", "-s", "--max-time", "6", "-o", "/dev/null", "http://1.1.1.1"], timeout=10)
             print("    verified: direct connection blocked" if rc != 0
                   else "    WARNING: a direct connection still succeeded — kill switch not effective")
+    elif ks.get("mode") and ks.get("mode") != "off":
+        state = "loaded" if ks.get("loaded") else "NOT LOADED"
+        lan = ", local network allowed" if ks.get("lan") else ""
+        print(f"    mode {ks['mode']}{lan} ({state}) — set outside Hide Me; not Tor only")
     else:
         print("    off — if Tor stops, applications can leak the real IP")
+    if ks.get("error"):
+        print(f"    problem: {ks['error']}")
 
     print("\n[7] Bluetooth:")
-    _, rfout, _ = sh(["rfkill", "list", "bluetooth"])
-    killed = "Soft blocked: yes" in rfout or "Hard blocked: yes" in rfout
-    print(f"    {'killed (rfkill blocked)' if killed else 'active — trackable by nearby devices'}")
+    print(f"    {'killed (rfkill blocked)' if bluetooth_killed() else 'active — trackable by nearby devices'}")
 
-    state = load_state()
-    print(f"\n[8] Threat model  : {state.get('threat_model', 'basic')}")
-    print(f"    Ghost Mode    : {'ON' if state.get('ghost_mode') else 'OFF'}")
+    print(f"\n[8] Threat model  : {st.get('threat_model', 'basic')}")
+    print(f"    Ghost Mode    : {'ON' if st.get('ghost_mode') else 'OFF'}")
     print(f"    Kernel harden : {'applied' if kernel_hardened() else 'default'}")
     print()
 
 # ── Status ────────────────────────────────────────────────────────────────────
 
-def status():
-    state = load_state()
+
+def status(as_json=False):
+    if as_json:
+        if os.geteuid() == 0:
+            st = real_state()
+            st["verified"] = True
+        else:
+            st = load_state()
+            st["verified"] = False        # rules cannot be read without root
+        print(json.dumps(st, indent=2, sort_keys=True))
+        return
+    state = _checked_state()
     print("Shadow OS — Hide Me status")
     print("-" * 44)
     _, host, _ = sh(["hostname"])
     print(f"hostname    : {host}")
     for ifc in net_ifaces():
         try:
-            mac = Path(f"/sys/class/net/{ifc}/address").read_text().strip()
+            mac = Path(f"{SYS_NET}/{ifc}/address").read_text().strip()
         except OSError:
             mac = "?"
         print(f"{ifc:<11}: {mac}")
-    tor_rc, _, _ = sh(["systemctl", "is-active", "--quiet", "tor"])
-    print(f"tor         : {'running' if tor_rc == 0 else 'stopped'}")
+    tor_up = tor_running()
+    print(f"tor         : {'running' if tor_up else 'stopped'}")
     print(f"ghost mode  : {'ON' if state.get('ghost_mode') else 'off'}")
     print(f"threat model: {state.get('threat_model', 'basic')}")
-    print(f"tproxy      : {'ON' if transparent_proxy_active() else 'off'}")
-    print(f"kill switch : {'ON' if kill_switch_active() else 'off'}")
+    proxy = _proxy_line(state, tor_up)
+    print(f"tproxy      : {'ON' if state.get('transparent_proxy') else 'off' if proxy == 'inactive' else proxy}")
+    ks = killswitch_status()
+    if killswitch_tor_active(ks):
+        line = "ON (Tor only)" + ("" if ks.get("verified", True) else ", not re-checked")
+    elif ks.get("active") and not ks.get("loaded"):
+        line = f"mode {ks.get('mode')} but NOT LOADED"
+    elif ks.get("mode") and ks.get("mode") != "off":
+        line = f"mode {ks['mode']}{', local network allowed' if ks.get('lan') else ''} (set outside Hide Me)"
+    else:
+        line = "off"
+    print(f"kill switch : {line}")
+    if ks.get("error"):
+        print(f"              problem: {ks['error']}")
     print(f"dns protect : {'ON' if state.get('dns_protected') else 'off'}")
     print(f"bt killed   : {'YES' if bluetooth_killed() else 'no'}")
     print(f"usb blocked : {'YES' if Path(USB_RULE).exists() else 'no'}")
     print(f"kernel hard : {'YES' if kernel_hardened() else 'no'}")
     rot_rc, rot_out, _ = sh(["systemctl", "is-active", "shadow-anon-rotate.timer"])
-    print(f"auto-rotate : {'on (' + rot_out + ')' if rot_out == 'active' else 'off'}")
-    if tor_rc == 0 and have("torsocks") and have("curl"):
+    print(f"auto-rotate : {'on (Tor circuits)' if rot_out == 'active' else 'off'}")
+    if state.get("error"):
+        print(f"last error  : {state['error']}")
+    if tor_up and have("curl"):
         print("exit IP     : (checking via Tor…)")
-        _, ip, _ = sh(["torsocks", "curl", "-s", "--max-time", "10", "https://api.ipify.org"], timeout=15)
-        print(f"            : {ip or '(circuit not ready)'}")
+        print(f"            : {_exit_ip_via_tor(10) or '(circuit not ready)'}")
 
 # ── Text panel ────────────────────────────────────────────────────────────────
 
+
 def panel():
+    actions = {
+        "1": rotate,
+        "2": lambda: start(60),
+        "3": lambda: start(300),
+        "4": stop_rotate,
+        "5": ghost_mode_on,
+        "6": ghost_mode_off,
+        "7": lambda: set_threat_model("basic"),
+        "8": lambda: set_threat_model("enhanced"),
+        "9": lambda: set_threat_model("maximum"),
+        "n": nuke,
+        "l": leak_test,
+        "b": lambda: kill_bluetooth(True),
+        "s": lambda: kill_switch_off() if kill_switch_active() else kill_switch_on(),
+        "k": lambda: harden_kernel(True),
+        "w": wipe_logs,
+    }
     while True:
         os.system("clear")
         status()
         print()
-        print("[1]  Rotate now       [2]  Auto every 30s   [3]  Auto every 5 min")
+        print("[1]  Rotate identity  [2]  Tor circuits every 60s  [3]  … every 5 min")
         print("[4]  Stop auto        [5]  Ghost Mode ON     [6]  Ghost Mode OFF")
         print("[7]  Threat: basic    [8]  Threat: enhanced  [9]  Threat: maximum")
         print("[n]  NUKE             [l]  Leak test         [b]  Kill Bluetooth")
@@ -944,76 +2545,71 @@ def panel():
             c = input("\n> ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             break
-        if   c == "1": rotate()
-        elif c == "2": start(30)
-        elif c == "3": start(300)
-        elif c == "4": stop_rotate()
-        elif c == "5": ghost_mode_on()
-        elif c == "6": ghost_mode_off()
-        elif c == "7": set_threat_model("basic")
-        elif c == "8": set_threat_model("enhanced")
-        elif c == "9": set_threat_model("maximum")
-        elif c == "n": nuke()
-        elif c == "l": leak_test()
-        elif c == "b": kill_bluetooth(True)
-        elif c == "s": kill_switch_off() if kill_switch_active() else kill_switch_on()
-        elif c == "k": harden_kernel(True)
-        elif c == "w": wipe_logs()
-        elif c == "q": break
+        if c == "q":
+            break
+        fn = actions.get(c)
+        if fn:
+            try:
+                if c == "l":
+                    fn()
+                else:
+                    with Lock():
+                        fn()
+                        _record_success()
+            except (Failure, OSError) as exc:
+                print(f"\nshadow-anon: error: {exc}")
+                save_state({"error": str(exc)})
         input("\n(enter to continue)")
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-def main():
+
+# Commands that only read.
+READ_ONLY = {None, "status", "leak-test", "panel"}
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser(prog="shadow-anon", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd")
-    sub.add_parser("status")
-    sub.add_parser("rotate")
-    sub.add_parser("boot")
-    sub.add_parser("mac")
-    sub.add_parser("hostname")
-    sub.add_parser("ipv6")
-    sub.add_parser("tor-new")
-    sub.add_parser("panel")
-    sub.add_parser("ghost-on")
-    sub.add_parser("ghost-off")
-    sub.add_parser("nuke")
-    sub.add_parser("leak-test")
-    sub.add_parser("wipe-logs")
-    sub.add_parser("harden-kernel")
-    sub.add_parser("kill-bluetooth")
-    sub.add_parser("restore-bluetooth")
-    sub.add_parser("kill-usb")
-    sub.add_parser("restore-usb")
-    sub.add_parser("transparent-proxy-on")
-    sub.add_parser("transparent-proxy-off")
-    sub.add_parser("kill-switch-on")
-    sub.add_parser("kill-switch-off")
-    sub.add_parser("dns-protect-on")
-    sub.add_parser("dns-protect-off")
-    s = sub.add_parser("start")
+    st = sub.add_parser("status")
+    st.add_argument("--json", action="store_true", help="the state record (/run/shadow-anon-state.json, re-checked as root)")
+    for name in ("rotate", "boot", "mac", "hostname", "ipv6", "tor-new", "tor-newnym", "panel", "ghost-off",
+                 "leak-test", "wipe-logs", "harden-kernel", "kill-bluetooth", "restore-bluetooth", "kill-usb",
+                 "restore-usb", "transparent-proxy-off", "kill-switch-off", "dns-protect-on", "dns-protect-off",
+                 "stop"):
+        sub.add_parser(name)
+    sub.add_parser("tor-socks").add_argument(
+        "--offline", action="store_true",
+        help="only the files (the image build: its chroot shares the build machine's network and services)")
+    persist_help = "keep the kill switch on after a restart (default: until the next restart)"
+    for name in ("ghost-on", "nuke", "kill-switch-on", "transparent-proxy-on"):
+        sub.add_parser(name).add_argument("--persist", action="store_true", help=persist_help)
+    s = sub.add_parser("start", help="new Tor circuits at an interval (minimum 60 s)")
     s.add_argument("--interval", type=int, default=300)
-    sub.add_parser("stop")
     t = sub.add_parser("threat")
     t.add_argument("level", choices=["basic", "enhanced", "maximum"])
+    t.add_argument("--persist", action="store_true", help=persist_help)
     b = sub.add_parser("tor-bridge")
     b.add_argument("bridges", nargs="*")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
+    persist = getattr(a, "persist", False)
 
     cmds = {
         None:                    status,
-        "status":                status,
+        "status":                lambda: status(a.json),
         "rotate":                rotate,
         "boot":                  boot,
         "mac":                   lambda: (need_root(), randomize_mac()),
         "hostname":              lambda: (need_root(), random_hostname()),
         "ipv6":                  lambda: (need_root(), ipv6_privacy()),
         "tor-new":               lambda: (need_root(), new_tor_identity()),
+        "tor-newnym":            tor_newnym_timer,
+        "tor-socks":             lambda: tor_socks(offline=a.offline),
         "panel":                 panel,
-        "ghost-on":              ghost_mode_on,
+        "ghost-on":              lambda: ghost_mode_on(persist=persist),
         "ghost-off":             ghost_mode_off,
-        "nuke":                  nuke,
+        "nuke":                  lambda: nuke(persist=persist),
         "leak-test":             leak_test,
         "wipe-logs":             wipe_logs,
         "harden-kernel":         lambda: harden_kernel(True),
@@ -1021,22 +2617,36 @@ def main():
         "restore-bluetooth":     lambda: kill_bluetooth(False),
         "kill-usb":              lambda: kill_usb(True),
         "restore-usb":           lambda: kill_usb(False),
-        "transparent-proxy-on":  transparent_proxy_on,
+        "transparent-proxy-on":  lambda: transparent_proxy_on(persist=persist),
         "transparent-proxy-off": transparent_proxy_off,
-        "kill-switch-on":        kill_switch_on,
+        "kill-switch-on":        lambda: kill_switch_on(persist=persist),
         "kill-switch-off":       kill_switch_off,
         "dns-protect-on":        dns_protect_on,
         "dns-protect-off":       dns_protect_off,
         "start":                 lambda: start(a.interval),
         "stop":                  stop_rotate,
-        "threat":                lambda: set_threat_model(a.level),
+        "threat":                lambda: set_threat_model(a.level, persist=persist),
         "tor-bridge":            lambda: set_tor_bridges(a.bridges),
     }
     fn = cmds.get(a.cmd)
-    if fn:
-        fn()
-    else:
+    if fn is None:
         ap.print_help()
+        return 1
+    if a.cmd in READ_ONLY:
+        fn()
+        return 0
+    need_root()
+    try:
+        with Lock():
+            fn()
+            # boot records its own re-checked state; --offline changed only files.
+            _record_success(recheck=a.cmd != "boot" and not getattr(a, "offline", False))
+    except (Failure, OSError) as exc:
+        print(f"shadow-anon: error: {exc}", file=sys.stderr, flush=True)
+        save_state({"error": str(exc)})
+        return 3
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

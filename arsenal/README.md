@@ -35,7 +35,7 @@ arsenal/
 | web | 19 | 18 |
 | network | 36 | 13 |
 | redteam | 35 | 26 |
-| blueteam | 25 | 12 |
+| blueteam | 22 (+ firewalld and ufw, suggested only) | 12 |
 | forensics | 22 | 6 |
 | reversing | 27 (one of them amd64 only) | 16 |
 | developer | 57 | 17 |

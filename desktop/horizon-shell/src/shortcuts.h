@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QQmlEngine>
+#include <QStringList>
 #include <QVariantList>
 
 class QAction;
@@ -21,11 +22,14 @@ class Shortcuts : public QObject
     QML_UNCREATABLE("Provided by the shell as the 'shortcuts' context property")
     Q_PROPERTY(QVariantList list READ list CONSTANT)   // [{name, description, keys}]
     Q_PROPERTY(bool available READ available CONSTANT)
+    // Actions that ended up without any key (the default was taken).
+    Q_PROPERTY(QStringList unbound READ unbound CONSTANT)
 
 public:
     explicit Shortcuts(QObject *parent = nullptr);
     QVariantList list() const;
     bool available() const { return m_available; }
+    QStringList unbound() const { return m_unbound; }
 
 Q_SIGNALS:
     void triggered(const QString &name);
@@ -34,5 +38,6 @@ private:
     void add(const char *name, const QString &description, const QList<QKeySequence> &keys);
 
     QList<QAction *> m_actions;
+    QStringList m_unbound;
     bool m_available = false;
 };

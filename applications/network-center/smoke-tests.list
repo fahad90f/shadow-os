@@ -5,6 +5,7 @@ shadow-network-center --page wifi
 shadow-network-center --page interfaces
 shadow-network-center --page ip
 shadow-network-center --page dns
+shadow-network-center --page privacy
 shadow-network-center --page routes
 shadow-network-center --page connections
 shadow-network-center --page vpn

@@ -52,6 +52,7 @@ must not be a command that pipes a download into a shell.
 | `homepage` | Upstream site. |
 | `architectures` | Only when the package is missing on one architecture, e.g. `["amd64"]`. |
 | `notes` | Optional: something the user should know before installing (starts a service, needs a kernel module, needs root). |
+| `optional` | `true` only for a tool that belongs to the field but conflicts with part of Shadow OS, e.g. a second firewall that starts at boot (`firewalld`, `ufw` in Blue Team). The metapackage then only *Suggests* it and the Arsenal manager's "install the profile's tools" leaves it out; `notes` is required and says why. |
 
 A package listed by several profiles must have identical `name`, `summary`,
 `interface`, `homepage`, `architectures`, `command`, `help` and `desktop-id`
@@ -109,8 +110,12 @@ python3 arsenal/tools/gen-profiles-doc.py
 `gen-control.py --check` and `gen-profiles-doc.py --check` fail when the
 generated files are stale; run them in CI together with steps 2 and 3.
 
-Then merge `arsenal/packaging/control.in` into `debian/control`, and look at
-the result in the manager:
+Then merge `arsenal/packaging/control.in` into `debian/control` (for now not
+the `shadow-arsenal-pentest` stanza: the generated one depends on packages that
+are not in trixie, and the desktop image installs it through
+`shadow-arsenal-complete`, so the image build would fail;
+[docs/limitations.md](../../docs/limitations.md)), and look at the result in
+the manager:
 
 ```
 SHADOW_JOBS=2 scripts/dev.sh build --dir arsenal --only manager

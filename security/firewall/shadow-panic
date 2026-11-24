@@ -1,0 +1,824 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""shadow-panic — cut this computer off every network, at once.
+
+    shadow-panic engage
+    shadow-panic release
+    shadow-panic status [--json]
+    shadow-panic reassert      (internal: shadow-killswitch-watch.timer, nftables.service)
+    shadow-panic boot          (internal: run at start-up by shadow-panic-reset.service)
+
+"engage", in this order:
+  1. loads the nftables table "inet shadow_panic": input, output and forward
+     at priority -300 with policy drop; only loopback passes. In the same
+     transaction "bridge shadow_panic" drops every frame a bridge forwards (a
+     virtual machine or container bridged to a network card, which the inet
+     hooks never see). This is the cut, and it does not depend on any other
+     step;
+  2. flushes connection tracking (conntrack -F) and closes every connected
+     socket that is not on loopback (ss -K);
+  3. turns NetworkManager networking off (no DHCP, no reconnects; packet
+     sockets such as the DHCP client's are not seen by nftables);
+  4. soft-blocks every radio that was not blocked (Wi-Fi, Bluetooth, WWAN...),
+     if "rfkill" is true in /etc/shadow-os/panic.json;
+  5. locks every session (loginctl lock-sessions), if "lock_session" is true.
+What was changed is recorded in /run/shadow/panic.json (world-readable,
+watched by the desktop) and, because NetworkManager and systemd-rfkill keep
+their state across a restart, in /var/lib/shadow-os/panic-pending.json.
+
+"release" reverses exactly what engage recorded: the table is deleted,
+networking is turned back on only if engage turned it off, and only the
+radios engage blocked are unblocked. Release needs an administrator (polkit
+action org.shadow.panic.release); engaging does not (the desktop starts
+shadow-panic.service over D-Bus, allowed by a polkit rule for that one unit).
+
+A panic lasts until release or the next restart, never longer: at start-up
+"boot" puts NetworkManager's and systemd-rfkill's saved state back to what it
+was before the panic, before either of them starts.
+
+"reassert" puts the table back while a panic is engaged, if something removed
+or changed it (for example "nft flush ruleset"). It does nothing, and writes
+nothing, when no panic is engaged or the table is exactly as engage loaded it.
+
+The kill switch (shadow-killswitch) is not touched. Nothing about traffic is
+logged; the table only counts packets.
+"""
+import argparse
+import datetime
+import fcntl
+import hashlib
+import ipaddress
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+
+# Constants of the program; tests/security/ and tests/network/ point them at
+# temporary directories.
+CONFIG = "/etc/shadow-os/panic.json"
+RUN_DIR = "/run/shadow"
+PENDING = "/var/lib/shadow-os/panic-pending.json"
+NM_STATE_FILE = "/var/lib/NetworkManager/NetworkManager.state"
+RFKILL_SYSFS = "/sys/class/rfkill"
+RFKILL_SAVED = "/var/lib/systemd/rfkill"
+TABLE = ("inet", "shadow_panic")
+BRIDGE_TABLE = ("bridge", "shadow_panic")      # bridged frames (virtual machines, containers)
+PRIORITY = -300
+MARKER = "shadow-panic"
+TOOL_TIMEOUT = 10
+DEFAULT_CONFIG = {"rfkill": True, "lock_session": True, "clear_clipboard": True}
+
+
+class Failure(Exception):
+    pass
+
+
+# --------------------------------------------------------------------------- helpers
+def now_iso():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def run(argv, check=True, timeout=60):
+    """Run a program without a shell. Returns (rc, stdout, stderr); rc 127: missing, 124: timeout."""
+    env = dict(os.environ, LC_ALL="C.UTF-8", LANGUAGE="C")
+    try:
+        p = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           env=env, timeout=timeout)
+        rc, out, err = p.returncode, p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
+    except FileNotFoundError:
+        rc, out, err = 127, "", f"{argv[0]} is not installed"
+    except subprocess.TimeoutExpired:
+        rc, out, err = 124, "", f"{argv[0]} did not finish within {timeout} s"
+    if check and rc != 0:
+        raise Failure(f"{argv[0]} failed: {(err or out).strip()}")
+    return rc, out, err
+
+
+def path(name):
+    return os.path.join(RUN_DIR, name)
+
+
+def write_atomic(target, data, mode):
+    directory = os.path.dirname(target)
+    os.makedirs(directory, mode=0o755, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix="." + os.path.basename(target) + ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def write_json(target, obj, mode):
+    write_atomic(target, json.dumps(obj, indent=2, sort_keys=True) + "\n", mode)
+
+
+def read_json(target):
+    try:
+        with open(target, encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return None
+
+
+def read_text(target):
+    try:
+        with open(target, encoding="utf-8", errors="replace") as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+class Busy(Exception):
+    """The lock is held and the caller asked not to wait (reassert)."""
+
+
+class Lock:
+    """Root-only lock file (see shadow-killswitch), bounded wait; wait=0 raises Busy at once."""
+    WAIT = 30.0
+
+    def __init__(self, wait=None):
+        self.wait = self.WAIT if wait is None else wait
+
+    def __enter__(self):
+        os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+        self.fd = os.open(path("panic.lock"), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        os.fchmod(self.fd, 0o600)
+        deadline = time.monotonic() + self.wait
+        while True:
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except BlockingIOError:
+                if self.wait <= 0:
+                    os.close(self.fd)
+                    raise Busy()
+                if time.monotonic() > deadline:
+                    os.close(self.fd)
+                    raise Failure(f"another shadow-panic has been running for {self.wait:.0f} s; try again")
+                time.sleep(0.1)
+
+    def __exit__(self, *exc):
+        fcntl.flock(self.fd, fcntl.LOCK_UN)
+        os.close(self.fd)
+
+
+def load_config():
+    """(config, problem). A missing or broken file means the defaults: a panic must still work."""
+    cfg = dict(DEFAULT_CONFIG)
+    try:
+        data = read_json(CONFIG)
+    except (OSError, ValueError) as exc:
+        return cfg, f"{CONFIG} is unreadable ({exc}); using the defaults"
+    if data is None:
+        return cfg, None
+    if not isinstance(data, dict):
+        return cfg, f"{CONFIG} is not a JSON object; using the defaults"
+    problem = None
+    for key in DEFAULT_CONFIG:
+        if key in data:
+            if isinstance(data[key], bool):
+                cfg[key] = data[key]
+            else:
+                problem = f"{CONFIG}: '{key}' must be true or false; using the default"
+    return cfg, problem
+
+
+# --------------------------------------------------------------------------- nftables
+def table_text(bridge=True):
+    """The panic's tables, replacing any earlier ones in the same transaction.
+
+    bridge: also "bridge shadow_panic" (False only on a kernel without the
+    nftables bridge family). Frames a bridge forwards between its ports pass
+    none of the inet hooks unless br_netfilter is loaded, so without it a
+    virtual machine bridged to the network card would keep its network.
+    """
+    text = (removal_text(bridge) +
+            f"table {TABLE[0]} {TABLE[1]} {{\n"
+            f"\tcomment \"{MARKER}\"\n"
+            f"\tchain input {{\n\t\ttype filter hook input priority {PRIORITY}; policy drop;\n"
+            f'\t\tiif "lo" accept\n\t\tcounter drop\n\t}}\n'
+            f"\tchain output {{\n\t\ttype filter hook output priority {PRIORITY}; policy drop;\n"
+            f'\t\toif "lo" accept\n\t\tcounter drop\n\t}}\n'
+            f"\tchain forward {{\n\t\ttype filter hook forward priority {PRIORITY}; policy drop;\n"
+            f"\t\tcounter drop\n\t}}\n"
+            f"}}\n")
+    if bridge:
+        text += (f"table {BRIDGE_TABLE[0]} {BRIDGE_TABLE[1]} {{\n"
+                 f"\tcomment \"{MARKER}\"\n"
+                 f"\tchain forward {{\n\t\ttype filter hook forward priority {PRIORITY}; policy drop;\n"
+                 f"\t\tcounter drop\n\t}}\n"
+                 f"}}\n")
+    return text
+
+
+def removal_text(bridge=True):
+    text = f"table {TABLE[0]} {TABLE[1]} {{}}\ndelete table {TABLE[0]} {TABLE[1]}\n"
+    if bridge:
+        text += f"table {BRIDGE_TABLE[0]} {BRIDGE_TABLE[1]} {{}}\ndelete table {BRIDGE_TABLE[0]} {BRIDGE_TABLE[1]}\n"
+    return text
+
+
+def _nft_error(text):
+    lines = [ln.split("Error:", 1)[1].strip() for ln in text.splitlines() if "Error:" in ln]
+    return "; ".join(lines) or (text.strip().splitlines()[0] if text.strip() else "no message")
+
+
+def nft_load(text):
+    """Validate, then load as one atomic batch. Raises Failure; the kernel is unchanged on failure."""
+    os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=RUN_DIR, prefix=".panic.", suffix=".nft")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        rc, out, err = run(["nft", "--check", "--file", tmp], check=False)
+        if rc == 127:
+            raise Failure("nft is not installed (package nftables)")
+        if rc != 0:
+            raise Failure("nft --check rejected the panic table: " + _nft_error(err or out))
+        rc, out, err = run(["nft", "--file", tmp], check=False)
+        if rc != 0:
+            raise Failure("loading the panic table failed: " + _nft_error(err or out))
+    finally:
+        os.unlink(tmp)
+
+
+_BRIDGE_FAMILY = None
+NO_BRIDGE_WARNING = ("this kernel has no nftables bridge family (CONFIG_NF_TABLES_BRIDGE): virtual machines "
+                     "and containers bridged to a network card are NOT cut off")
+
+
+def bridge_family():
+    """Can this kernel filter bridged frames? Asked once per run, only after a load
+    with the bridge table failed (nft --check: the kernel validates, nothing is applied)."""
+    global _BRIDGE_FAMILY
+    if _BRIDGE_FAMILY is None:
+        os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=RUN_DIR, prefix=".panic-bridge.", suffix=".nft")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(f"table {BRIDGE_TABLE[0]} {BRIDGE_TABLE[1]}_check {{\n\tchain forward {{\n"
+                         f"\t\ttype filter hook forward priority {PRIORITY}; policy accept;\n\t}}\n}}\n")
+            _BRIDGE_FAMILY = run(["nft", "--check", "--file", tmp], check=False)[0] == 0
+        finally:
+            os.unlink(tmp)
+    return _BRIDGE_FAMILY
+
+
+def nft_load_tables(build):
+    """Load build(bridge); returns whether the bridge table was part of it. Raises
+    Failure. A kernel without the bridge family gets the inet table alone rather
+    than no cut at all (and a release still removes it)."""
+    try:
+        nft_load(build(True))
+        return True
+    except Failure:
+        if bridge_family():
+            raise
+    nft_load(build(False))
+    return False
+
+
+def table_digest(items):
+    """Fingerprint of the table as the kernel lists it (as in shadow-killswitch):
+    chains, policies, priorities and rules, without handles and counter values."""
+    def clean(obj):
+        if isinstance(obj, dict):
+            return {k: (None if k == "counter" and isinstance(v, dict) else clean(v))
+                    for k, v in obj.items() if k != "handle"}
+        if isinstance(obj, list):
+            return [clean(v) for v in obj]
+        return obj
+    body = [clean(item) for item in items if isinstance(item, dict) and "metainfo" not in item]
+    return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+
+
+def _table_items(table):
+    """(items, None); ([], None) without such a table; (None, reason) when nft cannot list it."""
+    rc, out, err = run(["nft", "--json", "list", "table", *table], check=False, timeout=TOOL_TIMEOUT)
+    if rc != 0:
+        text = (err or out).strip()
+        if "No such file or directory" in text:
+            return [], None
+        return None, (_nft_error(text) if text else f"nft exited with status {rc}")
+    return json.loads(out).get("nftables", []), None
+
+
+def _summarise(items):
+    """(present, marker, {hook: (prio, policy)}, packets counted) of one table."""
+    hooks, dropped, present, marker = {}, 0, False, None
+    for item in items:
+        if "table" in item:
+            present, marker = True, item["table"].get("comment")
+        elif "chain" in item and item["chain"].get("hook"):
+            hooks[item["chain"]["hook"]] = (item["chain"].get("prio"), item["chain"].get("policy"))
+        elif "rule" in item:
+            for e in item["rule"].get("expr", []):
+                if isinstance(e, dict) and isinstance(e.get("counter"), dict):
+                    dropped += int(e["counter"].get("packets", 0))
+    return present, marker, hooks, dropped
+
+
+def inspect_table(bridge=True):
+    """{"present": True|False|None, "complete": bool, "dropped": int|None, "digest", "reason",
+    "bridge_present"} from the kernel. complete: the inet table and (bridge: True) the
+    bridge table, as table_text() makes them; the digest covers both."""
+    info = {"present": None, "complete": False, "dropped": None, "digest": None, "reason": None,
+            "bridge_present": None}
+    try:
+        items, reason = _table_items(TABLE)
+        if items is not None:
+            bitems, reason = _table_items(BRIDGE_TABLE)
+        if items is None or bitems is None:
+            info["reason"] = reason
+            return info
+        present, marker, hooks, dropped = _summarise(items)
+        bpresent, bmarker, bhooks, bdropped = _summarise(bitems)
+        info["present"] = present
+        info["bridge_present"] = bpresent
+        info["complete"] = (marker == MARKER and all(hooks.get(h) == (PRIORITY, "drop")
+                                                     for h in ("input", "output", "forward"))
+                            and (not bridge or (bmarker == MARKER and bhooks.get("forward") == (PRIORITY, "drop"))))
+        info["dropped"] = dropped + bdropped
+        info["digest"] = table_digest(items + bitems) if present else None
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        info["present"] = None
+        info["reason"] = f"could not interpret the nft JSON output: {exc}"
+    return info
+
+
+# --------------------------------------------------------------------------- sockets (as in shadow-killswitch)
+def _split_addr(text):
+    host, _, port = text.rpartition(":")
+    host = host.strip("[]").split("%", 1)[0]
+    try:
+        return ipaddress.ip_address(host), int(port)
+    except ValueError:
+        return None, None
+
+
+def _host(addr):
+    return f"[{addr.compressed}]" if addr.version == 6 else addr.compressed
+
+
+def list_sockets(proto):
+    flag = "-t" if proto == "tcp" else "-u"
+    rc, out, err = run(["ss", "-H", "-n", flag, "state", "established"], check=False, timeout=TOOL_TIMEOUT)
+    if rc != 0:
+        raise Failure((err or out).strip() or f"ss exited with status {rc}")
+    socks = []
+    for line in out.splitlines():
+        tok = line.split()
+        if len(tok) >= 4:
+            la, lp = _split_addr(tok[2])
+            ra, rp = _split_addr(tok[3])
+            if la is not None and ra is not None:
+                socks.append((la, lp, ra, rp))
+    return socks
+
+
+def _loopback(addr):
+    return addr.is_loopback or (addr.version == 6 and addr.ipv4_mapped is not None and addr.ipv4_mapped.is_loopback)
+
+
+def close_sockets():
+    """ss -K every connected TCP/UDP socket that is not on loopback → (closed, reason|None)."""
+    closed, reasons = 0, []
+    for proto, flag in (("tcp", "-t"), ("udp", "-u")):
+        try:
+            targets = [s for s in list_sockets(proto) if not _loopback(s[2])]
+        except Failure as exc:
+            reasons.append(str(exc))
+            continue
+        for i in range(0, len(targets), 40):
+            terms = [f"( src {_host(la)} and sport = :{lp} and dst {_host(ra)} and dport = :{rp} )"
+                     for la, lp, ra, rp in targets[i:i + 40]]
+            run(["ss", "-K", "-H", "-n", flag, "state", "established", " or ".join(terms)],
+                check=False, timeout=TOOL_TIMEOUT)
+        try:
+            wanted = set(targets)
+            remaining = sum(1 for s in list_sockets(proto) if s in wanted)
+        except Failure as exc:
+            reasons.append(str(exc))
+            continue
+        closed += len(targets) - remaining
+        if remaining:
+            reasons.append(f"{remaining} {proto} connection(s) could not be closed")
+    return closed, "; ".join(reasons) or None
+
+
+# --------------------------------------------------------------------------- NetworkManager
+def nm_networking():
+    """True/False: NetworkManager networking enabled; None: NetworkManager not reachable."""
+    rc, out, _ = run(["nmcli", "-t", "networking"], check=False, timeout=TOOL_TIMEOUT)
+    if rc != 0:
+        return None
+    value = out.strip()
+    return True if value == "enabled" else False if value == "disabled" else None
+
+
+def nm_set_networking(on):
+    rc, out, err = run(["nmcli", "networking", "on" if on else "off"], check=False, timeout=TOOL_TIMEOUT)
+    return None if rc == 0 else ((err or out).strip() or f"nmcli exited with status {rc}")
+
+
+# --------------------------------------------------------------------------- rfkill (sysfs)
+def rfkill_devices():
+    """[{"index", "type", "name", "soft", "hard"}] from /sys/class/rfkill."""
+    devs = []
+    try:
+        names = sorted(os.listdir(RFKILL_SYSFS))
+    except OSError:
+        return devs
+    for idx in names:
+        if not re.match(r"^rfkill\d+$", idx):
+            continue
+        base = os.path.join(RFKILL_SYSFS, idx)
+        soft, hard = read_text(os.path.join(base, "soft")), read_text(os.path.join(base, "hard"))
+        devs.append({"index": idx, "type": read_text(os.path.join(base, "type")),
+                     "name": read_text(os.path.join(base, "name")),
+                     "soft": soft == "1" if soft in ("0", "1") else None,
+                     "hard": hard == "1" if hard in ("0", "1") else None})
+    return devs
+
+
+def rfkill_set(dev, blocked):
+    """Write the soft block of one device, if it is still the same device. Returns None or a reason."""
+    base = os.path.join(RFKILL_SYSFS, dev["index"])
+    if read_text(os.path.join(base, "type")) != dev["type"] or read_text(os.path.join(base, "name")) != dev["name"]:
+        return f"{dev['type']} radio {dev['index']} is gone"
+    try:
+        with open(os.path.join(base, "soft"), "w") as fh:
+            fh.write("1" if blocked else "0")
+    except OSError as exc:
+        return f"{dev['type']} radio {dev['index']}: {exc.strerror}"
+    if read_text(os.path.join(base, "soft")) != ("1" if blocked else "0"):
+        return f"{dev['type']} radio {dev['index']} did not change"
+    return None
+
+
+def rfkill_saved_snapshot():
+    """systemd-rfkill's saved states {file name: "0"|"1"} (it restores them at the next start)."""
+    snap = {}
+    try:
+        for name in os.listdir(RFKILL_SAVED):
+            value = read_text(os.path.join(RFKILL_SAVED, name))
+            if value in ("0", "1"):
+                snap[name] = value
+    except OSError:
+        pass
+    return snap
+
+
+# --------------------------------------------------------------------------- status
+def build_status(record, inspection, error=None):
+    engaged = bool(record.get("engaged"))
+    present = inspection["present"]
+    if present is None:
+        loaded = False
+        error = error or f"cannot read the live ruleset: {inspection['reason']}"
+    else:
+        loaded = bool(present and inspection["complete"])
+        if engaged and not loaded and not error:
+            error = "the panic table is not loaded: this computer is NOT cut off"
+        elif not engaged and (present or inspection.get("bridge_present")) and not error:
+            error = "panic is released but its table is still loaded"
+    status = dict(record)
+    status.update({"version": 1, "engaged": engaged, "loaded": loaded, "error": error,
+                   "dropped_packets": inspection["dropped"] if loaded else None, "updated": now_iso()})
+    return status
+
+
+def load_record():
+    try:
+        rec = read_json(path("panic.json"))
+    except (OSError, ValueError):
+        rec = None
+    return rec if isinstance(rec, dict) else {"engaged": False}
+
+
+def publish(status):
+    write_json(path("panic.json"), status, 0o644)
+
+
+# --------------------------------------------------------------------------- commands
+def cmd_engage(_args):
+    cfg, cfg_problem = load_config()
+    warnings = [cfg_problem] if cfg_problem else []
+    with Lock():
+        record = load_record()
+        again = bool(record.get("engaged"))
+        error = None
+        bridge = True
+        # 1. the cut: first, and independent of every other step
+        try:
+            bridge = nft_load_tables(table_text)
+        except Failure as exc:
+            error = str(exc)
+        if not bridge:
+            warnings.append(NO_BRIDGE_WARNING)
+        if again:
+            undo = record.get("undo", {})              # keep what the first engage saw
+            steps = record.get("steps", {})
+        else:
+            undo = {"networking_was_enabled": nm_networking(), "rfkill": [],
+                    "rfkill_saved": rfkill_saved_snapshot()}
+            if cfg["rfkill"]:
+                undo["rfkill"] = [{k: d[k] for k in ("index", "type", "name")}
+                                  for d in rfkill_devices() if d["soft"] is False]
+            steps = {}
+            # Recorded on disk before anything that outlives a restart is changed.
+            try:
+                write_json(PENDING, {"version": 1, "since": now_iso(), "undo": undo}, 0o600)
+            except OSError as exc:
+                warnings.append(f"could not record the panic in {PENDING} ({exc.strerror}): after a restart "
+                                "networking and radios may stay off")
+        steps["table"] = error is None
+        # 2. connections opened before
+        rc, out, err = run(["conntrack", "-F"], check=False, timeout=TOOL_TIMEOUT)
+        steps["conntrack_flushed"] = rc == 0
+        if rc != 0:
+            warnings.append("connection tracking was not flushed: " + ((err or out).strip() or f"status {rc}"))
+        closed, why = close_sockets()
+        steps["sockets_closed"] = closed
+        if why:
+            warnings.append("closing connections: " + why)
+        # 3. NetworkManager
+        if undo.get("networking_was_enabled"):
+            why = nm_set_networking(False)
+            steps["networking_off"] = why is None
+            if why:
+                warnings.append("NetworkManager networking was not turned off: " + why)
+        elif undo.get("networking_was_enabled") is None:
+            steps["networking_off"] = None
+            warnings.append("NetworkManager is not reachable; networking was not turned off")
+        # 4. radios
+        blocked = 0
+        for dev in undo.get("rfkill", []):
+            why = rfkill_set(dev, True)
+            if why:
+                warnings.append("radio not blocked: " + why)
+            else:
+                blocked += 1
+        steps["rfkill_blocked"] = blocked if cfg["rfkill"] else None
+        # 5. sessions
+        if cfg["lock_session"]:
+            rc, out, err = run(["loginctl", "lock-sessions"], check=False, timeout=TOOL_TIMEOUT)
+            steps["sessions_locked"] = rc == 0
+            if rc != 0:
+                warnings.append("sessions were not locked: " + ((err or out).strip() or f"status {rc}"))
+        else:
+            steps["sessions_locked"] = None
+        # systemd-rfkill's file names stay in the root-only pending file.
+        record = {"engaged": True, "since": record.get("since") if again else now_iso(), "steps": steps,
+                  "undo": {k: v for k, v in undo.items() if k != "rfkill_saved"}, "warnings": warnings,
+                  "clear_clipboard": cfg["clear_clipboard"], "lock_session": cfg["lock_session"],
+                  "bridge": bridge}
+        insp = inspect_table(bridge)
+        # What reassert keeps in force: the table exactly as the kernel had it now.
+        record["table_digest"] = insp["digest"] if steps["table"] and insp["present"] and insp["complete"] else None
+        status = build_status(record, insp, error)
+        publish(status)
+    return _report(status, "Panic engaged: this computer is cut off from every network.")
+
+
+def cmd_release(_args):
+    with Lock():
+        record = load_record()
+        warnings, problems = [], []
+        try:
+            nft_load_tables(removal_text)
+        except Failure as exc:
+            problems.append(str(exc))
+        undo = record.get("undo", {}) if record.get("engaged") else {}
+        steps = record.get("steps", {})
+        if undo.get("networking_was_enabled") and steps.get("networking_off"):
+            why = nm_set_networking(True)
+            if why:
+                problems.append("NetworkManager networking was not turned back on: " + why)
+        for dev in undo.get("rfkill", []):
+            why = rfkill_set(dev, False)
+            if why and not os.path.isdir(os.path.join(RFKILL_SYSFS, dev["index"])):
+                warnings.append("radio not unblocked: " + why)          # unplugged since: nothing to undo
+            elif why:
+                problems.append("radio not unblocked: " + why)
+        if not problems:
+            try:
+                os.unlink(PENDING)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                warnings.append(f"could not remove {PENDING}: {exc.strerror}")
+        if not record.get("engaged"):
+            warnings.append("no panic was recorded in this boot; only the table was removed")
+        new = {"engaged": False, "since": None, "released": now_iso(), "warnings": warnings,
+               "clear_clipboard": record.get("clear_clipboard"), "lock_session": record.get("lock_session")}
+        if problems:
+            # Still engaged in part: keep the record so a second release can finish.
+            # The table is not put back by reassert: the user asked for the release.
+            new.update({"engaged": True, "since": record.get("since"), "undo": undo, "steps": steps,
+                        "released": None, "release_incomplete": True})
+        status = build_status(new, inspect_table(), "; ".join(problems) or None)
+        publish(status)
+    return _report(status, "Panic released: networking is as it was before.")
+
+
+def set_nm_state_networking(enabled):
+    """Edit NetworkManager's saved NetworkingEnabled (only before NetworkManager starts). Returns a reason or None."""
+    try:
+        with open(NM_STATE_FILE, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except FileNotFoundError:
+        return None                          # NetworkManager then starts with networking on
+    except OSError as exc:
+        return f"{NM_STATE_FILE}: {exc.strerror}"
+    want = "true" if enabled else "false"
+    section, changed, seen = None, False, False
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            section = s[1:-1]
+        elif section == "main" and s.split("=", 1)[0].strip() == "NetworkingEnabled":
+            seen = True
+            if s.split("=", 1)[1].strip().lower() != want:
+                lines[i], changed = f"NetworkingEnabled={want}", True
+    if not seen or not changed:
+        return None
+    try:
+        st = os.stat(NM_STATE_FILE)
+        write_atomic(NM_STATE_FILE, "\n".join(lines) + "\n", st.st_mode & 0o7777)
+    except OSError as exc:
+        return f"{NM_STATE_FILE}: {exc.strerror}"
+    return None
+
+
+def cmd_boot(_args):
+    """Undo, before NetworkManager and systemd-rfkill start, what a panic left from the previous boot."""
+    try:
+        pending = read_json(PENDING)
+    except (OSError, ValueError) as exc:
+        print(f"shadow-panic: {PENDING} is unreadable: {exc}", file=sys.stderr)
+        return 1
+    if not isinstance(pending, dict):
+        return 0
+    undo = pending.get("undo", {}) if isinstance(pending.get("undo"), dict) else {}
+    problems = []
+    if undo.get("networking_was_enabled") is True:
+        why = set_nm_state_networking(True)
+        if why:
+            problems.append(why)
+    saved = undo.get("rfkill_saved") if isinstance(undo.get("rfkill_saved"), dict) else {}
+    for name, value in sorted(rfkill_saved_snapshot().items()):
+        if "/" in name:
+            continue
+        before = saved.get(name)
+        try:
+            if before is None and value == "1":
+                os.unlink(os.path.join(RFKILL_SAVED, name))        # first saved during the panic
+            elif before == "0" and value != "0":
+                write_atomic(os.path.join(RFKILL_SAVED, name), "0\n", 0o644)
+        except OSError as exc:
+            problems.append(f"{RFKILL_SAVED}/{name}: {exc.strerror}")
+    if problems:
+        for p in problems:
+            print(f"shadow-panic: {p}", file=sys.stderr)
+        return 1
+    os.unlink(PENDING)
+    print("shadow-panic: the panic of the previous boot was undone (networking and radios as before it).",
+          file=sys.stderr)
+    return 0
+
+
+def cmd_reassert(_args):
+    """Load the panic table again if a panic is engaged and the table is missing or not exactly
+    the one engage loaded (shadow-killswitch-watch.timer every 20 s, nftables.service after it starts).
+
+    Does nothing (and writes nothing) when no panic is engaged, the table is
+    intact, engage could not load it in the first place (reported then), a
+    release has started, or another shadow-panic holds the lock. One line when
+    the table was put back.
+    """
+    def wanted(record):
+        return (bool(record.get("engaged")) and not record.get("release_incomplete")
+                and (record.get("steps") or {}).get("table") is True)
+
+    if not wanted(load_record()):
+        return 0
+    try:
+        with Lock(wait=0):
+            record = load_record()
+            if not wanted(record):
+                return 0
+            bridge = record.get("bridge", True)        # False: a kernel without the bridge family
+            insp = inspect_table(bridge)
+            digest = record.get("table_digest")
+            if insp["present"] and insp["complete"] and digest in (None, insp["digest"]):
+                if digest is None:                    # engaged by an older version
+                    record["table_digest"] = insp["digest"]
+                    publish(build_status(record, insp))
+                return 0
+            what = ("the panic table had been removed (for example by 'nft flush ruleset')" if not insp["present"]
+                    else "the panic table had been changed")
+            error = None
+            try:
+                bridge = record["bridge"] = nft_load_tables(table_text)
+            except Failure as exc:
+                error = str(exc)
+            insp = inspect_table(bridge)
+            ok = error is None and bool(insp["present"] and insp["complete"])
+            record["steps"]["table"] = ok           # a failed reload is reported once, not every 20 s
+            record["table_digest"] = insp["digest"] if ok else None
+            if not ok:
+                error = (f"{what} and loading it again failed ({error or 'the table is still not complete'}): "
+                         "this computer is NOT cut off")
+            status = build_status(record, insp, error)
+            publish(status)
+    except Busy:
+        return 0
+    if not ok:
+        print(f"shadow-panic: {error}", file=sys.stderr)
+        return 1
+    print(f"shadow-panic: {what}; it is loaded again (the panic is still engaged).")
+    return 0
+
+
+def cmd_status(args):
+    if os.geteuid() != 0:
+        try:
+            status = read_json(path("panic.json"))
+        except (OSError, ValueError):
+            status = None
+        status = status if isinstance(status, dict) else {"engaged": False, "loaded": None, "error": None}
+        status["verified"] = False
+    else:
+        with Lock():
+            record = load_record()
+            status = build_status(record, inspect_table(record.get("bridge", True)))
+            if os.path.exists(path("panic.json")) or status["loaded"]:
+                publish(status)
+        status["verified"] = True
+    if args.json:
+        json.dump(status, sys.stdout, indent=2, sort_keys=True)
+        print()
+    else:
+        if status.get("engaged"):
+            print("Panic:   ENGAGED" + ("" if status.get("loaded") else " BUT THE TABLE IS NOT LOADED")
+                  + (f" since {status['since']}" if status.get("since") else ""))
+        else:
+            print("Panic:   not engaged" + (" (a panic table is loaded)" if status.get("loaded") else ""))
+        if status.get("error"):
+            print(f"Problem: {status['error']}")
+        if not status.get("verified"):
+            print("(not re-checked against the kernel: run as root for a live check)")
+    if not status.get("verified"):
+        return 4
+    return 3 if status.get("error") else 0
+
+
+def _report(status, ok_text):
+    for w in status.get("warnings", []):
+        print(f"shadow-panic: warning: {w}", file=sys.stderr)
+    if status.get("error"):
+        print(f"shadow-panic: {status['error']}", file=sys.stderr)
+        return 1
+    print(ok_text)
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="shadow-panic", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="command", required=True)
+    sub.add_parser("engage", help="cut every network now").set_defaults(func=cmd_engage, needs_root=True)
+    sub.add_parser("release", help="undo exactly what engage did").set_defaults(func=cmd_release, needs_root=True)
+    p = sub.add_parser("status", help="show the state (exit 0: consistent, 3: problem, 4: not re-checked)")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_status, needs_root=False)
+    sub.add_parser("boot", help="at start-up: undo what a panic of the previous boot left").set_defaults(
+        func=cmd_boot, needs_root=True)
+    sub.add_parser("reassert", help="put the table of an engaged panic back if it was removed or changed").set_defaults(
+        func=cmd_reassert, needs_root=True)
+    args = ap.parse_args(argv)
+    if args.needs_root and os.geteuid() != 0:
+        print("shadow-panic: must run as root", file=sys.stderr)
+        return 1
+    try:
+        return args.func(args)
+    except Failure as exc:
+        print(f"shadow-panic: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

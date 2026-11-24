@@ -1,6 +1,17 @@
 #!/bin/sh
 set -e
 
+# True on the running system, false in a chroot of another root (see postrm;
+# the same function is in prerm). The installer and the recovery tools
+# bind-mount the live /run into their chroots, so /run/systemd/system alone
+# would let "dpkg --configure" there reload the running system's firewall,
+# kill switch and kernel settings with the chroot's files.
+running_system() {
+    [ -d /run/systemd/system ] || return 1
+    root=$(stat -Lc %d:%i / 2>/dev/null) || return 1
+    [ "$root" = "$(stat -Lc %d:%i /proc/1/root/ 2>/dev/null)" ]
+}
+
 case "$1" in
     configure)
         if [ -z "$2" ]; then
@@ -15,13 +26,50 @@ case "$1" in
                 echo "shadow-hardening: warning: could not load the AppArmor profile of shadow-anon" >&2
         fi
         rm -f /etc/apparmor.d/usr.bin.shadow-anon.dpkg-old
+        # "shadow-harden fs-harden" of Shadow OS 0.2.x (before this package
+        # shipped shadow-harden) wrote proc-shadow-hidepid.service with
+        # hidepid=2 but no gid=: polkitd cannot see the processes that ask it
+        # for an authorisation, so pkexec fails at every start, and the escape
+        # hatch shadow.hidepid=off does not skip it. The new tool rewrites such
+        # a unit (and, on the running system, fixes the /proc mount now).
+        if [ -e /etc/systemd/system/proc-shadow-hidepid.service ] && [ -x /usr/bin/shadow-harden ]; then
+            if running_system; then
+                /usr/bin/shadow-harden migrate-hidepid || \
+                    echo "shadow-hardening: warning: proc-shadow-hidepid.service was not updated; run 'sudo shadow-harden fs-harden'" >&2
+            else
+                /usr/bin/shadow-harden migrate-hidepid --offline || \
+                    echo "shadow-hardening: warning: proc-shadow-hidepid.service was not updated; run 'sudo shadow-harden fs-harden'" >&2
+            fi
+        fi
         # Apply the kernel settings now where a running system allows it.
-        if [ -d /run/systemd/system ]; then
+        if running_system; then
             sysctl --quiet --system >/dev/null 2>&1 || true
             # A firewall that is already active picks up the new ruleset.
             if nft list table inet shadow_filter >/dev/null 2>&1; then
                 shadow-firewall reload >/dev/null 2>&1 || \
                     echo "shadow-hardening: warning: could not reload the firewall; run 'sudo shadow-firewall reload'" >&2
+            fi
+            # Make systemd read the nftables.service drop-in (stopping nftables
+            # no longer flushes every table) and the kill switch/panic units.
+            systemctl daemon-reload || \
+                echo "shadow-hardening: warning: systemctl daemon-reload failed; the nftables.service drop-in applies after a restart" >&2
+            # Installing never engages the kill switch (shadow-killswitch.service
+            # is enabled, not started). One that is already loaded is rebuilt by
+            # the new version in the same mode, without closing connections.
+            if nft list table inet shadow_egress >/dev/null 2>&1; then
+                shadow-killswitch reassert >/dev/null || \
+                    echo "shadow-hardening: warning: could not reload the kill switch; see 'sudo shadow-killswitch status'" >&2
+            fi
+            # Encrypted DNS (/usr/lib/systemd/resolved.conf.d/80-shadow-privacy.conf)
+            # and the NetworkManager privacy defaults take effect now; nothing is
+            # reconnected ("shadow-netprivacy status" shows what is in force).
+            if systemctl is-active --quiet systemd-resolved.service; then
+                systemctl try-reload-or-restart systemd-resolved.service || \
+                    echo "shadow-hardening: warning: could not restart systemd-resolved; encrypted DNS applies after a restart" >&2
+            fi
+            if systemctl is-active --quiet NetworkManager.service && command -v nmcli >/dev/null 2>&1; then
+                nmcli general reload conf >/dev/null 2>&1 || \
+                    echo "shadow-hardening: warning: NetworkManager did not reload its configuration; the privacy defaults apply after a restart" >&2
             fi
         fi
         ;;

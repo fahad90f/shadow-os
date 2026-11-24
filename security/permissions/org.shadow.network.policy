@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<policyconfig>
+  <vendor>Shadow OS</vendor>
+  <vendor_url>https://github.com/fahad90fa/Custom-OS</vendor_url>
+
+  <!--
+    The network kill switch (shadow-killswitch). Turning it off, loosening a
+    mode or adding a VPN endpoint opens a path out of the computer, so every
+    change needs an administrator; the authorisation is kept for a short time
+    so that a mode change and an endpoint change do not ask twice.
+  -->
+  <action id="org.shadow.killswitch.manage">
+    <description>Change the network kill switch</description>
+    <message>Authentication is required to change the network kill switch</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/shadow-killswitch</annotate>
+  </action>
+
+  <!--
+    Releasing a panic reconnects the computer, so it needs an administrator
+    every time. Engaging needs no password: the desktop starts
+    shadow-panic.service through systemd (see 49-shadow-panic.rules), it does
+    not run this program through pkexec.
+  -->
+  <action id="org.shadow.panic.release">
+    <description>Release the network panic</description>
+    <message>Authentication is required to reconnect this computer to the network</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/shadow-panic</annotate>
+  </action>
+
+  <!--
+    Encrypted DNS and MAC address policy (shadow-netprivacy). A change decides
+    which provider sees every name the computer looks up, or whether networks
+    see the real hardware address, so it needs an administrator; kept for a
+    short time so that a DNS and a MAC change do not ask twice. Reading the
+    status ("shadow-netprivacy status") needs no authorisation at all.
+  -->
+  <action id="org.shadow.netprivacy.manage">
+    <description>Change encrypted DNS and MAC address privacy</description>
+    <message>Authentication is required to change how this computer looks up names and which hardware address networks see</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/shadow-netprivacy</annotate>
+  </action>
+</policyconfig>

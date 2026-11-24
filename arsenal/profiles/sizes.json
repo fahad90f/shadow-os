@@ -30,10 +30,11 @@
       "installedBytes": 1176062976
     },
     "blueteam": {
-      "tools": 25,
-      "packagesToInstall": 233,
-      "downloadBytes": 172144096,
-      "installedBytes": 777282560
+      "tools": 22,
+      "packagesToInstall": 247,
+      "downloadBytes": 158845056,
+      "installedBytes": 699111424,
+      "generated": "2026-11-23"
     },
     "forensics": {
       "tools": 22,

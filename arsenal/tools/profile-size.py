@@ -103,8 +103,9 @@ def main():
     failed = False
     print(f"{'profile':<11}{'tools':>6}{'packages':>10}{'download':>12}{'installed':>12}")
     for ident in profiles:
+        # Optional tools are only suggested by the metapackage: not part of the installation.
         tools = [t["package"] for t in am.effective_tools(profiles, ident)
-                 if arch in am.tool_architectures(t)]
+                 if arch in am.tool_architectures(t) and not am.is_optional(t)]
         try:
             planned = simulate_install(tools, recommends=not args.no_recommends)
         except am.ManifestError as error:

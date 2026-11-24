@@ -1,18 +1,128 @@
 #!/bin/sh
 set -e
 
+# True on the running system, false in a chroot of another root. The kill
+# switch, a panic and Hide Me live in the network namespace and /run of the
+# running system, which a chroot shares (the installer and the recovery tools
+# even bind-mount the live /run into theirs, so /run/systemd/system alone does
+# not tell): removing the package inside a chroot must not lift them on the
+# computer it runs on. The same test as systemctl's "Running in chroot"; it
+# says no when /proc is missing. (The same function is in prerm and postinst.)
+running_system() {
+    [ -d /run/systemd/system ] || return 1
+    root=$(stat -Lc %d:%i / 2>/dev/null) || return 1
+    [ "$root" = "$(stat -Lc %d:%i /proc/1/root/ 2>/dev/null)" ]
+}
+
+# Network state is only touched on the running system.
+live_action=none
+if running_system; then
+    live_action="$1"
+elif [ "$1" = remove ] || [ "$1" = purge ]; then
+    echo "shadow-hardening: not on the running system (a chroot, or no systemd): the kill switch, panic and Hide Me state of the network are left alone" >&2
+fi
+case "$live_action" in
+    remove|purge)
+        # The kill switch and a panic cut the network; once this package is
+        # gone nothing would turn them off again. (prerm has released an
+        # engaged panic already: its NetworkManager/radio changes stay
+        # otherwise.)
+        if command -v nft >/dev/null 2>&1; then
+            for table in "inet shadow_egress" "bridge shadow_egress" "inet shadow_panic" "bridge shadow_panic"; do
+                # shellcheck disable=SC2086  # "family name"
+                if nft list table $table >/dev/null 2>&1; then
+                    nft delete table $table || \
+                        echo "shadow-hardening: warning: could not remove the nftables table $table; run: nft delete table $table" >&2
+                fi
+            done
+        fi
+        rm -f /run/shadow/killswitch.json /run/shadow/killswitch-state.json /run/shadow/killswitch.nft \
+              /run/shadow/killswitch.lock /run/shadow/panic.json /run/shadow/panic.lock
+        # Hide Me (shadow-anon): its redirects to Tor and systemd-resolved's
+        # runtime Tor setting would outlive the program that removes them.
+        if command -v iptables >/dev/null 2>&1; then
+            for chain in SHADOWTOR SHADOWDNS; do
+                while iptables -t nat -D OUTPUT -j "$chain" 2>/dev/null; do :; done
+                iptables -t nat -F "$chain" 2>/dev/null || true
+                iptables -t nat -X "$chain" 2>/dev/null || true
+            done
+        fi
+        if command -v ip6tables >/dev/null 2>&1; then
+            # DNS protection's IPv6 side (it refuses every IPv6 DNS query).
+            while ip6tables -t nat -D OUTPUT -j SHADOWDNS 2>/dev/null; do :; done
+            ip6tables -t nat -F SHADOWDNS 2>/dev/null || true
+            ip6tables -t nat -X SHADOWDNS 2>/dev/null || true
+        fi
+        if [ -e /run/systemd/resolved.conf.d/95-shadow-anon.conf ]; then
+            rm -f /run/systemd/resolved.conf.d/95-shadow-anon.conf
+            if systemctl is-active --quiet systemd-resolved.service; then
+                systemctl try-restart systemd-resolved.service || \
+                    echo "shadow-hardening: warning: could not restart systemd-resolved; it forwards DNS to Tor until a restart" >&2
+            fi
+        fi
+        rm -f /run/shadow/mac-salt /run/shadow-anon.lock
+        ;;
+esac
+case "$live_action" in
+    purge)
+        rm -f /run/shadow/netprivacy.lock
+        # Hide Me's redirect of Tor's old SOCKS port 9050 to Tor's port 39
+        # (and its IPv6 side, which refuses [::1]:9050).
+        # Kept on "remove": Tor's SOCKS ports file (/etc/tor/torrc.d) stays,
+        # so Tor still listens on 39 only, and the redirect keeps programs
+        # that use 9050 on Tor, not on whoever binds 9050, until a restart.
+        for ipt in iptables ip6tables; do
+            command -v "$ipt" >/dev/null 2>&1 || continue
+            while "$ipt" -t nat -D OUTPUT -j SHADOWSOCKS 2>/dev/null; do :; done
+            "$ipt" -t nat -F SHADOWSOCKS 2>/dev/null || true
+            "$ipt" -t nat -X SHADOWSOCKS 2>/dev/null || true
+        done
+        ;;
+esac
+if [ "$1" = remove ] && [ -e /var/lib/shadow-os/panic-pending.json ]; then
+    # prerm could not release a panic (or this is not the running system), and
+    # shadow-panic-reset.service, which would undo it at the next start, is gone.
+    echo "shadow-hardening: warning: a panic was not released: NetworkManager networking and the radios may stay off, also after a restart; run: nmcli networking on; rfkill unblock all" >&2
+fi
+if [ "$1" = "purge" ]; then
+    rm -f /etc/nftables.d/50-shadow-allowed.nft /etc/shadow-os/firewall.json
+    rm -f /etc/shadow-os/killswitch.json /etc/shadow-os/panic.json /var/lib/shadow-os/panic-pending.json
+    rm -f /etc/shadow-os/hide-me.json            # Hide Me: DNS-over-Tor kept across restarts
+    # shadow-netprivacy: the administrator's DNS and MAC choices, and the
+    # DNS-over-HTTPS set-up of dnscrypt-proxy (which then runs with Debian's
+    # own configuration again, if it stays installed).
+    rm -f /etc/systemd/resolved.conf.d/90-shadow-user.conf /etc/NetworkManager/conf.d/90-shadow-mac.conf \
+          /etc/shadow-os/dnscrypt-proxy.toml /etc/systemd/system/dnscrypt-proxy.service.d/50-shadow-netprivacy.conf
+    rmdir --ignore-fail-on-non-empty /etc/systemd/resolved.conf.d \
+        /etc/systemd/system/dnscrypt-proxy.service.d 2>/dev/null || true
+    if running_system; then
+        systemctl daemon-reload >/dev/null 2>&1 || \
+            echo "shadow-hardening: warning: systemctl daemon-reload failed" >&2
+        if systemctl is-active --quiet systemd-resolved.service; then
+            systemctl try-reload-or-restart systemd-resolved.service || \
+                echo "shadow-hardening: warning: could not restart systemd-resolved; its old DNS settings stay until a restart" >&2
+        fi
+    fi
+    rmdir --ignore-fail-on-non-empty /etc/nftables.d /etc/shadow-os /var/lib/shadow-os 2>/dev/null || true
+fi
+# Debian's /etc/nftables.conf (package nftables) is diverted to
+# /etc/nftables.conf.debian. The Shadow ruleset in its place is this package's
+# configuration file: dpkg keeps it on "remove" (the diversion stays with it,
+# and an nftables upgrade still writes to .debian) and deletes it before
+# "purge"; only then can Debian's file be renamed back. Renaming over the kept
+# file is refused by dpkg-divert, which used to abort the removal here.
 case "$1" in
-    remove|purge|abort-install)
+    purge|abort-install)
         if dpkg-divert --list /etc/nftables.conf | grep -q "by shadow-hardening"; then
-            dpkg-divert --package shadow-hardening --remove --rename \
-                --divert /etc/nftables.conf.debian /etc/nftables.conf
+            if [ ! -e /etc/nftables.conf ]; then
+                dpkg-divert --package shadow-hardening --remove --rename \
+                    --divert /etc/nftables.conf.debian /etc/nftables.conf
+            else
+                echo "shadow-hardening: warning: /etc/nftables.conf is still there; Debian's file stays at /etc/nftables.conf.debian (diversion kept)" >&2
+            fi
         fi
         ;;
 esac
-if [ "$1" = "purge" ]; then
-    rm -f /etc/nftables.d/50-shadow-allowed.nft /etc/shadow-os/firewall.json
-    rmdir --ignore-fail-on-non-empty /etc/nftables.d /etc/shadow 2>/dev/null || true
-fi
 
 #DEBHELPER#
 exit 0

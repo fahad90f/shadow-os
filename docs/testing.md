@@ -283,14 +283,55 @@ python3 scripts/gen-tokens.py check
 python3 desktop/themes/tools/generate.py --check
 ```
 
+### 8. Suites without a build: `tests/run-suites.sh`
+
+```sh
+tests/run-suites.sh [--user]                 # as any user
+sudo tests/run-suites.sh [--root] [--no-skip]
+tests/run-suites.sh --list                   # what it would run
+```
+
+Runs every suite that needs no build, chroot or image and prints one PASS,
+SKIP or FAIL line per suite: `tests/security/test_*.py` and
+`tests/build/test_*.py` (kill switch, panic, Hide Me, encrypted DNS and MAC
+privacy, hidepid, maintainer scripts under dpkg, image hooks, packaging, and
+documentation that must agree with the tree: `tests/build/test_docs_consistency.py`),
+`tests/installation/test_plan.py`, `arsenal/tools/validate.py`,
+`tests/network/fix-network-test.sh`, and shellcheck, Python syntax, the
+polkit policies and `systemd-analyze verify` of the units. As root it also
+runs `tests/network/test_*.py`, which send real packets through the kill
+switch, the panic and Hide Me's rules in private network namespaces (the
+computer's own network is never touched), and the root-only parts of the
+other suites. With `SHADOW_TEST_ROOTFS` (a Debian root file system, only
+read) it adds `tests/build/in-chroot-resolver-test.sh`, and with
+`SHADOW_TEST_RESOLVED_DEB` too `tests/network/resolved-lab-test.sh`.
+
+A suite that cannot run here (no root, a program missing) exits 77 and is
+reported as SKIP, never as PASS; so is a unittest suite whose every test
+skipped. `--no-skip` turns a skip into a failure, for machines that have
+every requirement. Requirements on Debian/Ubuntu: `python3`, `nftables`,
+`iptables` (nft back end), `conntrack`, `iproute2`, `util-linux`
+(`unshare`, `setpriv`), `dpkg`, `shellcheck`, `libxml2-utils`, `systemd`.
+
+Not included: the Control Center, Network Center and shell back-end tests
+(`applications/*/tests/`, `desktop/horizon-shell/modules/status/tests/`),
+which need those programs built (in the build chroot; each README says how),
+and the QEMU tests above.
+
 ### Continuous integration
 
 `.github/workflows/build.yml` runs on pushes to `main`, version tags, pull
-requests and manual dispatch on an `ubuntu-24.04` runner: host set-up,
-static checks (`gen-tokens.py check`, `test_plan.py`, `validate.py`), build
-chroot, packages, repository, the desktop ISO, checksum verification, the
-desktop boot test under UEFI, and the live-boot test of the desktop ISO
-under UEFI Secure Boot and BIOS. It uploads the ISO as a workflow artifact
+requests and manual dispatch on `ubuntu-24.04` runners. The job `tests` runs
+`tests/run-suites.sh --user` as the runner's user, then
+`sudo tests/run-suites.sh --root --no-skip`, and uploads the suites' logs.
+The job `iso-amd64` does host set-up, static checks (`gen-tokens.py check`,
+`test_plan.py`, `validate.py`), the build chroot, the in_chroot resolver test
+on an overlay of it, a check that every package the image's Arsenal
+metapackages depend on is in the chroot's APT sources
+(`tests/build/test_arsenal_image_packages.py`), packages, repository, the
+desktop ISO, checksum verification, the desktop boot test under UEFI, and
+the live-boot test of the desktop ISO under UEFI Secure Boot and BIOS. It
+uploads the ISO as a workflow artifact
 and, for `v*` tags, creates a release. A release signing key can be
 supplied through the secret `SHADOW_SIGNING_KEY`; otherwise a development key
 is generated during the run.
@@ -299,7 +340,9 @@ is generated during the run.
 verified. As written, it creates the build chroot without `--dev-tools`,
 while `debian/control` needs packages from that list
 ([packaging/building.md](packaging/building.md)); the package build step is
-therefore expected to fail until the two lists are synchronised.
+therefore expected to fail until the two lists are synchronised. The two
+commands of the `tests` job were run on an Ubuntu 24.04 machine like the
+runner, as an unprivileged user and as root, not on GitHub.
 
 ### Not present
 

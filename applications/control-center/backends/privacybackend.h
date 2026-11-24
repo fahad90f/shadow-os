@@ -27,9 +27,37 @@
 // * Network identity: the effective values of NetworkManager's configuration
 //   (NetworkManager.conf and conf.d directories, merged in NetworkManager's
 //   order) for wifi.scan-rand-mac-address, wifi.cloned-mac-address,
-//   ethernet.cloned-mac-address and ipv6.ip6-privacy, each with the file it
-//   comes from. Read-only. Sections limited to particular devices
-//   ([device-…] / [connection-…] with match-device) are not evaluated.
+//   connection.stable-id ("${CONNECTION}/${BOOT}": a new private address at
+//   every boot), ethernet.cloned-mac-address and ipv6.ip6-privacy, each with the file
+//   and section it comes from. Read-only. NetworkManager's section precedence
+//   is followed: named [connection-…] / [device-…] sections come before the
+//   literal [connection] / [device] (later files first), and one without
+//   match-device applies to every device, e.g. the [connection-shadow-escape]
+//   of /run/NetworkManager/conf.d/93-shadow-escape.conf, which
+//   shadow-netprivacy.service writes for a boot with shadow.netprivacy=off
+//   (every device keeps its own MAC address; reported as
+//   netPrivacyEscapeFile). Sections limited to particular devices (with
+//   match-device) are not evaluated.
+//
+// * Hide Me: runs shadow-anon (distro/base/rootfs/usr/bin/shadow-anon) through
+//   pkexec (directly as root) and reads its state record
+//   /run/shadow-anon-state.json (ghost_mode, threat_model, transparent_proxy,
+//   dns_protected, bt_killed, usb_killed, kernel_hardened, error) and the
+//   rotation timer's interval drop-in. shadow-anon exits 0 when done, 3 when
+//   a protection could not be switched on or off (the reason on stderr and
+//   in "error"), 1 when not root or misused; pkexec itself exits 126 when the
+//   authentication was cancelled or refused and 127 when the request was not
+//   authorised (or the program cannot be run). A failure is reported with the
+//   tool's own last stderr line. Whether the kill switch is in force is NOT
+//   read here: the page takes it from KillSwitchBackend (the same file the
+//   Network kill switch section shows), so the two can never disagree.
+// * OS integrity: shadow-harden, run the same way; it exits 1 with the reason
+//   on stderr when something could not be applied.
+//
+// Test hooks (development only): SHADOW_ANON_TOOL, SHADOW_HARDEN_TOOL (the
+// programs), SHADOW_ANON_STATE (the state record), SHADOW_ANON_TIMER_DROPIN
+// (the timer drop-in) and SHADOW_NM_CONFIG_ROOT (a directory read in place of
+// "/" for NetworkManager's configuration files and /usr/sbin/NetworkManager).
 //
 // There is no location service in Shadow OS, so the page has no such section.
 class PrivacyBackend : public QObject
@@ -55,8 +83,12 @@ class PrivacyBackend : public QObject
     Q_PROPERTY(QString cleaning READ cleaning NOTIFY cleanupChanged)
     // ---- network identity
     Q_PROPERTY(bool networkManagerInstalled READ networkManagerInstalled CONSTANT)
-    Q_PROPERTY(QVariantList macSettings READ macSettings NOTIFY networkChanged)   // [{key, value, source}]
+    // [{key, section ("connection"|"device"), group (the section the value is
+    // from, e.g. "connection-shadow-escape"; empty when unset), set, value, source}]
+    Q_PROPERTY(QVariantList macSettings READ macSettings NOTIFY networkChanged)
     Q_PROPERTY(QString shadowPrivacyFile READ shadowPrivacyFile NOTIFY networkChanged)
+    // The escape hatch's NetworkManager file when this boot has shadow.netprivacy=off.
+    Q_PROPERTY(QString netPrivacyEscapeFile READ netPrivacyEscapeFile NOTIFY networkChanged)
     // ---- Hide Me (shadow-anon)
     Q_PROPERTY(bool ghostMode READ ghostMode NOTIFY anonChanged)
     Q_PROPERTY(QString threatModel READ threatModel NOTIFY anonChanged) // "basic"|"enhanced"|"maximum"
@@ -68,7 +100,17 @@ class PrivacyBackend : public QObject
     Q_PROPERTY(bool kernelHardened READ kernelHardened NOTIFY anonChanged)
     Q_PROPERTY(bool autoRotateActive READ autoRotateActive NOTIFY anonChanged)
     Q_PROPERTY(bool anonBusy READ anonBusy NOTIFY anonChanged)
+    // The command running now ("ghost-on", "rotate", …; empty when idle).
+    Q_PROPERTY(QString anonAction READ anonAction NOTIFY anonChanged)
     Q_PROPERTY(QString anonOutput READ anonOutput NOTIFY anonChanged)
+    // The "error" shadow-anon recorded for its last change (also one made by
+    // the boot unit or the rotation timer); empty after a change that worked.
+    Q_PROPERTY(QString anonError READ anonError NOTIFY anonChanged)
+    Q_PROPERTY(bool anonToolInstalled READ anonToolInstalled CONSTANT)
+    // New Tor circuits every this many seconds while the timer runs.
+    Q_PROPERTY(int autoRotateIntervalSeconds READ autoRotateIntervalSeconds NOTIFY anonChanged)
+    // shadow-anon raises anything shorter to this (Tor's NEWNYM spacing).
+    Q_PROPERTY(int autoRotateMinimumSeconds READ autoRotateMinimumSeconds CONSTANT)
     // ---- OS Integrity (shadow-harden)
     Q_PROPERTY(bool aideInitialized READ aideInitialized NOTIFY hardenChanged)
     Q_PROPERTY(QString aideLastCheck READ aideLastCheck NOTIFY hardenChanged)
@@ -104,6 +146,7 @@ public:
     bool networkManagerInstalled() const;
     QVariantList macSettings() const { return m_macSettings; }
     QString shadowPrivacyFile() const { return m_shadowPrivacyFile; }
+    QString netPrivacyEscapeFile() const { return m_netPrivacyEscapeFile; }
 
     bool ghostMode() const { return m_ghostMode; }
     QString threatModel() const { return m_threatModel; }
@@ -115,7 +158,12 @@ public:
     bool kernelHardened() const { return m_kernelHardened; }
     bool autoRotateActive() const { return m_autoRotateActive; }
     bool anonBusy() const { return m_anonBusy; }
+    QString anonAction() const { return m_anonAction; }
     QString anonOutput() const { return m_anonOutput; }
+    QString anonError() const { return m_anonError; }
+    bool anonToolInstalled() const;
+    int autoRotateIntervalSeconds() const { return m_autoRotateInterval; }
+    static int autoRotateMinimumSeconds();
 
     bool aideInitialized() const { return m_aideInitialized; }
     QString aideLastCheck() const { return m_aideLastCheck; }
@@ -154,8 +202,14 @@ public:
     Q_INVOKABLE void killUsbStorage(bool kill);
     Q_INVOKABLE void enableTransparentProxy(bool enable);
     Q_INVOKABLE void enableDnsProtect(bool enable);
+    // New Tor circuits on a timer; intervals below autoRotateMinimumSeconds
+    // are raised to it (as shadow-anon does). Never changes the MAC address.
     Q_INVOKABLE void startAutoRotate(int intervalSeconds);
     Q_INVOKABLE void stopAutoRotate();
+    // Hide Me's kill switch: shadow-anon kill-switch-on hands over to
+    // shadow-killswitch mode "tor" (until the next restart); kill-switch-off
+    // puts back the mode that was in force before.
+    Q_INVOKABLE void enableKillSwitch(bool enable);
 
     // OS Integrity actions (all require root; called via pkexec)
     Q_INVOKABLE void refreshHarden();
@@ -166,6 +220,9 @@ public:
     Q_INVOKABLE void hardenFilesystems();
     Q_INVOKABLE void setHardeningLevel(const QString &level);
 
+    // True when no command runs and the state has been read (used by --dump
+    // and the test harness).
+    bool settled() const;
     QJsonObject toJson() const;
 
 Q_SIGNALS:
@@ -184,7 +241,7 @@ private:
     void loadHistory();
     void loadNetwork();
     void startWorker(const QString &cleanId);
-    void runShadowAnon(const QStringList &args);
+    void runShadowAnon(const QString &action, const QStringList &args, const QString &successMessage);
     void runShadowHarden(const QStringList &args);
 
     bool m_lockerRunning = false;
@@ -200,6 +257,7 @@ private:
     QString m_cleaning;
     QVariantList m_macSettings;
     QString m_shadowPrivacyFile;
+    QString m_netPrivacyEscapeFile;
     // Hide Me state
     bool m_ghostMode = false;
     QString m_threatModel = QStringLiteral("basic");
@@ -211,7 +269,11 @@ private:
     bool m_kernelHardened = false;
     bool m_autoRotateActive = false;
     bool m_anonBusy = false;
+    QString m_anonAction;
     QString m_anonOutput;
+    QString m_anonError;
+    int m_autoRotateInterval = 300;
+    int m_anonReads = 0;                 // state reads still running
     // OS Integrity state
     bool m_aideInitialized = false;
     QString m_aideLastCheck;
@@ -222,5 +284,6 @@ private:
     QString m_hardeningLevel = QStringLiteral("hardened");
     bool m_hardenBusy = false;
     QString m_hardenOutput;
+    int m_hardenReads = 0;
     std::shared_ptr<bool> m_alive;
 };

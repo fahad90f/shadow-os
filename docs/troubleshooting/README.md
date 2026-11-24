@@ -180,10 +180,43 @@ off when nothing gets through Tor (it asks first), and then tries, one at a
 time and keeping only what helps: reconnecting with a stable private address,
 public DNS servers, Wi-Fi power saving off, the real hardware address for
 that network only, and (Realtek and MediaTek chips) the chip's power saving
-off, which needs a restart. `--report-only` changes nothing; every change is
+off, which needs a restart. On images with encrypted DNS it first starts
+systemd-resolved if it is not running, never replaces its stub link with a
+file of plain DNS servers, and, on a network that blocks the encrypted-DNS
+port 853, lets only that network's own DNS server answer. `--report-only` changes nothing; every change is
 listed with an undo script in `~/.local/state/shadow-fix-network/`. If it
 still fails, it names a short report (no passwords or hardware addresses) to
 send with a bug report.
+
+The [kill switch and a panic](../security/kill-switch.md) block traffic on
+purpose. The network fix names them as the cause and prints the command that
+turns them off (`pkexec shadow-killswitch set off --runtime`,
+`pkexec shadow-panic release`), but never runs it and never flushes the
+firewall: turning a kill switch off lets programs out without Tor or the VPN.
+With a panic engaged it changes nothing at all. With the kill switch on it
+tests only what may leave (through the VPN, or Tor through its SOCKS port),
+not each connection on its own. A kill switch that Hide Me turned on for
+Ghost Mode is turned off through Hide Me, like the rest of Ghost Mode (it asks
+first; without a terminal to ask in, only `--yes` allows it).
+
+### Names do not resolve (encrypted DNS)
+
+Shadow OS looks names up through systemd-resolved with DNS-over-TLS
+([security/private-dns.md](../security/private-dns.md)).
+
+* `shadow-netprivacy status` says what is in force and what is wrong;
+  `resolvectl status` shows the servers per network.
+* systemd-resolved stopped: `sudo systemctl restart systemd-resolved`.
+* A hotel, train or office network whose log-in page does not open, or that
+  blocks port 853: with `dot-strict`, switch to the default until you are
+  logged in (`sudo shadow-netprivacy dns dot`), or run
+  `bash scripts/fix-network.sh`, which lets that one network's DNS server answer.
+* `DNSSEC=yes` fails behind many routers, through Tor and with a wrong clock:
+  `sudo shadow-netprivacy dns dot --dnssec allow-downgrade`.
+* Nothing helps: boot once with `shadow.netprivacy=off` on the kernel command
+  line (GRUB: `e`, add it to the `linux` line). That boot uses the network's
+  own DNS servers without encryption and the devices' own MAC addresses.
+  From a text console, `sudo shadow-netprivacy dns off` keeps that setting.
 
 ### No sound
 

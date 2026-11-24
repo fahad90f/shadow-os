@@ -39,7 +39,10 @@ Depends
                 Installing shadow-arsenal-<id> therefore pulls in the whole
                 profile, and APT will refuse to leave it half-installed.
     Suggests:   shadow-arsenal (the manager). Never the other way round: the
-                manager must not pull tools in.
+                manager must not pull tools in. Also the profile's tools that
+                are marked "optional" in the manifest: they conflict with part
+                of Shadow OS (e.g. a second firewall that starts at boot), so
+                the profile names them but does not install them.
 
     Because the tools are Depends, removing a single tool makes APT want to
     remove the metapackage too (the profile is no longer complete). That is the
@@ -138,20 +141,26 @@ def tool_relation(tool):
 def profile_stanza(profiles, ident):
     manifest = profiles[ident]
     own = sorted(am.own_tools(manifest), key=lambda tool: tool["package"])
+    required = [tool for tool in own if not am.is_optional(tool)]
+    optional = [tool for tool in own if am.is_optional(tool)]
     arch_specific = any(set(am.tool_architectures(tool)) != set(am.ARCHITECTURES) for tool in own)
     includes = manifest.get("includes", [])
 
     depends = ["${misc:Depends}", "shadow-arsenal-data (>= ${source:Version})"]
     depends += [f"{profiles[other]['metapackage']} (>= ${{source:Version}})" for other in includes]
-    depends += [tool_relation(tool) for tool in own]
+    depends += [tool_relation(tool) for tool in required]
 
     lines = [f"Package: {manifest['metapackage']}",
              f"Architecture: {'any' if arch_specific else 'all'}",
              "Section: metapackages"]
     lines += relation_field("Depends", depends)
-    lines += ["Suggests: shadow-arsenal"]
+    if optional:
+        lines += relation_field("Suggests", ["shadow-arsenal"] + [tool_relation(tool) for tool in optional])
+    else:
+        lines += ["Suggests: shadow-arsenal"]
     lines.append(f"Description: SHADOW Arsenal profile - {manifest['name']}")
-    count = len(am.effective_tools(profiles, ident))
+    effective = am.effective_tools(profiles, ident)
+    count = len([tool for tool in effective if not am.is_optional(tool)])
     body = manifest["description"]
     if includes:
         body += (f"\n\nThis metapackage depends on the metapackages of the profiles it combines "
@@ -159,6 +168,10 @@ def profile_stanza(profiles, ident):
     else:
         body += (f"\n\nThis metapackage depends on the {count} tools of the profile, all from Debian main; "
                  f"APT installs every one of them with it.")
+    if optional and not includes:
+        body += ("\n\nSuggested only, not installed with the profile, because they run a second firewall "
+                 "next to Shadow's own: " + ", ".join(tool["name"] for tool in optional)
+                 + ". Install one of them on its own only to replace shadow-firewall.")
     external = am.effective_external(profiles, ident)
     if external and not includes:
         body += ("\n\nNot included, because they are not in Debian main: "

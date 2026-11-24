@@ -53,4 +53,7 @@ live reference: `shadow-ui-gallery` (`desktop/ui/gallery/`).
   (tinted by the style) — or `NxButton.iconName`.
 * A missing symbolic icon renders as a red crossed box and logs a warning, so
   it is caught by the smoke test; add the glyph to the generator instead of
-  substituting an unrelated one.
+  substituting an unrelated one. `assets/src/icons/check-symbolic.py` lists
+  every symbolic icon name used from QML/JS/C++ in `desktop/` and
+  `applications/` that `desktop/ui/icons` does not ship (exit status 1 if
+  any); `--log DIR` adds the names from run-time warnings in smoke-run logs.

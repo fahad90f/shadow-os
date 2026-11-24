@@ -49,6 +49,9 @@ QtObject {
         case "task-manager": session.run("shadow-monitor", ["--page", "processes"]); break
         case "screenshot": session.run("shadow-screenshot"); break
         case "screenshot-region": session.run("shadow-screenshot", ["--region"]); break
+        // Cut every network connection, lock, clear the clipboard (src/panic.h).
+        // The banner that shows the outcome is the status module's.
+        case "panic": panic.engage(); break
         default:
             if (namedOverlays[name]) toggle(namedOverlays[name])
             else shell.unhandledAction(name)
@@ -61,6 +64,12 @@ QtObject {
 
     // Shows a short message from the shell itself (errors of shell actions).
     function notify(message) { toast.show(message) }
+
+    // Set by a module that shows the panic state in a banner of its own (the
+    // status module: the banner, whose buttons quick settings offers too);
+    // without one, panic failures are shown as toasts.
+    property var panicBanner: null
+    readonly property bool panicBannerLoaded: panicBanner !== null
 
     // ---- optional modules ------------------------------------------------------------
     property var moduleObjects: []
@@ -87,6 +96,9 @@ QtObject {
         registerOverlay("launcher", launcher)
         registerOverlay("session-menu", sessionMenu)
         loadModules()
+        // A panic key that silently does nothing is worse than none.
+        if (shortcuts.unbound.indexOf("panic") >= 0)
+            toast.show(qsTr("The panic shortcut has no key: Ctrl+Alt+Shift+Escape is used by another program."))
         const request = session.takeAutostartRequest()
         if (request === "installer") session.run("shadow-installer")
         else if (request === "recovery") session.run("shadow-recovery")
@@ -102,6 +114,11 @@ QtObject {
         target: Appearance
         function onDarkChanged() { session.run("shadow-apply-appearance") }
         function onAccentChanged() { session.run("shadow-apply-appearance") }
+    }
+
+    property Connections panicErrors: Connections {
+        target: panic
+        function onFailed(message) { if (!shell.panicBannerLoaded) toast.show(message) }
     }
 
     property Connections sessionErrors: Connections {

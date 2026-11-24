@@ -5,6 +5,12 @@ set -euo pipefail
 
 echo "[60-anon-setup] Installing anonymization stack..."
 
+# No iptables-persistent/netfilter-persistent: shadow-anon's rules exist only
+# while Hide Me runs (shadow-anon-boot.service re-creates what must survive a
+# restart), the kill switch is shadow-killswitch (nftables), and the package
+# would save whatever rules the build host has into the image (its postinst
+# autosaves; the chroot shares the build host's network namespace) and
+# restore them on every machine. It is also declared broken by ufw.
 apt-get install -y --no-install-recommends \
     tor \
     torsocks \
@@ -12,7 +18,6 @@ apt-get install -y --no-install-recommends \
     macchanger \
     rfkill \
     iptables \
-    iptables-persistent \
     curl \
     net-tools \
     iproute2 \
@@ -31,13 +36,10 @@ if ! grep -qF "$MARKER" "$TORRC" 2>/dev/null; then
     echo -e "\n$MARKER" >> "$TORRC"
 fi
 
-echo "[60-anon-setup] Blocking Bluetooth at build time (rfkill)..."
-rfkill block bluetooth 2>/dev/null || true
-
-echo "[60-anon-setup] Applying kernel hardening sysctl..."
-if [ -f /etc/sysctl.d/90-shadow-anon.conf ]; then
-    sysctl -p /etc/sysctl.d/90-shadow-anon.conf 2>/dev/null || true
-fi
+# Nothing here touches rfkill or sysctl: inside the build chroot /dev and the
+# network namespace are the build host's own, so "rfkill block" and
+# "sysctl -p" changed the build machine, not the image. The image applies
+# /etc/sysctl.d/90-shadow-anon.conf at every boot (systemd-sysctl).
 
 echo "[60-anon-setup] Setting shadow-anon executable..."
 chmod 755 /usr/bin/shadow-anon
@@ -82,5 +84,17 @@ if [ ! -f "$STATE" ]; then
 JSON
     chmod 644 "$STATE"
 fi
+
+# Tor's SOCKS port: Debian's defaults open 127.0.0.1:9050, which any local
+# user may bind while Tor is stopped (Tor then cannot start, and torsocks and
+# proxychains4 talk to that user). shadow-anon writes
+# /etc/tor/torrc.d/00-shadow-socks.conf (the unix socket and 127.0.0.1:39,
+# below 1024) and points torsocks.conf and proxychains4.conf at it. --offline:
+# only files are written. Without it, tor-socks also loads the nat redirect of
+# 9050 to Tor's port and restarts a running Tor, and this chroot shares the
+# build machine's network namespace and services; shadow-anon-boot.service
+# does all of it on the installed system at every start.
+echo "[60-anon-setup] Moving Tor's SOCKS port below 1024..."
+/usr/bin/shadow-anon tor-socks --offline
 
 echo "[60-anon-setup] Done."

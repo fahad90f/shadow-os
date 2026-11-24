@@ -6,6 +6,7 @@
 #include "applications.h"
 #include "effects.h"
 #include "module.h"
+#include "panic.h"
 #include "polkitagent.h"
 #include "session.h"
 #include "shellsettings.h"
@@ -30,7 +31,8 @@ int main(int argc, char **argv)
     Shadow::App app(argc, argv, info);
     QGuiApplication::setQuitOnLastWindowClosed(false);
     app.setDumpTopics(QStringList{QStringLiteral("apps"), QStringLiteral("settings"), QStringLiteral("workspaces"),
-                                  QStringLiteral("session"), QStringLiteral("shortcuts"), QStringLiteral("modules")}
+                                  QStringLiteral("session"), QStringLiteral("shortcuts"), QStringLiteral("modules"),
+                                  QStringLiteral("panic")}
                       + Horizon::ShellModules::dumpTopics());
     if (!app.processArguments())
         return 0;
@@ -79,6 +81,8 @@ int main(int argc, char **argv)
             return app.finishDump(QJsonObject{{QStringLiteral("available"), shortcuts.available()},
                                               {QStringLiteral("shortcuts"), QJsonArray::fromVariantList(shortcuts.list())}});
         }
+        if (topic == QLatin1String("panic"))
+            return app.finishDump(Panic::dump());
         if (topic == QLatin1String("modules")) {
             const Horizon::ShellModules modules;
             return app.finishDump(QJsonObject{{QStringLiteral("modules"), QJsonArray::fromStringList(modules.names())},
@@ -93,6 +97,7 @@ int main(int argc, char **argv)
     windows.setWorkspaces(&workspaces);
     DockModel dock(&applications, &windows, &settings);
     Shortcuts shortcuts;
+    Panic panic;
     PolkitAgent polkitAgent;
     ShellEffects effects;
 
@@ -103,6 +108,7 @@ int main(int argc, char **argv)
     app.expose(QStringLiteral("workspaces"), &workspaces);
     app.expose(QStringLiteral("session"), &session);
     app.expose(QStringLiteral("shortcuts"), &shortcuts);
+    app.expose(QStringLiteral("panic"), &panic);
     app.expose(QStringLiteral("polkitAgent"), &polkitAgent);
     app.expose(QStringLiteral("effects"), &effects);
 

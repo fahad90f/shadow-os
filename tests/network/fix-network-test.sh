@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests scripts/fix-network.sh against a simulated laptop (fake_system.py):
 # every repair path, the verdicts, idempotence, --report-only, --keep-hide-me,
-# the undo script and the report (no hardware addresses in it).
+# the undo script and the report (no hardware addresses in it); the Shadow kill
+# switch and panic are named as the cause and never turned off.
 #
 #     bash tests/network/fix-network-test.sh [scenario...]
 #
@@ -18,7 +19,8 @@ PASSED=0 FAILED=0 FAILS=()
 
 BIN=$WORK/bin
 mkdir -p "$BIN"
-for t in nmcli ip curl ping getent rfkill systemctl iptables ip6tables ss modinfo sysctl chattr lsattr shadow-anon update-initramfs hostname journalctl; do
+# nft is faked too: the computer's own nft must never be reached from here.
+for t in nmcli ip curl ping getent rfkill systemctl iptables ip6tables ss modinfo sysctl chattr lsattr shadow-anon update-initramfs hostname journalctl busctl resolvectl shadow-killswitch shadow-panic nft; do
     ln -s "$HERE/fake_system.py" "$BIN/$t"
 done
 # sudo must never be needed: the tests run the script as "root" via a fake id.
@@ -32,6 +34,7 @@ chmod +x "$BIN/id"
 # setup NAME SCENARIO JSON-OVERRIDES -> fresh root and state for one case
 setup() {
     CASE=$1
+    RUN_BIN=$BIN
     export FAKE_ROOT=$WORK/$CASE/root FAKE_STATE=$WORK/$CASE/state.json
     export SHADOW_NETFIX_ROOT=$FAKE_ROOT SHADOW_NETFIX_STATE=$WORK/$CASE/user-state SHADOW_NETFIX_WAIT=0
     mkdir -p "$FAKE_ROOT"/{etc/NetworkManager/conf.d,usr/lib/NetworkManager/conf.d,run/NetworkManager,etc/sysctl.d,etc/modprobe.d}
@@ -71,10 +74,44 @@ EOF
     return 0
 }
 
+with_resolved() {   # systemd-resolved installed (state "resolved" set by setup), resolv.conf its stub link
+    mkdir -p "$FAKE_ROOT/usr/lib/systemd" "$FAKE_ROOT/run/systemd/resolve"
+    : >"$FAKE_ROOT/usr/lib/systemd/systemd-resolved"
+    rm -f "$FAKE_ROOT/etc/resolv.conf"
+    ln -s ../run/systemd/resolve/stub-resolv.conf "$FAKE_ROOT/etc/resolv.conf"
+    if [ "$(st 's["resolved"].get("active", False)')" = True ]; then
+        printf 'nameserver 127.0.0.53\noptions edns0 trust-ad\n' >"$FAKE_ROOT/run/systemd/resolve/stub-resolv.conf"
+    fi
+}
+is_stub_link() { [ -L "$FAKE_ROOT/etc/resolv.conf" ] && [ "$(readlink "$FAKE_ROOT/etc/resolv.conf")" = ../run/systemd/resolve/stub-resolv.conf ]; }
+
 run() {   # run [options] -> OUT, RC
-    OUT=$(PATH="$BIN:$PATH" bash "$SCRIPT" --yes "$@" </dev/null 2>&1)
+    OUT=$(PATH="$RUN_BIN:$PATH" bash "$SCRIPT" --yes "$@" </dev/null 2>&1)
     RC=$?
     if [ -n "${SHOW:-}" ]; then printf '%s\n[exit %s]\n' "$OUT" "$RC"; fi
+}
+run_no_yes() {   # as run, without --yes (and without a terminal to ask in)
+    OUT=$(PATH="$RUN_BIN:$PATH" bash "$SCRIPT" </dev/null 2>&1)
+    RC=$?
+    if [ -n "${SHOW:-}" ]; then printf '%s\n[exit %s]\n' "$OUT" "$RC"; fi
+}
+without_tools() {   # without_tools TOOL... -> this case runs without them (not installed)
+    RUN_BIN=$WORK/$CASE/bin
+    mkdir -p "$RUN_BIN"
+    local f
+    for f in "$BIN"/*; do
+        [[ " $* " == *" $(basename "$f") "* ]] || ln -s "$(readlink -f "$f")" "$RUN_BIN/$(basename "$f")"
+    done
+}
+hide_me_state() {   # hide_me_state JSON -> Hide Me's runtime state file
+    mkdir -p "$FAKE_ROOT/run"
+    printf '%s\n' "$1" >"$FAKE_ROOT/run/shadow-anon-state.json"
+}
+# Never weakened: no "shadow-killswitch set", no "shadow-panic release", no nft
+# command but "list table", nothing that flushes.
+protection_untouched() {
+    [ "$(st '[c for c in s.get("calls", []) if c.startswith(("shadow-killswitch set", "shadow-panic release")) or "flush" in c]')" = "[]" ] &&
+        [ "$(st 's.get("nft_refused", [])')" = "[]" ]
 }
 st() { python3 -c "import json,os; s=json.load(open(os.environ['FAKE_STATE'])); print($1)"; }
 
@@ -161,7 +198,7 @@ if want routerdns; then
     setup routerdns routerdns '{"eth_down": 1}'
     run
     check "PASS" rc_is 0
-    check "public DNS for this network" eq "$(st 's["cons"]["u-wifi"]["dns"]')" "9.9.9.9,1.1.1.1"
+    check "public DNS for this network (with TLS names)" eq "$(st 's["cons"]["u-wifi"]["dns"]')" "9.9.9.9#dns.quad9.net,1.1.1.1#cloudflare-dns.com"
     check "explained" has "DNS servers 9.9.9.9 and 1.1.1.1 added"
 fi
 
@@ -303,6 +340,373 @@ if want dhcpdead; then
     check "real address not kept" eq "$(st 's["cons"]["u-wifi"]["mac"]')" ""
     check "report has the NetworkManager log" file_has "$SHADOW_NETFIX_STATE/report.txt" "dhcp4 (wlo1)"
     check "report clean" report_clean
+fi
+
+# ---- systemd-resolved (encrypted DNS, newer images) --------------------------------
+if want resolved-ok; then
+    RP_LOOSE=1 setup resolved-ok none '{"resolved": {"active": true, "dot": "yes"}}'
+    with_resolved
+    run
+    check "PASS" rc_is 0
+    check "resolv.conf still the stub link" is_stub_link
+    check "resolved not restarted" eq "$(st 's.get("resolved_restarts", 0)')" 0
+    check "nothing relaxed" eq "$(st 's["cons"]["u-wifi"].get("search", [])')" "[]"
+    check "report names the resolver" file_has "$SHADOW_NETFIX_STATE/report.txt" "resolver: systemd-resolved running stub=listening dot=yes"
+    check "report clean" report_clean
+fi
+
+if want resolved-stopped; then
+    RP_LOOSE=1 setup resolved-stopped none '{"resolved": {"active": false, "dot": "opportunistic"}}'
+    with_resolved
+    run
+    check "PASS" rc_is 0
+    check "resolved started first" has "systemd-resolved started"
+    check "stub link kept (no plain DNS file)" is_stub_link
+    check "not treated as dangling" hasnt "which does not exist"
+fi
+
+if want resolved-broken; then
+    RP_LOOSE=1 setup resolved-broken none '{"resolved": {"active": false, "fails": true}}'
+    with_resolved
+    run
+    check "FAIL" rc_is 1
+    check "says resolved does not start" has "systemd-resolved does not start"
+    check "stub link never replaced by a file" is_stub_link
+    check "no public plain DNS written" hasnt "public ones as a fallback"
+fi
+
+if want resolved-dot853; then
+    setup resolved-dot853 dot853 '{"eth_down": 1, "resolved": {"active": true, "dot": "yes"}}'
+    with_resolved
+    run
+    check "PASS" rc_is 0
+    check "this network may answer itself" eq "$(st 's["cons"]["u-wifi"].get("search")')" "['~.']"
+    check "explained (port 853)" has "blocks port 853"
+    check "undo removes the routing domain" undo_ok "-ipv4.dns-search '~.'"
+    check "stub link kept" is_stub_link
+    check "no public plain DNS added" eq "$(st 's["cons"]["u-wifi"]["dns"]')" ""
+fi
+
+if want resolved-dot853-cable; then
+    # Port 853 blocked on Wi-Fi only, names resolve over the cable: nothing to relax.
+    RP_LOOSE=1 setup resolved-dot853-cable dot853 '{"resolved": {"active": true, "dot": "yes"}}'
+    with_resolved
+    run
+    check "PASS" rc_is 0
+    check "nothing relaxed" eq "$(st 's["cons"]["u-wifi"].get("search", [])')" "[]"
+fi
+
+if want resolved-tordns; then
+    setup resolved-tordns none '{"immutable": true, "resolved": {"active": true, "dot": "opportunistic"}}'
+    with_resolved
+    rm -f "$FAKE_ROOT/etc/resolv.conf"
+    printf '# Shadow OS — DNS routed through Tor'"'"'s DNSPort\nnameserver 127.0.0.1\noptions ndots:0 edns0\n' >"$FAKE_ROOT/etc/resolv.conf"
+    printf '[main]\ndns=none\n' >"$FAKE_ROOT/etc/NetworkManager/conf.d/90-shadow-dns.conf"
+    run
+    check "PASS" rc_is 0
+    check "handed back to resolved" has "DNS handed back to systemd-resolved"
+    check "resolv.conf is the stub link again" is_stub_link
+    check "lock removed" eq "$(ls "$FAKE_ROOT/etc/NetworkManager/conf.d/")" "81-shadow-wifi-mac.conf"
+    check "undo can restore the Tor resolv.conf" undo_ok "/etc/resolv.conf"
+fi
+
+if want resolved-hideme; then
+    setup resolved-hideme none '{"resolved": {"active": true, "dot": "opportunistic"}}'
+    with_resolved
+    mkdir -p "$FAKE_ROOT/run/systemd/resolved.conf.d"
+    printf '[Resolve]\nDNS=\nDNS=127.0.0.1:26\nDomains=~.\nDNSOverTLS=no\nDNSSEC=no\n' >"$FAKE_ROOT/run/systemd/resolved.conf.d/95-shadow-anon.conf"
+    run
+    check "PASS" rc_is 0
+    check "Tor DNS setting removed" eq "$(ls "$FAKE_ROOT/run/systemd/resolved.conf.d/")" ""
+    check "explained" has "Tor did not answer"
+    check "stub link kept" is_stub_link
+fi
+
+if want resolved-hideme-tor-connecting; then
+    # Tor's DNSPort (the port Hide Me's drop-in names: 26) is open, lookups
+    # through it fail: Tor is still connecting. avahi's mDNS socket on
+    # 0.0.0.0:5353 (Tor's DNSPort before) does not count as Tor.
+    setup resolved-hideme-tor-connecting none '{"resolved": {"active": true, "dot": "opportunistic"}, "tor_listening": true}'
+    with_resolved
+    mkdir -p "$FAKE_ROOT/run/systemd/resolved.conf.d"
+    printf '[Resolve]\nDNS=\nDNS=127.0.0.1:26\nDomains=~.\nDNSOverTLS=no\nDNSSEC=no\n' >"$FAKE_ROOT/run/systemd/resolved.conf.d/95-shadow-anon.conf"
+    run
+    check "Tor's port seen as open" has "Tor's DNS port is open but lookups through it fail"
+    check "Hide Me left alone" eq "$(ls "$FAKE_ROOT/run/systemd/resolved.conf.d/")" "95-shadow-anon.conf"
+    setup resolved-hideme-avahi none '{"resolved": {"active": true, "dot": "opportunistic"}, "avahi": true}'
+    with_resolved
+    mkdir -p "$FAKE_ROOT/run/systemd/resolved.conf.d"
+    printf '[Resolve]\nDNS=\nDNS=127.0.0.1:26\nDomains=~.\nDNSOverTLS=no\nDNSSEC=no\n' >"$FAKE_ROOT/run/systemd/resolved.conf.d/95-shadow-anon.conf"
+    run
+    check "avahi on 5353 is not Tor" has "Tor did not answer"
+fi
+
+if want resolved-hideme-keep; then
+    setup resolved-hideme-keep none '{"resolved": {"active": true, "dot": "opportunistic"}}'
+    with_resolved
+    mkdir -p "$FAKE_ROOT/run/systemd/resolved.conf.d"
+    printf '[Resolve]\nDNS=127.0.0.1:26\n' >"$FAKE_ROOT/run/systemd/resolved.conf.d/95-shadow-anon.conf"
+    run --keep-hide-me
+    check "FAIL (DNS stays with Tor)" rc_is 1
+    check "Hide Me left alone" eq "$(ls "$FAKE_ROOT/run/systemd/resolved.conf.d/")" "95-shadow-anon.conf"
+    check "says why" has "Hide Me sends DNS to Tor, but Tor does not answer"
+    check "no Wi-Fi hardware changes for a DNS problem" eq "$(st 's["cons"]["u-wifi"]["mac"]')" ""
+fi
+
+if want resolved-bypass; then
+    RP_LOOSE=1 setup resolved-bypass none '{"resolved": {"active": true, "dot": "opportunistic"}}'
+    with_resolved
+    rm -f "$FAKE_ROOT/etc/resolv.conf"
+    printf 'nameserver 198.51.100.7\n' >"$FAKE_ROOT/etc/resolv.conf"
+    run
+    check "PASS" rc_is 0
+    check "explained" has "bypasses systemd-resolved"
+    check "stub link restored" is_stub_link
+    check "undo restores the old file" undo_ok "/etc/resolv.conf"
+fi
+
+# ---- the Shadow kill switch (inet shadow_egress) and panic (inet shadow_panic) ----
+if want ks-tor-blocked; then
+    setup ks-tor-blocked none '{"egress": {"mode": "tor", "table": true}}'
+    run
+    check "FAIL" rc_is 1
+    check "named in the diagnosis" has "the kill switch is on (mode tor): it lets out only Tor's traffic"
+    check "named as the likely cause" has "none of it gets through - the likely cause"
+    check "the exact command" has "pkexec shadow-killswitch set off --runtime"
+    check "says it does not turn it off" has "This script does not turn it off"
+    check "Tor hint" has "systemctl status tor@default"
+    check "kill switch left on" eq "$(st '(s["egress"]["mode"], s["egress"]["table"])')" "('tor', True)"
+    check "protection untouched" protection_untouched
+    check "no Wi-Fi repairs against the kill switch" eq "$(st 's.get("reconnects",0)')" 0
+    check "skipped one by one tests" has "skipped while the kill switch lets out only"
+    check "report has the kill switch" file_has "$SHADOW_NETFIX_STATE/report.txt" "killswitch: mode=tor table=loaded"
+    check "report clean" report_clean
+fi
+
+if want ks-tor-works; then
+    setup ks-tor-works none '{"egress": {"mode": "tor", "table": true}, "tor_ok": true}'
+    run
+    check "PASS (Tor works)" rc_is 0
+    check "Tor tested through its SOCKS port" has "Tor works: programs that use Tor reach the internet"
+    check "SOCKS check ran" eq "$(st 's.get("tor_checks",0) > 0')" True
+    check "explains the cut" has "cuts off every other program on purpose"
+    check "the off command, as a hint" has "pkexec shadow-killswitch set off --runtime"
+    check "DNS explained, not a failure" has "the kill switch drops other DNS on purpose"
+    check "kill switch left on" eq "$(st 's["egress"]["table"]')" True
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-tor-socks-not-tor; then
+    # Regression (d1-01): with Tor not running, a local user's listener on the
+    # SOCKS port (Debian's 9050 was not privileged) answered the Tor check,
+    # and fix-network printed "PASS - Tor works".
+    setup ks-tor-socks-not-tor none '{"egress": {"mode": "tor", "table": true}, "socks_answers": true}'
+    run
+    check "FAIL, not PASS" rc_is 1
+    check "no Tor works" hasnt "Tor works"
+    check "named as the likely cause" has "none of it gets through - the likely cause"
+    check "Tor hint" has "systemctl status tor@default"
+fi
+
+if want ks-tor-socks-wrong-owner; then
+    # tor@default runs, but the listener on Tor's SOCKS port is a user's.
+    setup ks-tor-socks-wrong-owner none '{"egress": {"mode": "tor", "table": true}, "tor_running": true, "socks_uid": 4242, "socks_answers": true}'
+    run
+    check "FAIL, not PASS" rc_is 1
+    check "no Tor works" hasnt "Tor works"
+fi
+
+if want ks-vpn-up; then
+    setup ks-vpn-up none '{"egress": {"mode": "vpn", "table": true}, "vpn_up": true}'
+    run
+    check "PASS" rc_is 0
+    check "through the VPN" has "the internet works through the VPN (the kill switch is on"
+    check "no reconnects" eq "$(st 's.get("reconnects",0)')" 0
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-vpn-down; then
+    setup ks-vpn-down none '{"egress": {"mode": "vpn", "table": true, "lan": true}}'
+    run
+    check "FAIL" rc_is 1
+    check "likely cause" has "the kill switch lets out only traffic through the VPN, and none of it gets through - the likely cause"
+    check "summary line" has "kill switch: mode vpn: it lets out only traffic through the VPN"
+    check "VPN hint" has "connect the VPN"
+    check "the exact command" has "pkexec shadow-killswitch set off --runtime"
+    check "no Tor hint in VPN mode" hasnt "tor@default"
+    check "kill switch left on" eq "$(st '(s["egress"]["mode"], s["egress"]["table"])')" "('vpn', True)"
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-changed; then
+    # A table edited by hand: the tool says "not loaded", nft still lists it.
+    setup ks-changed none '{"egress": {"mode": "tor", "table": true, "changed": true}}'
+    run
+    check "FAIL" rc_is 1
+    check "still named as the cause" has "the kill switch is on (mode tor)"
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-nft-only; then
+    # shadow-killswitch not installed (or not in PATH): the table is found with nft.
+    setup ks-nft-only none '{"egress": {"mode": "tor-or-vpn", "table": true}}'
+    without_tools shadow-killswitch shadow-panic
+    run
+    check "FAIL" rc_is 1
+    check "mode read from the table's comment" has "the kill switch is on (mode tor-or-vpn)"
+    check "nft listed the table" eq "$(st '"nft list table inet shadow_egress" in s["calls"]')" True
+    check "both hints" has "connect the VPN"
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-unknown-mode; then
+    # shadow-killswitch installed but its mode is not one the script knows: the way out is
+    # "shadow-killswitch set off", never "nft delete table": shadow-killswitch-watch.timer puts a
+    # table removed behind the tool's back back within ~20 s (review r1-17).
+    setup ks-unknown-mode none '{"egress": {"mode": "bogus", "table": true}}'
+    run
+    check "FAIL" rc_is 1
+    check "the tool's own way off" has "sudo shadow-killswitch set off --runtime"
+    check "no raw nft delete" hasnt "nft delete table"
+    check "protection untouched" protection_untouched
+    # without the tool there is no watchdog: removing the tables by hand is the way
+    setup ks-unknown-mode-no-tool none '{"egress": {"mode": "bogus", "table": true}}'
+    without_tools shadow-killswitch shadow-panic
+    run
+    check "FAIL" rc_is 1
+    check "nft delete without the tool" has "sudo nft delete table inet shadow_egress; sudo nft delete table bridge shadow_egress"
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-stray-table; then
+    setup ks-stray-table none '{"egress": {"mode": "off", "table": true}}'
+    run
+    check "FAIL" rc_is 1
+    check "explained" has "table is loaded although the kill switch is off"
+    check "the command that removes it" has "pkexec shadow-killswitch set off"
+    check "not --runtime for a stray table" hasnt "set off --runtime"
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-not-loaded; then
+    # Configured on, table missing (flushed; the watchdog brings it back): said, and tested as usual.
+    RP_LOOSE=1 setup ks-not-loaded none '{"egress": {"mode": "tor", "table": false}}'
+    run
+    check "PASS (nothing blocks)" rc_is 0
+    check "says it does not protect now" has "its table is not loaded: it does not protect this computer right now"
+    check "names the watchdog" has "shadow-killswitch-watch.timer"
+    check "tested one by one" has "OK    wlan0"
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-off; then
+    # Negative control: the kill switch installed and off changes nothing.
+    RP_LOOSE=1 setup ks-off none '{"egress": {"mode": "off", "table": false}, "panic": {"engaged": false, "table": false}}'
+    run
+    check "PASS" rc_is 0
+    check "kill switch not mentioned" hasnt "kill switch"
+    check "panic not mentioned" hasnt "panic"
+    check "tested one by one" has "OK    wlan0"
+    check "report: no kill switch, no panic" file_has "$SHADOW_NETFIX_STATE/report.txt" "killswitch: mode=off table=none"
+fi
+
+if want panic-engaged; then
+    # The panic turned NetworkManager's Wi-Fi off and blocked the radio: neither may be undone here.
+    setup panic-engaged rp '{"panic": {"engaged": true, "table": true}, "egress": {"mode": "tor", "table": true}, "rfkill_soft": true, "radio": "disabled", "rotation": true}'
+    run
+    check "FAIL" rc_is 1
+    check "named" has "a panic is engaged: this computer is cut off from every network on purpose"
+    check "the exact command" has "pkexec shadow-panic release"
+    check "does not release it" has "This script does not release it."
+    check "Nothing was changed" has "Nothing was changed."
+    check "panic still engaged" eq "$(st 's["panic"]')" "{'engaged': True, 'table': True}"
+    check "radio still blocked" eq "$(st '(s["rfkill_soft"], s["radio"])')" "(True, 'disabled')"
+    check "rp_filter untouched" eq "$(cat "$FAKE_ROOT/proc/sys/net/ipv4/conf/all/rp_filter")" 1
+    check "no files written" eq "$(ls "$FAKE_ROOT/etc/sysctl.d" "$FAKE_ROOT/etc/NetworkManager/conf.d" | tr -d '\n')" "$FAKE_ROOT/etc/NetworkManager/conf.d:$FAKE_ROOT/etc/sysctl.d:"
+    check "Hide Me untouched" eq "$(st 's["rotation"]')" True
+    check "no reconnects" eq "$(st 's.get("reconnects",0)')" 0
+    check "protection untouched" protection_untouched
+    check "report says so" file_has "$SHADOW_NETFIX_STATE/report.txt" "result: FAIL|panic|"
+    run --report-only
+    check "report-only: same verdict" rc_is 1
+fi
+
+if want panic-nft-only; then
+    setup panic-nft-only none '{"panic": {"engaged": true, "table": true}}'
+    without_tools shadow-killswitch shadow-panic
+    run
+    check "FAIL" rc_is 1
+    check "found with nft" has "a panic is engaged"
+    check "nft listed it" eq "$(st '"nft list table inet shadow_panic" in s["calls"]')" True
+    check "protection untouched" protection_untouched
+fi
+
+if want panic-table-flushed; then
+    # Engaged, but something flushed its table (the watchdog reloads it): still a panic.
+    setup panic-table-flushed none '{"panic": {"engaged": true, "table": false}, "rfkill_soft": true}'
+    run
+    check "FAIL" rc_is 1
+    check "still a panic" has "a panic is engaged"
+    check "says the table is missing" has "its firewall table is missing right now"
+    check "radio still blocked" eq "$(st 's["rfkill_soft"]')" True
+fi
+
+if want ks-hideme-ghost; then
+    # Ghost Mode with the new kill switch (Hide Me turned it on): Hide Me's own "off", with --yes.
+    setup ks-hideme-ghost none '{"egress": {"mode": "tor", "table": true}, "chains": {"filter": [], "nat": ["SHADOWTOR"]}, "hooks": {"filter": [], "nat": ["SHADOWTOR"]}}'
+    hide_me_state '{"kill_switch": true, "killswitch_by": ["ghost", "proxy"], "killswitch_before": {"mode": "off", "lan": false}}'
+    run
+    check "PASS" rc_is 0
+    check "seen as Hide Me's" has "Hide Me's Ghost Mode is on (all traffic through Tor, kill switch on)"
+    check "turned off through Hide Me" eq "$(st '"shadow-anon kill-switch-off" in s["calls"]')" True
+    check "back to the mode before Ghost Mode" eq "$(st '(s["egress"]["mode"], s["egress"]["table"])')" "('off', False)"
+    check "Ghost Mode network part off" has "Ghost Mode's network part is off"
+    check "never set by this script" protection_untouched
+fi
+
+if want ks-hideme-before-vpn; then
+    # Hide Me turned the kill switch to Tor over the user's own VPN mode: that mode comes back, and stays.
+    setup ks-hideme-before-vpn none '{"egress": {"mode": "tor", "table": true}}'
+    hide_me_state '{"kill_switch": true, "killswitch_by": ["user"], "killswitch_before": {"mode": "vpn", "lan": false}}'
+    run
+    check "FAIL" rc_is 1
+    check "the earlier mode is back" eq "$(st '(s["egress"]["mode"], s["egress"]["table"])')" "('vpn', True)"
+    check "said so" has "the kill switch is back in mode vpn, as before Ghost Mode"
+    check "then named as the cause" has "the kill switch lets out only traffic through the VPN, and none of it gets through"
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-hideme-no-terminal; then
+    # Without --yes and without a terminal to ask in, Hide Me's kill switch stays on.
+    setup ks-hideme-no-terminal none '{"egress": {"mode": "tor", "table": true}}'
+    hide_me_state '{"kill_switch": true, "killswitch_by": ["user"], "killswitch_before": {"mode": "off"}}'
+    run_no_yes
+    check "FAIL" rc_is 1
+    check "not done without asking" has "not done without asking"
+    check "Hide Me not asked to turn it off" eq "$(st '"shadow-anon kill-switch-off" in s["calls"]')" False
+    check "kill switch left on" eq "$(st 's["egress"]["mode"]')" tor
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-hideme-keep; then
+    setup ks-hideme-keep none '{"egress": {"mode": "tor", "table": true}}'
+    hide_me_state '{"kill_switch": true, "killswitch_by": ["user"], "killswitch_before": {"mode": "off"}}'
+    run --keep-hide-me
+    check "FAIL" rc_is 1
+    check "Hide Me left alone" has "Hide Me left as it is"
+    check "kill switch left on" eq "$(st 's["egress"]["mode"]')" tor
+    check "protection untouched" protection_untouched
+fi
+
+if want ks-hideme-off-fails; then
+    # Hide Me's "off" does not work: the table is never removed behind Hide Me's back.
+    setup ks-hideme-off-fails none '{"egress": {"mode": "tor", "table": true}, "anon_ks_off_fails": true}'
+    hide_me_state '{"kill_switch": true, "killswitch_by": ["user"], "killswitch_before": {"mode": "off"}}'
+    run
+    check "FAIL" rc_is 1
+    check "says it could not" has "Hide Me could not turn its kill switch off"
+    check "kill switch left on" eq "$(st '(s["egress"]["mode"], s["egress"]["table"])')" "('tor', True)"
+    check "protection untouched" protection_untouched
 fi
 
 if want report-only; then

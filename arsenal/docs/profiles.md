@@ -11,20 +11,26 @@ permission to test — see [legal-use.md](legal-use.md).
 
 | Profile | Metapackage | Tools | Not packaged | Download | Installed |
 |---|---|---:|---:|---:|---:|
-| [Core Security](#core) | `shadow-arsenal-core` | 27 | 2 | 121.8 MB | 541.6 MB |
+| [Core Security](#core) | `shadow-arsenal-core` | 29 | 2 | 121.8 MB | 541.6 MB |
 | [Web Application](#web) | `shadow-arsenal-web` | 19 | 18 | 98.5 MB | 360.8 MB |
-| [Network Security](#network) | `shadow-arsenal-network` | 36 | 13 | 145.2 MB | 647.3 MB |
-| [Red Team](#redteam) | `shadow-arsenal-redteam` | 35 | 26 | 233.2 MB | 1.2 GB |
-| [Blue Team](#blueteam) | `shadow-arsenal-blueteam` | 25 | 12 | 172.1 MB | 777.3 MB |
+| [Network Security](#network) | `shadow-arsenal-network` | 39 | 13 | 145.2 MB | 647.3 MB |
+| [Red Team](#redteam) | `shadow-arsenal-redteam` | 37 | 26 | 233.2 MB | 1.2 GB |
+| [Blue Team](#blueteam) | `shadow-arsenal-blueteam` | 22 | 12 | 158.8 MB | 699.1 MB |
 | [Forensics](#forensics) | `shadow-arsenal-forensics` | 22 | 6 | 91.4 MB | 411.4 MB |
 | [Reverse Engineering](#reversing) | `shadow-arsenal-reversing` | 27 | 16 | 386.7 MB | 1.8 GB |
 | [Developer](#developer) | `shadow-arsenal-developer` | 57 | 17 | 489.9 MB | 1.9 GB |
-| [Complete Arsenal](#complete) | `shadow-arsenal-complete` | 230 | 101 | 1.3 GB | 5.4 GB |
+| [Complete Arsenal](#complete) | `shadow-arsenal-complete` | 252 | 104 | 1.3 GB | 5.4 GB |
+| [Penetration Testing](#pentest) | `shadow-arsenal-pentest` | 84 | 9 | — | — |
 
 Sizes: what APT would download and install for the whole profile, dependencies and
 Recommends included, in the SHADOW build chroot (amd64; computed 2026-11-11 by `tools/profile-size.py`). A desktop installation
 already has many of the libraries, so the real figures are lower; the Arsenal application
 shows them for the running system.
+
+Computed separately, on another day and possibly with other packages installed, so not
+directly comparable with the other rows: Blue Team (2026-11-23).
+
+Out of date, computed for an earlier tool list: Core Security (27 tools; now 29), Network Security (36 tools; now 39), Red Team (35 tools; now 37), Complete Arsenal (230 tools; now 252).
 
 <a id="core"></a>
 ## Core Security
@@ -37,48 +43,50 @@ Install: `sudo apt install shadow-arsenal-core`
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
-| [Nmap](https://nmap.org) | `nmap` | CLI | amd64, arm64 | Network exploration tool and security/port scanner |
-| [Zenmap](https://nmap.org/zenmap) | `zenmap` | GUI | amd64, arm64 | Graphical front end for the Nmap scanner |
-| [MASSCAN](https://github.com/robertdavidgraham/masscan) | `masscan` | CLI | amd64, arm64 | Asynchronous TCP port scanner for large address ranges |
 | [arp-scan](https://github.com/royhills/arp-scan) | `arp-scan` | CLI | amd64, arm64 | Discover and fingerprint IP hosts on the local network with ARP |
 | [DNS lookup utilities](https://www.isc.org/bind/) | `bind9-dnsutils` | CLI | amd64, arm64 | dig, delv and nslookup DNS query clients from BIND 9 |
-| [whois](https://github.com/rfc1036/whois) | `whois` | CLI | amd64, arm64 | Query WHOIS registries for domain and network ownership |
+| [MASSCAN](https://github.com/robertdavidgraham/masscan) | `masscan` | CLI | amd64, arm64 | Asynchronous TCP port scanner for large address ranges |
+| [Nmap](https://nmap.org) | `nmap` | CLI | amd64, arm64 | Network exploration tool and security/port scanner |
 | [traceroute](https://traceroute.sourceforge.net) | `traceroute` | CLI | amd64, arm64 | Trace the route IPv4/IPv6 packets take to a host |
+| [whois](https://github.com/rfc1036/whois) | `whois` | CLI | amd64, arm64 | Query WHOIS registries for domain and network ownership |
+| [Zenmap](https://nmap.org/zenmap) | `zenmap` | GUI | amd64, arm64 | Graphical front end for the Nmap scanner |
 
 ### Web Application
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
-| [WhatWeb](https://morningstarsecurity.com/research/whatweb) | `whatweb` | CLI | amd64, arm64 | Identify the technologies a website is built with |
 | [sslscan](https://github.com/rbsec/sslscan) | `sslscan` | CLI | amd64, arm64 | Report the TLS versions and ciphers a service accepts |
+| [WhatWeb](https://morningstarsecurity.com/research/whatweb) | `whatweb` | CLI | amd64, arm64 | Identify the technologies a website is built with |
 
 ### Sniffing and Spoofing
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
-| [Wireshark](https://www.wireshark.org) | `wireshark` | GUI + CLI | amd64, arm64 | Graphical network protocol analyser |
 | [tcpdump](https://www.tcpdump.org) | `tcpdump` | CLI | amd64, arm64 | Command-line network packet capture and inspection |
+| [Wireshark](https://www.wireshark.org) | `wireshark` | GUI + CLI | amd64, arm64 | Graphical network protocol analyser |
 
 ### Network and System Utilities
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
-| [netcat (OpenBSD)](https://www.openbsd.org) | `netcat-openbsd` | CLI | amd64, arm64 | Read and write data across network connections |
-| [socat](http://www.dest-unreach.org/socat/) | `socat` | CLI | amd64, arm64 | Multipurpose relay for bidirectional data between two streams |
-| [curl](https://curl.se) | `curl` | CLI | amd64, arm64 | Transfer data to or from a server over many protocols |
-| [ProxyChains-NG](https://github.com/rofl0r/proxychains-ng) | `proxychains4` | CLI | amd64, arm64 | Force a program's connections through a chain of proxies |
-| [KeePassXC](https://keepassxc.org) | `keepassxc` | GUI + CLI | amd64, arm64 | Offline, encrypted password manager for engagement credentials |
-| [GnuPG](https://gnupg.org) | `gnupg` | CLI | amd64, arm64 | OpenPGP encryption and signing of files and email |
-| [OpenSSL](https://www.openssl.org) | `openssl` | CLI | amd64, arm64 | TLS/SSL and general-purpose cryptography command-line tool |
-| [cryptsetup](https://gitlab.com/cryptsetup/cryptsetup) | `cryptsetup` | CLI | amd64, arm64 | Manage LUKS and dm-crypt encrypted volumes |
 | [age](https://age-encryption.org) | `age` | CLI | amd64, arm64 | Simple, modern file-encryption tool |
-| [Tor](https://www.torproject.org) | `tor` | CLI | amd64, arm64 | Route traffic through the Tor anonymity overlay network |
-| [OpenVPN](https://openvpn.net) | `openvpn` | CLI | amd64, arm64 | Establish SSL/TLS virtual private network tunnels |
-| [WireGuard tools](https://www.wireguard.com) | `wireguard-tools` | CLI | amd64, arm64 | Configure WireGuard VPN tunnels (wg, wg-quick) |
-| [OpenSSH client](https://www.openssh.com) | `openssh-client` | CLI | amd64, arm64 | Secure shell client for remote access and tunnelling |
-| [Steghide](https://steghide.sourceforge.net) | `steghide` | CLI | amd64, arm64 | Hide and extract data in image and audio files |
-| [secure-delete](https://packages.debian.org/trixie/secure-delete) | `secure-delete` | CLI | amd64, arm64 | Securely wipe files, free space, swap and memory |
+| [cryptsetup](https://gitlab.com/cryptsetup/cryptsetup) | `cryptsetup` | CLI | amd64, arm64 | Manage LUKS and dm-crypt encrypted volumes |
+| [curl](https://curl.se) | `curl` | CLI | amd64, arm64 | Transfer data to or from a server over many protocols |
+| [GnuPG](https://gnupg.org) | `gnupg` | CLI | amd64, arm64 | OpenPGP encryption and signing of files and email |
+| [KeePassXC](https://keepassxc.org) | `keepassxc` | GUI + CLI | amd64, arm64 | Offline, encrypted password manager for engagement credentials |
 | [Kleopatra](https://apps.kde.org/kleopatra/) | `kleopatra` | GUI | amd64, arm64 | Graphical certificate and OpenPGP/S-MIME key manager |
+| [netcat (OpenBSD)](https://www.openbsd.org) | `netcat-openbsd` | CLI | amd64, arm64 | Read and write data across network connections |
+| [OpenSSH client](https://www.openssh.com) | `openssh-client` | CLI | amd64, arm64 | Secure shell client for remote access and tunnelling |
+| [OpenSSL](https://www.openssl.org) | `openssl` | CLI | amd64, arm64 | TLS/SSL and general-purpose cryptography command-line tool |
+| [OpenVPN](https://openvpn.net) | `openvpn` | CLI | amd64, arm64 | Establish SSL/TLS virtual private network tunnels |
+| [OutGuess](https://github.com/resurrecting-open-source-projects/outguess) | `outguess` | CLI | amd64, arm64 | Universal steganography tool for hiding data in images |
+| [ProxyChains-NG](https://github.com/rofl0r/proxychains-ng) | `proxychains4` | CLI | amd64, arm64 | Force a program's connections through a chain of proxies |
+| [secure-delete](https://packages.debian.org/trixie/secure-delete) | `secure-delete` | CLI | amd64, arm64 | Securely wipe files, free space, swap and memory |
+| [socat](http://www.dest-unreach.org/socat/) | `socat` | CLI | amd64, arm64 | Multipurpose relay for bidirectional data between two streams |
+| [Steghide](https://steghide.sourceforge.net) | `steghide` | CLI | amd64, arm64 | Hide and extract data in image and audio files |
+| [stegsnow](http://www.darkside.com.au/snow/) | `stegsnow` | CLI | amd64, arm64 | Hide messages in the whitespace of text files |
+| [Tor](https://www.torproject.org) | `tor` | CLI | amd64, arm64 | Route traffic through the Tor anonymity overlay network |
+| [WireGuard tools](https://www.wireguard.com) | `wireguard-tools` | CLI | amd64, arm64 | Configure WireGuard VPN tunnels (wg, wg-quick) |
 
 ### Not installable from SHADOW repositories
 
@@ -158,50 +166,53 @@ Install: `sudo apt install shadow-arsenal-network`
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
-| [Nmap](https://nmap.org) | `nmap` | CLI | amd64, arm64 | Network exploration tool and security/port scanner |
-| [MASSCAN](https://github.com/robertdavidgraham/masscan) | `masscan` | CLI | amd64, arm64 | Asynchronous TCP port scanner for large address ranges |
-| [ZMap](https://zmap.io) | `zmap` | CLI | amd64, arm64 | Single-packet network scanner for Internet-wide surveys |
 | [arp-scan](https://github.com/royhills/arp-scan) | `arp-scan` | CLI | amd64, arm64 | Discover and fingerprint IP hosts on the local network with ARP |
-| [netdiscover](https://github.com/netdiscover-scanner/netdiscover) | `netdiscover` | CLI | amd64, arm64 | Active and passive ARP reconnaissance of local networks |
+| [assetfinder](https://github.com/tomnomnom/assetfinder) | `assetfinder` | CLI | amd64, arm64 | Find domains and subdomains related to a given domain |
+| [DNS lookup utilities](https://www.isc.org/bind/) | `bind9-dnsutils` | CLI | amd64, arm64 | dig, delv and nslookup DNS query clients from BIND 9 |
+| [dnsenum](https://github.com/fwaeytens/dnsenum) | `dnsenum` | CLI | amd64, arm64 | Enumerate DNS information and attempt zone transfers |
+| [dnsmap](https://github.com/makefu/dnsmap) | `dnsmap` | CLI | amd64, arm64 | Brute-force subdomains to map a target's DNS |
+| [DNSRecon](https://github.com/darkoperator/dnsrecon) | `dnsrecon` | CLI | amd64, arm64 | Enumerate DNS records, zones and subdomains of a domain |
+| [fierce](https://github.com/mschwager/fierce) | `fierce` | CLI | amd64, arm64 | Locate non-contiguous IP space and hostnames for a domain |
 | [fping](https://fping.org) | `fping` | CLI | amd64, arm64 | Send ICMP echo requests to many hosts in parallel |
 | [hping3](http://www.hping.org) | `hping3` | CLI | amd64, arm64 | Assemble and send custom TCP/IP packets, and trace responses |
-| [DNSRecon](https://github.com/darkoperator/dnsrecon) | `dnsrecon` | CLI | amd64, arm64 | Enumerate DNS records, zones and subdomains of a domain |
-| [dnsenum](https://github.com/fwaeytens/dnsenum) | `dnsenum` | CLI | amd64, arm64 | Enumerate DNS information and attempt zone transfers |
-| [fierce](https://github.com/mschwager/fierce) | `fierce` | CLI | amd64, arm64 | Locate non-contiguous IP space and hostnames for a domain |
-| [DNS lookup utilities](https://www.isc.org/bind/) | `bind9-dnsutils` | CLI | amd64, arm64 | dig, delv and nslookup DNS query clients from BIND 9 |
-| [smbmap](https://github.com/ShawnDEvans/smbmap) | `smbmap` | CLI | amd64, arm64 | Enumerate SMB shares and permissions across a network |
-| [smbclient](https://www.samba.org) | `smbclient` | CLI | amd64, arm64 | Command-line client for SMB/CIFS file and print shares |
-| [nbtscan](https://github.com/resurrecting-open-source-projects/nbtscan) | `nbtscan` | CLI | amd64, arm64 | Scan networks for NetBIOS name information |
-| [onesixtyone](https://github.com/trailofbits/onesixtyone) | `onesixtyone` | CLI | amd64, arm64 | Fast SNMP scanner that brute-forces community strings |
-| [SNMP utilities](http://www.net-snmp.org) | `snmp` | CLI | amd64, arm64 | Net-SNMP command-line tools such as snmpwalk and snmpget |
 | [LDAP utilities](https://www.openldap.org) | `ldap-utils` | CLI | amd64, arm64 | OpenLDAP clients for querying directory services (ldapsearch) |
-| [traceroute](https://traceroute.sourceforge.net) | `traceroute` | CLI | amd64, arm64 | Trace the route IPv4/IPv6 packets take to a host |
-| [assetfinder](https://github.com/tomnomnom/assetfinder) | `assetfinder` | CLI | amd64, arm64 | Find domains and subdomains related to a given domain |
+| [MASSCAN](https://github.com/robertdavidgraham/masscan) | `masscan` | CLI | amd64, arm64 | Asynchronous TCP port scanner for large address ranges |
+| [nbtscan](https://github.com/resurrecting-open-source-projects/nbtscan) | `nbtscan` | CLI | amd64, arm64 | Scan networks for NetBIOS name information |
+| [netdiscover](https://github.com/netdiscover-scanner/netdiscover) | `netdiscover` | CLI | amd64, arm64 | Active and passive ARP reconnaissance of local networks |
+| [Nmap](https://nmap.org) | `nmap` | CLI | amd64, arm64 | Network exploration tool and security/port scanner |
+| [onesixtyone](https://github.com/trailofbits/onesixtyone) | `onesixtyone` | CLI | amd64, arm64 | Fast SNMP scanner that brute-forces community strings |
+| [Shodan CLI](https://github.com/achillean/shodan-python) | `python3-shodan` | CLI | amd64, arm64 | Command-line client and library for the Shodan search engine |
 | [Recon-ng](https://github.com/lanmaster53/recon-ng) | `recon-ng` | CLI | amd64, arm64 | Full-featured web reconnaissance framework |
 | [Sherlock](https://github.com/sherlock-project/sherlock) | `sherlock` | CLI | amd64, arm64 | Hunt down social-media accounts by username across sites |
-| [Shodan CLI](https://github.com/achillean/shodan-python) | `python3-shodan` | CLI | amd64, arm64 | Command-line client and library for the Shodan search engine |
+| [smbclient](https://www.samba.org) | `smbclient` | CLI | amd64, arm64 | Command-line client for SMB/CIFS file and print shares |
+| [smbmap](https://github.com/ShawnDEvans/smbmap) | `smbmap` | CLI | amd64, arm64 | Enumerate SMB shares and permissions across a network |
+| [SNMP utilities](http://www.net-snmp.org) | `snmp` | CLI | amd64, arm64 | Net-SNMP command-line tools such as snmpwalk and snmpget |
+| [Sublist3r](https://github.com/aboul3la/Sublist3r) | `sublist3r` | CLI | amd64, arm64 | Enumerate subdomains using many public sources |
+| [traceroute](https://traceroute.sourceforge.net) | `traceroute` | CLI | amd64, arm64 | Trace the route IPv4/IPv6 packets take to a host |
+| [ZMap](https://zmap.io) | `zmap` | CLI | amd64, arm64 | Single-packet network scanner for Internet-wide surveys |
 
 ### Sniffing and Spoofing
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
-| [Wireshark](https://www.wireshark.org) | `wireshark` | GUI + CLI | amd64, arm64 | Graphical network protocol analyser |
-| [TShark](https://www.wireshark.org) | `tshark` | CLI | amd64, arm64 | Command-line version of the Wireshark protocol analyser |
-| [tcpdump](https://www.tcpdump.org) | `tcpdump` | CLI | amd64, arm64 | Command-line network packet capture and inspection |
-| [termshark](https://termshark.io) | `termshark` | CLI | amd64, arm64 | Terminal user interface for tshark, in the style of Wireshark |
-| [ngrep](https://github.com/jpr5/ngrep) | `ngrep` | CLI | amd64, arm64 | Grep-like matching across live or captured network traffic |
-| [netsniff-ng](http://netsniff-ng.org) | `netsniff-ng` | CLI | amd64, arm64 | High-performance packet capture and networking toolkit |
 | [bettercap](https://www.bettercap.org) | `bettercap` | CLI | amd64, arm64 | Modular network attack and monitoring (MITM) framework |
+| [dsniff](https://www.monkey.org/~dugsong/dsniff/) | `dsniff` | CLI | amd64, arm64 | Classic network sniffing and man-in-the-middle tools |
 | [Ettercap (GUI)](https://www.ettercap-project.org) | `ettercap-graphical` | GUI + CLI | amd64, arm64 | Sniffer, interceptor and logger for switched LANs |
+| [netsniff-ng](http://netsniff-ng.org) | `netsniff-ng` | CLI | amd64, arm64 | High-performance packet capture and networking toolkit |
+| [ngrep](https://github.com/jpr5/ngrep) | `ngrep` | CLI | amd64, arm64 | Grep-like matching across live or captured network traffic |
 | [Scapy](https://scapy.net) | `python3-scapy` | CLI | amd64, arm64 | Interactive packet manipulation, crafting and sniffing in Python |
+| [tcpdump](https://www.tcpdump.org) | `tcpdump` | CLI | amd64, arm64 | Command-line network packet capture and inspection |
 | [tcpflow](https://github.com/simsong/tcpflow) | `tcpflow` | CLI | amd64, arm64 | Capture and reconstruct the data streams of TCP connections |
+| [termshark](https://termshark.io) | `termshark` | CLI | amd64, arm64 | Terminal user interface for tshark, in the style of Wireshark |
+| [TShark](https://www.wireshark.org) | `tshark` | CLI | amd64, arm64 | Command-line version of the Wireshark protocol analyser |
+| [Wireshark](https://www.wireshark.org) | `wireshark` | GUI + CLI | amd64, arm64 | Graphical network protocol analyser |
 
 ### Network and System Utilities
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
-| [iPerf3](https://iperf.fr) | `iperf3` | CLI | amd64, arm64 | Measure achievable bandwidth on IP networks |
 | [iftop](https://pdw.ex-parrot.com/iftop/) | `iftop` | CLI | amd64, arm64 | Show bandwidth usage per connection on an interface |
+| [iPerf3](https://iperf.fr) | `iperf3` | CLI | amd64, arm64 | Measure achievable bandwidth on IP networks |
 | [mtr](https://www.bitwizard.nl/mtr/) | `mtr` | CLI | amd64, arm64 | Combined traceroute and ping network diagnostic |
 | [Ncat](https://nmap.org/ncat) | `ncat` | CLI | amd64, arm64 | Nmap's netcat with SSL, proxy and broker support |
 
@@ -237,56 +248,58 @@ Install: `sudo apt install shadow-arsenal-redteam`
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
-| [THC Hydra](https://github.com/vanhauser-thc/thc-hydra) | `hydra` | CLI | amd64, arm64 | Parallelised network login brute-forcer for many protocols |
-| [Medusa](https://github.com/jmk-foofus/medusa) | `medusa` | CLI | amd64, arm64 | Parallel, modular login brute-forcer for network services |
-| [Ncrack](https://nmap.org/ncrack) | `ncrack` | CLI | amd64, arm64 | High-speed network authentication cracking tool from the Nmap project |
-| [Patator](https://github.com/lanjelot/patator) | `patator` | CLI | amd64, arm64 | Multi-purpose brute-forcer with fine-grained control |
-| [John the Ripper](https://www.openwall.com/john/) | `john` | CLI | amd64, arm64 | Offline password hash cracker with many formats |
+| [CeWL](https://github.com/digininja/CeWL) | `cewl` | CLI | amd64, arm64 | Build a target-specific wordlist by spidering a website |
+| [crunch](https://github.com/crunchsec/crunch) | `crunch` | CLI | amd64, arm64 | Generate wordlists from a character set and pattern |
+| [CUPP](https://github.com/Mebus/cupp) | `cupp` | CLI | amd64, arm64 | Build targeted password dictionaries from personal data |
 | [hashcat](https://hashcat.net/hashcat/) | `hashcat` | CLI | amd64, arm64 | GPU-accelerated password recovery for a wide range of hashes |
 | [hashID](https://github.com/psypanda/hashID) | `hashid` | CLI | amd64, arm64 | Identify the type of a given password hash |
-| [crunch](https://github.com/crunchsec/crunch) | `crunch` | CLI | amd64, arm64 | Generate wordlists from a character set and pattern |
-| [CeWL](https://github.com/digininja/CeWL) | `cewl` | CLI | amd64, arm64 | Build a target-specific wordlist by spidering a website |
-| [CUPP](https://github.com/Mebus/cupp) | `cupp` | CLI | amd64, arm64 | Build targeted password dictionaries from personal data |
+| [THC Hydra](https://github.com/vanhauser-thc/thc-hydra) | `hydra` | CLI | amd64, arm64 | Parallelised network login brute-forcer for many protocols |
+| [John the Ripper](https://www.openwall.com/john/) | `john` | CLI | amd64, arm64 | Offline password hash cracker with many formats |
+| [Medusa](https://github.com/jmk-foofus/medusa) | `medusa` | CLI | amd64, arm64 | Parallel, modular login brute-forcer for network services |
+| [Ncrack](https://nmap.org/ncrack) | `ncrack` | CLI | amd64, arm64 | High-speed network authentication cracking tool from the Nmap project |
 | [Ophcrack](https://ophcrack.sourceforge.io) | `ophcrack` | GUI | amd64, arm64 | Crack Windows LM/NTLM passwords using rainbow tables |
+| [Patator](https://github.com/lanjelot/patator) | `patator` | CLI | amd64, arm64 | Multi-purpose brute-forcer with fine-grained control |
 
 ### Wireless and Radio
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
 | [Aircrack-ng](https://www.aircrack-ng.org) | `aircrack-ng` | CLI | amd64, arm64 | Suite for monitoring and testing Wi-Fi (WEP/WPA) security |
-| [Wifite](https://github.com/derv82/wifite2) | `wifite` | CLI | amd64, arm64 | Automate wireless auditing using the aircrack-ng tools |
-| [Reaver](https://github.com/t6x/reaver-wps-fork-t6x) | `reaver` | CLI | amd64, arm64 | Brute-force Wi-Fi Protected Setup (WPS) PINs |
+| [Bully](https://github.com/aanarchyy/bully) | `bully` | CLI | amd64, arm64 | Brute-force Wi-Fi Protected Setup (WPS) PINs |
 | [hcxdumptool](https://github.com/ZerBea/hcxdumptool) | `hcxdumptool` | CLI | amd64, arm64 | Capture WPA key material from Wi-Fi devices for offline cracking |
 | [hcxtools](https://github.com/ZerBea/hcxtools) | `hcxtools` | CLI | amd64, arm64 | Convert Wi-Fi captures into hashcat and John formats |
-| [Bully](https://github.com/aanarchyy/bully) | `bully` | CLI | amd64, arm64 | Brute-force Wi-Fi Protected Setup (WPS) PINs |
-| [Pixiewps](https://github.com/wiire-a/pixiewps) | `pixiewps` | CLI | amd64, arm64 | Offline WPS PIN recovery (pixie-dust attack) |
 | [hostapd](https://w1.fi/hostapd/) | `hostapd` | CLI | amd64, arm64 | Access-point and authentication daemon for rogue-AP testing |
 | [iw](https://wireless.wiki.kernel.org/en/users/documentation/iw) | `iw` | CLI | amd64, arm64 | Configure Linux wireless devices and monitor mode |
-| [wavemon](https://github.com/uoaerg/wavemon) | `wavemon` | CLI | amd64, arm64 | Ncurses monitor for wireless signal and link quality |
-| [Wireless Tools](https://hewlettpackard.github.io/wireless-tools/) | `wireless-tools` | CLI | amd64, arm64 | Classic iwconfig/iwlist utilities for wireless interfaces |
+| [MDK3](https://github.com/charlesxsh/mdk3-master) | `mdk3` | CLI | amd64, arm64 | Wi-Fi stress testing and deauthentication (802.11) |
+| [MDK4](https://github.com/aircrack-ng/mdk4) | `mdk4` | CLI | amd64, arm64 | Wi-Fi stress testing and attacks (802.11), MDK3 successor |
+| [Pixiewps](https://github.com/wiire-a/pixiewps) | `pixiewps` | CLI | amd64, arm64 | Offline WPS PIN recovery (pixie-dust attack) |
+| [Reaver](https://github.com/t6x/reaver-wps-fork-t6x) | `reaver` | CLI | amd64, arm64 | Brute-force Wi-Fi Protected Setup (WPS) PINs |
 | [rfkill](https://git.kernel.org/pub/scm/linux/kernel/git/jberg/rfkill.git) | `rfkill` | CLI | amd64, arm64 | Enable and disable wireless (Wi-Fi, Bluetooth) radios |
+| [wavemon](https://github.com/uoaerg/wavemon) | `wavemon` | CLI | amd64, arm64 | Ncurses monitor for wireless signal and link quality |
+| [Wifite](https://github.com/derv82/wifite2) | `wifite` | CLI | amd64, arm64 | Automate wireless auditing using the aircrack-ng tools |
+| [Wireless Tools](https://hewlettpackard.github.io/wireless-tools/) | `wireless-tools` | CLI | amd64, arm64 | Classic iwconfig/iwlist utilities for wireless interfaces |
 
 ### Exploitation
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
-| [Weevely](https://github.com/epinna/weevely3) | `weevely` | CLI | amd64, arm64 | Generate and manage a stealthy PHP web shell |
 | [THC-IPv6](https://github.com/vanhauser-thc/thc-ipv6) | `thc-ipv6` | CLI | amd64, arm64 | Toolkit for attacking and testing IPv6 and ICMPv6 |
+| [Weevely](https://github.com/epinna/weevely3) | `weevely` | CLI | amd64, arm64 | Generate and manage a stealthy PHP web shell |
 
 ### Post-Exploitation and Pivoting
 
 | Tool | Package | Interface | Architectures | What it is for |
 |---|---|---|---|---|
+| [FreeRDP](https://www.freerdp.com) | `freerdp3-x11` | CLI | amd64, arm64 | Remote Desktop Protocol client for reaching Windows hosts |
+| [iodine](https://github.com/yarrick/iodine) | `iodine` | CLI | amd64, arm64 | Tunnel IPv4 traffic through a DNS server to bypass filtering |
+| [Kerberos clients](https://web.mit.edu/kerberos/) | `krb5-user` | CLI | amd64, arm64 | MIT Kerberos tools (kinit, klist) for AD ticket handling |
+| [polenum](https://github.com/Wh1t3Fox/polenum) | `polenum` | CLI | amd64, arm64 | Retrieve the password policy from a Windows host over SMB |
+| [ProxyChains-NG](https://github.com/rofl0r/proxychains-ng) | `proxychains4` | CLI | amd64, arm64 | Force a program's connections through a chain of proxies |
 | [Impacket](https://github.com/fortra/impacket) | `python3-impacket` | CLI | amd64, arm64 | Python classes and example scripts for Windows network protocols |
 | [ldapdomaindump](https://github.com/dirkjanm/ldapdomaindump) | `python3-ldapdomaindump` | CLI | amd64, arm64 | Dump Active Directory information over LDAP into readable reports |
-| [Kerberos clients](https://web.mit.edu/kerberos/) | `krb5-user` | CLI | amd64, arm64 | MIT Kerberos tools (kinit, klist) for AD ticket handling |
-| [smbmap](https://github.com/ShawnDEvans/smbmap) | `smbmap` | CLI | amd64, arm64 | Enumerate SMB shares and permissions across a network |
-| [polenum](https://github.com/Wh1t3Fox/polenum) | `polenum` | CLI | amd64, arm64 | Retrieve the password policy from a Windows host over SMB |
-| [FreeRDP](https://www.freerdp.com) | `freerdp3-x11` | CLI | amd64, arm64 | Remote Desktop Protocol client for reaching Windows hosts |
-| [ProxyChains-NG](https://github.com/rofl0r/proxychains-ng) | `proxychains4` | CLI | amd64, arm64 | Force a program's connections through a chain of proxies |
-| [sshuttle](https://github.com/sshuttle/sshuttle) | `sshuttle` | CLI | amd64, arm64 | Transparent proxy and VPN over an SSH connection for pivoting |
-| [iodine](https://github.com/yarrick/iodine) | `iodine` | CLI | amd64, arm64 | Tunnel IPv4 traffic through a DNS server to bypass filtering |
 | [smbclient](https://www.samba.org) | `smbclient` | CLI | amd64, arm64 | Command-line client for SMB/CIFS file and print shares |
+| [smbmap](https://github.com/ShawnDEvans/smbmap) | `smbmap` | CLI | amd64, arm64 | Enumerate SMB shares and permissions across a network |
+| [sshuttle](https://github.com/sshuttle/sshuttle) | `sshuttle` | CLI | amd64, arm64 | Transparent proxy and VPN over an SSH connection for pivoting |
 
 ### Not installable from SHADOW repositories
 
@@ -357,10 +370,9 @@ Install: `sudo apt install shadow-arsenal-blueteam`
 | [lnav](https://lnav.org) | `lnav` | CLI | amd64, arm64 | Navigate and query log files from an interactive terminal UI |
 | [Firejail](https://firejail.wordpress.com) | `firejail` | CLI | amd64, arm64 | Restrict an application's environment with a security sandbox |
 | [USBGuard](https://usbguard.github.io) | `usbguard` | CLI | amd64, arm64 | Allow or block USB devices by policy to limit attack surface |
-| [OpenSnitch](https://github.com/evilsocket/opensnitch) | `python3-opensnitch-ui` | GUI | amd64, arm64 | Interactive application firewall that prompts on outbound connections |
-| [UFW](https://launchpad.net/ufw) | `ufw` | CLI | amd64, arm64 | Uncomplicated front end for the netfilter firewall |
+| [UFW](https://launchpad.net/ufw) | `ufw` | CLI | amd64, arm64 | Uncomplicated front end for the netfilter firewall. *Suggested, not installed with the profile: once enabled, ufw keeps its own rule set next to Shadow's nftables firewall, and a packet has to pass both. Install it only to replace shadow-firewall.* |
 | [nftables](https://netfilter.org/projects/nftables/) | `nftables` | CLI | amd64, arm64 | Configure packet-filtering and NAT rules via nftables |
-| [firewalld](https://firewalld.org) | `firewalld` | CLI | amd64, arm64 | Dynamically managed firewall with network zones |
+| [firewalld](https://firewalld.org) | `firewalld` | CLI | amd64, arm64 | Dynamically managed firewall with network zones. *Suggested, not installed with the profile: firewalld starts at boot with its own input and forward rules next to Shadow's firewall, so ports opened with shadow-firewall stay closed and virtual machines lose their network. Install it only to replace shadow-firewall.* |
 | [AppArmor](https://apparmor.net) | `apparmor` | CLI | amd64, arm64 | Mandatory-access-control confinement for programs |
 | [Timeshift](https://github.com/linuxmint/timeshift) | `timeshift` | GUI + CLI | amd64, arm64 | Create and restore filesystem snapshots |
 
@@ -606,4 +618,162 @@ The union of all SHADOW Arsenal profiles. Installing it brings in every tool fro
 
 Install: `sudo apt install shadow-arsenal-complete`
 
-Combines the profiles: [Core Security](#core), [Web Application](#web), [Network Security](#network), [Red Team](#redteam), [Blue Team](#blueteam), [Forensics](#forensics), [Reverse Engineering](#reversing), [Developer](#developer).
+Combines the profiles: [Core Security](#core), [Web Application](#web), [Network Security](#network), [Red Team](#redteam), [Blue Team](#blueteam), [Forensics](#forensics), [Reverse Engineering](#reversing), [Developer](#developer), [Penetration Testing](#pentest).
+
+<a id="pentest"></a>
+## Penetration Testing
+
+A comprehensive, Kali-class selection of offensive tools for authorized professional penetration testing: host and service discovery, DNS and SMB enumeration, web application testing (including automated scanners and injection testers), network analysis and traffic interception, password attacks, wireless attacks, reverse engineering, forensics, post-exploitation and pivoting, mobile app testing, and OSINT. Tools that are proprietary or not in Debian are listed with vendor install instructions. Use only on systems you own or are contracted in writing to test.
+
+Install: `sudo apt install shadow-arsenal-pentest`
+
+### Information Gathering
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [arp-scan](https://github.com/royhills/arp-scan) | `arp-scan` | CLI | amd64, arm64 | Discover and fingerprint IP hosts on the local network with ARP |
+| [assetfinder](https://github.com/tomnomnom/assetfinder) | `assetfinder` | CLI | amd64, arm64 | Find domains and subdomains related to a given domain |
+| [dnsenum](https://github.com/fwaeytens/dnsenum) | `dnsenum` | CLI | amd64, arm64 | Enumerate DNS information and attempt zone transfers |
+| [dnsmap](https://github.com/makefu/dnsmap) | `dnsmap` | CLI | amd64, arm64 | Brute-force subdomains to map a target's DNS |
+| [DNSRecon](https://github.com/darkoperator/dnsrecon) | `dnsrecon` | CLI | amd64, arm64 | Enumerate DNS records, zones and subdomains of a domain |
+| [enum4linux](https://github.com/CiscoCXSecurity/enum4linux) | `enum4linux` | CLI | amd64, arm64 | Enumerate user accounts, shares and password policies from Windows/Samba |
+| [fierce](https://github.com/mschwager/fierce) | `fierce` | CLI | amd64, arm64 | Locate non-contiguous IP space and hostnames for a domain |
+| [MASSCAN](https://github.com/robertdavidgraham/masscan) | `masscan` | CLI | amd64, arm64 | Asynchronous TCP port scanner for large address ranges |
+| [nbtscan](https://github.com/resurrecting-open-source-projects/nbtscan) | `nbtscan` | CLI | amd64, arm64 | Scan networks for NetBIOS name information |
+| [netdiscover](https://github.com/netdiscover-scanner/netdiscover) | `netdiscover` | CLI | amd64, arm64 | Active and passive ARP reconnaissance of local networks |
+| [Nikto](https://cirt.net/Nikto2) | `nikto` | CLI | amd64, arm64 | Scan web servers for dangerous files, outdated software and misconfigurations |
+| [Nmap](https://nmap.org) | `nmap` | CLI | amd64, arm64 | Network exploration tool and security/port scanner |
+| [onesixtyone](https://github.com/trailofbits/onesixtyone) | `onesixtyone` | CLI | amd64, arm64 | Fast SNMP scanner that brute-forces community strings |
+| [Recon-ng](https://github.com/lanmaster53/recon-ng) | `recon-ng` | CLI | amd64, arm64 | Full-featured web reconnaissance framework |
+| [smbclient](https://www.samba.org) | `smbclient` | CLI | amd64, arm64 | Command-line client for SMB/CIFS file and print shares |
+| [smbmap](https://github.com/ShawnDEvans/smbmap) | `smbmap` | CLI | amd64, arm64 | Enumerate SMB shares and permissions across a network |
+| [SNMP utilities](http://www.net-snmp.org) | `snmp` | CLI | amd64, arm64 | Net-SNMP command-line tools such as snmpwalk and snmpget |
+| [sslscan](https://github.com/rbsec/sslscan) | `sslscan` | CLI | amd64, arm64 | Report the TLS versions and ciphers a service accepts |
+| [Sublist3r](https://github.com/aboul3la/Sublist3r) | `sublist3r` | CLI | amd64, arm64 | Enumerate subdomains using many public sources |
+| [theHarvester](https://github.com/laramies/theHarvester) | `theharvester` | CLI | amd64, arm64 | Gather emails, subdomains and IPs from public sources for OSINT |
+| [ZMap](https://zmap.io) | `zmap` | CLI | amd64, arm64 | Single-packet network scanner for Internet-wide surveys |
+
+### Web Application
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [DIRB](https://dirb.sourceforge.net) | `dirb` | CLI | amd64, arm64 | Brute-force web content against a wordlist to find hidden paths |
+| [dirsearch](https://github.com/maurosoria/dirsearch) | `dirsearch` | CLI | amd64, arm64 | Web path scanner for discovering files and directories |
+| [ffuf](https://github.com/ffuf/ffuf) | `ffuf` | CLI | amd64, arm64 | Fast web fuzzer for content discovery and parameter testing |
+| [Gobuster](https://github.com/OJ/gobuster) | `gobuster` | CLI | amd64, arm64 | Fast directory, DNS and virtual-host brute-forcer written in Go |
+| [sqlmap](https://sqlmap.org) | `sqlmap` | CLI | amd64, arm64 | Automatic detection and exploitation of SQL injection flaws |
+| [wafw00f](https://github.com/EnableSecurity/wafw00f) | `wafw00f` | CLI | amd64, arm64 | Identify and fingerprint the web application firewall in front of a site |
+| [Wfuzz](https://github.com/xmendez/wfuzz) | `wfuzz` | CLI | amd64, arm64 | Web application fuzzer for brute-forcing parameters and paths |
+| [WhatWeb](https://morningstarsecurity.com/research/whatweb) | `whatweb` | CLI | amd64, arm64 | Identify the technologies a website is built with |
+| [OWASP ZAP](https://www.zaproxy.org) | `zaproxy` | GUI | amd64, arm64 | Open-source web application security scanner and MITM proxy (GUI) |
+
+### Password Auditing
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [CeWL](https://github.com/digininja/CeWL) | `cewl` | CLI | amd64, arm64 | Build a target-specific wordlist by spidering a website |
+| [crunch](https://github.com/crunchsec/crunch) | `crunch` | CLI | amd64, arm64 | Generate wordlists from a character set and pattern |
+| [fcrackzip](https://github.com/hyc/fcrackzip) | `fcrackzip` | CLI | amd64, arm64 | Brute-force and dictionary attack on password-protected ZIP archives |
+| [hashcat](https://hashcat.net/hashcat/) | `hashcat` | CLI | amd64, arm64 | GPU-accelerated password recovery for a wide range of hashes |
+| [hashID](https://github.com/psypanda/hashID) | `hashid` | CLI | amd64, arm64 | Identify the type of a given password hash |
+| [THC Hydra](https://github.com/vanhauser-thc/thc-hydra) | `hydra` | CLI | amd64, arm64 | Parallelised network login brute-forcer for many protocols |
+| [John the Ripper](https://www.openwall.com/john/) | `john` | CLI | amd64, arm64 | Offline password hash cracker with many formats |
+| [Medusa](https://github.com/jmk-foofus/medusa) | `medusa` | CLI | amd64, arm64 | Parallel, modular login brute-forcer for network services |
+| [Ncrack](https://nmap.org/ncrack) | `ncrack` | CLI | amd64, arm64 | High-speed network authentication cracking tool from the Nmap project |
+| [Ophcrack](https://ophcrack.sourceforge.io) | `ophcrack` | GUI | amd64, arm64 | Crack Windows LM/NTLM passwords using rainbow tables |
+| [Patator](https://github.com/lanjelot/patator) | `patator` | CLI | amd64, arm64 | Multi-purpose brute-forcer with fine-grained control |
+| [SecLists](https://github.com/danielmiessler/SecLists) | `seclists` | CLI | amd64, arm64 | Collection of wordlists for security testing: passwords, usernames, payloads and more |
+| [wordlists](https://packages.debian.org/trixie/wordlists) | `wordlists` | CLI | amd64, arm64 | Classic password dictionaries including rockyou.txt (compressed) |
+
+### Wireless and Radio
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [Aircrack-ng](https://www.aircrack-ng.org) | `aircrack-ng` | CLI | amd64, arm64 | Suite for monitoring and testing Wi-Fi (WEP/WPA) security |
+| [Bully](https://github.com/aanarchyy/bully) | `bully` | CLI | amd64, arm64 | Brute-force Wi-Fi Protected Setup (WPS) PINs |
+| [Kismet](https://www.kismetwireless.net) | `kismet` | GUI + CLI | amd64, arm64 | Wireless network detector, sniffer, wardriver and IDS for 802.11 and Bluetooth |
+| [MDK3](https://github.com/charlesxsh/mdk3-master) | `mdk3` | CLI | amd64, arm64 | Wi-Fi stress testing and deauthentication (802.11) |
+| [MDK4](https://github.com/aircrack-ng/mdk4) | `mdk4` | CLI | amd64, arm64 | Wi-Fi stress testing and attacks (802.11), MDK3 successor |
+| [Reaver](https://github.com/t6x/reaver-wps-fork-t6x) | `reaver` | CLI | amd64, arm64 | Brute-force Wi-Fi Protected Setup (WPS) PINs |
+| [Wifite](https://github.com/derv82/wifite2) | `wifite` | CLI | amd64, arm64 | Automate wireless auditing using the aircrack-ng tools |
+
+### Exploitation
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [commix](https://commixproject.com) | `commix` | CLI | amd64, arm64 | Automated detection and exploitation of OS command injection flaws |
+| [Exploit-DB (searchsploit)](https://www.exploit-db.com) | `exploitdb` | CLI | amd64, arm64 | Offline copy of Exploit-DB with the searchsploit search tool |
+| [pwntools](https://github.com/Gallopsled/pwntools) | `python3-pwntools` | CLI | amd64, arm64 | CTF and exploit-development framework for Python |
+| [Weevely](https://github.com/epinna/weevely3) | `weevely` | CLI | amd64, arm64 | Generate and manage a stealthy PHP web shell |
+
+### Sniffing and Spoofing
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [Wireshark](https://www.wireshark.org) | `wireshark` | GUI + CLI | amd64, arm64 | Graphical network protocol analyser |
+| [TShark](https://www.wireshark.org) | `tshark` | CLI | amd64, arm64 | Command-line version of the Wireshark protocol analyser |
+| [tcpdump](https://www.tcpdump.org) | `tcpdump` | CLI | amd64, arm64 | Command-line network packet capture and inspection |
+| [hping3](http://www.hping.org) | `hping3` | CLI | amd64, arm64 | Assemble and send custom TCP/IP packets, and trace responses |
+| [Scapy](https://scapy.net) | `python3-scapy` | CLI | amd64, arm64 | Interactive packet manipulation, crafting and sniffing in Python |
+| [mitmproxy](https://mitmproxy.org) | `mitmproxy` | CLI | amd64, arm64 | Interactive HTTPS proxy for intercepting and modifying traffic |
+| [socat](http://www.dest-unreach.org/socat/) | `socat` | CLI | amd64, arm64 | Multipurpose relay for bidirectional data between two streams |
+| [netcat (OpenBSD)](https://www.openbsd.org) | `netcat-openbsd` | CLI | amd64, arm64 | Read and write data across network connections |
+| [bettercap](https://www.bettercap.org) | `bettercap` | CLI | amd64, arm64 | Modular network attack and monitoring (MITM) framework |
+| [Ettercap (GUI)](https://www.ettercap-project.org) | `ettercap-graphical` | GUI + CLI | amd64, arm64 | Sniffer, interceptor and logger for switched LANs |
+
+### Post-Exploitation and Pivoting
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [Impacket Scripts](https://github.com/fortra/impacket) | `impacket-scripts` | CLI | amd64, arm64 | Python scripts for interacting with Windows protocols: SMB, MSRPC, Kerberos and more |
+| [NetExec](https://github.com/Pennyw0rth/NetExec) | `netexec` | CLI | amd64, arm64 | Network service exploitation and credential testing across SMB, WinRM, SSH, RDP and more |
+| [sshuttle](https://github.com/sshuttle/sshuttle) | `sshuttle` | CLI | amd64, arm64 | Transparent proxy and VPN over an SSH connection for pivoting |
+
+### Forensics
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [Foremost](https://github.com/korczis/foremost) | `foremost` | CLI | amd64, arm64 | Carve files from images based on headers and footers |
+| [TestDisk and PhotoRec](https://www.cgsecurity.org) | `testdisk` | CLI | amd64, arm64 | Recover lost partitions and carve files from media |
+| [chkrootkit](https://www.chkrootkit.org) | `chkrootkit` | CLI | amd64, arm64 | Check a system or mounted image for signs of a rootkit |
+| [Rootkit Hunter](https://rkhunter.sourceforge.net) | `rkhunter` | CLI | amd64, arm64 | Scan for rootkits, backdoors and local exploits |
+| [chntpw](https://pogostick.net/~pnh/ntpasswd/) | `chntpw` | CLI | amd64, arm64 | Reset Windows user and admin passwords offline from a Linux system |
+| [Autopsy](https://www.sleuthkit.org/autopsy/) | `autopsy` | CLI | amd64, arm64 | Web front end to The Sleuth Kit for case-based investigation |
+
+### Reverse Engineering
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [Radare2](https://rada.re) | `radare2` | CLI | amd64, arm64 | Reverse engineering framework: disassembly, debugging and binary analysis |
+| [GDB](https://www.sourceware.org/gdb/) | `gdb` | CLI | amd64, arm64 | The GNU debugger for native programs |
+| [strace](https://strace.io) | `strace` | CLI | amd64, arm64 | Trace system calls and signals of a process |
+| [ltrace](https://ltrace.org) | `ltrace` | CLI | amd64, arm64 | Trace library and system calls of a running program |
+| [hexedit](https://github.com/pixel/hexedit) | `hexedit` | CLI | amd64, arm64 | Terminal hex editor and viewer for binary files |
+| [Binwalk](https://github.com/ReFirmLabs/binwalk) | `binwalk` | CLI | amd64, arm64 | Analyse and extract embedded data from firmware and blobs |
+| [Apktool](https://apktool.org) | `apktool` | CLI | amd64, arm64 | Decode and rebuild Android APK resources and smali |
+| [ADB](https://developer.android.com/tools/adb) | `android-tools-adb` | CLI | amd64, arm64 | Android Debug Bridge — connect to devices, install apps and run shell commands |
+
+### Network and System Utilities
+
+| Tool | Package | Interface | Architectures | What it is for |
+|---|---|---|---|---|
+| [ProxyChains-NG](https://github.com/rofl0r/proxychains-ng) | `proxychains4` | CLI | amd64, arm64 | Force a program's connections through a chain of proxies |
+| [Tor](https://www.torproject.org) | `tor` | CLI | amd64, arm64 | Route traffic through the Tor anonymity overlay network |
+| [torsocks](https://gitlab.torproject.org/tpo/core/torsocks) | `torsocks` | CLI | amd64, arm64 | Route any application's TCP connections through Tor transparently |
+
+### Not installable from SHADOW repositories
+
+Well-known tools of this field that are not in Debian main. SHADOW does not download or
+repackage them; follow the official instructions.
+
+| Tool | Why there is no package | Licence | Official source |
+|---|---|---|---|
+| [Metasploit Framework](https://www.metasploit.com) | not packaged in Debian: The framework is not packaged in Debian; Rapid7 ships its own cross-distribution installer and nightly builds and expects to be updated from there. | BSD-3-Clause for the framework; the Rapid7 installer and some content have their own terms. | <https://docs.metasploit.com/docs/using-metasploit/getting-started/nightly-installers.html> |
+| [Ghidra](https://ghidra-sre.org) | not packaged in Debian: Ghidra is free and open source but ships as a large self-contained Java release and is not packaged in Debian; it needs a JDK, which SHADOW can install. | Apache-2.0 (open source), released by the NSA; not packaged in Debian. | <https://github.com/NationalSecurityAgency/ghidra/releases> |
+| [Burp Suite Pro](https://portswigger.net/burp/pro) | vendor licence terms: Burp Suite Pro is commercial software. The free Community edition is available but lacks the full scanner and many advanced features. | Commercial — PortSwigger licence required | <https://portswigger.net/burp/communitydownload> |
+| [WPScan](https://wpscan.com) | vendor licence terms: WPScan ships under its own source-available licence as a Ruby gem and is not in Debian trixie. | Dual-licensed (WPScan Public Source License); not currently in Debian trixie. | <https://github.com/wpscanteam/wpscan> |
+| [Nuclei](https://github.com/projectdiscovery/nuclei) | not packaged in Debian: Nuclei and its templates are released on a rapid cadence outside Debian; ProjectDiscovery publishes binaries and an installer. | MIT (open source), not packaged in Debian. | <https://github.com/projectdiscovery/nuclei/releases> |
+| [Evil-WinRM](https://github.com/Hackplayers/evil-winrm) | not packaged in Debian: Evil-WinRM is published as a Ruby gem and is not packaged in Debian trixie. | GPL-3.0 (open source), distributed as a Ruby gem; not packaged in Debian. | <https://github.com/Hackplayers/evil-winrm> |
+| [Responder](https://github.com/lgandx/Responder) | not packaged in Debian: Responder is free software but is not in Debian; it runs directly from a git checkout with Python 3. | GPL-3.0 (open source), not packaged in Debian. | <https://github.com/lgandx/Responder> |
+| [BloodHound CE](https://github.com/SpecterOps/BloodHound) | not packaged in Debian: BloodHound Community Edition requires Docker Compose and is not packaged in Debian. | Apache 2.0 | <https://github.com/SpecterOps/BloodHound> |
+| [Nessus](https://www.tenable.com/products/nessus) | vendor licence terms: Nessus is commercial software. Nessus Essentials (free, 16-IP limit) and professional versions are available from Tenable. | Commercial — Tenable licence required | <https://www.tenable.com/products/nessus/nessus-essentials> |

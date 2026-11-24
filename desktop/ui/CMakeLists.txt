@@ -41,7 +41,11 @@ qt_add_qml_module(shadowui
     DEPENDENCIES QtQuick QtQuick.Controls QtQuick.Layouts QtQuick.Shapes
 )
 
+# icons.list is written by assets/src/icons/gen-symbolic.py; a glyph added
+# there must re-run CMake, or it is missing from the resource (and drawn as a
+# placeholder box).
 file(STRINGS icons/icons.list SHADOW_ICON_FILES)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/icons/icons.list)
 list(TRANSFORM SHADOW_ICON_FILES PREPEND icons/)
 qt_add_resources(shadowui shadow_symbolic_icons
     PREFIX /shadow/icons

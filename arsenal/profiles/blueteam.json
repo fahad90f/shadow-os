@@ -171,16 +171,6 @@
       "homepage": "https://usbguard.github.io"
     },
     {
-      "package": "python3-opensnitch-ui",
-      "name": "OpenSnitch",
-      "summary": "Interactive application firewall that prompts on outbound connections",
-      "category": "defensive-monitoring",
-      "interface": "gui",
-      "desktop-id": "opensnitch_ui",
-      "homepage": "https://github.com/evilsocket/opensnitch",
-      "notes": "This is the GUI that shows prompts and statistics; it pulls in the opensnitch daemon that enforces the rules."
-    },
-    {
       "package": "wireshark",
       "name": "Wireshark",
       "summary": "Graphical network protocol analyser",
@@ -198,7 +188,9 @@
       "category": "defensive-monitoring",
       "interface": "cli",
       "command": "ufw",
-      "homepage": "https://launchpad.net/ufw"
+      "homepage": "https://launchpad.net/ufw",
+      "optional": true,
+      "notes": "Suggested, not installed with the profile: once enabled, ufw keeps its own rule set next to Shadow's nftables firewall, and a packet has to pass both. Install it only to replace shadow-firewall."
     },
     {
       "package": "nftables",
@@ -216,7 +208,9 @@
       "category": "defensive-monitoring",
       "interface": "cli",
       "command": "firewall-cmd",
-      "homepage": "https://firewalld.org"
+      "homepage": "https://firewalld.org",
+      "optional": true,
+      "notes": "Suggested, not installed with the profile: firewalld starts at boot with its own input and forward rules next to Shadow's firewall, so ports opened with shadow-firewall stay closed and virtual machines lose their network. Install it only to replace shadow-firewall."
     },
     {
       "package": "apparmor",
