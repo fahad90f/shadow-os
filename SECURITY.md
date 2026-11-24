@@ -23,7 +23,7 @@ enabled on every Shadow OS system
 **Do not open a public issue for a security vulnerability.**
 
 Open a **private security advisory** on the project's GitHub repository:
-on <https://github.com/fahad90fa/Custom-OS>, go to the *Security* tab and
+on <https://github.com/fahad90f/shadow-os>, go to the *Security* tab and
 choose *Report a vulnerability*. This creates a report that only the
 maintainers can see.
 

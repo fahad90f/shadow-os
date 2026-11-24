@@ -24,7 +24,7 @@ machine yet.
 ## Reporting problems and test results
 
 Open an issue on the project's GitHub repository
-(<https://github.com/fahad90fa/Custom-OS/issues>). Include:
+(<https://github.com/fahad90f/shadow-os/issues>). Include:
 
 * what you did, what you expected and what happened;
 * the image you used (file name, SHA-256, or the commit you built from);

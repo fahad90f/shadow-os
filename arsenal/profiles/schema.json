@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/fahad90fa/Custom-OS/arsenal/profiles/schema.json",
+  "$id": "https://github.com/fahad90f/shadow-os/arsenal/profiles/schema.json",
   "title": "SHADOW Arsenal profile manifest",
   "description": "One security tool profile. Checked by arsenal/tools/validate.py, which implements the keywords used here and adds the cross-file rules listed in arsenal/docs/adding-tools.md (category ids from categories.json, unique packages, resolvable includes).",
   "type": "object",

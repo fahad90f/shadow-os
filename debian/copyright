@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Shadow OS
-Source: https://github.com/fahad90fa/Custom-OS
+Source: https://github.com/fahad90f/shadow-os
 
 Files: *
 Copyright: 2026 Shadow OS Developers

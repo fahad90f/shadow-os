@@ -27,7 +27,7 @@ endif()
 
 project(shadow-os VERSION ${SHADOW_VERSION} LANGUAGES ${_shadow_languages}
         DESCRIPTION "Shadow OS desktop environment and system applications"
-        HOMEPAGE_URL "https://github.com/fahad90fa/Custom-OS")
+        HOMEPAGE_URL "https://github.com/fahad90f/shadow-os")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 if(SHADOW_DATA_ONLY)

@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Shadow OS Developers <shadow-os@users.noreply.github.com>
 Rules-Requires-Root: no
 Standards-Version: 4.7.2
-Homepage: https://github.com/fahad90fa/Custom-OS
+Homepage: https://github.com/fahad90f/shadow-os
 Build-Depends:
  debhelper-compat (= 13),
  python3,

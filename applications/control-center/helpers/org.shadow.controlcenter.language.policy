@@ -4,7 +4,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <policyconfig>
   <vendor>Shadow OS</vendor>
-  <vendor_url>https://github.com/fahad90fa/Custom-OS</vendor_url>
+  <vendor_url>https://github.com/fahad90f/shadow-os</vendor_url>
 
   <!--
     /usr/libexec/shadow/language-helper: generates locales (locale.gen +
