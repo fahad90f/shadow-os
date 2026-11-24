@@ -1055,3 +1055,23 @@ Description: Shadow Trading
  .
  The TradingView chart view needs qml6-module-qtwebengine and an internet
  connection; without them the application draws its own chart.
+
+Package: shadow-desktop
+Architecture: all
+Depends: ${misc:Depends},
+ shadow-horizon, shadow-control-center, shadow-network-center,
+ shadow-security-center, shadow-files, shadow-terminal, shadow-editor,
+ shadow-archive-manager, shadow-screenshot, shadow-disk-manager,
+ shadow-monitor, shadow-sysinfo, shadow-store, shadow-updater,
+ shadow-recovery, shadow-assistant, shadow-trading
+Description: Shadow OS desktop edition
+ The Shadow Horizon desktop with every application of the Shadow OS desktop
+ edition. It contains nothing itself: it is what makes an application that a
+ later release adds arrive with an ordinary update, since an update installs
+ a new package only when something already installed depends on it.
+ .
+ A desktop system from before this package existed adopts it with its next
+ update, once (shadow-offline-update). Removing one of the applications
+ removes this package with it and nothing else; new applications are then
+ no longer added automatically. The Arsenal's tool profiles are not part of
+ it.

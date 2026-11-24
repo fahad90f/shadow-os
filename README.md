@@ -83,9 +83,9 @@ Run from the top of the clone. Each script prints its usage with `--help`.
 
 ```sh
 # 1. Debian trixie build chroot with the build dependencies.
-#    --dev-tools is currently required for a package build as well: see
-#    docs/packaging/building.md.
-sudo build/chroot/create.sh --dev-tools
+#    Add --dev-tools for the developer loop and the nested-session tests
+#    (scripts/dev.sh); a package build does not need it.
+sudo build/chroot/create.sh
 
 # 2. Build every SHADOW package inside the chroot.
 sudo build/packages/build.sh

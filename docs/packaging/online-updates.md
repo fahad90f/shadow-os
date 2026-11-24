@@ -52,9 +52,45 @@ system. Answer `n` and they are installed whenever you next restart.
 The installation log is `/var/log/shadow-offline-update.log`. Updates from
 Debian that are pending at the same time are installed in the same restart.
 
-A system installed from an image that predates the restart-time installer
-gets it first: the script updates the Updater on its own (`shadow-updater`,
-which contains `shadow-offline-update`) and then prepares the rest.
+Before it prepares, the script puts the restart-time installer of the clone
+in place: `shadow-offline-update`, its service and the two files that tie the
+service into systemd's update boot, the same files in the same places as in
+the Updater package it has just built (the upgrade then installs them again).
+A system installed from an image that predates the installer gets it this
+way, without any package being upgraded while the desktop is running, and an
+older installer already behaves like the new one for this update.
+
+`--no-build` skips the build and uses the packages an earlier run left in
+`build/out/repo`: after an interrupted run, or to install the same build on
+the machine again.
+
+### Applications added by a later release
+
+An upgrade installs a new package only when something that is already
+installed depends on it. A new application is therefore made a dependency of
+`shadow-desktop`, the desktop edition's metapackage, which the image installs
+(`tests/build/test_desktop_edition.py` fails when an application is in the
+image but not in the metapackage). With `shadow-desktop` installed, a new
+application arrives with any ordinary update: this script, the Updater, or
+`apt upgrade`.
+
+A desktop system from before `shadow-desktop` existed adopts it with its next
+restart-time update, once: `shadow-offline-update prepare` names it along with
+the upgrade when the desktop shell is installed, the metapackage is not, the
+package sources offer it and it installs together with that upgrade. Because
+the script puts the clone's `shadow-offline-update` in place before preparing,
+this already applies to the update that brings the tool that does it. Such a
+system is told so ("This update also brings the applications
+added since this system was installed"). The Updater application and plain
+`apt upgrade` do not adopt it; there, `sudo apt install shadow-desktop` does
+the same.
+
+The metapackage records its installation in `/var/lib/shadow/edition-adopted`,
+and a system with that record is never offered it again. Removing an
+application removes `shadow-desktop` with it and nothing else; from then on
+new applications are no longer added automatically, and the next update does
+not undo the removal. The Arsenal's tool profiles are not part of the
+metapackage and never arrive through an update.
 
 The first run installs the build tools and creates the build environment and
 the signing key (below), so it takes longer; later runs take about a quarter of

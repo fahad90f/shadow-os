@@ -20,30 +20,61 @@
 # repository that scripts/publish-updates.sh --local registers. Nothing is
 # ever removed: an update that would need to remove a package is held back,
 # as "apt upgrade" does.
+#
+# New applications. An upgrade installs a new package only when something
+# already installed depends on it, so an application added by a later release
+# would never arrive on its own. The desktop edition's metapackage
+# (shadow-desktop) depends on all of them. A desktop system from before that
+# package existed adopts it here, with its next update, once: the package
+# records its installation in /var/lib/shadow/edition-adopted, and a system
+# with that record is left alone, so removing the package (or an application,
+# which removes the package with it) is not undone by the next update.
 set -euo pipefail
 
-STATE=/var/lib/shadow/offline-update
-LINK=/system-update
-LOG=/var/log/shadow-offline-update.log
+# Only tests set this: another system root for the state, the trigger and the log.
+ROOT="${SHADOW_OFFLINE_UPDATE_ROOT:-}"
+STATE=$ROOT/var/lib/shadow/offline-update
+LINK=$ROOT/system-update
+LOG=$ROOT/var/log/shadow-offline-update.log
+EDITION=shadow-desktop
+EDITION_RECORD=$ROOT/var/lib/shadow/edition-adopted
 APT_DPKG=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Dpkg::Use-Pty=0)
 
 die() { echo "shadow-offline-update: $*" >&2; exit 1; }
-[ "$(id -u)" -eq 0 ] || die "must run as root (sudo shadow-offline-update $*)"
+[ -n "$ROOT" ] || [ "$(id -u)" -eq 0 ] || die "must run as root (sudo shadow-offline-update $*)"
 
 ours() { [ -L "$LINK" ] && [ "$(readlink "$LINK")" = "$STATE" ]; }
 
+installed() {
+    [ "$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null | cut -c1-2)" = ii ]
+}
+
+# Packages to install along with the upgrade: the edition metapackage, on a
+# desktop system that has never had it and whose package sources offer it in
+# a form that installs together with this upgrade (naming a package makes
+# "apt-get upgrade" install it; it still removes nothing).
+adoptions() {
+    [ ! -e "$EDITION_RECORD" ] || return 0
+    installed shadow-horizon || return 0
+    if installed "$EDITION"; then return 0; fi
+    apt-get -s -q --with-new-pkgs upgrade "$EDITION" >/dev/null 2>&1 || return 0
+    echo "$EDITION"
+}
+
 # Package names an upgrade would install or update, from a simulation.
+# Arguments: packages to install along with it.
 pending_packages() {
-    apt-get -s -q --with-new-pkgs upgrade 2>/dev/null | awk '/^Inst /{print $2}'
+    apt-get -s -q --with-new-pkgs upgrade "$@" 2>/dev/null | awk '/^Inst /{print $2}'
 }
 
 cmd_prepare() {
     echo "Checking for updates…"
     apt-get -q update || echo "shadow-offline-update: some package sources could not be refreshed; using what is available" >&2
-    local packages
-    packages="$(pending_packages)" || die "could not work out the updates (see: sudo apt-get -s upgrade)"
+    local packages extra=()
+    mapfile -t extra < <(adoptions)
+    packages="$(pending_packages "${extra[@]}")" || die "could not work out the updates (see: sudo apt-get -s upgrade)"
     if [ -z "$packages" ]; then
-        rm -f "$STATE/packages"
+        rm -f "$STATE/packages" "$STATE/extra"
         if ours; then rm -f "$LINK"; fi
         echo "The system is up to date."
         return 0
@@ -51,19 +82,25 @@ cmd_prepare() {
     local count
     count="$(wc -l <<<"$packages")"
     echo "Downloading $count update(s)…"
-    DEBIAN_FRONTEND=noninteractive apt-get -q -y -d --with-new-pkgs "${APT_DPKG[@]}" upgrade >/dev/null \
+    DEBIAN_FRONTEND=noninteractive apt-get -q -y -d --with-new-pkgs "${APT_DPKG[@]}" upgrade "${extra[@]}" >/dev/null \
         || die "downloading the updates failed"
 
     mkdir -p "$STATE"
     printf '%s\n' "$packages" > "$STATE/packages"
+    rm -f "$STATE/extra"
+    if [ "${#extra[@]}" -gt 0 ]; then
+        printf '%s\n' "${extra[@]}" > "$STATE/extra"
+        echo "This update also brings the applications added since this system was installed (${extra[*]})."
+    fi
     date -u +%Y-%m-%dT%H:%M:%SZ > "$STATE/prepared"
     ln -sfn "$STATE" "$LINK"
 
     # Debian's restart-needed convention: the Updater shows its "Restart now"
     # banner for it, and so do other tools that follow it.
-    echo "*** Updates are ready and will be installed during the next restart ***" > /run/reboot-required
-    { cat /run/reboot-required.pkgs 2>/dev/null || true; printf '%s\n' "$packages"; } | sort -u > /run/reboot-required.pkgs.new
-    mv /run/reboot-required.pkgs.new /run/reboot-required.pkgs
+    mkdir -p "$ROOT/run"
+    echo "*** Updates are ready and will be installed during the next restart ***" > "$ROOT/run/reboot-required"
+    { cat "$ROOT/run/reboot-required.pkgs" 2>/dev/null || true; printf '%s\n' "$packages"; } | sort -u > "$ROOT/run/reboot-required.pkgs.new"
+    mv "$ROOT/run/reboot-required.pkgs.new" "$ROOT/run/reboot-required.pkgs"
 
     echo "$count update(s) are ready. They will be installed during the next restart:"
     sed 's/^/  /' <<<"$packages"
@@ -85,19 +122,33 @@ cmd_apply() {
     fi
 
     local result=success
+    mkdir -p "$(dirname "$LOG")"
     {
         echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) installing prepared updates"
         cat "$STATE/packages" 2>/dev/null || true
     } >>"$LOG"
+    # What prepare decided to install along with the upgrade. If that no
+    # longer works out (the package sources changed in between), the upgrade
+    # itself is still installed.
+    local extra=() name
+    while IFS= read -r name; do
+        case "$name" in ''|*[!a-z0-9.+-]*) continue ;; esac
+        extra+=("$name")
+    done < <(cat "$STATE/extra" 2>/dev/null || true)
+    if [ "${#extra[@]}" -gt 0 ] \
+        && ! apt-get -s -q --no-download --with-new-pkgs upgrade "${extra[@]}" >/dev/null 2>&1; then
+        echo "not installing ${extra[*]}: it cannot be installed with this upgrade" >>"$LOG"
+        extra=()
+    fi
     # Only what prepare downloaded is installed: no network at this point.
-    if ! DEBIAN_FRONTEND=noninteractive apt-get -y --no-download --with-new-pkgs "${APT_DPKG[@]}" upgrade >>"$LOG" 2>&1; then
+    if ! DEBIAN_FRONTEND=noninteractive apt-get -y --no-download --with-new-pkgs "${APT_DPKG[@]}" upgrade "${extra[@]}" >>"$LOG" 2>&1; then
         result=failed
         # Leave dpkg in a consistent state whatever happened.
         DEBIAN_FRONTEND=noninteractive dpkg --configure -a >>"$LOG" 2>&1 || true
     fi
     echo "$result $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STATE/last-result"
     echo "=== $result" >>"$LOG"
-    rm -f "$STATE/packages" "$STATE/prepared"
+    rm -f "$STATE/packages" "$STATE/prepared" "$STATE/extra"
     [ "$result" = success ] && apt-get -q clean >/dev/null 2>&1 || true
 
     if [ "$reboot" -eq 1 ]; then
@@ -120,7 +171,7 @@ cmd_status() {
 
 cmd_cancel() {
     if ours; then rm -f "$LINK"; fi
-    rm -f "$STATE/packages" "$STATE/prepared"
+    rm -f "$STATE/packages" "$STATE/prepared" "$STATE/extra"
     echo "No updates will be installed at the next restart."
 }
 

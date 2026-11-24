@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+# The record that this system has had the desktop edition package. The
+# restart-time updater adopts the package on desktop systems that never had
+# it; with this record, removing it later is respected and not undone by the
+# next update. It is deliberately left behind on removal and purge.
+if [ "$1" = configure ]; then
+    mkdir -p /var/lib/shadow
+    : > /var/lib/shadow/edition-adopted
+fi
+
+#DEBHELPER#

@@ -4,7 +4,7 @@
 #
 #     sudo apt update && sudo apt upgrade
 #
-#   scripts/publish-updates.sh --local [--restart | --later | --now]
+#   scripts/publish-updates.sh --local [--no-build] [--restart | --later | --now]
 #   scripts/publish-updates.sh [--url https://<name>.vercel.app] [--no-deploy]
 #
 #   --local       for this machine only: register the packages as an APT
@@ -15,6 +15,9 @@
 #     --later     do not ask; install whenever the computer is next restarted
 #     --now       only register the packages; install them yourself with
 #                 sudo apt update && sudo apt upgrade
+#     --no-build  do not build: use the packages an earlier run left in
+#                 build/out/repo (after an interrupted run, or to install the
+#                 same build on this machine again)
 #   (default)     for other machines too: upload the packages, with the
 #                 website, to Vercel.
 #   --url URL     the address of the Vercel site. Needed once; it is stored in
@@ -36,26 +39,31 @@ cd "$ROOT"
 
 log() { printf '\033[1;36m[publish]\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31m[publish] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
-as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
+# Without sudo as root already, and when a test installs into a scratch
+# directory of its own (SHADOW_LOCAL_ROOT).
+as_root() { if [ "$(id -u)" -eq 0 ] || [ -n "${SHADOW_LOCAL_ROOT:-}" ]; then "$@"; else sudo "$@"; fi; }
 
 URL_ARG=""
 DEPLOY=1
 LOCAL=0
 INSTALL=ask
+BUILD=1
 while [ $# -gt 0 ]; do
     case "$1" in
         --local) LOCAL=1; shift ;;
         --restart) INSTALL=restart; shift ;;
         --later) INSTALL=later; shift ;;
         --now) INSTALL=now; shift ;;
+        --no-build) BUILD=0; shift ;;
         --url) URL_ARG="${2:-}"; shift 2 ;;
         --no-deploy) DEPLOY=0; shift ;;
-        -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
 [ "$LOCAL" -eq 0 ] || [ -z "$URL_ARG" ] || die "--local and --url do not go together"
 [ "$LOCAL" -eq 1 ] || [ "$INSTALL" = ask ] || die "--restart, --later and --now go with --local"
+[ "$LOCAL" -eq 1 ] || [ "$BUILD" -eq 1 ] || die "--no-build goes with --local"
 
 : "${SHADOW_SIGNING_HOME:=/var/lib/shadow-signing}"
 : "${SHADOW_VERCEL_PROJECT:=shadow-os-updates}"
@@ -65,13 +73,16 @@ done
 : "${SHADOW_CCACHE_DIR:=/var/cache/shadow-ccache}"
 # Where --local installs to. Only tests point this at another system root.
 : "${SHADOW_LOCAL_ROOT:=}"
-STAGE="$ROOT/build/out/site"
+# Where the build scripts put their results (build/lib/common.sh).
+OUT="${SHADOW_OUT:-$ROOT/build/out}"
+STAGE="$OUT/site"
 LINK="$ROOT/website/.vercel"          # which Vercel project this clone publishes to (not in git)
 vercel() { npx --yes vercel@latest "$@"; }
 
 # ---- tools -------------------------------------------------------------------
 tools="git python3 gpg"
 [ "$LOCAL" -eq 1 ] || tools="$tools curl node npm npx"
+[ "$BUILD" -eq 1 ] || tools="rsync"
 for tool in $tools; do
     command -v "$tool" >/dev/null || die "'$tool' is not installed"
 done
@@ -118,14 +129,24 @@ build_repository() {
 
 # ---- this machine only -------------------------------------------------------
 if [ "$LOCAL" -eq 1 ]; then
-    build_repository
+    if [ "$BUILD" -eq 1 ]; then
+        build_repository
+    else
+        [ -d "$OUT/repo/dists" ] && [ -d "$OUT/repo/pool" ] && [ -e "$OUT/repo/shadow-archive-keyring.gpg" ] \
+            || die "--no-build: there are no built packages in $OUT/repo; run without it first"
+        # The build number of what is there, from a package's file name.
+        BUILD_ID="$(find "$OUT/repo/pool" -name 'shadow-base-files_*.deb' -printf '%f\n' \
+            | sed -n 's/.*\.build\([0-9]*\)_.*/\1/p' | sort -n | tail -n 1)"
+        BUILD_ID="${BUILD_ID:-from an earlier run}"
+        log "using the packages already built (build $BUILD_ID)"
+    fi
     dest="$SHADOW_LOCAL_ROOT/var/lib/shadow-updates"
     key="$SHADOW_LOCAL_ROOT/usr/share/keyrings/shadow-updates.gpg"
     apt_sources="$SHADOW_LOCAL_ROOT/etc/apt/sources.list.d"
     log "registering the packages with APT ($dest)"
     as_root install -d -m 755 "$dest" "$apt_sources" "$(dirname "$key")"
-    as_root rsync -a --delete build/out/repo/dists build/out/repo/pool "$dest/"
-    as_root install -m 644 build/out/repo/shadow-archive-keyring.gpg "$key"
+    as_root rsync -a --delete "$OUT/repo/dists" "$OUT/repo/pool" "$dest/"
+    as_root install -m 644 "$OUT/repo/shadow-archive-keyring.gpg" "$key"
     printf '%s\n' \
         "# Shadow OS packages built on this machine (scripts/publish-updates.sh --local)." \
         "Types: deb" \
@@ -142,7 +163,7 @@ if [ "$LOCAL" -eq 1 ]; then
         as_root mv "$snapshot" "$snapshot.disabled"
         log "disabled the package snapshot of the installation image ($snapshot.disabled)"
     fi
-    if [ -n "$SHADOW_LOCAL_ROOT" ] || [ "$INSTALL" = now ]; then
+    if [ "$INSTALL" = now ]; then
         log "build $BUILD_ID is ready. Install it with:"
         printf '\n    sudo apt update && sudo apt upgrade\n\n' >&2
         exit 0
@@ -150,15 +171,36 @@ if [ "$LOCAL" -eq 1 ]; then
 
     # Install at the next restart, before the desktop starts, so that nothing
     # that is being replaced is running (shadow-offline-update, part of the
-    # Updater). A system from before that tool gets it first, on its own.
+    # Updater).
+    #
+    # The restart-time updater is one script, its service and the two files
+    # that tie the service into systemd's update boot. They are put in place
+    # from this clone, the same files in the same places as in the Updater
+    # package just built, before preparing: a system from before the tool
+    # existed gets it without any package being upgraded while the desktop is
+    # running, and what the tool has learned since this system was installed
+    # (adopting the desktop edition, which brings the applications added
+    # later) already applies to this update. The upgrade then installs the
+    # same files again.
     # In /usr/sbin, which is not on a normal user's PATH: look it up by path.
-    offline_tool=/usr/sbin/shadow-offline-update
-    if [ ! -x "$offline_tool" ]; then
-        log "installing the restart-time updater (once)"
-        as_root apt-get -q update >&2
-        as_root env DEBIAN_FRONTEND=noninteractive apt-get -q -y install --only-upgrade shadow-updater >&2
-        [ -x "$offline_tool" ] \
-            || die "the Updater of build $BUILD_ID has no shadow-offline-update; install with: sudo apt update && sudo apt upgrade"
+    offline_tool="$SHADOW_LOCAL_ROOT/usr/sbin/shadow-offline-update"
+    units="$SHADOW_LOCAL_ROOT/usr/lib/systemd/system"
+    offline_src=applications/updater/offline
+    if ! as_root cmp -s "$offline_src/shadow-offline-update" "$offline_tool" \
+        || ! as_root cmp -s "$offline_src/shadow-offline-update.service" "$units/shadow-offline-update.service" \
+        || ! as_root test -L "$units/system-update.target.wants/shadow-offline-update.service"; then
+        log "bringing the restart-time updater up to date"
+        as_root install -D -m 755 "$offline_src/shadow-offline-update" "$offline_tool"
+        as_root install -D -m 644 "$offline_src/shadow-offline-update.service" "$units/shadow-offline-update.service"
+        as_root install -D -m 644 "$offline_src/packagekit-offline-update.conf" \
+            "$units/packagekit-offline-update.service.d/50-shadow.conf"
+        as_root install -d -m 755 "$units/system-update.target.wants"
+        as_root ln -sfn ../shadow-offline-update.service "$units/system-update.target.wants/shadow-offline-update.service"
+        [ -n "$SHADOW_LOCAL_ROOT" ] || [ ! -d /run/systemd/system ] || as_root systemctl daemon-reload
+    fi
+    if [ -n "$SHADOW_LOCAL_ROOT" ]; then
+        log "build $BUILD_ID is registered in $SHADOW_LOCAL_ROOT; prepare it there with: shadow-offline-update prepare"
+        exit 0
     fi
     as_root "$offline_tool" prepare >&2
     as_root test -L /system-update || { log "nothing to install: this system already runs build $BUILD_ID"; exit 0; }
@@ -191,7 +233,7 @@ as_root install -d -o "$(id -u)" -g "$(id -g)" "$STAGE"
 if [ -n "$SITE_URL" ]; then
     build_repository
     source_url="$(git config --get remote.origin.url 2>/dev/null | sed -n 's|^\(https://github\.com/[^/@]*/[^/]*\)$|\1|p' | sed 's|\.git$||')"
-    python3 scripts/gen-repo-site.py --repo build/out/repo --out "$STAGE" --url "$SITE_URL" \
+    python3 scripts/gen-repo-site.py --repo "$OUT/repo" --out "$STAGE" --url "$SITE_URL" \
         --build "$BUILD_ID" --commit "$(git rev-parse HEAD)" --source-url "$source_url" >&2
 
     # What is about to be published must verify with the key that is published.

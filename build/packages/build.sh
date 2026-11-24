@@ -101,6 +101,23 @@ if [ -n "${SHADOW_CCACHE_DIR:-}" ]; then
     log "ccache enabled ($SHADOW_CCACHE_DIR)"
 fi
 
+# The chroot has the build dependencies of the day it was created. One that
+# was added since is installed now, instead of the build stopping at "unmet
+# build dependencies" (this needs the network; an up-to-date chroot does not).
+check_build_deps() {
+    local flag=()
+    case "$MODE" in -A|-B) flag=("$MODE") ;; esac
+    in_chroot "$CHROOT" -- /bin/bash -euc 'cd "$1"; shift; dpkg-checkbuilddeps "$@"' check "$SRC" "${flag[@]}"
+}
+if ! check_build_deps >/dev/null 2>&1; then
+    log "the build chroot lacks build dependencies added since it was created — installing them"
+    mapfile -t DEPS < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$SHADOW_ROOT/build/chroot/build-deps.list")
+    in_chroot "$CHROOT" -- /bin/bash -euc \
+        'apt-get -q update && apt-get -q -y --no-install-recommends -o Acquire::Retries=5 install "$@"' deps "${DEPS[@]}" \
+        || die "could not install the build dependencies (build/chroot/build-deps.list) into the chroot"
+    check_build_deps || die "the build chroot still lacks build dependencies: add them to build/chroot/build-deps.list"
+fi
+
 log "dpkg-buildpackage $MODE ($ARCH, $SHADOW_JOBS jobs)"
 in_chroot "$CHROOT" "${CCACHE_BIND[@]}" -- /bin/bash -euc '
     cd "$1"

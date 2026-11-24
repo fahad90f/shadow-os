@@ -1,5 +1,5 @@
 # Build dependencies installed into the SHADOW build chroot.
-# Keep in sync with Build-Depends in debian/control (tests/packages checks this).
+# Every Build-Depends of debian/control must be here (tests/build/test_build_deps.py checks this).
 
 # toolchain / packaging
 build-essential

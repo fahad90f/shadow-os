@@ -69,14 +69,12 @@ talk to and what the nested-session tests need (KWin, xdotool,
 NetworkManager, PackageKit, PipeWire, …). No daemon is started in the chroot
 (`policy-rc.d` refuses).
 
-> **`--dev-tools` is currently needed for a package build too.**
-> `debian/control` lists seven development packages in `Build-Depends-Arch`
-> (`libkf6networkmanagerqt-dev`, `libkf6dbusaddons-dev`,
-> `libkf6iconthemes-dev`, `libkf6notifications-dev`, `libkf6i18n-dev`,
-> `libkf6crash-dev`, `libkf6statusnotifieritem-dev`) that are in
-> `dev-tools.list`, not in `build-deps.list`. Without them
-> `dpkg-buildpackage` refuses to build the compiled packages. The two lists
-> are meant to be kept in sync; they are not at present.
+`build-deps.list` holds every build dependency of `debian/control`
+(`tests/build/test_build_deps.py` fails when one is missing), so a package
+build needs no more than the plain chroot. A chroot that was created before a
+build dependency was added does not have to be recreated:
+`build/packages/build.sh` notices (`dpkg-checkbuilddeps`) and installs
+`build-deps.list` again before it builds, which needs the network that once.
 
 ## 2. Building the packages
 
