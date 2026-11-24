@@ -1426,6 +1426,49 @@ void testBearishSweep()
     EVENT(a.events[0], 20, true, false, 105, 10);
 }
 
+void testSweepAge()
+{
+    // How old a finding is, counted in closed candles from the newest one.
+    Candles candles = quiet(40);
+    set(candles, 10, 100, 101, 95, 100); // swing low 95
+    set(candles, 18, 100, 101, 94, 100); // swept 21 candles before the newest
+    set(candles, 30, 100, 106, 99, 100); // swing high 106
+    set(candles, 38, 100, 107, 99, 100); // swept 1 candle before the newest
+    Smc::Analysis a = Smc::analyze(candles);
+    EQUAL(a.closedCandles, 40);
+    SIZE_OR_RETURN(a.sweeps, 2u);
+    SWEEP(a.sweeps[0], 18, true, 95);
+    SWEEP(a.sweeps[1], 38, false, 106);
+    EQUAL(Smc::age(a, 39), 0);
+    EQUAL(Smc::age(a, 38), 1);
+    EQUAL(Smc::age(a, 18), 21);
+    int lows = -1, highs = -1;
+    EQUAL(Smc::recentSweeps(a, 1, &lows, &highs), 0); // only the newest candle
+    EQUAL(lows, 0);
+    EQUAL(highs, 0);
+    EQUAL(Smc::recentSweeps(a, 2, &lows, &highs), 1);
+    EQUAL(lows, 0);
+    EQUAL(highs, 1);
+    EQUAL(Smc::recentSweeps(a, 21), 1); // 21 candles ago is just outside
+    EQUAL(Smc::recentSweeps(a, 22, &lows, &highs), 2);
+    EQUAL(lows, 1);
+    EQUAL(highs, 1);
+    EQUAL(Smc::recentSweeps(a, 0), 0);
+
+    // A forming candle is not read, so it is not counted either.
+    candles.back().closed = false;
+    a = Smc::analyze(candles);
+    EQUAL(a.closedCandles, 39);
+    EQUAL(Smc::age(a, 38), 0);
+    EQUAL(Smc::recentSweeps(a, 1), 1);
+
+    // Too little history: nothing was read.
+    const Smc::Analysis none = Smc::analyze(quiet(10));
+    CHECK(!none.valid);
+    EQUAL(none.closedCandles, 0);
+    EQUAL(Smc::recentSweeps(none, 100), 0);
+}
+
 void testSweepNeedsWickAndClose()
 {
     // A low exactly on the level did not trade beyond it.
@@ -2036,6 +2079,7 @@ int main()
     testGapAtTheEdges();
     testBullishSweep();
     testBearishSweep();
+    testSweepAge();
     testSweepNeedsWickAndClose();
     testSweepWickBecomesTheSwing();
     testSweepOfTwoSwings();

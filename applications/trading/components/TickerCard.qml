@@ -10,7 +10,7 @@ import "Format.js" as Format
 GlowCard {
     id: root
 
-    required property var market   // {symbol, name, hasPrice, price, changePct, spark, selected}
+    required property var market   // {symbol, name, hasPrice, listed, price, changePct, spark, selected}
     signal chosen(string symbol)
 
     readonly property bool up: market.changePct >= 0
@@ -29,6 +29,7 @@ GlowCard {
     Accessible.role: Accessible.Button
     Accessible.name: market.hasPrice
         ? qsTr("%1, %2, %3 in 24 hours").arg(market.name).arg(Format.price(market.price)).arg(Format.signedPct(market.changePct))
+        : market.listed === false ? qsTr("%1, not listed by the data service").arg(market.name)
         : qsTr("%1, no price yet").arg(market.name)
     Keys.onReturnPressed: chosen(market.symbol)
     Keys.onSpacePressed: chosen(market.symbol)
@@ -76,9 +77,10 @@ GlowCard {
                 Layout.fillWidth: true
                 spacing: Theme.spaceXs + 2
                 Label {
-                    text: root.market.hasPrice ? Format.price(root.market.price) : "—"
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontSizeBody
+                    text: root.market.hasPrice ? Format.price(root.market.price)
+                        : root.market.listed === false ? qsTr("Not listed") : "—"
+                    color: root.market.listed === false ? Theme.textSecondary : Theme.textPrimary
+                    font.pixelSize: root.market.listed === false ? Theme.fontSizeSmall : Theme.fontSizeBody
                     font.weight: Theme.weightSemibold
                 }
                 Label {

@@ -194,6 +194,10 @@ private:
                    const QString &purpose);
     void onTickers(const QList<MarketData::Ticker> &list);
     void onDataFailed(const QString &what, const QString &message);
+    void onUnlisted(const QString &symbol);
+    // Prices ("tickers") and candles fail and recover on their own; an empty
+    // message means that source works. True when the state on screen changed.
+    bool setDataError(const QString &what, const QString &message);
     void priceUpdate(const QString &symbol, double last, double high, double low);
     void onModelAnswered(const QString &id, const QString &text, qint64 ms);
     void onModelFailed(const QString &id, const QString &code, const QString &message, qint64 ms);
@@ -222,7 +226,9 @@ private:
     QHash<QString, MarketData::Ticker> m_tickers;
     QHash<QString, QVariantList> m_sparks; // per symbol: the closes of the last 24 hours
     QString m_dataState = QStringLiteral("loading");
-    QString m_dataError;
+    QString m_dataError;   // what is shown: the candles' error before the prices'
+    QString m_tickerError;
+    QString m_candleError;
     int m_chartRevision = 0;
     int m_pollCount = 0;
     bool m_running = false;

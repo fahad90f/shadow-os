@@ -28,12 +28,39 @@ bool number(const QJsonValue &value, double *out)
     return true;
 }
 
+// {"code":-1121,"msg":"Invalid symbol."} with status 400: no such market.
+bool invalidSymbol(int status, const QByteArray &body)
+{
+    return status == 400
+        && QJsonDocument::fromJson(body).object().value(QLatin1String("code")).toInt() == -1121;
+}
+
 } // namespace
 
 MarketData::MarketData(QNetworkAccessManager *net, QObject *parent)
     : QObject(parent)
     , m_net(net)
 {
+}
+
+void MarketData::setBaseUrl(const QString &url)
+{
+    if (url != m_baseUrl)
+        m_unlisted.clear(); // another service lists other markets
+    m_baseUrl = url;
+}
+
+QString MarketData::unlistedText(const QString &symbol) const
+{
+    return tr("%1 is not a market the data service lists. Check the watchlist in the settings file.").arg(symbol);
+}
+
+void MarketData::markUnlisted(const QString &symbol)
+{
+    if (m_unlisted.contains(symbol))
+        return;
+    m_unlisted.insert(symbol);
+    Q_EMIT unlisted(symbol);
 }
 
 Trading::Candles MarketData::parseKlines(const QByteArray &json, qint64 nowMs, QString *error)
@@ -126,6 +153,14 @@ QString MarketData::describe(QNetworkReply *reply) const
 
 void MarketData::fetchCandles(const QString &symbol, const QString &interval, int limit, const QString &purpose)
 {
+    // Only the chart's own candles are worth an error on screen; a
+    // sparkline that did not arrive is simply not drawn.
+    const bool essential = purpose == QLatin1String("chart");
+    if (m_unlisted.contains(symbol)) {
+        if (essential)
+            Q_EMIT failed(QStringLiteral("candles"), unlistedText(symbol));
+        return;
+    }
     const QString slot = QStringLiteral("k:") + symbol + QLatin1Char(':') + interval + QLatin1Char(':') + purpose;
     if (m_inFlight.value(slot))
         return;
@@ -139,16 +174,18 @@ void MarketData::fetchCandles(const QString &symbol, const QString &interval, in
     req.setTransferTimeout(15000);
     QNetworkReply *reply = m_net->get(req);
     m_inFlight.insert(slot, reply);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, slot, symbol, interval, purpose] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, slot, symbol, interval, purpose, essential] {
         reply->deleteLater();
         m_inFlight.remove(slot);
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        // Only the chart's own candles are worth an error on screen; a
-        // sparkline that did not arrive is simply not drawn.
-        const bool essential = purpose == QLatin1String("chart");
         if (status != 200) {
-            if (essential)
+            if (invalidSymbol(status, reply->readAll())) {
+                markUnlisted(symbol);
+                if (essential)
+                    Q_EMIT failed(QStringLiteral("candles"), unlistedText(symbol));
+            } else if (essential) {
                 Q_EMIT failed(QStringLiteral("candles"), describe(reply));
+            }
             return;
         }
         QString error;
@@ -163,9 +200,47 @@ void MarketData::fetchCandles(const QString &symbol, const QString &interval, in
     });
 }
 
-void MarketData::fetchTickers(const QStringList &symbols)
+void MarketData::fetchTicker(const QString &symbol)
 {
-    if (symbols.isEmpty() || m_inFlight.value(QStringLiteral("t")))
+    const QString slot = QStringLiteral("t:") + symbol;
+    if (m_inFlight.value(slot))
+        return;
+    QUrl url(m_baseUrl + QStringLiteral("/api/v3/ticker/24hr"));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("symbol"), symbol);
+    url.setQuery(query);
+    QNetworkRequest req(url);
+    req.setTransferTimeout(15000);
+    QNetworkReply *reply = m_net->get(req);
+    m_inFlight.insert(slot, reply);
+    ++m_singleLookups;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, slot, symbol] {
+        reply->deleteLater();
+        m_inFlight.remove(slot);
+        --m_singleLookups;
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+        if (invalidSymbol(status, body)) {
+            markUnlisted(symbol);
+            return;
+        }
+        // Any other failure is left for the next round, which asks again.
+        const QList<Ticker> list = status == 200 ? parseTickers(body, nullptr) : QList<Ticker>();
+        if (!list.isEmpty())
+            Q_EMIT tickers(list);
+    });
+}
+
+void MarketData::fetchTickers(const QStringList &listed)
+{
+    QStringList symbols;
+    for (const QString &symbol : listed) {
+        if (!m_unlisted.contains(symbol))
+            symbols.append(symbol);
+    }
+    // While single lookups are sorting out a refused list, the list would
+    // only be refused again.
+    if (symbols.isEmpty() || m_inFlight.value(QStringLiteral("t")) || m_singleLookups > 0)
         return;
     // symbols=["BTCUSDT","ETHUSDT"], percent-encoded once, by hand: the list
     // contains brackets and quotes, which must not be encoded a second time.
@@ -177,11 +252,22 @@ void MarketData::fetchTickers(const QStringList &symbols)
     req.setTransferTimeout(15000);
     QNetworkReply *reply = m_net->get(req);
     m_inFlight.insert(QStringLiteral("t"), reply);
-    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, symbols] {
         reply->deleteLater();
         m_inFlight.remove(QStringLiteral("t"));
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (status != 200) {
+            // One unknown name refuses the whole list, and the answer does
+            // not say which: ask for each market on its own to find it.
+            if (invalidSymbol(status, reply->readAll())) {
+                if (symbols.size() == 1) {
+                    markUnlisted(symbols.first());
+                } else {
+                    for (const QString &symbol : symbols)
+                        fetchTicker(symbol);
+                }
+                return;
+            }
             Q_EMIT failed(QStringLiteral("tickers"), describe(reply));
             return;
         }

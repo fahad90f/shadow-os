@@ -57,6 +57,8 @@ OTHER_MODELS = ["google/gemma-3-12b-it", "poolside/laguna-xs-2.1", "nvidia/embed
 INTERVAL_MS = {"1m": 60_000, "5m": 300_000, "15m": 900_000, "1h": 3_600_000, "4h": 14_400_000,
                "1d": 86_400_000}
 BASE_PRICE = {"BTCUSDT": 92000.0, "ETHUSDT": 3200.0, "SOLUSDT": 140.0, "PAXGUSDT": 4050.0, "EURUSDT": 1.158}
+# The order a list of tickers comes back in, whatever order was asked for.
+LISTING_ORDER = ["BTCUSDT", "ETHUSDT", "EURUSDT", "SOLUSDT", "PAXGUSDT"]
 
 ARGS = None
 START_HOURS = time.time() / 3600.0
@@ -137,14 +139,18 @@ def klines(query, now_ms):
 
 
 def tickers(query, now_ms):
+    # ?symbol=X answers with one object, ?symbols=[...] with a list. As on the
+    # real service, one unknown name refuses the whole list without saying
+    # which, and the list comes back in the service's order, not the asker's.
+    single = "symbol" in query
     try:
-        symbols = json.loads(query.get("symbols", ["[]"])[0])
+        symbols = [query["symbol"][0]] if single else json.loads(query.get("symbols", ["[]"])[0])
     except ValueError:
         return 400, {"code": -1100, "msg": "Illegal characters found in parameter 'symbols'."}
+    if any(symbol not in BASE_PRICE for symbol in symbols):
+        return 400, {"code": -1121, "msg": "Invalid symbol."}
     out = []
-    for symbol in symbols:
-        if symbol not in BASE_PRICE:
-            return 400, {"code": -1121, "msg": "Invalid symbol."}
+    for symbol in sorted(symbols, key=LISTING_ORDER.index):
         step = 60_000
         now = level(symbol, now_ms / step, step) * (1 + scenario().get("market", {}).get("move_pct", 0) / 100)
         day_ago = level(symbol, (now_ms - 86_400_000) / step, step)
@@ -152,7 +158,7 @@ def tickers(query, now_ms):
                     "priceChangePercent": f"{(now - day_ago) / day_ago * 100:.3f}",
                     "highPrice": f"{max(now, day_ago) * 1.004:.8f}", "lowPrice": f"{min(now, day_ago) * 0.996:.8f}",
                     "quoteVolume": "123456789.00000000"})
-    return 200, out
+    return 200, out[0] if single else out
 
 
 # ---- models ------------------------------------------------------------------

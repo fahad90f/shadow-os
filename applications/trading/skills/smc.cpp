@@ -246,6 +246,7 @@ Analysis analyze(const Candles &candles, int swingStrength, double minGapPct)
         return out;
     }
     out.valid = true;
+    out.closedCandles = count;
     out.swings = swings(candles, swingStrength);
     findStructure(candles, count, swingStrength, out);
     findOrderBlocks(candles, count, out);

@@ -24,6 +24,7 @@ using namespace Trading;
 namespace {
 
 const int kHistory = 300;        // candles kept of the selected market
+const int kRecentCandles = 20;   // how far back a liquidity sweep is still worth mentioning
 const int kPollMs = 5000;
 const int kMaxActivity = 200;
 const int kMaxCurve = 500;
@@ -155,6 +156,7 @@ TradingEngine::TradingEngine(TradingConfig *config, QObject *parent)
     connect(m_data, &MarketData::candles, this, &TradingEngine::onCandles);
     connect(m_data, &MarketData::tickers, this, &TradingEngine::onTickers);
     connect(m_data, &MarketData::failed, this, &TradingEngine::onDataFailed);
+    connect(m_data, &MarketData::unlisted, this, &TradingEngine::onUnlisted);
     connect(m_models, &ModelClient::answered, this, &TradingEngine::onModelAnswered);
     connect(m_models, &ModelClient::failed, this, &TradingEngine::onModelFailed);
     connect(m_models, &ModelClient::modelsListed, this, [this](const QStringList &, const QString &error) {
@@ -226,6 +228,9 @@ void TradingEngine::resetMarket()
     m_lastDecision = RiskDecision();
     m_signal = QVariantMap{{QStringLiteral("state"), QStringLiteral("none")}};
     m_marketReadySent = false;
+    // An error about the candles was about the market that was on the chart.
+    if (!m_candleError.isEmpty() && setDataError(QStringLiteral("candles"), QString()))
+        Q_EMIT marketChanged();
     ++m_chartRevision;
     Q_EMIT chartChanged();
     Q_EMIT signalChanged();
@@ -306,20 +311,43 @@ void TradingEngine::poll()
     ++m_pollCount;
 }
 
+bool TradingEngine::setDataError(const QString &what, const QString &message)
+{
+    (what == QLatin1String("tickers") ? m_tickerError : m_candleError) = message;
+    // The chart's candles are what the analysis runs on, so their error is
+    // the one shown when both sources have something to say. Keeping the two
+    // apart also keeps a working source from clearing the other's error
+    // every few seconds.
+    const QString error = m_candleError.isEmpty() ? m_tickerError : m_candleError;
+    const QString state = error.isEmpty() ? QStringLiteral("live") : QStringLiteral("error");
+    if (state == m_dataState && error == m_dataError)
+        return false;
+    m_dataState = state;
+    m_dataError = error;
+    if (!error.isEmpty())
+        log(QStringLiteral("error"), error);
+    return true;
+}
+
 void TradingEngine::onDataFailed(const QString &what, const QString &message)
 {
-    Q_UNUSED(what)
-    const bool changed = m_dataState != QLatin1String("error") || m_dataError != message;
-    m_dataState = QStringLiteral("error");
-    m_dataError = message;
-    if (changed) {
-        log(QStringLiteral("error"), message);
+    if (setDataError(what, message))
         Q_EMIT marketChanged();
-    }
     if (!m_marketReadySent) {
         m_marketReadySent = true;
         Q_EMIT marketReady();
     }
+}
+
+void TradingEngine::onUnlisted(const QString &symbol)
+{
+    // For the market on the chart the failed candles say the same thing.
+    if (symbol != m_config->symbol()) {
+        log(QStringLiteral("error"),
+            tr("%1 is not a market the data service lists. Check the watchlist in the settings file.").arg(symbol));
+    }
+    m_tickers.remove(symbol);
+    Q_EMIT marketChanged();
 }
 
 void TradingEngine::onTickers(const QList<MarketData::Ticker> &list)
@@ -331,10 +359,7 @@ void TradingEngine::onTickers(const QList<MarketData::Ticker> &list)
         if (t.symbol != selected && m_account.positionOn(t.symbol.toStdString()))
             priceUpdate(t.symbol, t.price, t.price, t.price);
     }
-    if (m_dataState != QLatin1String("live")) {
-        m_dataState = QStringLiteral("live");
-        m_dataError.clear();
-    }
+    setDataError(QStringLiteral("tickers"), QString());
     Q_EMIT marketChanged();
 }
 
@@ -403,11 +428,8 @@ void TradingEngine::onCandles(const QString &symbol, const QString &interval, co
     m_seenLow = last.low;
     priceUpdate(symbol, last.close, high, low);
 
-    if (m_dataState != QLatin1String("live")) {
-        m_dataState = QStringLiteral("live");
-        m_dataError.clear();
+    if (setDataError(QStringLiteral("candles"), QString()))
         Q_EMIT marketChanged();
-    }
     ++m_chartRevision;
     Q_EMIT chartChanged();
     if (!m_marketReadySent) {
@@ -598,7 +620,10 @@ QJsonObject TradingEngine::snapshot(const Indicators::Summary &ta, const Indicat
                                     {QStringLiteral("bottom"), rounded(it->bottom)},
                                     {QStringLiteral("candles_ago"), ago(it->index)}});
         }
-        for (size_t i = smc.sweeps.size() > 3 ? smc.sweeps.size() - 3 : 0; i < smc.sweeps.size(); ++i) {
+        // Only fresh sweeps, newest last: on a real market old levels are
+        // wicked through all the time.
+        const size_t fresh = size_t(std::min(Smc::recentSweeps(smc, kRecentCandles), 3));
+        for (size_t i = smc.sweeps.size() - fresh; i < smc.sweeps.size(); ++i) {
             const Smc::Sweep &s = smc.sweeps[i];
             sweeps.append(QJsonObject{{QStringLiteral("direction"), direction(s.bullish)},
                                       {QStringLiteral("level"), rounded(s.level)},
@@ -1184,6 +1209,7 @@ QVariantList TradingEngine::watchlist() const
         const MarketData::Ticker t = m_tickers.value(symbol);
         list.append(QVariantMap{{QStringLiteral("symbol"), symbol}, {QStringLiteral("name"), displayName(symbol)},
                                 {QStringLiteral("hasPrice"), known}, {QStringLiteral("price"), t.price},
+                                {QStringLiteral("listed"), !m_data->isUnlisted(symbol)},
                                 {QStringLiteral("changePct"), t.changePct},
                                 {QStringLiteral("spark"), m_sparks.value(symbol)},
                                 {QStringLiteral("selected"), symbol == m_config->symbol()}});
@@ -1248,7 +1274,7 @@ QVariantMap TradingEngine::readings() const
             openGaps += g.filled ? 0 : 1;
         map.insert(QStringLiteral("orderBlocks"), openBlocks);
         map.insert(QStringLiteral("fairValueGaps"), openGaps);
-        map.insert(QStringLiteral("sweeps"), int(smc.sweeps.size()));
+        map.insert(QStringLiteral("sweeps"), Smc::recentSweeps(smc, kRecentCandles));
         if (!smc.events.empty()) {
             const Smc::StructureEvent &e = smc.events.back();
             map.insert(QStringLiteral("lastEvent"), e.changeOfCharacter ? QStringLiteral("choch") : QStringLiteral("bos"));

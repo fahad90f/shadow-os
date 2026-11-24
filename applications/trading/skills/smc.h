@@ -91,6 +91,10 @@ struct Analysis
 {
     bool valid = false;   // false with fewer than 30 closed candles
     std::string reason;
+    // How many closed candles were read. The newest one has index
+    // closedCandles - 1, so a finding at 'index' is closedCandles - 1 - index
+    // candles old (see age()).
+    int closedCandles = 0;
     Trend trend = Trend::Ranging;
     std::vector<Swing> swings;
     std::vector<StructureEvent> events;
@@ -109,5 +113,24 @@ struct Analysis
 };
 
 Analysis analyze(const Candles &candles, int swingStrength = 3, double minGapPct = 0.05);
+
+// Closed candles since the one at 'index': 0 for the newest closed candle.
+inline int age(const Analysis &analysis, int index) { return analysis.closedCandles - 1 - index; }
+
+// Sweeps on the newest 'candles' closed candles. On a real market wicks
+// through old levels are common, so only fresh ones say anything. (Inline, as
+// age() is, so that reading an Analysis needs nothing but this header.)
+inline int recentSweeps(const Analysis &analysis, int candles, int *bullish = nullptr, int *bearish = nullptr)
+{
+    int up = 0, down = 0;
+    // Sweeps are in candle order, so the fresh ones are at the end.
+    for (auto it = analysis.sweeps.rbegin(); it != analysis.sweeps.rend() && age(analysis, it->index) < candles; ++it)
+        ++(it->bullish ? up : down);
+    if (bullish)
+        *bullish = up;
+    if (bearish)
+        *bearish = down;
+    return up + down;
+}
 
 } // namespace Trading::Smc

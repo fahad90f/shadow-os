@@ -143,6 +143,9 @@ candle closes* turns the automatic analyses off.
 [market]
 ; Binance-compatible public market data; no account, no key.
 ; data_url=https://data-api.binance.vision
+; Up to 12 markets, by the names the data service uses. A name it does not
+; list is marked "Not listed" on its card and left out of the price requests;
+; the other markets are not affected.
 ; watchlist=BTCUSDT,ETHUSDT,SOLUSDT,PAXGUSDT,EURUSDT
 symbol=BTCUSDT
 interval=15m
@@ -203,9 +206,9 @@ scripted `SHADOW_TRADING_SESSION_ACTIONS`, then reports).
 
 | Test | What it covers | Run |
 |---|---|---|
-| `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3246 checks) | build command in the file's header; plain `g++`, sanitizers |
-| `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account (301 checks) | as above |
-| `tests/test_app.py` | the real binary against `tests/fake_services.py` (31 tests): the panel and its skill briefs, signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
+| `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3276 checks) | build command in the file's header; plain `g++`, sanitizers |
+| `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account (309 checks) | as above |
+| `tests/test_app.py` | the real binary against `tests/fake_services.py` (35 tests): the watchlist and markets the data service does not list, the panel and its skill briefs, signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
 
 `tests/fake_services.py` stands in for the exchange and for NVIDIA's model
 service on one local port, checks each request (the key, the model, the shape

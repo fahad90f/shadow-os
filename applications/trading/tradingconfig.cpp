@@ -240,7 +240,8 @@ void TradingConfig::reload()
         m_dataUrl.chop(1);
 
     m_watchlist.clear();
-    const QStringList listed = ini.value(QStringLiteral("market/watchlist")).toString()
+    // QSettings reads "a, b" as a list (and a list has no text of its own).
+    const QStringList listed = ini.value(QStringLiteral("market/watchlist")).toStringList().join(QLatin1Char(','))
                                    .split(QLatin1Char(','), Qt::SkipEmptyParts);
     for (const QString &raw : listed) {
         const QString symbol = raw.trimmed().toUpper();

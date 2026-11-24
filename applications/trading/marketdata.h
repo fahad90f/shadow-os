@@ -7,6 +7,7 @@
 #include <QList>
 #include <QObject>
 #include <QPointer>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -33,8 +34,13 @@ public:
 
     MarketData(QNetworkAccessManager *net, QObject *parent = nullptr);
 
-    void setBaseUrl(const QString &url) { m_baseUrl = url; }
+    void setBaseUrl(const QString &url);
     QString baseUrl() const { return m_baseUrl; }
+
+    // A market the service said it does not have. One such name in a list of
+    // tickers makes the service refuse the whole list, so it is left out of
+    // every later request, for as long as the application runs.
+    bool isUnlisted(const QString &symbol) const { return m_unlisted.contains(symbol); }
 
     // Ask for the latest 'limit' candles; candles() or failed() follows, with
     // the same 'purpose' (what the caller wants them for). A request for a
@@ -53,11 +59,18 @@ Q_SIGNALS:
     void tickers(const QList<MarketData::Ticker> &list);
     // what: "candles" | "tickers"
     void failed(const QString &what, const QString &message);
+    // The service has no market of this name. Sent once per name.
+    void unlisted(const QString &symbol);
 
 private:
     QString describe(QNetworkReply *reply) const;
+    QString unlistedText(const QString &symbol) const;
+    void markUnlisted(const QString &symbol);
+    void fetchTicker(const QString &symbol); // one market, after a list was refused
 
     QNetworkAccessManager *m_net;
     QString m_baseUrl;
     QHash<QString, QPointer<QNetworkReply>> m_inFlight;
+    QSet<QString> m_unlisted;
+    int m_singleLookups = 0; // fetchTicker() requests on their way
 };

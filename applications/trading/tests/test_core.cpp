@@ -258,13 +258,16 @@ static void testRules()
         const Indicators::Summary higher = summary("bearish");
         Smc::Analysis smc;
         smc.valid = true;
+        smc.closedCandles = 100; // the newest closed candle is number 99
         smc.trend = Smc::Trend::Bearish;
         smc.zone = "premium";
         Smc::StructureEvent event;
+        event.index = 80; // 19 candles ago: the oldest that still counts
         event.bullish = false;
         event.changeOfCharacter = true;
         smc.events.push_back(event);
         Smc::Sweep sweep;
+        sweep.index = 97; // 2 candles ago: the oldest that still counts
         sweep.bullish = false;
         smc.sweeps.push_back(sweep);
         const Verdict v = rulesVerdict(ta, &higher, smc, 3.0);
@@ -274,6 +277,33 @@ static void testRules()
         NEAR(v.stop, 103, 1e-12);
         NEAR(v.takeProfit, 91, 1e-12); // ratio 3
         CHECK(v.reasoning.find("-8") != std::string::npos);
+
+        // On a real market the last change of character can be days old and
+        // old levels are wicked through all the time: neither counts then.
+        Smc::Analysis stale = smc;
+        stale.events[0].index = 79; // 20 candles ago
+        const Verdict oldEvent = rulesVerdict(ta, &higher, stale, 3.0);
+        NEAR(oldEvent.confidence, 87, 1e-12); // -7
+        CHECK(oldEvent.reasoning.find("change of character") == std::string::npos);
+        stale.sweeps[0].index = 96; // 3 candles ago
+        const Verdict oldSweep = rulesVerdict(ta, &higher, stale, 3.0);
+        NEAR(oldSweep.confidence, 79, 1e-12); // -6
+        CHECK(oldSweep.reasoning.find("swept") == std::string::npos);
+
+        // Fresh sweeps of both sides say nothing about direction.
+        Smc::Analysis both = smc;
+        Smc::Sweep lows;
+        lows.index = 99;
+        lows.bullish = true;
+        both.sweeps.push_back(lows);
+        const Verdict twoSided = rulesVerdict(ta, &higher, both, 3.0);
+        NEAR(twoSided.confidence, 87, 1e-12); // -7: the sweep point is gone, nothing is added
+        CHECK(twoSided.reasoning.find("swept") == std::string::npos);
+        // A fresh sweep of the lows alone is a point for the buyers.
+        both.sweeps.erase(both.sweeps.begin());
+        const Verdict lowsOnly = rulesVerdict(ta, &higher, both, 3.0);
+        NEAR(lowsOnly.confidence, 79, 1e-12); // -7 + 1 = -6
+        CHECK(lowsOnly.reasoning.find("+ sell-side liquidity just swept") != std::string::npos);
     }
     { // an overbought market takes a point off a bullish reading
         Indicators::Summary ta = summary("bullish");

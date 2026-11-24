@@ -143,7 +143,7 @@ NxPage {
             visible: page.readings.smcValid === true
             icon: "grid"
             title: qsTr("Market structure")
-            subtitle: qsTr("Range %1 to %2 · %3 open order blocks · %4 open fair value gaps · %5 liquidity sweeps")
+            subtitle: qsTr("Range %1 to %2 · %3 open order blocks · %4 open fair value gaps · %5 liquidity sweeps in the last 20 candles")
                 .arg(Format.price(page.readings.rangeLow)).arg(Format.price(page.readings.rangeHigh))
                 .arg(page.readings.orderBlocks || 0).arg(page.readings.fairValueGaps || 0).arg(page.readings.sweeps || 0)
             value: qsTr("%1 · %2").arg(page.readings.structureTrend || "").arg(page.readings.zone || "")

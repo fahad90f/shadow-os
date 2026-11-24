@@ -151,14 +151,42 @@ Item {
         }
     }
 
+    readonly property string emptyMessage: trading.autoTrade
+        ? qsTr("Trades appear here when a signal passes the risk rules.")
+        : qsTr("Auto trade is off. Turn it on, or place a signal by hand, and the trades appear here.")
+
+    // Under the column titles, in the space the rows would take. The small
+    // table on the Live Trading page has no room for the icon.
     NxEmptyState {
-        anchors.centerIn: parent
-        width: Math.min(parent.width - Theme.spaceLg * 2, 420)
-        visible: root.rows.length === 0
+        x: list.x + (list.width - width) / 2
+        y: list.y + (list.height - height) / 2
+        width: Math.min(list.width - Theme.spaceLg * 2, 420)
+        visible: root.rows.length === 0 && !root.compact
         icon: "list"
         title: qsTr("No trades yet")
-        message: trading.autoTrade
-            ? qsTr("Trades appear here when a signal passes the risk rules.")
-            : qsTr("Auto trade is off. Turn it on, or place a signal by hand, and the trades appear here.")
+        message: root.emptyMessage
+    }
+    ColumnLayout {
+        x: list.x + (list.width - width) / 2
+        y: list.y + Math.max(0, (list.height - height) / 2)
+        width: Math.min(list.width - Theme.spaceLg * 2, 420)
+        visible: root.rows.length === 0 && root.compact
+        spacing: Theme.spaceXs
+        Label {
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+            text: qsTr("No trades yet")
+            color: Theme.textPrimary
+            font.pixelSize: Theme.fontSizeBodyLarge
+            font.weight: Theme.weightSemibold
+        }
+        Label {
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+            text: root.emptyMessage
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontSizeSmall
+            wrapMode: Text.WordWrap
+        }
     }
 }

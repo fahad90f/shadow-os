@@ -285,6 +285,84 @@ class AppTest(unittest.TestCase):
         self.assertEqual(out["signal"]["state"], "none")
         self.assertEqual(self.requests("chat"), [])  # nothing to analyze, nobody asked
 
+    def test_the_watchlist_in_the_settings_file_is_used(self):
+        self.serve()
+        # With commas (QSettings hands those over as a list), spaces and lower case.
+        self.settings("[market]\nwatchlist=ETHUSDT,solusdt, BTCUSDT\n")
+        config = self.dump("config")
+        self.assertEqual(config["watchlist"], ["ETHUSDT", "SOLUSDT", "BTCUSDT"])
+        self.assertEqual(config["symbol"], "ETHUSDT")  # the first one, when none is chosen
+        # One market, a name that cannot be a market, a repeated one.
+        self.settings("[market]\nwatchlist=SOLUSDT\n")
+        self.assertEqual(self.dump("config")["watchlist"], ["SOLUSDT"])
+        self.settings("[market]\nwatchlist=SOLUSDT, no/such, SOLUSDT, BTCUSDT\n")
+        self.assertEqual(self.dump("config")["watchlist"], ["SOLUSDT", "BTCUSDT"])
+        # Nothing usable: the built-in list.
+        self.settings("[market]\nwatchlist=?, x\n")
+        self.assertEqual(len(self.dump("config")["watchlist"]), 5)
+
+    def test_an_unknown_market_does_not_take_the_prices_away(self):
+        # The real service refuses a whole list of tickers for one unknown
+        # name, without saying which one.
+        out = self.act("", {}, seconds=7,
+                       settings="[market]\nwatchlist=BTCUSDT, NOPEUSDT, ETHUSDT\n[engine]\nauto_analyze=false\n")
+        market = out["market"]
+        self.assertEqual(market["dataState"], "live", market["dataError"])
+        listed = {m["symbol"]: m for m in market["watchlist"]}
+        self.assertEqual(list(listed), ["BTCUSDT", "NOPEUSDT", "ETHUSDT"])
+        for symbol in ("BTCUSDT", "ETHUSDT"):
+            self.assertTrue(listed[symbol]["hasPrice"] and listed[symbol]["listed"], symbol)
+            self.assertGreater(listed[symbol]["price"], 0)
+        self.assertFalse(listed["NOPEUSDT"]["hasPrice"])
+        self.assertFalse(listed["NOPEUSDT"]["listed"])
+        # Said once, by name, however many rounds of prices went by.
+        said = [a["text"] for a in out["account"]["activity"] if "NOPEUSDT" in a["text"]]
+        self.assertEqual(len(said), 1, said)
+        self.assertIn("is not a market the data service lists", said[0])
+        # The list was refused once; each market was then asked on its own;
+        # and the unknown one was left out from then on.
+        prices = [r for r in self.requests("market") if r["path"] == "/api/v3/ticker/24hr"]
+        refused = [r for r in prices if r["status"] == 400]
+        self.assertEqual(len([r for r in refused if "symbols=" in r["query"]]), 1, prices)
+        self.assertEqual([r["query"] for r in refused if "symbols=" not in r["query"]], ["symbol=NOPEUSDT"])
+        self.assertEqual(sorted(r["query"] for r in prices if r["status"] == 200 and "symbols=" not in r["query"]),
+                         ["symbol=BTCUSDT", "symbol=ETHUSDT"])
+        later = [r for r in prices if r["status"] == 200 and "symbols=" in r["query"]]
+        self.assertGreaterEqual(len(later), 1, prices)
+        self.assertTrue(all("NOPEUSDT" not in r["query"] for r in later))
+        # Its 24-hour line was asked for once and not again.
+        lines = [r for r in self.requests("market") if r["path"] == "/api/v3/klines" and "NOPEUSDT" in r["query"]]
+        self.assertLessEqual(len(lines), 1, lines)
+
+    def test_an_unknown_market_on_the_chart_is_named(self):
+        out = self.act("analyze", {"*": BUY}, seconds=12,
+                       settings="[market]\nwatchlist=NOPEUSDT, BTCUSDT\n[engine]\nauto_analyze=false\n")
+        self.assertEqual(out["actions"], [{"action": "analyze", "result": "not started"}])
+        market = out["market"]
+        self.assertEqual(market["dataState"], "error")
+        self.assertIn("NOPEUSDT is not a market the data service lists", market["dataError"])
+        listed = {m["symbol"]: m for m in market["watchlist"]}
+        self.assertTrue(listed["NOPEUSDT"]["selected"])
+        self.assertFalse(listed["NOPEUSDT"]["listed"])
+        self.assertTrue(listed["BTCUSDT"]["hasPrice"])  # the other market's price still arrives
+        # Three rounds of prices later it has still been said only once: the
+        # working prices do not clear the chart's error for it to come back.
+        errors = [a["text"] for a in out["account"]["activity"] if a["kind"] == "error"]
+        self.assertEqual(len(errors), 1, errors)
+        self.assertEqual(out["signal"]["state"], "none")
+        self.assertEqual(self.requests("chat"), [])  # nothing to analyze, nobody asked
+        asked = [r for r in self.requests("market") if r["path"] == "/api/v3/klines" and "NOPEUSDT" in r["query"]]
+        self.assertLessEqual(len(asked), 3, asked)  # chart, higher timeframe and 24-hour line: once each
+
+    def test_prices_are_matched_by_name_not_by_position(self):
+        # The service answers a list in its own order (EUR before SOL here).
+        self.serve()
+        market = self.dump("market")
+        prices = {m["symbol"]: m["price"] for m in market["watchlist"]}
+        self.assertLess(prices["EURUSDT"], 5)
+        self.assertTrue(50 < prices["SOLUSDT"] < 1000, prices)
+        self.assertGreater(prices["PAXGUSDT"], 1000)
+
     # ---- the analysts ---------------------------------------------------------------
     def test_without_a_key_the_rules_decide_alone(self):
         self.serve({"*": BUY})

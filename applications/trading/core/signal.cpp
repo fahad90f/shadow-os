@@ -10,6 +10,11 @@ namespace Trading {
 
 namespace {
 
+// How long structure findings count for the rule-based analyst, in closed
+// candles: a change of character within the last 20, a sweep within the last 3.
+const int kFreshEvent = 20;
+const int kFreshSweep = 3;
+
 bool usable(double v)
 {
     return std::isfinite(v) && v > 0;
@@ -219,9 +224,11 @@ Verdict rulesVerdict(const Indicators::Summary &ta, const Indicators::Summary *h
             add(1, "market structure bullish");
         else if (smc.trend == Smc::Trend::Bearish)
             add(-1, "market structure bearish");
+        // A change of character counts while it is the latest event and
+        // recent; on a real market the last one can be days old.
         if (!smc.events.empty()) {
             const Smc::StructureEvent &last = smc.events.back();
-            if (last.changeOfCharacter)
+            if (last.changeOfCharacter && Smc::age(smc, last.index) < kFreshEvent)
                 add(last.bullish ? 1 : -1, last.bullish ? "recent bullish change of character"
                                                          : "recent bearish change of character");
         }
@@ -229,10 +236,14 @@ Verdict rulesVerdict(const Indicators::Summary &ta, const Indicators::Summary *h
             add(1, "price in the discount half of a bullish range");
         else if (smc.zone == "premium" && smc.trend == Smc::Trend::Bearish)
             add(-1, "price in the premium half of a bearish range");
-        if (!smc.sweeps.empty()) {
-            const Smc::Sweep &sweep = smc.sweeps.back();
-            add(sweep.bullish ? 1 : -1, sweep.bullish ? "sell-side liquidity swept" : "buy-side liquidity swept");
-        }
+        // Wicks through old levels are common, so a sweep counts only on the
+        // newest candles, and not at all when both sides were just taken.
+        int lowsTaken = 0, highsTaken = 0; // the bullish and the bearish sweeps
+        Smc::recentSweeps(smc, kFreshSweep, &lowsTaken, &highsTaken);
+        if (lowsTaken > 0 && highsTaken == 0)
+            add(1, "sell-side liquidity just swept");
+        else if (highsTaken > 0 && lowsTaken == 0)
+            add(-1, "buy-side liquidity just swept");
     }
 
     const double threshold = 3;
