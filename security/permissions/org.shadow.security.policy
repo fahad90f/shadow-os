@@ -35,4 +35,33 @@
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/shadow-firewall</annotate>
   </action>
+
+  <!-- Which applications may use the network is an administrator's decision. -->
+  <action id="org.shadow.appfw.manage">
+    <description>Change which applications may use the network</description>
+    <message>Authentication is required to change an application's network access</message>
+    <icon_name>org.shadow.securitycenter</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/shadow-appfw</annotate>
+  </action>
+
+  <!-- A starting application that is blocked asks to be confined
+       (shadow-appfw-run). This can only take network access away from the
+       caller's own starting process, so the local user needs no password;
+       a failure here keeps the application from starting at all. -->
+  <action id="org.shadow.appfw.enter">
+    <description>Start a blocked application without network access</description>
+    <message>Authentication is required to start this application without network access</message>
+    <icon_name>org.shadow.securitycenter</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/shadow-appfw-enter</annotate>
+  </action>
 </policyconfig>

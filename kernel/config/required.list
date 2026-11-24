@@ -117,3 +117,13 @@ CONFIG_NFT_NAT=m
 CONFIG_NF_NAT=m
 CONFIG_NETFILTER_XT_MATCH_OWNER=m
 CONFIG_NETFILTER_XT_TARGET_REDIRECT=m
+
+# The per-application firewall (security/firewall/shadow-appfw;
+# docs/security/app-firewall.md): its one rule matches the control group a
+# socket was created in ("socket cgroupv2 level 1 @blocked"), and rejects with
+# a TCP reset or an ICMP error. Without NFT_SOCKET the rule cannot be loaded
+# and a blocked application is not started at all (shadow-appfw-run).
+CONFIG_NFT_SOCKET=m
+CONFIG_SOCK_CGROUP_DATA=y
+CONFIG_NFT_REJECT=m
+CONFIG_NFT_REJECT_INET=m

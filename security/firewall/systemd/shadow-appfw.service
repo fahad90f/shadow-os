@@ -1,0 +1,22 @@
+# The per-application firewall at boot: writes the launcher entries of the
+# blocked applications again (an application update may have replaced the
+# original) and loads the rule when something is blocked. Applications are
+# confined when they start (shadow-appfw-run), not by this unit.
+# docs/security/app-firewall.md
+[Unit]
+Description=Shadow OS per-application firewall
+Documentation=man:nft(8)
+After=local-fs.target nftables.service
+ConditionKernelCommandLine=!shadow.appfw=off
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/shadow-appfw boot
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

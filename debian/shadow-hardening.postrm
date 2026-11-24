@@ -28,7 +28,8 @@ case "$live_action" in
         # engaged panic already: its NetworkManager/radio changes stay
         # otherwise.)
         if command -v nft >/dev/null 2>&1; then
-            for table in "inet shadow_egress" "bridge shadow_egress" "inet shadow_panic" "bridge shadow_panic"; do
+            for table in "inet shadow_egress" "bridge shadow_egress" "inet shadow_panic" "bridge shadow_panic" \
+                         "inet shadow_appfw"; do
                 # shellcheck disable=SC2086  # "family name"
                 if nft list table $table >/dev/null 2>&1; then
                     nft delete table $table || \
@@ -36,6 +37,7 @@ case "$live_action" in
                 fi
             done
         fi
+        rm -f /run/shadow/appfw.json /run/shadow/appfw.lock
         rm -f /run/shadow/killswitch.json /run/shadow/killswitch-state.json /run/shadow/killswitch.nft \
               /run/shadow/killswitch.lock /run/shadow/panic.json /run/shadow/panic.lock
         # Hide Me (shadow-anon): its redirects to Tor and systemd-resolved's
@@ -87,6 +89,7 @@ fi
 if [ "$1" = "purge" ]; then
     rm -f /etc/nftables.d/50-shadow-allowed.nft /etc/shadow-os/firewall.json
     rm -f /etc/shadow-os/killswitch.json /etc/shadow-os/panic.json /var/lib/shadow-os/panic-pending.json
+    rm -f /etc/shadow-os/appfw.json              # which applications are blocked (prerm removed their entries)
     rm -f /etc/shadow-os/hide-me.json            # Hide Me: DNS-over-Tor kept across restarts
     # shadow-netprivacy: the administrator's DNS and MAC choices, and the
     # DNS-over-HTTPS set-up of dnscrypt-proxy (which then runs with Debian's

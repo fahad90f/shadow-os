@@ -27,6 +27,7 @@ Type=oneshot
 # The panic first: it is the stronger cut. Its failure is logged and recorded
 # in /run/shadow/panic.json; the kill switch is still checked after it.
 ExecStart=-/usr/sbin/shadow-panic reassert
+ExecStart=-/usr/sbin/shadow-appfw reassert
 ExecStart=/usr/sbin/shadow-killswitch reassert --watch
 # Every run is otherwise logged three times by systemd ("Starting",
 # "Finished", "Consumed ... CPU time"), all at level info: keep only what is

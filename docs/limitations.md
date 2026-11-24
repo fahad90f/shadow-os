@@ -250,9 +250,28 @@ In the image, with limits stated in their READMEs
   variant file's comment says.
 * SHADOW ships no AppArmor profiles; SHADOW applications and helpers run
   unconfined.
-* The firewall filters inbound traffic by port only; no per-application
-  rules. Outbound traffic is filtered only by the opt-in kill switch. There
-  is no graphical firewall management in the image.
+* The firewall filters inbound traffic by port only. Outbound traffic is
+  filtered by the opt-in kill switch and, per application, by the
+  per-application firewall ([security/app-firewall.md](security/app-firewall.md)),
+  which can only take an application's network access away altogether: there
+  are no rules by destination and no prompt per connection. It covers
+  applications started through their launcher entry, not a command typed in a
+  terminal, and it is not a sandbox: a blocked program can still ask another
+  program that is not blocked (the session's service manager, a helper on
+  D-Bus) to fetch something for it.
+* The per-application firewall is tested with real packets, the real nft and
+  real control groups in a network namespace
+  (`tests/network/test_appfw_netns.py`, with a stand-in for systemd), and was
+  run once by hand with the image's own systemd 257, D-Bus, polkit and nft
+  1.1.3 started as the init of private namespaces: systemd adopted the
+  starting process into `shadowblock.slice`, the process was refused while
+  one outside connected, the user could not move it back into the session,
+  and it ended when the user's manager stopped. **UNVERIFIED**, because that
+  needs a graphical login on a booted system: that pkexec lets the active
+  session's launcher through without a prompt (without a session it refuses,
+  and the application is not started), and how applications behave once they
+  are outside the user's session scope (portals identify an application by
+  its scope name; a blocked application's own polkit prompts).
 * Kill switch and panic ([security/kill-switch.md](security/kill-switch.md))
   are tested with real packets in a network namespace and with the trixie
   nft 1.1.3 binary, but **UNVERIFIED** on a booted image or real hardware:

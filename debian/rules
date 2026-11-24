@@ -65,6 +65,9 @@ override_dh_installsystemd-arch:
 # back a kill switch or panic table that was loaded in this boot and went
 # missing, so it never engages anything on install; the service itself is
 # only ever started by the timer.
+# shadow-appfw.service (the per-application firewall, docs/security/app-firewall.md)
+# is enabled and started: it writes the launcher entries of the blocked
+# applications again and loads the rule only when something is blocked.
 # shadow-netprivacy.service is enabled but does nothing unless the kernel
 # command line has shadow.netprivacy=off (the escape hatch of encrypted DNS and
 # MAC privacy, docs/security/private-dns.md); installing never starts it.
@@ -77,6 +80,7 @@ override_dh_installsystemd-indep:
 	dh_installsystemd -pshadow-hardening shadow-killswitch-watch.timer
 	dh_installsystemd -pshadow-hardening --no-enable --no-start shadow-killswitch-watch.service
 	dh_installsystemd -pshadow-hardening --no-start shadow-netprivacy.service
+	dh_installsystemd -pshadow-hardening shadow-appfw.service
 
 # ---- architecture-independent packages: nothing to compile ------------------
 override_dh_auto_configure-indep override_dh_auto_test-indep:

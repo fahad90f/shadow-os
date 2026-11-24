@@ -11,11 +11,15 @@ security/firewall/nftables.conf etc
 security/firewall/shadow-firewall usr/sbin
 security/firewall/shadow-killswitch usr/sbin
 security/firewall/shadow-panic usr/sbin
+security/firewall/shadow-appfw usr/sbin
+security/firewall/shadow-appfw-enter usr/sbin
+security/firewall/shadow-appfw-run usr/bin
 security/firewall/systemd/shadow-killswitch.service usr/lib/systemd/system
 security/firewall/systemd/shadow-panic.service usr/lib/systemd/system
 security/firewall/systemd/shadow-panic-reset.service usr/lib/systemd/system
 security/firewall/systemd/shadow-killswitch-watch.service usr/lib/systemd/system
 security/firewall/systemd/shadow-killswitch-watch.timer usr/lib/systemd/system
+security/firewall/systemd/shadow-appfw.service usr/lib/systemd/system
 security/firewall/systemd/nftables.service.d usr/lib/systemd/system
 security/firewall/NetworkManager/50-shadow-killswitch usr/lib/NetworkManager/dispatcher.d
 security/permissions/org.shadow.network.policy usr/share/polkit-1/actions

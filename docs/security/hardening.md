@@ -302,10 +302,12 @@ rules), it does not filter outbound traffic, and `allow` opens a port for
 every source address and interface. Per-source rules go into your own
 `.nft` file.
 
-Outbound traffic is restricted only by the opt-in kill switch
+Outbound traffic is restricted by the opt-in kill switch
 (`shadow-killswitch`: nothing leaves except through Tor or a VPN), and
 `shadow-panic` cuts every network at once. Both are tables of their own and
-are described in [kill-switch.md](kill-switch.md). `nftables.service`
+are described in [kill-switch.md](kill-switch.md). The per-application
+firewall (`shadow-appfw`, a third table) takes the network away from single
+applications: [app-firewall.md](app-firewall.md). `nftables.service`
 carries a drop-in from this package: stopping or restarting it deletes only
 `inet shadow_filter` instead of flushing every table, so an nftables upgrade
 no longer removes the kill switch, Hide Me's chains or Docker's NAT.

@@ -13,6 +13,15 @@ running_system() {
 }
 
 case "$1" in
+    triggered)
+        # A package changed /usr/share/applications: the launcher entry of a
+        # blocked application may have been replaced by a newer one, or the
+        # application removed (debian/shadow-hardening.triggers).
+        if [ -x /usr/sbin/shadow-appfw ] && [ -e /etc/shadow-os/appfw.json ]; then
+            /usr/sbin/shadow-appfw sync || \
+                echo "shadow-hardening: warning: the launcher entries of blocked applications were not updated; run: sudo shadow-appfw sync" >&2
+        fi
+        ;;
     configure)
         if [ -z "$2" ]; then
             # Fresh installation: the firewall starts at boot. (Debian installs

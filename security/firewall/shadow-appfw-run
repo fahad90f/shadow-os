@@ -1,0 +1,41 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# shadow-appfw-run APP -- COMMAND [ARGUMENT...]
+#
+# Starts COMMAND without network access when the application APP (the name of
+# its launcher entry, without ".desktop") is blocked in the per-application
+# firewall, and normally when it is not. The launcher entries that
+# shadow-appfw writes for blocked applications run them through this.
+#
+# This process asks to be confined first (shadow-appfw-enter, through pkexec,
+# no password in the active local session) and only then becomes COMMAND, so
+# the application never runs a single instruction outside the confinement.
+# If it cannot be confined it is not started: a blocked application must not
+# come up with the network just because something went wrong.
+set -u
+
+usage() {
+    echo "usage: shadow-appfw-run APP -- COMMAND [ARGUMENT...]" >&2
+    exit 2
+}
+
+[ $# -ge 2 ] || usage
+app=$1
+shift
+[ "$1" != "--" ] || shift
+[ $# -ge 1 ] || usage
+
+pkexec /usr/sbin/shadow-appfw-enter "$$" "$app"
+status=$?
+case "$status" in
+    # 0: confined. 3: not blocked (any more), or switched off for this boot.
+    0|3) exec "$@" ;;
+esac
+
+message="$app is set to run without network access, and that could not be arranged (status $status). It was not started."
+echo "shadow-appfw-run: $message" >&2
+if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a "Shadow OS" -i dialog-warning "Application not started" "$message" 2>/dev/null || true
+fi
+exit 126

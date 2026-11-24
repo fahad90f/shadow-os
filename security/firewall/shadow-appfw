@@ -1,0 +1,664 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""shadow-appfw — the Shadow OS per-application firewall.
+
+    shadow-appfw status [--json]            what is blocked, loaded and running
+    shadow-appfw list [--json]              the installed applications and their mode
+    shadow-appfw set APP allow|deny         change one application (root)
+    shadow-appfw sync                       rewrite the launcher entries (root)
+    shadow-appfw boot                       load the rule at boot (root)
+    shadow-appfw reassert                   put a missing rule back (root, watchdog)
+    shadow-appfw enter PID APP              confine a starting application (root;
+                                            reached through shadow-appfw-enter)
+
+How it works. A blocked application is started through shadow-appfw-run (its
+launcher entry is replaced by one in /usr/local/share/applications that runs
+it that way). Before the application itself is executed, the starting process
+is moved into a scope of the system slice shadowblock.slice. One nftables rule
+(table inet shadow_appfw) rejects every packet sent from a socket that was
+created in that slice, loopback included: a local proxy or resolver would
+otherwise carry the application's traffic out. The slice belongs to root, so
+the application cannot move itself or its children out of it.
+
+What it is not: a filter by destination, a prompt for each connection, or a
+sandbox. Only programs started through their launcher entry (or through
+shadow-appfw-run) are confined; a blocked program started by its command name
+in a terminal is not, and neither is a helper outside the slice that fetches
+something on the application's behalf. See docs/security/app-firewall.md.
+
+Graphical tools call "set" through pkexec (polkit action
+org.shadow.appfw.manage). "status" and "list" work for every user.
+"""
+import argparse
+import datetime
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+
+# Paths and names are constants of the program (never taken from the
+# environment); the tests point them at temporary directories.
+CONFIG = "/etc/shadow-os/appfw.json"
+RUN_DIR = "/run/shadow"
+CMDLINE = "/proc/cmdline"
+PROC = "/proc"
+CGROUP_ROOT = "/sys/fs/cgroup"
+SYSTEMD_RUNNING = "/run/systemd/system"
+TABLE = ("inet", "shadow_appfw")
+PRIORITY = -40
+SLICE = "shadowblock.slice"
+ESCAPE_PARAM = "shadow.appfw"
+MODES = ("allow", "deny")
+# Where applications install their launcher entries, in order of precedence,
+# and where the entries of blocked applications are written. The latter comes
+# before /usr/share in XDG_DATA_DIRS, so every launcher picks it up.
+SOURCE_DIRS = ["/usr/share/applications", "/var/lib/flatpak/exports/share/applications",
+               "/var/lib/snapd/desktop/applications"]
+OVERRIDE_DIR = "/usr/local/share/applications"
+RUN_WRAPPER = "/usr/bin/shadow-appfw-run"
+MARK = "X-Shadow-AppFw"
+APP_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$")
+TOOL_TIMEOUT = 10
+ENTER_WAIT = 5.0
+# Exit status of "enter" when the application is not (or no longer) blocked:
+# shadow-appfw-run then starts it unconfined.
+NOT_BLOCKED = 3
+
+
+class Failure(Exception):
+    pass
+
+
+# --------------------------------------------------------------------------- helpers
+def now_iso():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def run(argv, check=True, timeout=60, stdin=None):
+    """Run a program without a shell. Returns (rc, stdout, stderr); rc 127: missing, 124: timeout."""
+    env = dict(os.environ, LC_ALL="C.UTF-8", LANGUAGE="C")
+    try:
+        p = subprocess.run(argv, input=stdin.encode() if stdin is not None else None,
+                           stdin=subprocess.DEVNULL if stdin is None else None,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=timeout)
+        rc, out, err = p.returncode, p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
+    except FileNotFoundError:
+        rc, out, err = 127, "", f"{argv[0]} is not installed"
+    except subprocess.TimeoutExpired:
+        rc, out, err = 124, "", f"{argv[0]} did not finish within {timeout} s"
+    if check and rc != 0:
+        raise Failure(f"{argv[0]} failed: {(err or out).strip()}")
+    return rc, out, err
+
+
+def write_atomic(target, data, mode):
+    directory = os.path.dirname(target)
+    os.makedirs(directory, mode=0o755, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix="." + os.path.basename(target) + ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="surrogateescape") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+class Lock:
+    """Serialises the commands that change state (boot, the settings and starting applications can race)."""
+    WAIT = 30.0
+
+    def __enter__(self):
+        os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+        self.fd = os.open(os.path.join(RUN_DIR, "appfw.lock"),
+                          os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        os.fchmod(self.fd, 0o600)
+        deadline = time.monotonic() + self.WAIT
+        while True:
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except BlockingIOError:
+                if time.monotonic() > deadline:
+                    os.close(self.fd)
+                    raise Failure(f"another shadow-appfw has been running for {self.WAIT:.0f} s; try again")
+                time.sleep(0.05)
+
+    def __exit__(self, *exc):
+        fcntl.flock(self.fd, fcntl.LOCK_UN)
+        os.close(self.fd)
+
+
+def need_root():
+    if os.geteuid() != 0:
+        raise Failure("this needs root (the settings use pkexec)")
+
+
+def escape_hatch():
+    """True with shadow.appfw=off on the kernel command line: nothing is loaded and nothing confined."""
+    try:
+        with open(CMDLINE, encoding="utf-8", errors="replace") as fh:
+            words = fh.read().split()
+    except OSError:
+        return False
+    return f"{ESCAPE_PARAM}=off" in words
+
+
+# --------------------------------------------------------------------------- configuration
+def load_config(strict=False):
+    """{application: mode}, only the blocked ones. A file that cannot be read is an error with
+    strict (changing it, confining), and reads as "nothing blocked" plus a message otherwise."""
+    try:
+        with open(CONFIG, encoding="utf-8") as fh:
+            data = json.load(fh)
+        apps = data.get("apps", {}) if isinstance(data, dict) else None
+        if not isinstance(apps, dict):
+            raise ValueError("no \"apps\" object")
+        result = {}
+        for name, entry in apps.items():
+            mode = entry.get("mode") if isinstance(entry, dict) else entry
+            if not isinstance(name, str) or not APP_ID.match(name) or mode not in MODES:
+                raise ValueError(f"bad entry for {name!r}")
+            if mode == "deny":
+                result[name] = mode
+        return result, ""
+    except FileNotFoundError:
+        return {}, ""
+    except (OSError, ValueError) as exc:
+        if strict:
+            raise Failure(f"{CONFIG} cannot be read ({exc}); correct or remove it")
+        return {}, f"{CONFIG} cannot be read ({exc})"
+
+
+def save_config(blocked):
+    data = {"version": 1, "apps": {name: {"mode": "deny"} for name in sorted(blocked)}}
+    write_atomic(CONFIG, json.dumps(data, indent=2, sort_keys=True) + "\n", 0o644)
+
+
+# --------------------------------------------------------------------------- launcher entries
+def read_entry(path):
+    """(lines, keys of [Desktop Entry]) of a launcher entry, or (None, {}) if it cannot be read."""
+    try:
+        with open(path, encoding="utf-8", errors="surrogateescape") as fh:
+            lines = fh.read().split("\n")
+    except OSError:
+        return None, {}
+    keys, group = {}, ""
+    for line in lines:
+        text = line.strip()
+        if text.startswith("[") and text.endswith("]"):
+            group = text[1:-1]
+        elif group == "Desktop Entry" and "=" in text and not text.startswith("#"):
+            key, value = text.split("=", 1)
+            keys.setdefault(key.strip(), value.strip())
+    return lines, keys
+
+
+def managed(path):
+    """True for a launcher entry this program wrote."""
+    lines, keys = read_entry(path)
+    return lines is not None and MARK in keys
+
+
+def applications():
+    """{application: {"path", "name", "icon", "hidden"}} of the installed applications."""
+    found = {}
+    for directory in SOURCE_DIRS:
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError:
+            continue
+        for name in names:
+            app = name[:-len(".desktop")]
+            if not name.endswith(".desktop") or not APP_ID.match(app) or app in found:
+                continue
+            path = os.path.join(directory, name)
+            lines, keys = read_entry(path)
+            if lines is None or keys.get("Type", "Application") != "Application" or not keys.get("Exec"):
+                continue
+            if keys.get("Hidden", "false").lower() == "true":
+                continue
+            found[app] = {"path": path, "name": keys.get("Name", app), "icon": keys.get("Icon", ""),
+                          "hidden": keys.get("NoDisplay", "false").lower() == "true"}
+    return found
+
+
+def blocked_entry(app, path):
+    """The text of the launcher entry that starts APP confined, from its own entry at PATH."""
+    lines, _ = read_entry(path)
+    if lines is None:
+        raise Failure(f"{path} cannot be read")
+    out = [f"# Written by shadow-appfw from {path}: {app} is started without network access.",
+           "# Do not edit; change it in the settings or with: shadow-appfw set APP allow|deny"]
+    group = ""
+    for line in lines:
+        text = line.strip()
+        if text.startswith("[") and text.endswith("]"):
+            group = text[1:-1]
+            out.append(line)
+            if group == "Desktop Entry":
+                out.append(f"{MARK}=deny")
+                out.append(f"{MARK}-Source={path}")
+            continue
+        key = text.split("=", 1)[0].strip() if "=" in text and not text.startswith("#") else ""
+        if key == "Exec":
+            # Every way of starting it, the actions' included. The original
+            # command line follows unchanged, field codes and quoting too.
+            out.append(f"Exec={RUN_WRAPPER} {app} -- {text.split('=', 1)[1].strip()}")
+        elif key == "DBusActivatable":
+            # Started over D-Bus the entry's Exec would never be used.
+            out.append("DBusActivatable=false")
+        elif key.startswith(MARK):
+            continue
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def sync_entries(blocked):
+    """Make OVERRIDE_DIR hold exactly the entries of the blocked applications. Returns notes for the user."""
+    notes = []
+    apps = applications()
+    wanted = {}
+    for app in sorted(blocked):
+        if app not in apps:
+            notes.append(f"{app} is blocked but not installed")
+            continue
+        wanted[app] = blocked_entry(app, apps[app]["path"])
+    try:
+        present = sorted(os.listdir(OVERRIDE_DIR))
+    except OSError:
+        present = []
+    changed = False
+    for name in present:
+        app = name[:-len(".desktop")]
+        path = os.path.join(OVERRIDE_DIR, name)
+        if name.endswith(".desktop") and app not in wanted and managed(path):
+            os.unlink(path)
+            changed = True
+    for app, text in wanted.items():
+        path = os.path.join(OVERRIDE_DIR, app + ".desktop")
+        if os.path.lexists(path) and not managed(path):
+            # Somebody's own entry: never overwritten. Whoever wrote it decides
+            # how the application starts, so it is not confined.
+            notes.append(f"{path} is not from shadow-appfw and was left alone: {app} is NOT confined")
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="surrogateescape") as fh:
+                if fh.read() == text:
+                    continue
+        except OSError:
+            pass
+        write_atomic(path, text, 0o644)
+        changed = True
+    if changed:
+        # The MIME cache of that directory; launchers notice the files themselves.
+        run(["update-desktop-database", "-q", OVERRIDE_DIR], check=False, timeout=TOOL_TIMEOUT)
+    return notes
+
+
+def confined(app):
+    """True when APP's launcher entry in force is the one that confines it."""
+    path = os.path.join(OVERRIDE_DIR, app + ".desktop")
+    return managed(path)
+
+
+# --------------------------------------------------------------------------- nftables
+def render():
+    family, name = TABLE
+    return (f"table {family} {name} {{\n"
+            f"\tcomment \"Shadow OS per-application firewall (shadow-appfw)\"\n"
+            f"\tset blocked {{\n"
+            f"\t\ttype cgroupsv2\n"
+            f"\t}}\n"
+            f"\tchain output {{\n"
+            f"\t\ttype filter hook output priority {PRIORITY}; policy accept;\n"
+            f"\t\tmeta l4proto tcp socket cgroupv2 level 1 @blocked counter reject with tcp reset\n"
+            f"\t\tsocket cgroupv2 level 1 @blocked counter reject with icmpx admin-prohibited\n"
+            f"\t}}\n"
+            f"}}\n")
+
+
+def table_loaded():
+    rc, out, _ = run(["nft", "list", "table", *TABLE], check=False, timeout=TOOL_TIMEOUT)
+    return rc == 0 and "socket cgroupv2 level 1 @blocked" in out and "hook output" in out
+
+
+def slice_exists():
+    return os.path.isdir(os.path.join(CGROUP_ROOT, SLICE))
+
+
+def slice_in_set():
+    """True when the set holds the slice as it exists now (nft prints a known cgroup by its path)."""
+    rc, out, _ = run(["nft", "list", "set", *TABLE, "blocked"], check=False, timeout=TOOL_TIMEOUT)
+    match = re.search(r"elements\s*=\s*\{([^}]*)\}", out) if rc == 0 else None
+    return bool(match) and f'"{SLICE}"' in [item.strip() for item in match.group(1).split(",")]
+
+
+def ensure_rule():
+    """The table, and in its set exactly the slice as it exists now. Raises Failure when the
+    kernel does not end up with them."""
+    if not table_loaded():
+        # Replacing a damaged table of this name in the same transaction.
+        text = f"table {TABLE[0]} {TABLE[1]}\ndelete table {TABLE[0]} {TABLE[1]}\n" + render()
+        run(["nft", "--check", "-f", "-"], stdin=text, timeout=TOOL_TIMEOUT)
+        run(["nft", "-f", "-"], stdin=text, timeout=TOOL_TIMEOUT)
+        if not table_loaded():
+            raise Failure("the kernel did not take the per-application rule (nft reported no error)")
+    if slice_exists() and not slice_in_set():
+        # The slice is removed when its last scope ends and gets a new
+        # identity when the next one starts: the old one must not linger (it
+        # could come to name another control group).
+        text = (f"flush set {TABLE[0]} {TABLE[1]} blocked\n"
+                f"add element {TABLE[0]} {TABLE[1]} blocked {{ \"{SLICE}\" }}\n")
+        run(["nft", "-f", "-"], stdin=text, timeout=TOOL_TIMEOUT)
+        if not slice_in_set():
+            raise Failure(f"the kernel did not take {SLICE} into the rule's set")
+
+
+def rejected_packets():
+    rc, out, _ = run(["nft", "list", "chain", *TABLE, "output"], check=False, timeout=TOOL_TIMEOUT)
+    return sum(int(n) for n in re.findall(r"counter packets (\d+)", out)) if rc == 0 else 0
+
+
+# --------------------------------------------------------------------------- running applications
+def scope_name(app, pid):
+    # A unit name: the application's id with what systemd would escape taken out.
+    return "shadowblock-" + re.sub(r"[^A-Za-z0-9_.]", "_", app) + f"-{pid}.scope"
+
+
+def running():
+    """[{"scope", "app", "processes"}] of the confined applications that are running."""
+    base = os.path.join(CGROUP_ROOT, SLICE)
+    result = []
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return result
+    for name in names:
+        match = re.match(r"^shadowblock-(.+)-(\d+)\.scope$", name)
+        if not match:
+            continue
+        try:
+            with open(os.path.join(base, name, "cgroup.procs"), encoding="ascii") as fh:
+                count = len(fh.read().split())
+        except OSError:
+            count = 0
+        if count:        # an empty scope is one that is just ending
+            result.append({"scope": name, "app": match.group(1), "processes": count})
+    return result
+
+
+def cgroup_of(pid):
+    """The control group path of PID in the unified hierarchy, or ""."""
+    try:
+        with open(os.path.join(PROC, str(pid), "cgroup"), encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("0::"):
+                    return line[3:].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def parent_of(pid):
+    try:
+        with open(os.path.join(PROC, str(pid), "stat"), encoding="ascii", errors="replace") as fh:
+            return int(fh.read().rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+def owner_of(pid):
+    try:
+        return os.stat(os.path.join(PROC, str(pid))).st_uid
+    except OSError:
+        return None
+
+
+def start_scope(app, pid, uid):
+    """Ask systemd to adopt PID into a scope of the slice, ending with the user's session."""
+    manager = f"user@{uid}.service"
+    properties = ["PIDs", "au", "1", str(pid),
+                  "Slice", "s", SLICE,
+                  "Description", "s", f"{app}, started without network access",
+                  # Not part of the user's session any more: ends when the user logs out.
+                  "BindsTo", "as", "1", manager,
+                  "After", "as", "1", manager]
+    run(["busctl", "call", "--system", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+         "org.freedesktop.systemd1.Manager", "StartTransientUnit", "ssa(sv)a(sa(sv))",
+         scope_name(app, pid), "fail", "5", *properties, "0"], timeout=TOOL_TIMEOUT)
+
+
+# --------------------------------------------------------------------------- status
+def build_status():
+    blocked, error = load_config()
+    hatch = escape_hatch()
+    root = os.geteuid() == 0
+    status = {"version": 1, "time": now_iso(), "enabled": not hatch, "blocked": sorted(blocked),
+              "running": running(), "error": error}
+    if root:
+        status["loaded"] = table_loaded()
+        status["rejected_packets"] = rejected_packets() if status["loaded"] else 0
+        status["not_confined"] = sorted(app for app in blocked if not confined(app))
+    return status
+
+
+def publish():
+    """Record the state for the tools that run as the user. Root only."""
+    status = build_status()
+    write_atomic(os.path.join(RUN_DIR, "appfw.json"), json.dumps(status, indent=2, sort_keys=True) + "\n", 0o644)
+    return status
+
+
+def read_status():
+    """For other users: the last state root recorded, with the configuration as it is now."""
+    status = build_status()
+    try:
+        with open(os.path.join(RUN_DIR, "appfw.json"), encoding="utf-8") as fh:
+            recorded = json.load(fh)
+        for key in ("loaded", "rejected_packets", "not_confined"):
+            if key in recorded:
+                status[key] = recorded[key]
+    except (OSError, ValueError):
+        pass
+    return status
+
+
+# --------------------------------------------------------------------------- commands
+def cmd_status(args):
+    status = publish() if os.geteuid() == 0 else read_status()
+    if args.json:
+        print(json.dumps(status, indent=2, sort_keys=True))
+        return 0
+    if not status["enabled"]:
+        print(f"Switched off for this boot ({ESCAPE_PARAM}=off on the kernel command line).")
+    print("Blocked applications: " + (", ".join(status["blocked"]) or "none"))
+    if "loaded" in status:
+        print("Rule loaded: " + ("yes" if status["loaded"] else "no (loaded when a blocked application starts)"))
+        print(f"Packets rejected: {status['rejected_packets']}")
+        for app in status.get("not_confined", []):
+            print(f"Warning: {app} is blocked but its launcher entry is not in force")
+    for item in status["running"]:
+        print(f"Running without network: {item['app']} ({item['processes']} process(es))")
+    if status["error"]:
+        print("Error: " + status["error"])
+    return 0
+
+
+def cmd_list(args):
+    blocked, error = load_config()
+    apps = applications()
+    rows = [{"id": app, "name": info["name"], "icon": info["icon"], "hidden": info["hidden"],
+             "mode": "deny" if app in blocked else "allow"} for app, info in sorted(apps.items())]
+    # Blocked but not installed (any more): still listed, so it can be allowed again.
+    rows += [{"id": app, "name": app, "icon": "", "hidden": False, "mode": "deny", "missing": True}
+             for app in sorted(blocked) if app not in apps]
+    if args.json:
+        print(json.dumps({"version": 1, "applications": rows, "error": error}, indent=2, sort_keys=True))
+        return 0
+    for row in rows:
+        print(f"{row['mode']:5}  {row['id']}  ({row['name']})")
+    if error:
+        print("Error: " + error, file=sys.stderr)
+    return 0
+
+
+def cmd_set(args):
+    need_root()
+    if not APP_ID.match(args.app):
+        raise Failure(f"'{args.app}' is not an application id (the name of its launcher entry without .desktop)")
+    with Lock():
+        blocked, _ = load_config(strict=True)
+        if args.mode == "deny":
+            if args.app not in applications():
+                raise Failure(f"no application '{args.app}' is installed (see: shadow-appfw list)")
+            # The rule first: where it cannot be loaded, nothing is recorded as
+            # blocked (the application would then not start at all).
+            if not escape_hatch():
+                ensure_rule()
+            blocked[args.app] = "deny"
+        else:
+            blocked.pop(args.app, None)
+        save_config(blocked)
+        notes = sync_entries(blocked)
+        publish()
+    for note in notes:
+        print("Note: " + note, file=sys.stderr)
+    if args.mode == "deny":
+        print(f"{args.app}: no network access, from the next time it is started.")
+    else:
+        print(f"{args.app}: network access allowed, from the next time it is started.")
+    return 0
+
+
+def cmd_sync(args):
+    need_root()
+    with Lock():
+        blocked, error = load_config()
+        if error:
+            raise Failure(error)
+        notes = sync_entries(blocked)
+        publish()
+    for note in notes:
+        print("Note: " + note, file=sys.stderr)
+    return 0
+
+
+def cmd_boot(args):
+    need_root()
+    with Lock():
+        blocked, error = load_config()
+        notes = [] if error else sync_entries(blocked)
+        # With an unreadable configuration nothing is known to be blocked; the
+        # rule is loaded all the same, so that anything already in the slice
+        # stays cut off.
+        if not escape_hatch() and (blocked or error or slice_exists()):
+            ensure_rule()
+        publish()
+    for note in notes:
+        print("Note: " + note, file=sys.stderr)
+    if error:
+        raise Failure(error)
+    return 0
+
+
+def cmd_reassert(args):
+    """The watchdog: something is running in the slice, so the rule must be there."""
+    need_root()
+    if escape_hatch() or not slice_exists():
+        return 0
+    with Lock():
+        missing = not table_loaded() or not slice_in_set()
+        if missing:
+            ensure_rule()
+            publish()
+            print("shadow-appfw: the per-application rule was missing and has been put back", file=sys.stderr)
+    return 0
+
+
+def cmd_enter(args):
+    need_root()
+    pid, app = args.pid, args.app
+    if not APP_ID.match(app):
+        raise Failure(f"'{app}' is not an application id")
+    caller = os.environ.get("PKEXEC_UID")
+    if caller is not None:
+        # Reached through pkexec by an ordinary user: only that user's own
+        # starting process, the one that asked (or the one that started it).
+        try:
+            uid = int(caller)
+        except ValueError:
+            raise Failure("PKEXEC_UID is not a number")
+        if owner_of(pid) != uid:
+            raise Failure(f"process {pid} does not belong to the caller")
+        parent = os.getppid()
+        if pid not in (parent, parent_of(parent)):
+            raise Failure(f"process {pid} is not the one that asked")
+    else:
+        uid = owner_of(pid)
+        if uid is None:
+            raise Failure(f"no process {pid}")
+    if escape_hatch():
+        return NOT_BLOCKED
+    blocked, _ = load_config(strict=True)
+    if app not in blocked:
+        return NOT_BLOCKED
+    if not os.path.isdir(SYSTEMD_RUNNING):
+        raise Failure("systemd is not running here: the application cannot be confined")
+    with Lock():
+        if not cgroup_of(pid).startswith(f"/{SLICE}/"):
+            start_scope(app, pid, uid)
+            deadline = time.monotonic() + ENTER_WAIT
+            while not cgroup_of(pid).startswith(f"/{SLICE}/"):
+                if time.monotonic() > deadline:
+                    raise Failure(f"process {pid} was not moved into {SLICE}")
+                time.sleep(0.02)
+        ensure_rule()
+        # Both are checked once more, together: this is what "confined" means.
+        if not cgroup_of(pid).startswith(f"/{SLICE}/") or not table_loaded() or not slice_in_set():
+            raise Failure("the application is not confined")
+        publish()
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="shadow-appfw", description="The Shadow OS per-application firewall.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("status", help="what is blocked, loaded and running")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_status)
+    p = sub.add_parser("list", help="the installed applications and their mode")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_list)
+    p = sub.add_parser("set", help="allow or deny network access for one application")
+    p.add_argument("app")
+    p.add_argument("mode", choices=MODES)
+    p.set_defaults(func=cmd_set)
+    sub.add_parser("sync", help="rewrite the launcher entries of the blocked applications").set_defaults(func=cmd_sync)
+    sub.add_parser("boot", help="load the rule at boot").set_defaults(func=cmd_boot)
+    sub.add_parser("reassert", help="put a missing rule back").set_defaults(func=cmd_reassert)
+    p = sub.add_parser("enter", help="confine a starting application")
+    p.add_argument("pid", type=int)
+    p.add_argument("app")
+    p.set_defaults(func=cmd_enter)
+    args = parser.parse_args(argv)
+    try:
+        return args.func(args)
+    except Failure as exc:
+        print(f"shadow-appfw: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,12 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# shadow-appfw-enter PID APP
+#
+# The one thing an ordinary user may ask the per-application firewall for
+# without a password: "confine me". shadow-appfw-run calls it through pkexec
+# (polkit action org.shadow.appfw.enter, allowed for the active local
+# session) before it executes a blocked application; shadow-appfw then checks
+# that PID is the caller's own starting process and that APP is blocked.
+# Everything else shadow-appfw does needs an administrator.
+exec /usr/sbin/shadow-appfw enter "$@"

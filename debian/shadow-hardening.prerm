@@ -23,6 +23,16 @@ case "$1" in
             /usr/sbin/shadow-panic release || \
                 echo "shadow-hardening: warning: could not release the panic; afterwards run: nmcli networking on; rfkill unblock all" >&2
         fi
+        # The launcher entries of blocked applications start them through
+        # shadow-appfw-run, which goes with this package: without it they
+        # would not start at all. Only entries shadow-appfw wrote are removed
+        # (they carry its mark); the applications start normally again.
+        for entry in /usr/local/share/applications/*.desktop; do
+            [ -f "$entry" ] || continue
+            if grep -q '^X-Shadow-AppFw=' "$entry" 2>/dev/null; then
+                rm -f "$entry"
+            fi
+        done
         ;;
 esac
 

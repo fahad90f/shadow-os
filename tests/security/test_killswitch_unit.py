@@ -1541,6 +1541,8 @@ class UnitsAndPackaging(unittest.TestCase):
         self.assertFalse(any(ln.startswith("WantedBy") for ln in s))       # only the timer starts it
         self.assertEqual([ln for ln in s if ln.startswith("ExecStart")],
                          ["ExecStart=-/usr/sbin/shadow-panic reassert",
+                          # the per-application firewall's rule, while a blocked application runs
+                          "ExecStart=-/usr/sbin/shadow-appfw reassert",
                           "ExecStart=/usr/sbin/shadow-killswitch reassert --watch"])
         # quiet when nothing happens, but what the tools print is kept
         self.assertIn("LogLevelMax=notice", s)

@@ -16,6 +16,9 @@ NxPage {
     function live(revision, value) { return value }
     property string removePort: ""
     property string removeProtocol: ""
+    // Applications (network access per application).
+    property string appFilter: ""
+    property bool showBackground: false
 
     function policyText(policy) {
         if (policy === "drop") return qsTr("Blocked unless allowed (drop)")
@@ -34,6 +37,15 @@ NxPage {
 
     FirewallBackend {
         id: firewall
+        onFailed: (message) => {
+            page.revision++
+            page.ApplicationWindow.window.toaster.show(message, "danger")
+        }
+        onSucceeded: (message) => page.ApplicationWindow.window.toaster.show(message, "success")
+    }
+
+    AppFirewallBackend {
+        id: appFirewall
         onFailed: (message) => {
             page.revision++
             page.ApplicationWindow.window.toaster.show(message, "danger")
@@ -280,6 +292,95 @@ NxPage {
                     onClicked: addDialog.submit()
                 }
             }
+        }
+    }
+
+    NxSection {
+        id: appSection
+        visible: appFirewall.installed
+        title: qsTr("Applications")
+        description: qsTr("Switch an application off here and it is started without any network access. This takes effect the next time the application is started, and covers applications started from the launcher, the dock or a file. It asks for an administrator password.")
+        // 'all' is only named so that the list is worked out again when the
+        // applications themselves change, not just the filter.
+        function matching(all, text, background) { return appFirewall.filtered(text, background) }
+        readonly property var rows: matching(appFirewall.applications, page.appFilter, page.showBackground)
+        headerActions: [
+            NxButton {
+                text: page.showBackground ? qsTr("Hide background applications") : qsTr("Show background applications")
+                onClicked: page.showBackground = !page.showBackground
+            }
+        ]
+
+        NxBanner {
+            visible: appFirewall.ready && !appFirewall.enabled
+            kind: "warning"
+            title: qsTr("Switched off for this start of the computer")
+            message: qsTr("shadow.appfw=off is on the kernel command line: blocked applications are started with network access until the computer is restarted without it.")
+        }
+        NxBanner {
+            visible: appFirewall.ready && appFirewall.statusMessage !== ""
+            kind: "warning"
+            title: qsTr("The list of blocked applications could not be read")
+            message: appFirewall.statusMessage
+        }
+        NxRow {
+            icon: "shield"
+            iconColor: appFirewall.blockedCount > 0 ? Theme.accent : Theme.textSecondary
+            title: !appFirewall.ready ? qsTr("Reading the applications…")
+                 : appFirewall.blockedCount === 0 ? qsTr("Every application may use the network")
+                 : qsTr("%n application(s) without network access", "", appFirewall.blockedCount)
+            subtitle: appFirewall.rejectedPackets > 0
+                ? qsTr("%n connection attempt(s) refused since the computer started", "", appFirewall.rejectedPackets)
+                : qsTr("A blocked application cannot reach the internet, the local network or services on this computer.")
+            NxSearchField {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 220
+                placeholderText: qsTr("Find an application")
+                onTextChanged: page.appFilter = text
+            }
+        }
+        Repeater {
+            model: appSection.rows
+            NxRow {
+                id: appRow
+                required property var modelData
+                icon: modelData.blocked ? "shield-off" : "globe"
+                iconColor: modelData.blocked ? Theme.danger : Theme.textSecondary
+                title: modelData.name
+                subtitle: modelData.missing ? qsTr("%1 · not installed any more").arg(modelData.id)
+                        : modelData.notConfined ? qsTr("%1 · NOT in force: its launcher entry in /usr/local/share/applications is not the firewall's").arg(modelData.id)
+                        : modelData.running ? qsTr("%1 · running without network access").arg(modelData.id)
+                        : modelData.blocked ? qsTr("%1 · no network access").arg(modelData.id)
+                        : modelData.id
+                NxBadge {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: appRow.modelData.blocked
+                    text: appRow.modelData.notConfined ? qsTr("Not in force") : qsTr("Blocked")
+                    dot: false
+                }
+                Switch {
+                    anchors.verticalCenter: parent.verticalCenter
+                    enabled: appFirewall.ready && !appFirewall.busy
+                    checked: page.live(page.revision, !appRow.modelData.blocked)
+                    Accessible.name: qsTr("Network access for %1").arg(appRow.modelData.name)
+                    onToggled: {
+                        const allow = checked
+                        checked = Qt.binding(() => page.live(page.revision, !appRow.modelData.blocked))
+                        appFirewall.setBlocked(appRow.modelData.id, !allow)
+                    }
+                }
+            }
+        }
+        NxRow {
+            visible: appFirewall.ready && appSection.rows.length === 0
+            icon: "search"
+            title: page.appFilter !== "" ? qsTr("No application matches \"%1\"").arg(page.appFilter)
+                                         : qsTr("No applications were found")
+        }
+        NxRow {
+            icon: "info"
+            title: qsTr("What this does not cover")
+            subtitle: qsTr("A program started by its command name in a terminal is not blocked, and neither is another program that fetches something on the blocked application's behalf. It keeps an ordinary application off the network; it is not a sandbox for a hostile one.")
         }
     }
 

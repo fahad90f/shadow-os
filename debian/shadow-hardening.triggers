@@ -1,0 +1,5 @@
+# A blocked application's launcher entry is a copy of its own entry that
+# starts it without network access (shadow-appfw). When a package installs,
+# updates or removes entries, the copies are written again (postinst,
+# "triggered"). "noawait": the other package does not wait for this.
+interest-noawait /usr/share/applications
