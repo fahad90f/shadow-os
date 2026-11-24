@@ -33,3 +33,13 @@ set_target_properties(status-test-killswitch PROPERTIES AUTOMOC ON)
 target_include_directories(status-test-killswitch PRIVATE ..)
 target_compile_definitions(status-test-killswitch PRIVATE QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 target_link_libraries(status-test-killswitch PRIVATE Qt6::Core)
+
+# Self test of the VPN part of the network back-end against the fixture on a
+# private bus (vpn-selftest.sh starts the bus and the fixture):
+#   desktop/horizon-shell/modules/status/tests/vpn-selftest.sh /build/modstatus-tests/bin
+add_executable(status-test-vpn vpn-selftest.cpp
+    ../statusnetwork.cpp ../statusnetwork.h ../statusdbus.cpp ../statusdbus.h ../statusbackend.cpp ../statusbackend.h)
+set_target_properties(status-test-vpn PROPERTIES AUTOMOC ON)
+target_include_directories(status-test-vpn PRIVATE ..)
+target_compile_definitions(status-test-vpn PRIVATE QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
+target_link_libraries(status-test-vpn PRIVATE Qt6::Core Qt6::DBus)

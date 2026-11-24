@@ -190,6 +190,13 @@ In the image, with limits stated in their READMEs
 * **Network Center / Control Center:** Wi-Fi scan and join never performed
   against hardware; no enterprise Wi-Fi set-up; OpenVPN and WireGuard
   activation untested.
+* **VPN tile (quick settings):** tested against a stand-in for
+  NetworkManager on a private bus (the profile list, connect, disconnect, a
+  refusal), in a nested session and in a self test; never against the real
+  NetworkManager or a real tunnel. It connects the most recently used saved
+  profile; a profile whose password is not saved cannot be connected from the
+  tile (the shell is not a secret agent): NetworkManager's refusal is shown,
+  and the profile connects from Control Center → VPN.
 * **Control Center → Privacy (kill switch, panic) and Network Center →
   Privacy (encrypted DNS, MAC address):** tested against stand-in tools and
   against the status documents of the real `shadow-killswitch`,

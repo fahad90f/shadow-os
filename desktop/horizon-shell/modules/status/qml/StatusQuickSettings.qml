@@ -218,6 +218,30 @@ PopupSurface {
                     detailsTooltip: qsTr("Network settings")
                     onDetailsRequested: popup.openSettings("network")
                 }
+                // VPN: connects the most recently used saved profile (or the
+                // only one) and disconnects whatever is up. Profiles are
+                // added, and one chosen among several, in the Control Center.
+                StatusTile {
+                    objectName: "vpnTile"
+                    readonly property var profiles: popup.net.vpnProfiles
+                    readonly property bool up: popup.net.vpnActive || popup.net.vpnConnecting
+                    visible: popup.net.available && (profiles.length > 0 || up || popup.hasControlCenter)
+                    icon: popup.net.vpnActive ? "shield-check" : "shield"
+                    title: qsTr("VPN")
+                    active: popup.net.vpnActive
+                    switchable: profiles.length > 0 || up
+                    reason: qsTr("No VPN profile has been added yet. Add one in the Control Center under VPN.")
+                    subtitle: popup.net.vpnActive ? popup.net.vpnName
+                        : popup.net.vpnConnecting ? qsTr("Connecting to %1…").arg(popup.net.vpnName)
+                        : profiles.length === 0 ? qsTr("No profile")
+                        : popup.ks.present && popup.ks.active && popup.ks.mode === "vpn" ? qsTr("Off · the kill switch blocks the network until it is on")
+                        : profiles.length === 1 ? profiles[0].name
+                        : qsTr("Off · %1").arg(profiles[0].name)
+                    hasDetails: popup.hasControlCenter
+                    detailsTooltip: qsTr("VPN profiles and settings")
+                    onToggled: up ? popup.net.disconnectVpn() : popup.net.connectVpn("")
+                    onDetailsRequested: popup.openSettings("vpn")
+                }
                 StatusTile {
                     readonly property var bt: status.bluetooth
                     visible: bt.available

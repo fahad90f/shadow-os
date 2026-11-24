@@ -88,5 +88,32 @@
                                         {"Profile": "performance", "Driver": "fixture"}]]
             }
         }
+    },
+    "savedConnections": {
+        "/org/freedesktop/NetworkManager/Settings/1": {
+            "id": "Fixture Café",
+            "uuid": "00000000-0000-4000-8000-000000000001",
+            "type": "802-11-wireless",
+            "timestamp": 1790000000
+        },
+        "/org/freedesktop/NetworkManager/Settings/5": {
+            "id": "Office tunnel",
+            "uuid": "00000000-0000-4000-8000-000000000005",
+            "type": "wireguard",
+            "timestamp": 1780000000
+        },
+        "/org/freedesktop/NetworkManager/Settings/6": {
+            "id": "Travel VPN",
+            "uuid": "00000000-0000-4000-8000-000000000006",
+            "type": "vpn",
+            "timestamp": 1785000000
+        },
+        "/org/freedesktop/NetworkManager/Settings/7": {
+            "id": "Needs a password",
+            "uuid": "00000000-0000-4000-8000-000000000007",
+            "type": "vpn",
+            "timestamp": 0,
+            "fails": "No agents were available for this request."
+        }
     }
 }

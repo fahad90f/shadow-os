@@ -34,7 +34,7 @@ All asynchronous; nothing blocks the shell's start, nothing is polled.
 | Back-end | Source | Writes |
 |---|---|---|
 | `audio` (`statusaudio.*`) | PulseAudio protocol through KF6 PulseAudioQt (pipewire-pulse on SHADOW): default sink and default source. PipeWire's `auto_null` placeholder is not a device; a monitor source is not a microphone. Reconnects when the sound server appears later. | sink/source volume (never above 100 %) and mute |
-| `network` (`statusnetwork.*`) | NetworkManager, system bus: manager, devices, active connections, access point in use; `org.freedesktop.DBus.Properties` + `PropertiesChanged` | `WirelessEnabled` (polkit decides) |
+| `network` (`statusnetwork.*`) | NetworkManager, system bus: manager, devices, active connections, access point in use; `org.freedesktop.DBus.Properties` + `PropertiesChanged`. The saved VPN and WireGuard profiles: `Settings.ListConnections` and the `connection` group of each one's `GetSettings` (no secrets), read again when one is added or removed | `WirelessEnabled` (polkit decides); `ActivateConnection` / `DeactivateConnection` for a VPN profile (polkit: `network-control`) |
 | `bluetooth` (`statusbluetooth.*`) | BlueZ through KF6 BluezQt: adapters, connected devices, rfkill block | adapter `Powered`; lifts a soft rfkill block first |
 | `radio` (`statusradio.*`) | `/dev/rfkill` events. Airplane mode = every radio blocked. Available only with at least one radio and write access (logind `uaccess`). | one `RFKILL_OP_CHANGE_ALL` event |
 | `battery` (`statuspower.*`) | UPower display device + `OnBattery` | — |
@@ -160,6 +160,12 @@ anything to show. Build:
   a real temporary directory: created late, files replaced atomically and
   written in place, broken and repaired, removed, the directory removed and
   re-created.
+* `tests/vpn-selftest.sh` + `tests/vpn-selftest.cpp` (`status-test-vpn`) — the
+  VPN part of the network back-end against the fixture on a private bus: only
+  VPN and WireGuard connections are profiles, the most recently used first;
+  connecting the most recent and a named one; the state while one is up;
+  disconnecting; NetworkManager's refusal reported with the profile's name;
+  and what the fixture was asked to do. No compositor needed.
 * `tests/session-test-killswitch.sh` + `tests/fake-panic-services.py` —
   nested session with a real KWin, horizon-shell and wl-clipboard; systemd,
   NetworkManager, logind and the screen locker are stand-ins on a private

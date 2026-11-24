@@ -3,8 +3,16 @@
 
 #include "statusdbus.h"
 
+#include <QDBusArgument>
+#include <QDBusMessage>
+#include <QDBusObjectPath>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QJsonArray>
 #include <QStringDecoder>
+
+#include <algorithm>
+#include <memory>
 
 namespace StatusModule {
 
@@ -17,6 +25,12 @@ const QString kDevice = QStringLiteral("org.freedesktop.NetworkManager.Device");
 const QString kWireless = QStringLiteral("org.freedesktop.NetworkManager.Device.Wireless");
 const QString kActive = QStringLiteral("org.freedesktop.NetworkManager.Connection.Active");
 const QString kAccessPoint = QStringLiteral("org.freedesktop.NetworkManager.AccessPoint");
+const QString kSettingsPath = QStringLiteral("/org/freedesktop/NetworkManager/Settings");
+const QString kSettings = QStringLiteral("org.freedesktop.NetworkManager.Settings");
+const QString kSavedConnection = QStringLiteral("org.freedesktop.NetworkManager.Settings.Connection");
+// More saved connections than this are not looked through for VPN profiles
+// (a computer that has joined hundreds of Wi-Fi networks).
+constexpr int kMaxSavedConnections = 512;
 
 // Values of NetworkManager's D-Bus enumerations that matter here.
 constexpr int kStateAsleep = 10;                // NMState
@@ -95,8 +109,151 @@ NetworkBackend::NetworkBackend(QObject *parent)
 {
     m_manager = new DBusProperties(m_bus, kService, kPath, kManager, this);
     connect(m_manager, &DBusProperties::changed, this, &NetworkBackend::sync);
-    dbusWatchService(m_bus, kService, this, [this] { m_manager->load(); }, [this] { m_manager->clear(); });
+    dbusWatchService(m_bus, kService, this, [this] { m_manager->load(); reloadVpnProfiles(); },
+                     [this] { m_manager->clear(); reloadVpnProfiles(); });
     m_manager->load();
+    // Profiles that are added or removed while the shell runs.
+    m_bus.connect(kService, kSettingsPath, kSettings, QStringLiteral("NewConnection"), this,
+                  SLOT(onSavedConnectionsChanged()));
+    m_bus.connect(kService, kSettingsPath, kSettings, QStringLiteral("ConnectionRemoved"), this,
+                  SLOT(onSavedConnectionsChanged()));
+    reloadVpnProfiles();
+}
+
+void NetworkBackend::onSavedConnectionsChanged()
+{
+    reloadVpnProfiles();
+}
+
+// Reads the "connection" group of every saved connection and keeps the VPN
+// and WireGuard ones. Nothing secret is asked for (GetSettings never returns
+// secrets).
+void NetworkBackend::reloadVpnProfiles()
+{
+    const int generation = ++m_profileGeneration;
+    const auto publish = [this](QList<VpnProfile> profiles) {
+        std::sort(profiles.begin(), profiles.end(), [](const VpnProfile &a, const VpnProfile &b) {
+            return a.lastUsed != b.lastUsed ? a.lastUsed > b.lastUsed : a.name.localeAwareCompare(b.name) < 0;
+        });
+        QVariantList list;
+        for (const VpnProfile &profile : std::as_const(profiles)) {
+            list.append(QVariantMap{{QStringLiteral("uuid"), profile.uuid}, {QStringLiteral("name"), profile.name},
+                                    {QStringLiteral("kind"), profile.kind}});
+        }
+        m_profiles = profiles;
+        if (list != m_vpnProfiles) {
+            m_vpnProfiles = list;
+            Q_EMIT vpnProfilesChanged();
+        }
+    };
+    QDBusMessage listCall = QDBusMessage::createMethodCall(kService, kSettingsPath, kSettings,
+                                                           QStringLiteral("ListConnections"));
+    listCall.setAutoStartService(false);
+    auto *listWatcher = new QDBusPendingCallWatcher(m_bus.asyncCall(listCall, 10000), this);
+    connect(listWatcher, &QDBusPendingCallWatcher::finished, this, [this, generation, publish](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        if (generation != m_profileGeneration)
+            return;
+        const QDBusPendingReply<QList<QDBusObjectPath>> reply = *w;
+        if (reply.isError()) {
+            publish({});       // NetworkManager is not there: no profiles to offer
+            return;
+        }
+        const QList<QDBusObjectPath> paths = reply.value().mid(0, kMaxSavedConnections);
+        if (paths.isEmpty()) {
+            publish({});
+            return;
+        }
+        // Collected as the answers come in; published when the last one has.
+        auto found = std::make_shared<QList<VpnProfile>>();
+        auto pending = std::make_shared<int>(int(paths.size()));
+        for (const QDBusObjectPath &path : paths) {
+            QDBusMessage get = QDBusMessage::createMethodCall(kService, path.path(), kSavedConnection,
+                                                              QStringLiteral("GetSettings"));
+            get.setAutoStartService(false);
+            auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(get, 10000), this);
+            connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                    [this, generation, publish, found, pending, path](QDBusPendingCallWatcher *one) {
+                one->deleteLater();
+                if (generation != m_profileGeneration)
+                    return;
+                const QDBusMessage answer = one->reply();
+                if (answer.type() == QDBusMessage::ReplyMessage && !answer.arguments().isEmpty()) {
+                    // a{sa{sv}}: the groups of the connection; only "connection" is read.
+                    QMap<QString, QVariantMap> groups;
+                    answer.arguments().constFirst().value<QDBusArgument>() >> groups;
+                    const QVariantMap connection = groups.value(QStringLiteral("connection"));
+                    const QString type = connection.value(QStringLiteral("type")).toString();
+                    const QString uuid = connection.value(QStringLiteral("uuid")).toString();
+                    if (isVpnType(type) && !uuid.isEmpty()) {
+                        VpnProfile profile;
+                        profile.path = path.path();
+                        profile.uuid = uuid;
+                        profile.name = connection.value(QStringLiteral("id")).toString();
+                        profile.kind = type;
+                        profile.lastUsed = connection.value(QStringLiteral("timestamp")).toULongLong();
+                        found->append(profile);
+                    }
+                }
+                if (--*pending == 0)
+                    publish(*found);
+            });
+        }
+    });
+}
+
+void NetworkBackend::connectVpn(const QString &uuid)
+{
+    if (!isAvailable() || m_profiles.isEmpty())
+        return;
+    const auto it = uuid.isEmpty() ? m_profiles.cbegin()
+        : std::find_if(m_profiles.cbegin(), m_profiles.cend(), [&uuid](const VpnProfile &p) { return p.uuid == uuid; });
+    if (it == m_profiles.cend()) {
+        Q_EMIT failed(tr("That VPN profile no longer exists."));
+        reloadVpnProfiles();
+        return;
+    }
+    const QString name = it->name;
+    // No device and no specific object: NetworkManager chooses, as nmcli does.
+    QDBusMessage call = QDBusMessage::createMethodCall(kService, kPath, kManager, QStringLiteral("ActivateConnection"));
+    call.setAutoStartService(false);
+    call << QVariant::fromValue(QDBusObjectPath(it->path)) << QVariant::fromValue(QDBusObjectPath(QStringLiteral("/")))
+         << QVariant::fromValue(QDBusObjectPath(QStringLiteral("/")));
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(call, 30000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, name](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        const QDBusPendingReply<QDBusObjectPath> reply = *w;
+        if (reply.isError())
+            Q_EMIT failed(tr("%1 could not be connected: %2").arg(name, reply.error().message()));
+    });
+}
+
+void NetworkBackend::disconnectVpn()
+{
+    if (!isAvailable())
+        return;
+    for (auto it = m_connections.cbegin(); it != m_connections.cend(); ++it) {
+        const DBusProperties *connection = it.value();
+        if (!connection->isValid())
+            continue;
+        if (!connection->boolean(QStringLiteral("Vpn")) && !isVpnType(connection->string(QStringLiteral("Type"))))
+            continue;
+        const int state = int(connection->integer(QStringLiteral("State")));
+        if (state != kActiveStateActivated && state != kActiveStateActivating)
+            continue;
+        const QString name = connection->string(QStringLiteral("Id"));
+        QDBusMessage call = QDBusMessage::createMethodCall(kService, kPath, kManager,
+                                                           QStringLiteral("DeactivateConnection"));
+        call.setAutoStartService(false);
+        call << QVariant::fromValue(QDBusObjectPath(it.key()));
+        auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(call, 30000), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, name](QDBusPendingCallWatcher *w) {
+            w->deleteLater();
+            const QDBusPendingReply<> reply = *w;
+            if (reply.isError())
+                Q_EMIT failed(tr("%1 could not be disconnected: %2").arg(name, reply.error().message()));
+        });
+    }
 }
 
 DBusProperties *NetworkBackend::track(const QString &path, const QString &interface)
@@ -232,8 +389,14 @@ void NetworkBackend::recompute(bool settled)
         const QString type = connection->string(QStringLiteral("Type"));
         const int activeState = int(connection->integer(QStringLiteral("State")));
         if (connection->boolean(QStringLiteral("Vpn")) || isVpnType(type)) {
+            // One that is up names the state; one that is coming up only
+            // while none is up.
             if (activeState == kActiveStateActivated && !s.vpnActive) {
                 s.vpnActive = true;
+                s.vpnConnecting = false;
+                s.vpnName = connection->string(QStringLiteral("Id"));
+            } else if (activeState == kActiveStateActivating && !s.vpnActive && !s.vpnConnecting) {
+                s.vpnConnecting = true;
                 s.vpnName = connection->string(QStringLiteral("Id"));
             }
             continue;
@@ -305,7 +468,9 @@ QJsonObject NetworkBackend::details() const
     });
     json.insert(QStringLiteral("vpn"), QJsonObject{
         {QStringLiteral("active"), m_now.vpnActive},
+        {QStringLiteral("connecting"), m_now.vpnConnecting},
         {QStringLiteral("name"), m_now.vpnName},
+        {QStringLiteral("profiles"), QJsonArray::fromVariantList(m_vpnProfiles)},
     });
     QJsonArray connections;
     for (const DBusProperties *connection : std::as_const(m_connections)) {

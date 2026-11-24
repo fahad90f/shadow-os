@@ -207,13 +207,20 @@ terminal then.
 (`desktop/horizon-shell/modules/status/README.md`). It shows only what
 exists on the machine:
 
-* tiles: Wi-Fi (or a read-only "Network" tile without Wi-Fi hardware),
+* tiles: Wi-Fi (or a read-only "Network" tile without Wi-Fi hardware), VPN,
   Bluetooth, airplane mode, kill switch, Do Not Disturb, Night Light, dark
   mode;
 * sliders: volume with mute, microphone, screen brightness;
 * battery state and power profile;
 * a media card for the playing media player (play/pause, next, previous);
 * a lock button and buttons that open the Control Center.
+
+The **VPN** tile connects the saved VPN or WireGuard profile that was used
+most recently (its name is under the tile) and disconnects whatever is up;
+the arrow opens Control Center → VPN, where profiles are imported and one is
+chosen among several. A profile that needs a password that is not saved
+connects from there, not from the tile. With the kill switch in "VPN only"
+mode the tile says that the network stays blocked until the VPN is on.
 
 The **calendar** opens from the clock: a month view with week numbers and
 keyboard navigation. It shows no events.

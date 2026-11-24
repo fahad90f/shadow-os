@@ -101,7 +101,8 @@ user_suites() {
             security/firewall/shadow-appfw-run security/firewall/shadow-appfw-enter \
             scripts/publish-updates.sh applications/updater/offline/shadow-offline-update build/packages/build.sh \
             tests/network/*.sh tests/build/*.sh applications/control-center/tests/real-tool-documents.sh &&
-        shellcheck -S warning -s bash desktop/horizon-shell/modules/status/tests/session-test-killswitch.sh'
+        shellcheck -S warning -s bash desktop/horizon-shell/modules/status/tests/session-test-killswitch.sh \
+            desktop/horizon-shell/modules/status/tests/vpn-selftest.sh'
     suite py-compile          python3 -B -c 'import ast, sys
 for path in sys.argv[1:]:
     with open(path, encoding="utf-8") as fh:

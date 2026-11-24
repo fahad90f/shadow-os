@@ -23,6 +23,21 @@
 //
 //   client-set <path> <interface> <Property> <json value>
 //
+// Optional "savedConnections" stands in for NetworkManager's saved
+// connections, as far as the shell's VPN tile uses them:
+//
+//   "savedConnections": { "<object path>": { "id": "...", "uuid": "...", "type": "vpn" | "wireguard" | ...,
+//                                            "timestamp": <seconds>, "fails": "<error text, optional>" } }
+//
+// Settings.ListConnections and Settings.Connection.GetSettings (the
+// "connection" group only) answer from it. The manager's
+// ActivateConnection adds an active connection object in state "activated"
+// to ActiveConnections, or answers with the error when the entry has "fails";
+// DeactivateConnection takes it out again. Both are printed:
+//
+//   client-call ActivateConnection <saved connection path>
+//   client-call DeactivateConnection <active connection path>
+//
 // Lines written to the control FIFO change a property the same way:
 //
 //   set <path> <interface> <Property> <type> <json value>
@@ -50,6 +65,11 @@
 namespace {
 
 const QString kProperties = QStringLiteral("org.freedesktop.DBus.Properties");
+const QString kNm = QStringLiteral("org.freedesktop.NetworkManager");
+const QString kNmPath = QStringLiteral("/org/freedesktop/NetworkManager");
+const QString kNmSettings = QStringLiteral("org.freedesktop.NetworkManager.Settings");
+const QString kNmSaved = QStringLiteral("org.freedesktop.NetworkManager.Settings.Connection");
+const QString kNmActive = QStringLiteral("org.freedesktop.NetworkManager.Connection.Active");
 
 QTextStream &out()
 {
@@ -138,12 +158,86 @@ public:
         return true;
     }
 
+    void loadSaved(const QJsonObject &saved) { m_saved = saved; }
+
     QString introspect(const QString &) const override { return {}; }
+
+    // NetworkManager's methods the VPN tile calls. True when the message was one of them.
+    bool handleNetworkManager(const QDBusMessage &message, const QDBusConnection &connection)
+    {
+        const QString member = message.member();
+        if (message.interface() == kNmSettings && member == QLatin1String("ListConnections")) {
+            QList<QDBusObjectPath> paths;
+            for (auto it = m_saved.begin(); it != m_saved.end(); ++it)
+                paths.append(QDBusObjectPath(it.key()));
+            connection.send(message.createReply(QVariant::fromValue(paths)));
+            return true;
+        }
+        if (message.interface() == kNmSaved && member == QLatin1String("GetSettings")) {
+            if (!m_saved.contains(message.path()))
+                return false;
+            const QJsonObject entry = m_saved.value(message.path()).toObject();
+            const QVariantMap group{{QStringLiteral("id"), entry.value(QLatin1String("id")).toString()},
+                                    {QStringLiteral("uuid"), entry.value(QLatin1String("uuid")).toString()},
+                                    {QStringLiteral("type"), entry.value(QLatin1String("type")).toString()},
+                                    {QStringLiteral("timestamp"),
+                                     QVariant::fromValue(qulonglong(entry.value(QLatin1String("timestamp")).toDouble()))}};
+            const QMap<QString, QVariantMap> settings{{QStringLiteral("connection"), group}};
+            connection.send(message.createReply(QVariant::fromValue(settings)));
+            return true;
+        }
+        if (message.interface() != kNm || message.path() != kNmPath)
+            return false;
+        if (member == QLatin1String("ActivateConnection")) {
+            const QString saved = message.arguments().value(0).value<QDBusObjectPath>().path();
+            out() << "client-call ActivateConnection " << saved << Qt::endl;
+            const QJsonObject entry = m_saved.value(saved).toObject();
+            if (entry.isEmpty()) {
+                connection.send(message.createErrorReply(QStringLiteral("org.freedesktop.NetworkManager.UnknownConnection"),
+                                                         QStringLiteral("Connection could not be found.")));
+                return true;
+            }
+            if (entry.contains(QLatin1String("fails"))) {
+                connection.send(message.createErrorReply(QStringLiteral("org.freedesktop.NetworkManager.AgentManager.NoSecrets"),
+                                                         entry.value(QLatin1String("fails")).toString()));
+                return true;
+            }
+            const QString type = entry.value(QLatin1String("type")).toString();
+            const QString active = kNmPath + QStringLiteral("/ActiveConnection/%1").arg(100 + m_activated++);
+            m_objects[active][kNmActive] = QVariantMap{
+                {QStringLiteral("Id"), entry.value(QLatin1String("id")).toString()},
+                {QStringLiteral("Uuid"), entry.value(QLatin1String("uuid")).toString()},
+                {QStringLiteral("Type"), type},
+                {QStringLiteral("Vpn"), type == QLatin1String("vpn")},
+                {QStringLiteral("State"), QVariant::fromValue(quint32(2))},
+                {QStringLiteral("Default"), false}};
+            auto list = m_objects[kNmPath][kNm].value(QStringLiteral("ActiveConnections")).value<QList<QDBusObjectPath>>();
+            list.append(QDBusObjectPath(active));
+            connection.send(message.createReply(QVariant::fromValue(QDBusObjectPath(active))));
+            change(kNmPath, kNm, QStringLiteral("ActiveConnections"), QVariant::fromValue(list));
+            return true;
+        }
+        if (member == QLatin1String("DeactivateConnection")) {
+            const QDBusObjectPath active = message.arguments().value(0).value<QDBusObjectPath>();
+            out() << "client-call DeactivateConnection " << active.path() << Qt::endl;
+            auto list = m_objects[kNmPath][kNm].value(QStringLiteral("ActiveConnections")).value<QList<QDBusObjectPath>>();
+            if (!list.removeOne(active)) {
+                connection.send(message.createErrorReply(QStringLiteral("org.freedesktop.NetworkManager.ConnectionNotActive"),
+                                                         QStringLiteral("The connection was not active.")));
+                return true;
+            }
+            connection.send(message.createReply());
+            change(kNmPath, kNm, QStringLiteral("ActiveConnections"), QVariant::fromValue(list));
+            m_objects.remove(active.path());
+            return true;
+        }
+        return false;
+    }
 
     bool handleMessage(const QDBusMessage &message, const QDBusConnection &connection) override
     {
         if (message.interface() != kProperties)
-            return false;
+            return handleNetworkManager(message, connection);
         const QVariantList args = message.arguments();
         const QString interface = args.value(0).toString();
         const auto object = m_objects.constFind(message.path());
@@ -207,6 +301,8 @@ public:
 private:
     QDBusConnection m_bus;
     QHash<QString, QHash<QString, QVariantMap>> m_objects;
+    QJsonObject m_saved;        // NetworkManager's saved connections, by object path
+    int m_activated = 0;
 };
 
 } // namespace
@@ -215,6 +311,7 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     qDBusRegisterMetaType<QList<QVariantMap>>();
+    qDBusRegisterMetaType<QMap<QString, QVariantMap>>();
 
     const QStringList args = app.arguments();
     QString fixturePath, controlPath;
@@ -250,6 +347,7 @@ int main(int argc, char **argv)
     Fixture fixture(bus);
     if (!fixture.load(fixtureJson.value(QLatin1String("objects")).toObject()))
         return 1;
+    fixture.loadSaved(fixtureJson.value(QLatin1String("savedConnections")).toObject());
     if (!bus.isConnected() || !bus.registerVirtualObject(QStringLiteral("/"), &fixture, QDBusConnection::SubPath)) {
         QTextStream(stderr) << "cannot use the bus at " << qEnvironmentVariable("DBUS_SYSTEM_BUS_ADDRESS") << Qt::endl;
         return 1;
