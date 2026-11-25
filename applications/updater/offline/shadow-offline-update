@@ -57,7 +57,18 @@ adoptions() {
     [ ! -e "$EDITION_RECORD" ] || return 0
     installed shadow-horizon || return 0
     if installed "$EDITION"; then return 0; fi
-    apt-get -s -q --with-new-pkgs upgrade "$EDITION" >/dev/null 2>&1 || return 0
+    local why
+    if ! why="$(apt-get -s -q --with-new-pkgs upgrade "$EDITION" 2>&1)"; then
+        # Said, not hidden: otherwise an application that was added simply
+        # never appears, and nothing tells why.
+        {
+            echo "shadow-offline-update: the applications added since this system was installed ($EDITION)"
+            echo "cannot be installed with this update. The package manager says:"
+            grep -E '^(E:| +[a-z0-9].* : |The following packages have unmet)' <<<"$why" | head -n 8 | sed 's/^/    /'
+            echo "The other updates are installed as usual. To see the whole answer: sudo apt-get -s install $EDITION"
+        } >&2
+        return 0
+    fi
     echo "$EDITION"
 }
 

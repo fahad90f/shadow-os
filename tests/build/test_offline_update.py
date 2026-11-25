@@ -169,6 +169,7 @@ class OfflineUpdate(unittest.TestCase):
         self.assertEqual(self.state_file("packages").split(), ["shadow-horizon", "shadow-ui", "shadow-files"])
         self.assertNotIn("applications added", done.stdout)
         self.assertFalse(any("shadow-desktop" in c for c in self.calls()))  # not even asked about
+        self.assertNotIn("cannot be installed", done.stderr)
 
     def test_an_installed_metapackage_is_not_named(self):
         self.given("installed", "shadow-horizon\nshadow-desktop\n")
@@ -188,6 +189,10 @@ class OfflineUpdate(unittest.TestCase):
         self.given("installable", "")
         done = self.run_tool("prepare")
         self.assertEqual(done.returncode, 0, done.stderr)
+        # Why the added applications do not come is said, with the package manager's own words.
+        self.assertIn("cannot be installed with this update", done.stderr)
+        self.assertIn("E: Unable to locate package shadow-desktop", done.stderr)
+        self.assertIn("sudo apt-get -s install shadow-desktop", done.stderr)
         self.assertTrue(self.downloads()[0].endswith(" upgrade"), self.downloads())
         self.assertIsNone(self.state_file("extra"))
         self.assertTrue(self.prepared())
