@@ -19,8 +19,15 @@ real ones.
 
 ## How a trade is decided
 
-1. **Prices.** Candles of the selected market and the 24-hour tickers of the
-   watchlist are fetched every 5 seconds (`marketdata.*`).
+1. **Prices.** In real time: the data service pushes every trade of the
+   selected market, its candles and the watchlist's 24-hour tickers over one
+   WebSocket connection (`marketstream.*`), and the chart is redrawn at most
+   every 80 ms. Stops and targets are checked on those prices. The history
+   comes from ordinary requests (`marketdata.*`), which are also the
+   fallback: without the stream, prices are fetched every 5 seconds, and the
+   chart's header says which of the two is in use ("Real time" or "Every
+   5 s"). A stream that drops is reconnected after 1, 2, 5, 10 and then every
+   30 seconds.
 2. **Skills** (`skills/`, plain C++17, no Qt):
    - *TA Indicators*: EMA 20/50/200, RSI 14, MACD 12/26/9, Bollinger bands
      20/2, ATR 14, volume against its 20-candle average.
@@ -41,15 +48,36 @@ real ones.
 
    | Role | Focus | Skill briefs | Built-in models |
    |---|---|---|---|
-   | Analysis | one overall read | TA Indicators, SMC Patterns, Risk Engine | Mistral Large 4, GLM 5.3 Flash, Gemma 4 |
+   | Analysis (the team) | six seats, one per model, see below | TA Indicators, SMC Patterns, Risk Engine | Mistral Large 4, GLM 5.3 Flash, Gemma 3 12B, Nemotron 3.5 Lightning, Laguna XS 2.1, Gemma 3 4B |
    | Reasoning | argues against the obvious trade first | SMC Patterns, TA Indicators, Risk Engine | Kimi K3.1 Pro, Nemotron 3 Ultra, Step 5 Preview |
-   | Vision | also gets a picture of the chart | Chart Reading, SMC Patterns, Risk Engine | Nemotron 3.5 Super VL, Nemotron 3 Nano Omni, Muse Glimmer |
-   | Compute | works the numbers | TA Indicators, Risk Engine | MiniMax M3.1 Flash, Nemotron 3.5 Bolt, Nemotron 3.5 Lightning |
+   | Vision | also gets a picture of the chart | Chart Reading, SMC Patterns, Risk Engine | Nemotron 3.5 Super VL, Nemotron 3 Nano Omni, Cosmos Reason 2 |
+   | Compute | works the numbers | TA Indicators, Risk Engine | MiniMax M3.1 Flash, Nemotron 3.5 Bolt |
 
-   All twelve ids were in NVIDIA's public model list in November 2026. The
-   Model Panel switches models on and off, tests each one, adds any other
-   chat model from NVIDIA's list and restores the built-in panel. A model
-   NVIDIA no longer lists is shown as unavailable and not asked.
+   All fourteen ids were in NVIDIA's public model list in late November 2026
+   (which then held fourteen general chat models in all; two of the earlier
+   panel, Gemma 4 and Muse Glimmer, were no longer listed). The Model Panel
+   switches models on and off, tests each one, adds any other chat model from
+   NVIDIA's list and restores the built-in panel. A model NVIDIA no longer
+   lists is shown as unavailable and not asked.
+
+   **The analysis team.** The analysis models work as a team in two steps.
+   - *Seats.* Each member reads the snapshot from one seat, by its place on
+     the panel: trend, momentum, volatility, structure, volume and candles,
+     higher timeframe. Six models are six different looks at the market, not
+     one look six times. A seventh model shares the first seat, and so on.
+   - *Team review.* When the team's first calls are in, every member that
+     answered is asked once more, with its own call and its teammates' calls
+     and reasoning (by seat, without model names), and makes its final call.
+     It is told that agreement is not evidence and that keeping its call is a
+     normal outcome. The final call replaces the first one; a member that
+     fails in the review keeps its first call. Each member still has one
+     vote. The review costs one more request per member and can be switched
+     off (*Model Panel → Analysis → Team review*, or `team_review=false`).
+
+   The AI Analysis page shows each member's seat, the team's calls, and who
+   changed its call in the review. The review makes the team's members less
+   independent of each other: agreement after it says less than the same
+   agreement before it would.
 
    A **rule-based analyst** (a fixed scoring of the readings, `core/signal.cpp`)
    always votes, so the application works with no key at all. A model that
@@ -89,14 +117,31 @@ The window is always dark with a violet accent, whatever the system theme
 (`Shadow::Appearance::pin()`; the user's settings are neither read for these
 two nor changed).
 
-- **Live Trading**: watchlist with 24-hour lines, chart, the signal (action,
+- **Live Trading**: the markets with 24-hour lines, chart, the signal (action,
   confidence, entry, stop, target, reasoning), models and skills, live trades,
   portfolio, risk.
+  **Markets**: the **+** next to the cards opens *Add a market*: search what
+  the data service lists and add up to
+  12; the new market goes onto the chart at once. The **×** on a card (or
+  Delete with the card focused) removes it; the last market, and one with an
+  open position, cannot be removed. More markets than fit scroll sideways.
   The chart has two views: **TradingView** (TradingView's own embeddable
   chart, loaded from tradingview.com in a web view; drawing tools and
   indicators are TradingView's) and **AI chart** (drawn from the candles the
   analysts read, with EMA 20/50, Bollinger bands and the trade's entry, stop
-  and target).
+  and target). The AI chart moves like any trading chart:
+
+  | Do | With |
+  |---|---|
+  | Move through time | drag; ← →; Shift + wheel; a sideways swipe |
+  | Zoom (20 to 2,000 candles) | wheel, around the pointer; + and −; the two buttons |
+  | Back to the newest candles | the *Live* button; Home; double-click (also resets the zoom) |
+  | Read a candle | point at it: a crosshair with its time and the price at the pointer, and its open, high, low and close in the header |
+
+  Older candles are fetched as the view gets near the oldest one loaded, 1,000
+  at a time, back to the start of the market's history (at most 20,000 are
+  kept). While the view is in the past it stays on the same candles as new
+  ones arrive.
 - **AI Analysis**: every analyst's verdict, the risk rules one by one, the
   current readings, the activity log.
 - **Trade History**, **Portfolio** (account value over time, open positions,
@@ -127,8 +172,9 @@ Where the key comes from, first match wins:
 A key that plainly belongs to another company (`sk-ant-…`, `sk-…`, `AIza…`),
 wherever it was found, is passed over and never sent to NVIDIA.
 
-Every analysis is one request per enabled model (twelve with the built-in
-panel) and counts against your NVIDIA account. *Settings → Analyze when a
+Every analysis is one request per enabled model, and one more per member of
+the analysis team for its review (fourteen plus six with the built-in panel).
+They count against your NVIDIA account. *Settings → Analyze when a
 candle closes* turns the automatic analyses off.
 
 ## Files
@@ -143,9 +189,13 @@ candle closes* turns the automatic analyses off.
 [market]
 ; Binance-compatible public market data; no account, no key.
 ; data_url=https://data-api.binance.vision
-; Up to 12 markets, by the names the data service uses. A name it does not
-; list is marked "Not listed" on its card and left out of the price requests;
-; the other markets are not affected.
+; The live stream (WebSocket). "off": no stream, prices every 5 seconds.
+; Unset with a data_url of your own: no stream either.
+; stream_url=wss://data-stream.binance.vision
+; Up to 12 markets, by the names the data service uses; the window's "+"
+; and "×" write this line. A name the service does not list is marked "Not
+; listed" on its card and left out of the price requests; the other markets
+; are not affected.
 ; watchlist=BTCUSDT,ETHUSDT,SOLUSDT,PAXGUSDT,EURUSDT
 symbol=BTCUSDT
 interval=15m
@@ -153,6 +203,8 @@ interval=15m
 [engine]
 auto_trade=false
 auto_analyze=true
+; The analysis team reads each other's first calls and then makes its final ones.
+team_review=true
 
 [risk]
 risk_per_trade_pct=1
@@ -187,12 +239,15 @@ that is not of the form `publisher/model` is ignored.
 
 ## Data sources and runtime dependencies
 
-- Market data: `GET <data_url>/api/v3/klines` and `/api/v3/ticker/24hr`
-  (QtNetwork). Gold and the euro are shown as they trade on that exchange:
+- Market data: `GET <data_url>/api/v3/klines` (with `endTime` for older
+  candles), `/api/v3/ticker/24hr` and, for *Add a market*,
+  `/api/v3/ticker/price` (QtNetwork); the live stream
+  `<stream_url>/stream?streams=<market>@aggTrade/<market>@kline_<interval>/<each market>@miniTicker`
+  (QtWebSockets). Gold and the euro are shown as they trade on that exchange:
   the PAX Gold token (`PAXGUSDT`) and `EURUSDT`, not spot XAU/USD or EUR/USD.
 - Models: HTTPS requests to NVIDIA's endpoint (QtNetwork), one connection pool
-  per request in flight so twelve models are asked at once.
-- Packages: `shadow-ui`; for the TradingView view `qml6-module-qtwebengine`
+  per request in flight so all models are asked at once.
+- Packages: `shadow-ui`, `libqt6websockets6`; for the TradingView view `qml6-module-qtwebengine`
   (recommended; without it only the AI chart is offered and the application
   says so).
 - No privileged operation, no helper, no polkit action.
@@ -208,13 +263,14 @@ scripted `SHADOW_TRADING_SESSION_ACTIONS`, then reports).
 |---|---|---|
 | `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3276 checks) | build command in the file's header; plain `g++`, sanitizers |
 | `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account (309 checks) | as above |
-| `tests/test_app.py` | the real binary against `tests/fake_services.py` (35 tests): the watchlist and markets the data service does not list, the panel and its skill briefs, signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
+| `tests/test_app.py` | the real binary against `tests/fake_services.py` (49 tests): the watchlist and markets the data service does not list, adding and removing markets, the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
 
 `tests/fake_services.py` stands in for the exchange and for NVIDIA's model
 service on one local port, checks each request (the key, the model, the shape
 of the body) and records it. `tests/with-fakes.sh shadow-trading` runs the
 application against it by hand. Test hooks: `SHADOW_TRADING_DATA_URL`,
-`SHADOW_TRADING_NVIDIA_URL`, `SHADOW_TRADING_ANALYZE_ON_START=1`.
+`SHADOW_TRADING_NVIDIA_URL`, `SHADOW_TRADING_STREAM_URL`,
+`SHADOW_TRADING_ANALYZE_ON_START=1`.
 
 ## Limits
 
@@ -228,14 +284,23 @@ application against it by hand. Test hooks: `SHADOW_TRADING_DATA_URL`,
   handled by the running application; while it is closed nothing is watched,
   and a stop that was passed meanwhile fills at the first price seen
   afterwards.
-- Prices are polled every 5 seconds, so a move and its reversal inside that
-  interval on a market that is not on the chart can be missed; on the chart
-  the candle's high and low are used.
+- Markets that are not on the chart get one price a second from the stream
+  (every 5 seconds without it), so a move and its reversal inside that
+  interval can be missed there; on the chart every trade is seen.
+- The built-in data service lists crypto pairs only. Gold and the euro are
+  the PAX Gold token and EUR/USDT as they trade there; stocks, indices and
+  spot forex are not available from it.
 - The risk checks' detail texts and the rule-based analyst's reasoning come
   from the Qt-free core in English and are not translated.
-- **Not verified here** (the build environment has no route to them, and no
-  key): the real exchange API, real answers from NVIDIA's models (only
-  NVIDIA's public model list was read, to confirm the panel's ids), and the
-  TradingView chart itself. They were exercised only against the stand-ins;
-  the web view was checked up to its "could not be reached" fallback to the
-  AI chart.
+- **Checked against the real services:** the market data requests and the
+  live stream of the built-in data service (its messages were recorded and
+  are replayed in the tests, `tests/fixtures/real-stream.jsonl`), and NVIDIA's
+  public model list, to confirm the panel's ids.
+- **Not verified here** (no key in the build environment): real answers from
+  NVIDIA's models. That every one of the fourteen answers in the JSON format,
+  that the three vision models accept the chart picture, and how the team
+  behaves in its review were exercised only against the stand-in; a model
+  that does not cope is shown with its error on the Model Panel and left out.
+  The TradingView chart was checked only up to its "could not be reached"
+  fallback to the AI chart. The chart's mouse handling was driven in a
+  virtual display (drag, wheel, pointer), not by hand on a real screen.

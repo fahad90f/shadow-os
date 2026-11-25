@@ -24,7 +24,7 @@ Item {
         radius: Theme.radiusSm
         color: hover.hovered ? Theme.hoverOverlay : "transparent"
         border.width: root.activeFocus ? 2 : 0
-        border.color: Theme.focusRing
+        border.color: Theme.accent
     }
     HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
     TapHandler { onTapped: root.clicked() }

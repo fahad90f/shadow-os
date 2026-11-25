@@ -85,7 +85,7 @@ Rectangle {
                 color: selected ? "transparent" : hover.hovered ? Theme.hoverOverlay : "transparent"
                 gradient: selected ? selectedFill : null
                 border.width: activeFocus ? 2 : selected ? Theme.borderWidth : 0
-                border.color: activeFocus ? Theme.focusRing : Theme.alpha(Theme.accent, 0.9)
+                border.color: activeFocus ? Theme.textPrimary : Theme.alpha(Theme.accent, 0.9)
 
                 Gradient {
                     id: selectedFill

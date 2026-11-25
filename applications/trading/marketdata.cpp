@@ -151,7 +151,8 @@ QString MarketData::describe(QNetworkReply *reply) const
     return tr("Could not reach the market data service. Check the network connection.");
 }
 
-void MarketData::fetchCandles(const QString &symbol, const QString &interval, int limit, const QString &purpose)
+void MarketData::fetchCandles(const QString &symbol, const QString &interval, int limit, const QString &purpose,
+                              qint64 beforeMs)
 {
     // Only the chart's own candles are worth an error on screen; a
     // sparkline that did not arrive is simply not drawn.
@@ -169,6 +170,8 @@ void MarketData::fetchCandles(const QString &symbol, const QString &interval, in
     query.addQueryItem(QStringLiteral("symbol"), symbol);
     query.addQueryItem(QStringLiteral("interval"), interval);
     query.addQueryItem(QStringLiteral("limit"), QString::number(qBound(1, limit, 1000)));
+    if (beforeMs > 0)
+        query.addQueryItem(QStringLiteral("endTime"), QString::number(beforeMs));
     url.setQuery(query);
     QNetworkRequest req(url);
     req.setTransferTimeout(15000);
@@ -185,11 +188,18 @@ void MarketData::fetchCandles(const QString &symbol, const QString &interval, in
                     Q_EMIT failed(QStringLiteral("candles"), unlistedText(symbol));
             } else if (essential) {
                 Q_EMIT failed(QStringLiteral("candles"), describe(reply));
+            } else if (purpose == QLatin1String("older")) {
+                Q_EMIT failed(QStringLiteral("older"), describe(reply));
             }
             return;
         }
         QString error;
         const Trading::Candles series = parseKlines(reply->readAll(), QDateTime::currentMSecsSinceEpoch(), &error);
+        if (series.empty() && purpose == QLatin1String("older")) {
+            // No candles before that time: the beginning of the market's history.
+            Q_EMIT candles(symbol, interval, series, purpose);
+            return;
+        }
         if (series.empty()) {
             if (essential)
                 Q_EMIT failed(QStringLiteral("candles"),
@@ -197,6 +207,46 @@ void MarketData::fetchCandles(const QString &symbol, const QString &interval, in
             return;
         }
         Q_EMIT candles(symbol, interval, series, purpose);
+    });
+}
+
+QList<QPair<QString, double>> MarketData::parseAllPrices(const QByteArray &json)
+{
+    // [{"symbol": "BTCUSDT", "price": "59207.12"}, …]
+    QList<QPair<QString, double>> list;
+    const QJsonArray rows = QJsonDocument::fromJson(json).array();
+    list.reserve(rows.size());
+    for (const QJsonValue &value : rows) {
+        const QJsonObject o = value.toObject();
+        const QString symbol = o.value(QLatin1String("symbol")).toString();
+        double price = 0;
+        if (!symbol.isEmpty() && number(o.value(QLatin1String("price")), &price) && price > 0)
+            list.append({symbol, price});
+    }
+    return list;
+}
+
+void MarketData::fetchAllPrices()
+{
+    if (m_inFlight.value(QStringLiteral("all")))
+        return;
+    QNetworkRequest req(QUrl(m_baseUrl + QStringLiteral("/api/v3/ticker/price")));
+    req.setTransferTimeout(20000);
+    QNetworkReply *reply = m_net->get(req);
+    m_inFlight.insert(QStringLiteral("all"), reply);
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        reply->deleteLater();
+        m_inFlight.remove(QStringLiteral("all"));
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (status != 200) {
+            Q_EMIT allPricesFailed(describe(reply));
+            return;
+        }
+        const QList<QPair<QString, double>> list = parseAllPrices(reply->readAll());
+        if (list.isEmpty())
+            Q_EMIT allPricesFailed(tr("The list of markets could not be read."));
+        else
+            Q_EMIT allPrices(list);
     });
 }
 

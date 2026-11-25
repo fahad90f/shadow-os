@@ -18,6 +18,9 @@ answers, by model id, with "*" for every model that is not named:
 "moonshotai/kimi-k3.1-pro": {"status": 429}, "z-ai/glm-5.3-flash": {"raw":
 "text"}}. Options of an answer: "fenced" (wrap in a code fence), "think"
 (thinking in <think> tags first), "refusal", "empty", "delay" (seconds).
+A model's "review": {...} is how it answers in the team review (the second
+request the members of the analysis team get); without it, it repeats its
+first answer.
 Without a scenario every model answers hold.
 "missing": [ids] takes models out of the catalog.
 "market": {"status": 451} makes the exchange refuse; "market": {"move_pct": -3}
@@ -41,24 +44,31 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TEST_KEY = "nvapi-test-00000000000000000000000"
-# The application's built-in panel, by role.
+# The application's built-in panel, by role. The six analysis models are the
+# analysis team: each has a seat, in this order.
 PANEL = {
-    "analysis": ["mistralai/mistral-large-4-1t-a52b", "z-ai/glm-5.3-flash", "google/gemma-4-31b-it"],
+    "analysis": ["mistralai/mistral-large-4-1t-a52b", "z-ai/glm-5.3-flash", "google/gemma-3-12b-it",
+                 "nvidia/nemotron-3.5-lightning-30b-a3b", "poolside/laguna-xs-2.1", "google/gemma-3-4b-it"],
     "reasoning": ["moonshotai/kimi-k3.1-pro", "nvidia/nemotron-3-ultra-550b-a55b", "stepfun-ai/step-5-preview"],
     "vision": ["nvidia/nemotron-3.5-super-vl-120b-a12b", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-               "meta/muse-glimmer-30b"],
-    "compute": ["minimaxai/minimax-m3.1-flash", "nvidia/nemotron-3.5-bolt-e4b",
-                "nvidia/nemotron-3.5-lightning-30b-a3b"],
+               "nvidia/cosmos-reason2-8b"],
+    "compute": ["minimaxai/minimax-m3.1-flash", "nvidia/nemotron-3.5-bolt-e4b"],
 }
 PANEL_MODELS = [model for models in PANEL.values() for model in models]
+SEATS = ["Trend", "Momentum", "Volatility", "Structure", "Volume and candles", "Higher timeframe"]
 # The rest of the catalog: models that are not on the panel, some of them not chat models.
-OTHER_MODELS = ["google/gemma-3-12b-it", "poolside/laguna-xs-2.1", "nvidia/embed-qa-4",
+OTHER_MODELS = ["bigcode/starcoder2-15b", "nvidia/riva-translate-4b-instruct-v2", "nvidia/embed-qa-4",
                 "nvidia/nemotron-3.5-content-safety"]
 INTERVAL_MS = {"1m": 60_000, "5m": 300_000, "15m": 900_000, "1h": 3_600_000, "4h": 14_400_000,
                "1d": 86_400_000}
-BASE_PRICE = {"BTCUSDT": 92000.0, "ETHUSDT": 3200.0, "SOLUSDT": 140.0, "PAXGUSDT": 4050.0, "EURUSDT": 1.158}
+BASE_PRICE = {"BTCUSDT": 92000.0, "ETHUSDT": 3200.0, "SOLUSDT": 140.0, "PAXGUSDT": 4050.0, "EURUSDT": 1.158,
+              # Listed by the service but not on the built-in watchlist: for adding a market.
+              "DOGEUSDT": 0.2314, "XRPUSDT": 2.41, "BNBUSDT": 912.0, "ETHBTC": 0.0348}
 # The order a list of tickers comes back in, whatever order was asked for.
-LISTING_ORDER = ["BTCUSDT", "ETHUSDT", "EURUSDT", "SOLUSDT", "PAXGUSDT"]
+LISTING_ORDER = ["BTCUSDT", "ETHUSDT", "EURUSDT", "SOLUSDT", "PAXGUSDT", "ETHBTC", "BNBUSDT", "XRPUSDT", "DOGEUSDT"]
+# The first candle the service has of any market, in hours before it started:
+# asking for candles before that gives none (the beginning of the history).
+HISTORY_HOURS = 2000
 
 ARGS = None
 START_HOURS = time.time() / 3600.0
@@ -135,7 +145,68 @@ def klines(query, now_ms):
     limit = max(1, min(1000, int(query.get("limit", ["500"])[0])))
     step = INTERVAL_MS[interval]
     last = now_ms // step
-    return 200, [candle(symbol, k, step, now_ms) for k in range(last - limit + 1, last + 1)]
+    if "endTime" in query:
+        # Candles that opened at or before that time (older history).
+        last = min(last, int(query["endTime"][0]) // step)
+    oldest = int((START_HOURS - HISTORY_HOURS) * 3_600_000) // step
+    return 200, [candle(symbol, k, step, now_ms) for k in range(max(oldest, last - limit + 1), last + 1)]
+
+
+def all_prices(now_ms):
+    step = 60_000
+    return 200, [{"symbol": symbol, "price": f"{level(symbol, now_ms / step, step):.8f}"} for symbol in LISTING_ORDER]
+
+
+# ---- the live stream ---------------------------------------------------------------
+
+def stream_messages(streams, now_ms, last_sent):
+    """What the combined stream pushes now: every trade stream gets a trade, kline and
+    ticker streams one message a second ('last_sent': stream -> time of the last one)."""
+    out = []
+    for name in streams:
+        market, _, kind = name.partition("@")
+        symbol = market.upper()
+        if symbol not in BASE_PRICE:
+            continue
+        move = 1 + scenario().get("market", {}).get("move_pct", 0) / 100
+        price = level(symbol, now_ms / 60_000, 60_000) * move
+        if kind == "aggTrade":
+            data = {"e": "aggTrade", "E": now_ms, "s": symbol, "a": now_ms, "p": f"{price:.8f}", "q": "0.01000000",
+                    "f": 1, "l": 1, "T": now_ms, "m": False, "M": True}
+        elif now_ms - last_sent.get(name, 0) < 1000:
+            continue
+        elif kind.startswith("kline_") and kind[6:] in INTERVAL_MS:
+            step = INTERVAL_MS[kind[6:]]
+            k = now_ms // step
+            row = candle(symbol, k, step, now_ms)
+            # The forming candle ends at the price the trades are at.
+            close = level(symbol, now_ms / step, step) * move
+            data = {"e": "kline", "E": now_ms, "s": symbol,
+                    "k": {"t": row[0], "T": row[6], "s": symbol, "i": kind[6:], "o": row[1], "c": f"{close:.8f}",
+                          "h": f"{max(float(row[2]), close):.8f}", "l": f"{min(float(row[3]), close):.8f}",
+                          "v": row[5], "n": 100, "x": False, "q": row[7], "V": row[9], "Q": row[10], "B": "0"}}
+        elif kind == "miniTicker":
+            day_ago = level(symbol, (now_ms - 86_400_000) / 60_000, 60_000)
+            data = {"e": "24hrMiniTicker", "E": now_ms, "s": symbol, "c": f"{price:.8f}", "o": f"{day_ago:.8f}",
+                    "h": f"{max(price, day_ago) * 1.004:.8f}", "l": f"{min(price, day_ago) * 0.996:.8f}",
+                    "v": "1000.00000000", "q": "123456789.00000000"}
+        else:
+            continue
+        last_sent[name] = now_ms
+        out.append({"stream": name, "data": data})
+    return out
+
+
+def frame(text):
+    """One unmasked WebSocket text frame (server to client)."""
+    payload = text.encode()
+    if len(payload) < 126:
+        head = bytes([0x81, len(payload)])
+    elif len(payload) < 65536:
+        head = bytes([0x81, 126]) + struct.pack(">H", len(payload))
+    else:
+        head = bytes([0x81, 127]) + struct.pack(">Q", len(payload))
+    return head + payload
 
 
 def tickers(query, now_ms):
@@ -168,13 +239,47 @@ def catalog():
     return sorted(m for m in PANEL_MODELS + OTHER_MODELS if m not in missing)
 
 
-def plan_for(model):
+def plan_for(model, review=False):
+    """How a model answers; in the team review, its "review" plan when it has one."""
     plans = scenario()
-    return plans.get(model, plans.get("*", {"action": "hold"}))
+    plan = plans.get(model, plans.get("*", {"action": "hold"}))
+    return plan.get("review", plan) if review else plan
 
 
-def verdict_text(model, snapshot_price):
-    plan = plan_for(model)
+REVIEW_MARK = "\n\nTeam review. "
+
+
+def user_text(body):
+    """The text a chat request's user messages carry."""
+    text = ""
+    for message in body.get("messages", []) if isinstance(body, dict) else []:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            text += content
+        elif isinstance(content, list):
+            text += "".join(part.get("text", "") for part in content if part.get("type") == "text")
+    return text
+
+
+def review_notes(user):
+    """What a team review request carries: the member's own call and its teammates', by seat."""
+    notes = {"review": REVIEW_MARK in user}
+    if not notes["review"]:
+        return notes
+    tail = user[user.index(REVIEW_MARK):]
+    try:
+        own = json.loads(tail[tail.index("Your first call:\n") + 17:].split("\n", 1)[0])
+        mates = json.loads(tail[tail.index("Your teammates' calls:\n") + 23:])
+        notes.update({"own": [own["seat"], own["action"]], "teammates": [[m["seat"], m["action"]] for m in mates]})
+    except (ValueError, KeyError, TypeError):
+        notes["malformed"] = True
+    return notes
+
+
+def verdict_text(model, snapshot_price, review=False):
+    plan = plan_for(model, review)
     if "raw" in plan:
         return plan["raw"]
     action = plan.get("action", "hold")
@@ -200,8 +305,9 @@ def price_in(text):
     if start < 0:
         return 0.0
     try:
-        return float(json.loads(text[start:]).get("price", 0))
-    except ValueError:
+        # The snapshot is the first JSON value; a team review has more text after it.
+        return float(json.JSONDecoder().raw_decode(text[start:])[0].get("price", 0))
+    except (ValueError, AttributeError):
         return 0.0
 
 
@@ -257,8 +363,12 @@ def chat(body):
                                                       ("risk", "Skill: Risk Engine"), ("chart", "Skill: Chart Reading"))
                              if title in system)
     notes["temperature"] = body.get("temperature")
-    plan = plan_for(model)
-    message = {"role": "assistant", "content": verdict_text(model, price_in(user))}
+    # The seat of a member of the analysis team, as its instructions name it.
+    mark = "Your seat on the analysis team: "
+    notes["seat"] = system[system.index(mark) + len(mark):].split(".", 1)[0] if mark in system else ""
+    notes.update(review_notes(user))
+    plan = plan_for(model, notes["review"])
+    message = {"role": "assistant", "content": verdict_text(model, price_in(user), notes["review"])}
     if plan.get("refusal"):
         message = {"role": "assistant", "content": None, "refusal": "I can't help with that."}
     if plan.get("empty"):
@@ -290,10 +400,53 @@ class Handler(BaseHTTPRequestHandler):
         sent = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         return "missing" if not sent else "ok" if sent == TEST_KEY else "wrong"
 
+    def serve_stream(self, query):
+        """The combined market stream: /stream?streams=a@aggTrade/a@kline_15m/b@miniTicker."""
+        plan = scenario().get("stream", {})
+        key = self.headers.get("Sec-WebSocket-Key", "")
+        if plan.get("off") or self.headers.get("Upgrade", "").lower() != "websocket" or not key:
+            record({"kind": "stream", "status": 404})
+            return self.reply(404, {"code": -1, "msg": "no stream here"})
+        streams = [name for name in query.get("streams", [""])[0].split("/") if name]
+        record({"kind": "stream", "status": 101, "streams": streams})
+        accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest())
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept.decode())
+        self.end_headers()
+        self.close_connection = True
+        started, last_sent = time.time(), {}
+        try:
+            # {"stream": {"replay": FILE}}: first the recorded messages of the real
+            # service, one per line, exactly as they were received.
+            if plan.get("replay"):
+                time.sleep(plan.get("replay_after", 0))
+                with open(plan["replay"], encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            self.wfile.write(frame(line.strip()))
+                self.wfile.flush()
+            while True:
+                plan = scenario().get("stream", {})
+                # {"stream": {"drop_after": 2}}: the connection is cut after that many seconds.
+                if "drop_after" in plan and time.time() - started >= plan["drop_after"]:
+                    record({"kind": "stream", "status": "dropped"})
+                    return
+                if not plan.get("silent"):
+                    for message in stream_messages(streams, int(time.time() * 1000), last_sent):
+                        self.wfile.write(frame(json.dumps(message, separators=(",", ":"))))
+                    self.wfile.flush()
+                time.sleep(0.1)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
         now_ms = int(time.time() * 1000)
+        if parsed.path == "/stream":
+            return self.serve_stream(query)
         if parsed.path.startswith("/api/v3/"):
             market = scenario().get("market", {})
             if "status" in market:
@@ -301,6 +454,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(market["status"], {"code": 0, "msg": "Service unavailable from a restricted location."})
             if parsed.path == "/api/v3/klines":
                 status, payload = klines(query, now_ms)
+            elif parsed.path == "/api/v3/ticker/price":
+                status, payload = all_prices(now_ms)
             elif parsed.path == "/api/v3/ticker/24hr":
                 status, payload = tickers(query, now_ms)
             else:
@@ -332,11 +487,13 @@ class Handler(BaseHTTPRequestHandler):
             # The refusal quotes part of what was sent, as services do.
             return self.reply(401, {"status": 401, "title": "Unauthorized",
                                     "detail": "Authentication failed for key nvapi-…abcd"})
-        plan = plan_for(model)
+        review = REVIEW_MARK in user_text(body)
+        plan = plan_for(model, review)
         if plan.get("delay"):
             time.sleep(float(plan["delay"]))
         if "status" in plan:
             entry["status"] = plan["status"]
+            entry["review"] = review
             record(entry)
             return self.reply(plan["status"], {"status": plan["status"], "detail": plan.get("message", "scenario error")})
         status, payload, notes = chat(body)

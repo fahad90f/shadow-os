@@ -232,14 +232,14 @@ engine's internals:
 
 | | |
 |---|---|
-| Purpose | a trading desk: live prices and a chart, a panel of NVIDIA-hosted models plus a rule-based analyst that analyses the selected market at each candle close, fixed risk rules, and a **paper account** the resulting trades are placed on. No order leaves the computer; there is no real-money mode |
+| Purpose | a trading desk: real-time prices and a chart that can be moved through time and zoomed, markets added and removed in the window, a panel of NVIDIA-hosted models (six of them an analysis team with one seat each and a team review) plus a rule-based analyst that analyses the selected market at each candle close, fixed risk rules, and a **paper account** the resulting trades are placed on. No order leaves the computer; there is no real-money mode |
 | Binary / package | `shadow-trading` / `shadow-trading`; single instance; always dark with a violet accent |
-| Data sources | public market data from a Binance-compatible API (`/api/v3/klines`, `/api/v3/ticker/24hr`, default `data-api.binance.vision`, no key); NVIDIA's model service (`integrate.api.nvidia.com/v1`, one request per model per analysis); `~/.config/shadow/trading.conf`; `~/.config/shadow/trading/nvidia.key` (mode 600, also read from `NVIDIA_API_KEY` or shared with the Assistant); `~/.local/share/shadow/trading/paper.json` (the account and its history) |
+| Data sources | public market data from a Binance-compatible API (`/api/v3/klines`, `/api/v3/ticker/24hr`, `/api/v3/ticker/price`, default `data-api.binance.vision`, no key) and its live WebSocket stream (default `data-stream.binance.vision`; without it prices are fetched every 5 seconds); NVIDIA's model service (`integrate.api.nvidia.com/v1`, one request per model per analysis and one more per member of the analysis team); `~/.config/shadow/trading.conf`; `~/.config/shadow/trading/nvidia.key` (mode 600, also read from `NVIDIA_API_KEY` or shared with the Assistant); `~/.local/share/shadow/trading/paper.json` (the account and its history) |
 | Command line | `shadow-trading [live\|analysis\|history\|portfolio\|risk\|models\|settings\|about]`, `--dump config\|account\|market\|signal\|session` |
 | Privileges | none |
-| Runtime dependencies | `shadow-ui`; `qml6-module-qtwebengine` for the TradingView tab (without it, or without a route to tradingview.com, the application draws its own chart and says so) |
+| Runtime dependencies | `shadow-ui`, `libqt6websockets6`; `qml6-module-qtwebengine` for the TradingView tab (without it, or without a route to tradingview.com, the application draws its own chart and says so) |
 | Tests | `tests/run-suites.sh` runs the two unit programs (indicators and patterns; consensus, risk rules, paper account); `applications/trading/tests/test_app.py` drives the built binary against stand-ins for the exchange and for NVIDIA's service |
-| Not verified | the real exchange API, real answers from NVIDIA's models and the TradingView chart itself: the build environment has no route to them and no key. This is not financial advice, and simulated results are not real ones |
+| Not verified | real answers from NVIDIA's models (no key in the build environment) and the TradingView chart itself. The market data requests and the live stream were checked against the real service. This is not financial advice, and simulated results are not real ones |
 
 ## Terminal
 

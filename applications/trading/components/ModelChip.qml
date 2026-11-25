@@ -21,7 +21,7 @@ Rectangle {
     radius: Theme.radiusMd
     color: hover.hovered ? Theme.bgHover : Theme.alpha(Theme.bgRaised, 0.9)
     border.width: activeFocus ? 2 : Theme.borderWidth
-    border.color: activeFocus ? Theme.focusRing : Theme.alpha(Theme.accent, 0.3)
+    border.color: activeFocus ? Theme.textPrimary : Theme.alpha(Theme.accent, 0.3)
     activeFocusOnTab: true
     Accessible.role: Accessible.Button
     Accessible.name: qsTr("%1, %2 models, %3: %4. Open the Model Panel.").arg(labels.role(analyst.role))

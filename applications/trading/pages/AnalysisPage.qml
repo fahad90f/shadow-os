@@ -74,15 +74,29 @@ NxPage {
     NxSection {
         visible: page.ready
         title: qsTr("Analysts")
-        description: qsTr("Each analyst reads the same snapshot of the market and answers on its own.")
+        description: qsTr("Each analyst reads the same snapshot of the market and answers on its own. The members of the analysis team each read it from one seat, then read each other's calls and make their final ones.")
+        NxRow {
+            readonly property var team: page.ready && page.signalData.team ? page.signalData.team : ({ members: 0 })
+            visible: team.members >= 2
+            icon: "users"
+            iconColor: Theme.accent
+            title: qsTr("Analysis team: %1 buy · %2 sell · %3 hold").arg(team.buy || 0).arg(team.sell || 0).arg(team.hold || 0)
+            subtitle: (team.reviewed || 0) === 0 ? qsTr("%1 analysts. No team review in this analysis.").arg(team.members)
+                : (team.changed || 0) === 0 ? qsTr("%1 analysts. They read each other's calls; nobody changed its own.").arg(team.members)
+                : qsTr("%1 analysts. They read each other's calls; %2 changed its own.").arg(team.members).arg(team.changed)
+        }
         Repeater {
             model: page.ready ? page.signalData.verdicts : []
             NxRow {
                 required property var modelData
                 icon: words.roleIcon(modelData.role)
                 iconColor: modelData.ok ? words.actionColor(modelData.action) : Theme.warning
-                title: qsTr("%1 · %2").arg(modelData.name).arg(words.role(modelData.role))
-                subtitle: modelData.ok ? modelData.reasoning : qsTr("No verdict: %1").arg(modelData.error)
+                title: modelData.seatTitle
+                    ? qsTr("%1 · %2 · %3 seat").arg(modelData.name).arg(words.role(modelData.role)).arg(modelData.seatTitle)
+                    : qsTr("%1 · %2").arg(modelData.name).arg(words.role(modelData.role))
+                subtitle: !modelData.ok ? qsTr("No verdict: %1").arg(modelData.error)
+                    : modelData.changed ? qsTr("Changed from %1 after the team review. %2").arg(words.action(modelData.firstAction)).arg(modelData.reasoning)
+                    : modelData.reasoning
                 value: !modelData.ok ? ""
                     : modelData.action === "hold" ? qsTr("Hold")
                     : qsTr("%1 · %2").arg(words.action(modelData.action)).arg(Format.number(modelData.confidence, 0))

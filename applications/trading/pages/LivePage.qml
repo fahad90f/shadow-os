@@ -17,6 +17,7 @@ Item {
     readonly property var roles: trading.analysts.filter(a => a.kind === "role")
 
     Labels { id: words }
+    MarketsDialog { id: marketsDialog }
 
     // The desk fills the window; in a window too small for all of it, it
     // keeps its minimum size and scrolls.
@@ -76,14 +77,47 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spaceSm
-                Repeater {
+                // The markets: side by side while they fit, scrolling sideways
+                // when there are more.
+                ListView {
+                    id: markets
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 64
+                    orientation: ListView.Horizontal
+                    spacing: Theme.spaceSm
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
                     model: trading.watchlist
-                    TickerCard {
+                    readonly property real cardWidth: Math.max(176, (width - spacing * (count - 1)) / Math.max(1, count))
+                    delegate: TickerCard {
                         required property var modelData
-                        Layout.fillWidth: true
+                        width: markets.cardWidth
+                        height: markets.height
                         market: modelData
+                        removable: markets.count > 1
                         onChosen: (symbol) => trading.symbol = symbol
+                        onRemoved: (symbol) => {
+                            var error = trading.removeMarket(symbol)
+                            if (error !== "")
+                                ApplicationWindow.window.toaster.show(error, "warning")
+                        }
                     }
+                    // The wheel moves the row sideways.
+                    WheelHandler {
+                        enabled: markets.contentWidth > markets.width
+                        onWheel: (event) => {
+                            var delta = event.angleDelta.y !== 0 ? event.angleDelta.y : event.angleDelta.x
+                            markets.contentX = Math.max(0, Math.min(markets.contentWidth - markets.width, markets.contentX - delta))
+                        }
+                    }
+                    ScrollBar.horizontal: ScrollBar { policy: markets.contentWidth > markets.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
+                }
+                NxIconButton {
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 64
+                    iconName: "plus"
+                    tooltip: qsTr("Add a market")
+                    onClicked: marketsDialog.open()
                 }
                 PnlCard {}
             }

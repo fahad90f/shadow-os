@@ -12,6 +12,9 @@ GlowCard {
 
     required property var market   // {symbol, name, hasPrice, listed, price, changePct, spark, selected}
     signal chosen(string symbol)
+    // Whether it can be taken off the list (not the last one).
+    property bool removable: false
+    signal removed(string symbol)
 
     readonly property bool up: market.changePct >= 0
     readonly property string base: Format.base(market.name)
@@ -33,6 +36,7 @@ GlowCard {
         : qsTr("%1, no price yet").arg(market.name)
     Keys.onReturnPressed: chosen(market.symbol)
     Keys.onSpacePressed: chosen(market.symbol)
+    Keys.onDeletePressed: if (removable) removed(market.symbol)
 
     Rectangle {
         anchors.fill: parent
@@ -40,10 +44,17 @@ GlowCard {
         radius: root.radius
         color: hover.hovered && !root.market.selected ? Theme.hoverOverlay : "transparent"
         border.width: root.activeFocus ? 2 : 0
-        border.color: Theme.focusRing
+        border.color: Theme.accent
     }
     HoverHandler { id: hover }
-    TapHandler { onTapped: root.chosen(root.market.symbol) }
+    TapHandler {
+        // A tap on the remove button is not a tap on the card.
+        onTapped: (point) => {
+            var at = remove.mapFromItem(root, point.position.x, point.position.y)
+            if (!(remove.visible && remove.contains(at)))
+                root.chosen(root.market.symbol)
+        }
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -108,5 +119,36 @@ GlowCard {
             gridLines: 0
             Accessible.ignored: true
         }
+    }
+
+    // Take the market off the list: shown while the pointer is on the card
+    // (or the card has the keyboard focus; Delete does the same).
+    Rectangle {
+        id: remove
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.rightMargin: -root.padding + 3
+        anchors.topMargin: -root.padding + 3
+        width: 22
+        height: 22
+        radius: width / 2
+        visible: root.removable && (hover.hovered || root.activeFocus)
+        color: removeHover.hovered ? Theme.bgPressed : Theme.bgRaised
+        border.width: 1
+        border.color: Theme.borderStrong
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("Remove %1 from the markets").arg(root.market.name)
+        Accessible.onPressAction: root.removed(root.market.symbol)
+        NxIcon {
+            anchors.centerIn: parent
+            name: "close"
+            size: 16
+            color: removeHover.hovered ? Theme.danger : Theme.textPrimary
+        }
+        HoverHandler { id: removeHover; cursorShape: Qt.PointingHandCursor }
+        TapHandler { onTapped: root.removed(root.market.symbol) }
+        ToolTip.visible: removeHover.hovered
+        ToolTip.delay: 500
+        ToolTip.text: qsTr("Remove %1 from the markets").arg(root.market.name)
     }
 }

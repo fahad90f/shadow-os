@@ -74,6 +74,28 @@ int main(int argc, char **argv)
                     for (const QVariant &p : open)
                         engine.closePosition(p.toMap().value(QStringLiteral("id")).toLongLong());
                     result = QString::number(open.size());
+                } else if (action == QLatin1String("older")) {
+                    // What moving the chart into the past does.
+                    const int before = int(engine.chartCandles().size());
+                    engine.loadOlder();
+                    if (engine.loadingOlder())
+                        app.waitFor(&engine, SIGNAL(chartChanged()), 20000);
+                    result = QString::number(int(engine.chartCandles().size()) - before);
+                } else if (action.startsWith(QLatin1String("add:"))) {
+                    result = engine.addMarket(action.mid(4));
+                } else if (action.startsWith(QLatin1String("remove:"))) {
+                    result = engine.removeMarket(action.mid(7));
+                } else if (action.startsWith(QLatin1String("select:"))) {
+                    engine.setSymbol(action.mid(7));
+                    app.waitFor(&engine, SIGNAL(marketReady()), 20000);
+                } else if (action.startsWith(QLatin1String("find:"))) {
+                    engine.refreshMarkets();
+                    app.waitFor(&engine, SIGNAL(marketsChanged()), 20000);
+                    QStringList names;
+                    const QVariantList found = engine.findMarkets(action.mid(5));
+                    for (const QVariant &row : found)
+                        names.append(row.toMap().value(QStringLiteral("symbol")).toString());
+                    result = names.join(QLatin1Char(' '));
                 } else if (action == QLatin1String("reset")) {
                     engine.resetPaperAccount();
                 } else if (action == QLatin1String("resume")) {

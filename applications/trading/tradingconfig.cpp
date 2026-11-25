@@ -10,6 +10,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 
+#include <algorithm>
 #include <cerrno>
 #include <cmath>
 #include <cstring>
@@ -25,8 +26,10 @@ QString configBase()
 
 const char kNvidiaUrl[] = "https://integrate.api.nvidia.com/v1";
 
-// The built-in panel: twelve of NVIDIA's hosted models, three per role. Every
-// id is in NVIDIA's catalog as of November 2026; a model the service no longer
+// The built-in panel: fourteen of NVIDIA's hosted models. Six form the
+// analysis team (one per seat, see TradingEngine::teamSeats), three argue the
+// other side, three read the picture and two work the numbers. Every id is in
+// NVIDIA's catalog as of late November 2026; a model the service no longer
 // offers is shown as unavailable and left out of the analyses.
 QList<TradingConfig::Member> builtinPanel()
 {
@@ -34,17 +37,19 @@ QList<TradingConfig::Member> builtinPanel()
     static const Row rows[] = {
         {"analysis", "mistralai/mistral-large-4-1t-a52b"},
         {"analysis", "z-ai/glm-5.3-flash"},
-        {"analysis", "google/gemma-4-31b-it"},
+        {"analysis", "google/gemma-3-12b-it"},
+        {"analysis", "nvidia/nemotron-3.5-lightning-30b-a3b"},
+        {"analysis", "poolside/laguna-xs-2.1"},
+        {"analysis", "google/gemma-3-4b-it"},
         {"reasoning", "moonshotai/kimi-k3.1-pro"},
         {"reasoning", "nvidia/nemotron-3-ultra-550b-a55b"},
         {"reasoning", "stepfun-ai/step-5-preview"},
         // The models that read pictures.
         {"vision", "nvidia/nemotron-3.5-super-vl-120b-a12b"},
         {"vision", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"},
-        {"vision", "meta/muse-glimmer-30b"},
+        {"vision", "nvidia/cosmos-reason2-8b"},
         {"compute", "minimaxai/minimax-m3.1-flash"},
         {"compute", "nvidia/nemotron-3.5-bolt-e4b"},
-        {"compute", "nvidia/nemotron-3.5-lightning-30b-a3b"},
     };
     QList<TradingConfig::Member> panel;
     for (const Row &row : rows) {
@@ -90,11 +95,6 @@ QString foreignKeyOwner(const QString &key)
     return {};
 }
 
-bool validSymbol(const QString &symbol)
-{
-    static const QRegularExpression re(QStringLiteral("^[A-Z0-9]{5,20}$"));
-    return re.match(symbol).hasMatch();
-}
 
 double clampOr(double value, double low, double high, double fallback)
 {
@@ -102,6 +102,12 @@ double clampOr(double value, double low, double high, double fallback)
 }
 
 } // namespace
+
+bool TradingConfig::validSymbol(const QString &symbol)
+{
+    static const QRegularExpression re(QStringLiteral("^[A-Z0-9]{5,20}$"));
+    return re.match(symbol).hasMatch();
+}
 
 TradingConfig::TradingConfig(QObject *parent)
     : QObject(parent)
@@ -179,6 +185,24 @@ QString TradingConfig::displayName(const QString &model)
     return words.isEmpty() ? model : words.join(QLatin1Char(' '));
 }
 
+QString TradingConfig::memberName(const QString &model) const
+{
+    const QString name = displayName(model);
+    const bool shared = std::any_of(m_panel.cbegin(), m_panel.cend(), [&](const Member &other) {
+        return other.model != model && displayName(other.model) == name;
+    });
+    if (!shared)
+        return name;
+    // The first size token of the id: "gemma-3-12b-it" -> "12B".
+    static const QRegularExpression size(QStringLiteral("^\\d+(\\.\\d+)?[bt]$"));
+    const QStringList tokens = model.section(QLatin1Char('/'), 1).split(QLatin1Char('-'), Qt::SkipEmptyParts);
+    for (const QString &token : tokens) {
+        if (size.match(token).hasMatch())
+            return name + QLatin1Char(' ') + token.toUpper();
+    }
+    return name;
+}
+
 QString TradingConfig::shortName(const QString &model)
 {
     return displayName(model).section(QLatin1Char(' '), 0, 0);
@@ -239,6 +263,22 @@ void TradingConfig::reload()
     while (m_dataUrl.endsWith(QLatin1Char('/')))
         m_dataUrl.chop(1);
 
+    // The live stream belongs to the data service: the built-in one has a
+    // public stream; another service has one only when its address is given.
+    // "off" turns it off (prices are then asked for every few seconds).
+    const bool builtinData = dataEnv.isEmpty() && ini.value(QStringLiteral("market/data_url")).toString().trimmed().isEmpty();
+    m_streamUrl = ini.value(QStringLiteral("market/stream_url")).toString().trimmed();
+    const QByteArray streamEnv = qgetenv("SHADOW_TRADING_STREAM_URL");
+    if (!streamEnv.isEmpty())
+        m_streamUrl = QString::fromUtf8(streamEnv).trimmed();
+    if (m_streamUrl.isEmpty() && builtinData)
+        m_streamUrl = QStringLiteral("wss://data-stream.binance.vision"); // public market data, no key
+    if (m_streamUrl.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0
+        || !(m_streamUrl.startsWith(QLatin1String("wss://")) || m_streamUrl.startsWith(QLatin1String("ws://"))))
+        m_streamUrl.clear();
+    while (m_streamUrl.endsWith(QLatin1Char('/')))
+        m_streamUrl.chop(1);
+
     m_watchlist.clear();
     // QSettings reads "a, b" as a list (and a list has no text of its own).
     const QStringList listed = ini.value(QStringLiteral("market/watchlist")).toStringList().join(QLatin1Char(','))
@@ -264,6 +304,7 @@ void TradingConfig::reload()
     // Off until the user turns it on.
     m_autoTrade = ini.value(QStringLiteral("engine/auto_trade"), false).toBool();
     m_autoAnalyze = ini.value(QStringLiteral("engine/auto_analyze"), true).toBool();
+    m_teamReview = ini.value(QStringLiteral("engine/team_review"), true).toBool();
 
     const Trading::RiskSettings d;
     const auto number = [&ini](const char *key, double fallback) {
@@ -516,6 +557,37 @@ void TradingConfig::setSymbol(const QString &symbol)
     Q_EMIT changed();
 }
 
+QString TradingConfig::addMarket(const QString &raw)
+{
+    const QString symbol = raw.trimmed().toUpper();
+    if (!validSymbol(symbol))
+        return tr("\"%1\" is not a market name. Use the exchange's name, such as DOGEUSDT.").arg(raw.trimmed());
+    if (m_watchlist.contains(symbol))
+        return tr("%1 is already in the list.").arg(symbol);
+    if (m_watchlist.size() >= kMaxMarkets)
+        return tr("The list holds %1 markets at most. Remove one first.").arg(kMaxMarkets);
+    m_watchlist.append(symbol);
+    store(QStringLiteral("market/watchlist"), m_watchlist.join(QStringLiteral(", ")));
+    Q_EMIT changed();
+    return {};
+}
+
+QString TradingConfig::removeMarket(const QString &symbol)
+{
+    if (!m_watchlist.contains(symbol))
+        return tr("%1 is not in the list.").arg(symbol);
+    if (m_watchlist.size() <= 1)
+        return tr("The last market cannot be removed.");
+    m_watchlist.removeAll(symbol);
+    store(QStringLiteral("market/watchlist"), m_watchlist.join(QStringLiteral(", ")));
+    if (m_symbol == symbol) {
+        m_symbol = m_watchlist.first();
+        store(QStringLiteral("market/symbol"), m_symbol);
+    }
+    Q_EMIT changed();
+    return {};
+}
+
 void TradingConfig::setInterval(const QString &interval)
 {
     if (!intervals().contains(interval) || interval == m_interval)
@@ -540,6 +612,15 @@ void TradingConfig::setAutoAnalyze(bool on)
         return;
     store(QStringLiteral("engine/auto_analyze"), on);
     m_autoAnalyze = on;
+    Q_EMIT changed();
+}
+
+void TradingConfig::setTeamReview(bool on)
+{
+    if (on == m_teamReview)
+        return;
+    store(QStringLiteral("engine/team_review"), on);
+    m_teamReview = on;
     Q_EMIT changed();
 }
 

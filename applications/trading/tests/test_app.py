@@ -24,7 +24,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 BIN = os.environ.get("SHADOW_TRADING_BIN", "")
 sys.path.insert(0, HERE)
-from fake_services import PANEL, PANEL_MODELS, TEST_KEY  # noqa: E402  (the stand-in's own test key)
+from fake_services import PANEL, PANEL_MODELS, SEATS, TEST_KEY  # noqa: E402  (the stand-in's own test key)
 
 BUY = {"action": "buy", "confidence": 85, "stop_pct": -1.0, "target_pct": 2.5}
 SELL = {"action": "sell", "confidence": 85, "stop_pct": -1.0, "target_pct": 2.5}
@@ -50,6 +50,7 @@ class AppTest(unittest.TestCase):
         self.log = os.path.join(self.dir, "requests.jsonl")
         self.server = None
         self.key = None  # NVIDIA_API_KEY of the application; None = not set
+        self.stream = False  # True: the application is given the stand-in's live stream
         self.conf_dir = os.path.join(self.dir, "config", "shadow")
         self.data_dir = os.path.join(self.dir, "data", "shadow", "trading")
         self.last_output = ""
@@ -93,6 +94,9 @@ class AppTest(unittest.TestCase):
         })
         if self.key is not None:
             env["NVIDIA_API_KEY"] = self.key
+        # The stand-in's live stream, for the tests that ask for it; the others
+        # get their prices the slow way, every five seconds.
+        env["SHADOW_TRADING_STREAM_URL"] = f"ws://127.0.0.1:{self.port}" if self.stream else "off"
         return env
 
     def dump(self, topic, extra_env=None):
@@ -108,13 +112,16 @@ class AppTest(unittest.TestCase):
         self.last_output = text + done.stderr
         return json.loads(text)
 
-    def requests(self, kind=None, model=None):
+    def requests(self, kind=None, model=None, review=False):
+        """Logged requests. Of the chat requests, the first calls; review=True
+        gives the team review's requests instead, review=None both."""
         if not os.path.exists(self.log):
             return []
         with open(self.log, encoding="utf-8") as f:
             entries = [json.loads(line) for line in f if line.strip()]
         return [e for e in entries
-                if (kind is None or e["kind"] == kind) and (model is None or e.get("model") == model)]
+                if (kind is None or e["kind"] == kind) and (model is None or e.get("model") == model)
+                and (review is None or e["kind"] != "chat" or bool(e.get("review")) == review)]
 
     def verdicts(self, signal):
         return {v["source"]: v for v in signal["verdicts"]}
@@ -166,7 +173,9 @@ class AppTest(unittest.TestCase):
         self.assertEqual(config["mode"], "paper")
         self.assertFalse(config["autoTrade"])  # off until the user turns it on
         self.assertEqual(config["risk"]["risk_per_trade_pct"], 1)
-        # The built-in panel: twelve NVIDIA-hosted models, three per role.
+        # The built-in panel: fourteen NVIDIA-hosted models, six of them the analysis team.
+        self.assertEqual({role: len(models) for role, models in PANEL.items()},
+                         {"analysis": 6, "reasoning": 3, "vision": 3, "compute": 2})
         self.assertEqual([m["model"] for m in config["panel"]], PANEL_MODELS)
         for role, models in PANEL.items():
             for member in config["panel"]:
@@ -178,6 +187,9 @@ class AppTest(unittest.TestCase):
         self.assertEqual(names["nvidia/nemotron-3.5-super-vl-120b-a12b"], ("Nemotron 3.5 Super VL", "Nemotron"))
         self.assertEqual(names["z-ai/glm-5.3-flash"], ("GLM 5.3 Flash", "GLM"))
         self.assertEqual(names["minimaxai/minimax-m3.1-flash"][1], "MiniMax")
+        # Two sizes of one model are told apart by their size.
+        self.assertEqual(names["google/gemma-3-12b-it"][0], "Gemma 3 12B")
+        self.assertEqual(names["google/gemma-3-4b-it"][0], "Gemma 3 4B")
 
     def test_a_key_of_another_company_is_never_sent_to_nvidia(self):
         self.serve({"*": BUY})
@@ -205,8 +217,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(config["key"]["source"], "saved")
         self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
         signal = self.dump("signal")["signal"]
-        self.assertEqual(signal["voters"], 13)
-        self.assertTrue(all(c["auth"] == "ok" for c in self.requests("chat")))
+        self.assertEqual(signal["voters"], 15)
+        self.assertTrue(all(c["auth"] == "ok" for c in self.requests("chat", review=None)))
 
     def test_the_assistants_nvidia_key_is_shared(self):
         self.serve({"*": BUY})
@@ -219,7 +231,7 @@ class AppTest(unittest.TestCase):
             f.write(TEST_KEY + "\n")                              # the assistant set up with NVIDIA
         self.assertEqual(self.dump("config")["key"], {"hasKey": True, "hint": TEST_KEY[-4:], "source": "assistant"})
         self.dump("signal")
-        self.assertEqual(len(self.requests("chat")), 12)
+        self.assertEqual(len(self.requests("chat")), 14)
 
     def test_settings_outside_their_range_fall_back(self):
         self.serve()
@@ -236,14 +248,14 @@ class AppTest(unittest.TestCase):
         self.serve({"*": BUY})
         self.key = TEST_KEY
         self.settings("[panel]\nanalysis=moonshotai/kimi-k3.1-pro, not a model, ../../etc/passwd\n"
-                      "reasoning=\nvision=meta/muse-glimmer-30b, moonshotai/kimi-k3.1-pro\ncompute=\n")
+                      "reasoning=\nvision=nvidia/cosmos-reason2-8b, moonshotai/kimi-k3.1-pro\ncompute=\n")
         config = self.dump("config")
         self.assertEqual([(m["model"], m["role"]) for m in config["panel"]],
-                         [("moonshotai/kimi-k3.1-pro", "analysis"), ("meta/muse-glimmer-30b", "vision")])
+                         [("moonshotai/kimi-k3.1-pro", "analysis"), ("nvidia/cosmos-reason2-8b", "vision")])
         signal = self.dump("signal")["signal"]
-        self.assertEqual(set(self.verdicts(signal)), {"rules", "moonshotai/kimi-k3.1-pro", "meta/muse-glimmer-30b"})
+        self.assertEqual(set(self.verdicts(signal)), {"rules", "moonshotai/kimi-k3.1-pro", "nvidia/cosmos-reason2-8b"})
         self.assertEqual(self.requests("chat", "moonshotai/kimi-k3.1-pro")[0]["images"], [])
-        self.assertEqual(self.requests("chat", "meta/muse-glimmer-30b")[0]["images"], ["960x540"])
+        self.assertEqual(self.requests("chat", "nvidia/cosmos-reason2-8b")[0]["images"], ["960x540"])
 
     def test_a_model_switched_off_is_not_asked(self):
         off = ["z-ai/glm-5.3-flash", "nvidia/nemotron-3.5-bolt-e4b"]
@@ -253,7 +265,7 @@ class AppTest(unittest.TestCase):
         signal = self.dump("signal")["signal"]
         asked = sorted(c["model"] for c in self.requests("chat"))
         self.assertEqual(asked, sorted(m for m in PANEL_MODELS if m not in off))
-        self.assertEqual(signal["voters"], 11)
+        self.assertEqual(signal["voters"], 13)
 
     # ---- market ------------------------------------------------------------------
     def test_market_data_is_read(self):
@@ -363,6 +375,154 @@ class AppTest(unittest.TestCase):
         self.assertTrue(50 < prices["SOLUSDT"] < 1000, prices)
         self.assertGreater(prices["PAXGUSDT"], 1000)
 
+    # ---- the live stream ------------------------------------------------------------
+    def market_requests(self, path):
+        return [r for r in self.requests("market") if r["path"] == path]
+
+    def test_the_live_stream_feeds_the_chart_and_the_prices(self):
+        self.stream = True
+        # Two seconds in, the price jumps by 3 %. Nothing is asked for again
+        # before the session ends, so only the stream can have told.
+        out = self.act("", {}, seconds=4, settings="[engine]\nauto_analyze=false\n",
+                       moves=[(2, {"market": {"move_pct": 3}})])
+        market = out["market"]
+        self.assertTrue(market["streaming"])
+        self.assertEqual(market["dataState"], "live")
+        streams = [r for r in self.requests("stream") if r["status"] == 101]
+        self.assertEqual(len(streams), 1)
+        self.assertEqual(streams[0]["streams"], ["btcusdt@aggTrade", "btcusdt@kline_15m", "btcusdt@miniTicker",
+                                                 "ethusdt@miniTicker", "solusdt@miniTicker", "paxgusdt@miniTicker",
+                                                 "eurusdt@miniTicker"])
+        self.assertEqual(len(self.market_requests("/api/v3/ticker/24hr")), 1)   # the first look, then the stream
+        quote = market["quote"]
+        self.assertGreater(quote["close"] / quote["open"], 1.02)
+        self.assertGreaterEqual(quote["high"], quote["close"])
+        self.assertFalse(quote["closed"])
+        self.assertEqual(quote["candles"], 300)              # the analysts' window is what it was
+        prices = {m["symbol"]: m for m in market["watchlist"]}
+        self.assertAlmostEqual(prices["BTCUSDT"]["price"] / quote["close"], 1, delta=0.002)
+        self.assertTrue(all(m["hasPrice"] for m in market["watchlist"]))
+        said = [a["text"] for a in out["account"]["activity"] if "Live prices" in a["text"]]
+        self.assertEqual(len(said), 1, said)
+        self.assertIn("connected", said[0])
+
+    def test_a_stop_is_hit_by_the_stream_at_once(self):
+        self.stream = True
+        out = self.act("analyze", {"*": BUY}, settings=AUTO, seconds=6,
+                       moves=[(4, {"*": BUY, "market": {"move_pct": -3}})])
+        trades = out["account"]["trades"]
+        self.assertEqual(len(trades), 1, out["account"]["activity"])
+        self.assertEqual(trades[0]["reason"], "stop_loss")
+        self.assertEqual(out["account"]["positions"], [])
+        self.assertTrue(out["market"]["streaming"])
+        # Nobody asked for the newest candles in the meantime: the stream told.
+        self.assertEqual([r for r in self.market_requests("/api/v3/klines") if r["query"].endswith("limit=3")], [])
+
+    def test_without_a_stream_prices_are_asked_for(self):
+        self.stream = True
+        out = self.act("", {"stream": {"off": True}}, seconds=7, settings="[engine]\nauto_analyze=false\n")
+        self.assertFalse(out["market"]["streaming"])
+        self.assertEqual(out["market"]["dataState"], "live")
+        self.assertEqual(out["market"]["dataError"], "")
+        self.assertGreaterEqual(len(self.market_requests("/api/v3/ticker/24hr")), 2)   # at the start and 5 s later
+        self.assertGreaterEqual(len([r for r in self.requests("stream") if r["status"] == 404]), 2)  # it keeps trying
+        self.assertFalse(any("Live prices" in a["text"] for a in out["account"]["activity"]))
+
+    def test_a_stream_that_drops_comes_back(self):
+        self.stream = True
+        normal, dropping = {}, {"stream": {"drop_after": 0}}
+        out = self.act("", normal, seconds=9, settings="[engine]\nauto_analyze=false\n",
+                       moves=[(2, dropping), (4, normal)])
+        self.assertTrue(out["market"]["streaming"])
+        log = self.requests("stream")
+        self.assertGreaterEqual(len([r for r in log if r["status"] == "dropped"]), 1, log)
+        self.assertGreaterEqual(len([r for r in log if r["status"] == 101]), 2, log)
+        # Coming and going is not written down each time.
+        said = [a["text"] for a in out["account"]["activity"] if "Live prices" in a["text"]]
+        self.assertEqual(len(said), 1, said)
+
+    def test_the_real_services_stream_messages_are_understood(self):
+        # Messages recorded from the real public stream, replayed byte for byte.
+        self.stream = True
+        recorded = os.path.join(HERE, "fixtures", "real-stream.jsonl")
+        # They arrive a moment after the history and the first prices were read.
+        out = self.act("", {"stream": {"replay": recorded, "replay_after": 1.5, "silent": True}}, seconds=3,
+                       settings="[engine]\nauto_analyze=false\n")
+        last = {}
+        with open(recorded, encoding="utf-8") as f:
+            for line in f:
+                message = json.loads(line)
+                last[message["stream"]] = message["data"]
+        market = out["market"]
+        self.assertTrue(market["streaming"])
+        prices = {m["symbol"]: m for m in market["watchlist"]}
+        for symbol in ("BTCUSDT", "ETHUSDT", "EURUSDT"):
+            ticker = last[symbol.lower() + "@miniTicker"]
+            self.assertEqual(prices[symbol]["price"], float(ticker["c"]), symbol)
+            self.assertAlmostEqual(prices[symbol]["changePct"],
+                                   (float(ticker["c"]) - float(ticker["o"])) / float(ticker["o"]) * 100, places=6)
+        self.assertGreater(prices["BTCUSDT"]["price"], 1000)
+        # The last recorded trade is the price of the forming candle.
+        self.assertEqual(market["quote"]["close"], float(last["btcusdt@aggTrade"]["p"]))
+        self.assertEqual(market["quote"]["candles"], 300)   # the recorded candle is older than the chart: left out
+
+    # ---- the chart's history and the markets ------------------------------------------
+    def test_older_candles_are_loaded_for_the_chart_only(self):
+        out = self.act("older,older", {}, settings="[engine]\nauto_analyze=false\n")
+        self.assertEqual([a["result"] for a in out["actions"]], ["1000", "1000"])
+        chart = out["market"]["chart"]
+        self.assertEqual(chart["candles"], 2300)
+        self.assertTrue(chart["hasOlder"])
+        step = 900_000
+        self.assertEqual((chart["last"] - chart["first"]) / step, 2299)   # one candle after the other, no gap
+        self.assertEqual(out["market"]["quote"]["candles"], 300)          # what the analysts read is unchanged
+        asked = [r["query"] for r in self.market_requests("/api/v3/klines") if "endTime" in r["query"]]
+        self.assertEqual(len(asked), 2)
+
+    def test_the_beginning_of_a_markets_history(self):
+        # The stand-in has 2000 hours of history: 500 four-hour candles.
+        out = self.act("older,older,older", {}, settings="[market]\ninterval=4h\n[engine]\nauto_analyze=false\n")
+        got = [a["result"] for a in out["actions"]]
+        self.assertIn(got[0], ("200", "201"))         # the rest of the history (its first candle may be partial)
+        self.assertEqual(got[1:], ["0", "0"])
+        self.assertEqual(out["market"]["chart"]["candles"], 300 + int(got[0]))
+        self.assertFalse(out["market"]["chart"]["hasOlder"])
+        asked = [r["query"] for r in self.market_requests("/api/v3/klines") if "endTime" in r["query"]]
+        self.assertEqual(len(asked), 2)          # once it is known there is no more, nothing is asked
+
+    def test_markets_are_added_and_removed_from_the_window(self):
+        out = self.act("find:doge,add:doge/usdt,add:DOGEUSDT,add:NOPEUSDT,add:bad name!,remove:ETHUSDT,"
+                       "remove:BTCUSDT,wait:1", {}, settings="[engine]\nauto_analyze=false\n")
+        results = [a["result"] for a in out["actions"]]
+        self.assertEqual(results[0], "DOGEUSDT")
+        self.assertEqual(results[1], "")
+        self.assertIn("already in the list", results[2])
+        self.assertIn("not a market the data service lists", results[3])
+        self.assertIn("not a market", results[4])
+        self.assertEqual(results[5:7], ["", ""])
+        listed = out["market"]["watchlist"]
+        self.assertEqual([m["symbol"] for m in listed], ["SOLUSDT", "PAXGUSDT", "EURUSDT", "DOGEUSDT"])
+        self.assertTrue(listed[0]["selected"])             # the market on the chart was removed: the first one is
+        self.assertTrue(all(m["hasPrice"] for m in listed), listed)
+        self.assertEqual(out["market"]["quote"]["candles"], 300)
+        self.assertLess(out["market"]["quote"]["close"], 1000)   # SOL's candles, not BTC's
+        config = self.dump("config")                       # kept for the next start
+        self.assertEqual(config["watchlist"], ["SOLUSDT", "PAXGUSDT", "EURUSDT", "DOGEUSDT"])
+        self.assertEqual(config["symbol"], "SOLUSDT")
+
+    def test_what_cannot_be_removed_or_added(self):
+        out = self.act("analyze,remove:BTCUSDT", {"*": BUY}, settings=AUTO)
+        self.assertIn("open position", out["actions"][1]["result"])
+        self.assertEqual(len(out["market"]["watchlist"]), 5)
+        self.settings("[market]\nwatchlist=BTCUSDT\n[engine]\nauto_analyze=false\n")
+        out = self.act("close-all,remove:BTCUSDT", {})
+        self.assertIn("last market", out["actions"][1]["result"])
+        full = ",".join(["BTCUSDT", "ETHUSDT", "SOLUSDT", "PAXGUSDT", "EURUSDT", "DOGEUSDT", "XRPUSDT", "BNBUSDT",
+                         "ETHBTC", "AAAUSDT", "BBBUSDT", "CCCUSDT"])
+        self.settings(f"[market]\nwatchlist={full}\n[engine]\nauto_analyze=false\n")
+        out = self.act("add:DDDUSDT", {})
+        self.assertIn("12 markets at most", out["actions"][0]["result"])
+
     # ---- the analysts ---------------------------------------------------------------
     def test_without_a_key_the_rules_decide_alone(self):
         self.serve({"*": BUY})
@@ -389,7 +549,7 @@ class AppTest(unittest.TestCase):
         for role, models in PANEL.items():
             for model in models:
                 self.assertEqual(verdicts[model]["role"], role)
-        self.assertEqual(signal["voters"], 13)
+        self.assertEqual(signal["voters"], 15)
         action, confidence = self.expected_consensus(signal)
         self.assertEqual((signal["action"], action), ("buy", "buy"))
         self.assertAlmostEqual(signal["confidence"], confidence, places=6)
@@ -470,6 +630,141 @@ class AppTest(unittest.TestCase):
         self.assertEqual(position["side"], "sell")
         self.assertGreater(position["stop"], position["entry"])
 
+    # ---- the analysis team -------------------------------------------------------
+
+    def test_the_analysis_team_reads_from_six_seats_and_reviews_its_calls(self):
+        self.serve({"*": BUY})
+        self.key = TEST_KEY
+        out = self.dump("signal")
+        signal = out["signal"]
+        team = PANEL["analysis"]
+        self.assertEqual(len(team), 6)
+        # First calls: each member of the team is told its own seat, nobody else has one.
+        first = {c["model"]: c for c in self.requests("chat")}
+        self.assertEqual([first[model]["seat"] for model in team], SEATS)
+        for model in PANEL_MODELS:
+            if model not in team:
+                self.assertEqual(first[model]["seat"], "", model)
+        # The review: every member once more, with its own call and the five others', by seat.
+        reviews = self.requests("chat", review=True)
+        self.assertEqual(sorted(r["model"] for r in reviews), sorted(team))
+        for review in reviews:
+            seat = SEATS[team.index(review["model"])]
+            self.assertEqual((review["status"], review["seat"]), (200, seat), review)
+            self.assertNotIn("malformed", review)
+            self.assertEqual(review["own"], [seat, "buy"])
+            self.assertEqual(sorted(review["teammates"]), sorted([other, "buy"] for other in SEATS if other != seat))
+            self.assertEqual(review["images"], [])
+        # One request per model, plus one per member of the team.
+        self.assertEqual(len(self.requests("chat", review=None)), len(PANEL_MODELS) + 6)
+        verdicts = self.verdicts(signal)
+        for index, model in enumerate(team):
+            verdict = verdicts[model]
+            self.assertEqual((verdict["seatTitle"], verdict["reviewed"], verdict["changed"]), (SEATS[index], True, False))
+            self.assertEqual((verdict["action"], verdict["firstAction"]), ("buy", "buy"))
+        for model in PANEL_MODELS:
+            if model not in team:
+                self.assertEqual((verdicts[model]["seat"], verdicts[model]["reviewed"]), ("", False), model)
+        self.assertEqual(signal["team"], {"members": 6, "buy": 6, "sell": 0, "hold": 0, "reviewed": 6, "changed": 0})
+        # Listed as the panel is: the fixed rules, then the team by seat, then the other roles.
+        self.assertEqual([v["source"] for v in signal["verdicts"]], ["rules", *PANEL_MODELS])
+        # A member still has one vote: fifteen analysts, as without the review.
+        self.assertEqual(signal["voters"], 15)
+        said = [a["text"] for a in out["account"]["activity"] if a["text"].startswith("Analysis team")]
+        self.assertEqual(said, ["Analysis team (6 analysts): 6 buy, 0 sell, 0 hold. "
+                                "Nobody changed its call in the team review."])
+        # The seats are in the configuration too, for the Model Panel.
+        panel = {m["model"]: m for m in self.dump("config")["panel"]}
+        self.assertEqual([panel[model]["seatTitle"] for model in team], SEATS)
+
+    def test_a_member_can_change_its_call_in_the_review_and_the_final_calls_count(self):
+        team = PANEL["analysis"]
+        # Two of the team call sell first; one of them is convinced by its teammates, one is not.
+        plan = {"*": BUY, team[1]: dict(SELL, review=dict(BUY, confidence=70, reasoning="The structure seat is right.")),
+                team[4]: SELL}
+        self.serve(plan)
+        self.key = TEST_KEY
+        out = self.dump("signal")
+        signal = out["signal"]
+        verdicts = self.verdicts(signal)
+        changed = verdicts[team[1]]
+        self.assertEqual((changed["action"], changed["confidence"], changed["firstAction"], changed["firstConfidence"]),
+                         ("buy", 70, "sell", 85))
+        self.assertTrue(changed["reviewed"] and changed["changed"])
+        self.assertEqual(changed["reasoning"], "The structure seat is right.")
+        self.assertGreater(changed["stop"], 0)
+        self.assertLess(changed["stop"], signal["entry"])            # the final call's levels: a buy's
+        kept = verdicts[team[4]]
+        self.assertEqual((kept["action"], kept["reviewed"], kept["changed"]), ("sell", True, False))
+        self.assertEqual(signal["team"], {"members": 6, "buy": 5, "sell": 1, "hold": 0, "reviewed": 6, "changed": 1})
+        # What its teammates were shown: the first calls.
+        review = self.requests("chat", team[0], review=True)[0]
+        self.assertIn([SEATS[1], "sell"], review["teammates"])
+        self.assertIn([SEATS[4], "sell"], review["teammates"])
+        # The consensus is made of the final calls.
+        action, confidence = self.expected_consensus(signal)
+        self.assertEqual((signal["action"], action), ("buy", "buy"))
+        self.assertAlmostEqual(signal["confidence"], confidence, places=6)
+        # Thirteen models buy, one of the team still sells; the fixed rules are the fifteenth voice.
+        models = [v for v in signal["verdicts"] if v["source"] != "rules"]
+        self.assertEqual(sorted(v["action"] for v in models), ["buy"] * 13 + ["sell"])
+        self.assertEqual(signal["agreeing"] + signal["opposing"] + signal["holding"], 15)
+        self.assertEqual(signal["opposing"], 1)
+        said = [a["text"] for a in out["account"]["activity"] if a["text"].startswith("Analysis team")]
+        self.assertEqual(said, ["Analysis team (6 analysts): 5 buy, 1 sell, 0 hold after the team review; "
+                                "1 changed its call."])
+
+    def test_a_member_that_fails_in_the_review_keeps_its_first_call(self):
+        team = PANEL["analysis"]
+        plan = {"*": BUY, team[0]: dict(BUY, review={"status": 500}), team[2]: dict(BUY, review={"raw": "Agreed!"}),
+                team[3]: dict(BUY, review={"empty": True}), team[5]: {"status": 429}}
+        self.serve(plan)
+        self.key = TEST_KEY
+        signal = self.dump("signal")["signal"]
+        verdicts = self.verdicts(signal)
+        for index in (0, 2, 3):
+            verdict = verdicts[team[index]]
+            self.assertTrue(verdict["ok"], verdict)
+            self.assertEqual((verdict["action"], verdict["confidence"], verdict["reviewed"]), ("buy", 85, False))
+            self.assertGreater(verdict["stop"], 0)
+        # The one that never answered was not asked again and is not shown to its teammates.
+        self.assertFalse(verdicts[team[5]]["ok"])
+        self.assertEqual(self.requests("chat", team[5], review=True), [])
+        review = self.requests("chat", team[1], review=True)[0]
+        self.assertEqual(len(review["teammates"]), 4)
+        self.assertEqual(signal["team"], {"members": 5, "buy": 5, "sell": 0, "hold": 0, "reviewed": 2, "changed": 0})
+        self.assertEqual(signal["voters"], 14)
+        panel = {m["model"]: m for m in self.dump("config")["panel"]}
+        self.assertNotEqual(panel[team[0]]["state"], "error")
+
+    def test_the_team_review_can_be_switched_off(self):
+        self.serve({"*": BUY})
+        self.key = TEST_KEY
+        self.settings("[engine]\nteam_review=false\n")
+        self.assertFalse(self.dump("config")["teamReview"])
+        out = self.dump("signal")
+        signal = out["signal"]
+        self.assertEqual(self.requests("chat", review=True), [])
+        self.assertEqual(len(self.requests("chat")), 14)
+        self.assertEqual(signal["team"], {"members": 6, "buy": 6, "sell": 0, "hold": 0, "reviewed": 0, "changed": 0})
+        # The seats stay: they are how the team reads the market, review or not.
+        self.assertEqual([self.requests("chat", model)[0]["seat"] for model in PANEL["analysis"]], SEATS)
+        said = [a["text"] for a in out["account"]["activity"] if a["text"].startswith("Analysis team")]
+        self.assertEqual(said, ["Analysis team (6 analysts): 6 buy, 0 sell, 0 hold."])
+
+    def test_a_team_of_one_has_nobody_to_review_with_and_keeps_its_seat(self):
+        team = PANEL["analysis"]
+        self.serve({"*": BUY})
+        self.key = TEST_KEY
+        self.settings("[panel]\noff=" + ", ".join(team[:2] + team[3:]) + "\n")
+        self.assertTrue(self.dump("config")["teamReview"])
+        signal = self.dump("signal")["signal"]
+        self.assertEqual(self.requests("chat", review=True), [])
+        # Its seat is its place on the panel, not among the ones that are switched on.
+        self.assertEqual(self.requests("chat", team[2])[0]["seat"], SEATS[2])
+        self.assertEqual(signal["team"]["members"], 1)
+        self.assertEqual(signal["voters"], 10)
+
     def test_a_split_panel_means_no_trade(self):
         plan = {model: (BUY if index % 2 == 0 else SELL) for index, model in enumerate(PANEL_MODELS)}
         self.serve(plan)
@@ -510,7 +805,8 @@ class AppTest(unittest.TestCase):
         self.assertIn("no action", verdicts[models[7]]["error"])
         for model in models[8:]:
             self.assertTrue(verdicts[model]["ok"], model)
-        self.assertEqual(signal["voters"], 5)  # the rules and the four models that answered
+        self.assertEqual(signal["voters"], 7)  # the rules and the six models that answered
+        self.assertEqual(self.requests("chat", review=True), [])  # nobody of the team answered: no review
 
     def test_a_rejected_key_is_reported_without_repeating_what_the_service_said(self):
         self.serve({"*": BUY})
@@ -534,7 +830,7 @@ class AppTest(unittest.TestCase):
         if gone in verdicts:
             self.assertFalse(verdicts[gone]["ok"])
             self.assertIn("does not offer this model", verdicts[gone]["error"])
-        self.assertEqual(signal["voters"], 12)
+        self.assertEqual(signal["voters"], 14)
 
     def test_answers_in_a_code_fence_or_after_thinking_are_read(self):
         models = PANEL_MODELS
@@ -593,8 +889,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(out["signal"]["interval"], "1m")
         self.assertEqual(len(out["account"]["positions"]) + len(out["account"]["trades"]), 1)
         chats = self.requests("chat")
-        self.assertGreaterEqual(len(chats), 12)
-        self.assertLessEqual(len(chats), 24)  # one candle closed, two at most: not an analysis per price update
+        self.assertGreaterEqual(len(chats), 14)
+        self.assertLessEqual(len(chats), 28)  # one candle closed, two at most: not an analysis per price update
         intervals = {q.split("interval=")[1].split("&")[0] for q in
                      (e.get("query", "") for e in self.requests("market")) if "interval=" in q}
         # The chart's candles, the higher timeframe for context, and the watchlist's 24-hour lines.

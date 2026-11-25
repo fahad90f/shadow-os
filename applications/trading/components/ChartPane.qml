@@ -51,18 +51,31 @@ GlowCard {
                     root.view = index
                 }
             }
+            NxBadge {
+                // How fresh the prices are: pushed by the data service as trades
+                // happen, or asked for every few seconds.
+                visible: root.quote.close !== undefined
+                kind: trading.streaming ? "success" : "neutral"
+                text: trading.streaming ? qsTr("Real time") : qsTr("Every %1 s").arg(trading.pollSeconds)
+                Accessible.name: trading.streaming ? qsTr("Prices arrive in real time")
+                    : qsTr("Prices are fetched every %1 seconds").arg(trading.pollSeconds)
+            }
             Label {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
+                // The candle under the pointer; without one, the newest candle.
+                readonly property bool pointed: root.view === 1 && chart.hovered.close !== undefined
+                readonly property var shown: pointed ? chart.hovered : root.quote
                 // All four prices where there is room, else the close and the change.
                 readonly property bool roomy: root.width >= 900
-                text: root.quote.close === undefined ? ""
-                    : roomy ? qsTr("O %1  H %2  L %3  C %4  %5")
-                        .arg(Format.price(root.quote.open)).arg(Format.price(root.quote.high))
-                        .arg(Format.price(root.quote.low)).arg(Format.price(root.quote.close))
-                        .arg(Format.signedPct(root.quote.changePct))
-                    : qsTr("%1  %2").arg(Format.price(root.quote.close)).arg(Format.signedPct(root.quote.changePct))
-                color: root.quote.change >= 0 ? Theme.success : Theme.danger
+                text: shown.close === undefined ? ""
+                    : (pointed ? Qt.formatDateTime(new Date(shown.time), "d MMM HH:mm") + "   " : "")
+                    + (roomy ? qsTr("O %1  H %2  L %3  C %4  %5")
+                        .arg(Format.price(shown.open)).arg(Format.price(shown.high))
+                        .arg(Format.price(shown.low)).arg(Format.price(shown.close))
+                        .arg(Format.signedPct(shown.changePct))
+                    : qsTr("%1  %2").arg(Format.price(shown.close)).arg(Format.signedPct(shown.changePct)))
+                color: shown.change >= 0 ? Theme.success : Theme.danger
                 font.pixelSize: Theme.fontSizeSmall
                 elide: Text.ElideLeft
             }
@@ -124,11 +137,15 @@ GlowCard {
                 font.pixelSize: Theme.fontSizeCaption
                 Accessible.role: Accessible.Graphic
                 Accessible.name: qsTr("Candlestick chart of %1, %2 candles").arg(trading.symbolName).arg(trading.interval)
-
-                // Scroll to zoom.
-                WheelHandler {
-                    onWheel: (event) => chart.visibleCandles = chart.visibleCandles + (event.angleDelta.y > 0 ? -15 : 15)
-                }
+                Accessible.description: qsTr("Drag or use the arrow keys to move through time, scroll or press plus and minus to zoom, Home for the newest candles.")
+            }
+            Rectangle {
+                anchors.fill: chart
+                visible: chart.visible && chart.activeFocus
+                color: "transparent"
+                radius: Theme.radiusXs
+                border.width: 1
+                border.color: Theme.accent
             }
             // The legend sits on a plate so a level line behind it stays readable.
             Rectangle {
@@ -159,6 +176,67 @@ GlowCard {
                             text: modelData.text
                             color: Theme.textMuted
                             font.pixelSize: Theme.fontSizeCaption
+                        }
+                    }
+                }
+            }
+
+            // Where the view is in time, when it is not at the newest candles.
+            Rectangle {
+                anchors.fill: pastHint
+                anchors.margins: -Theme.spaceXs
+                visible: pastHint.visible
+                radius: Theme.radiusXs
+                color: Theme.alpha(Theme.bgSurface, 0.9)
+            }
+            Label {
+                id: pastHint
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: Theme.spaceSm + Theme.spaceXs
+                visible: chart.visible && (trading.loadingOlder || (!chart.live && !trading.hasOlder && chart.atStart))
+                text: trading.loadingOlder ? qsTr("Loading older candles…") : qsTr("This is where %1 begins").arg(trading.symbolName)
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSizeCaption
+            }
+            // Zoom, and back to the newest candles.
+            RowLayout {
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.rightMargin: 84
+                anchors.bottomMargin: 34
+                visible: chart.visible
+                spacing: Theme.spaceXs
+                NxButton {
+                    visible: !chart.live
+                    kind: "primary"
+                    iconName: "chevron-right"
+                    text: qsTr("Live")
+                    Accessible.name: qsTr("Back to the newest candles")
+                    onClicked: chart.goLive()
+                }
+                Rectangle {
+                    Layout.preferredWidth: zoomRow.implicitWidth + 4
+                    Layout.preferredHeight: zoomRow.implicitHeight + 4
+                    radius: Theme.radiusSm
+                    color: Theme.alpha(Theme.bgRaised, 0.92)
+                    border.width: 1
+                    border.color: Theme.borderSubtle
+                    RowLayout {
+                        id: zoomRow
+                        anchors.centerIn: parent
+                        spacing: 0
+                        NxIconButton {
+                            iconName: "zoom-out"
+                            iconSize: Theme.iconSmall
+                            tooltip: qsTr("Show more candles")
+                            onClicked: chart.zoom(1.25)
+                        }
+                        NxIconButton {
+                            iconName: "zoom-in"
+                            iconSize: Theme.iconSmall
+                            tooltip: qsTr("Show fewer candles")
+                            onClicked: chart.zoom(0.8)
                         }
                     }
                 }

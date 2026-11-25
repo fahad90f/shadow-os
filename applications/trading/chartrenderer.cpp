@@ -8,7 +8,12 @@
 #include <QDateTime>
 #include <QImage>
 #include <QPainter>
+#include <QCursor>
+#include <QHoverEvent>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QPainterPath>
+#include <QWheelEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -38,18 +43,17 @@ double niceStep(double range, int lines)
 
 } // namespace
 
-void paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candles, int count, const Levels &levels,
-           const Palette &palette, const QFont &font)
+Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candles, const View &view,
+               const Levels &levels, const Palette &palette, const QFont &font)
 {
+    Geometry geometry;
     painter->save();
     painter->fillRect(rect, palette.background);
     const int total = int(candles.size());
-    const int shown = std::min(std::max(count, 10), total);
-    if (shown < 2) {
+    if (total < 2) {
         painter->restore();
-        return;
+        return geometry;
     }
-    const int first = total - shown;
     painter->setFont(font);
     const QFontMetricsF metrics(font);
 
@@ -60,10 +64,30 @@ void paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candle
     const QRectF plot(rect.left() + 6, rect.top() + 6, rect.width() - axisWidth - 12, rect.height() - axisHeight - 12);
     if (plot.width() < 40 || plot.height() < 40) {
         painter->restore();
-        return;
+        return geometry;
     }
     const double volumeHeight = plot.height() * 0.18;
     const QRectF priceArea(plot.left(), plot.top(), plot.width(), plot.height() - volumeHeight - 6);
+
+    // The window: 'count' slots across the plot; the newest candle sits
+    // 'offset' slots (plus a little room) left of the right edge.
+    const double count = std::clamp(view.count, 10.0, 5000.0);
+    const double slot = priceArea.width() / count;
+    const double room = std::min(3.0, count * 0.04);
+    const double rightIndex = (total - 1) - view.offset + room;   // index at the right edge
+    const double firstIndex = rightIndex - count + 1;             // index whose slot starts at the left edge
+    const int first = std::clamp(int(std::floor(firstIndex)), 0, total - 1);
+    const int last = std::clamp(int(std::ceil(rightIndex)), 0, total - 1);
+    const auto xOf = [&](double index) { return priceArea.left() + (index - firstIndex + 0.5) * slot; };
+    geometry.plot = plot;
+    geometry.slot = slot;
+    geometry.firstIndex = firstIndex;
+    if (first > last || xOf(last) < priceArea.left() - slot || xOf(first) > priceArea.right() + slot) {
+        // Moved entirely off the series (cannot happen through the item, which limits the offset).
+        painter->restore();
+        return geometry;
+    }
+    const double body = std::max(1.0, slot * 0.62);
 
     // Overlays are computed over the whole series so their first visible
     // values are already settled.
@@ -72,8 +96,9 @@ void paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candle
     const std::vector<double> slow = Trading::Indicators::ema(closes, 50);
     const Trading::Indicators::Bands bands = Trading::Indicators::bollinger(closes, 20, 2.0);
 
+    // The price scale fits what is in view.
     double low = candles[size_t(first)].low, high = candles[size_t(first)].high, maxVolume = 0;
-    for (int i = first; i < total; ++i) {
+    for (int i = first; i <= last; ++i) {
         const Trading::Candle &c = candles[size_t(i)];
         low = std::min(low, c.low);
         high = std::max(high, c.high);
@@ -98,10 +123,6 @@ void paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candle
     low -= span * 0.04;
     high += span * 0.04;
     span = high - low;
-
-    const double slot = priceArea.width() / shown;
-    const double body = std::max(1.0, slot * 0.62);
-    const auto xOf = [&](int index) { return priceArea.left() + (index - first + 0.5) * slot; };
     const auto yOf = [&](double price) { return priceArea.bottom() - (price - low) / span * priceArea.height(); };
 
     // Grid and price labels.
@@ -116,23 +137,41 @@ void paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candle
         painter->setPen(QPen(palette.grid, 1));
     }
 
-    // Time labels, about one per 110 px.
+    // Time labels, about one per 110 px, at candle positions that do not
+    // move while the view is dragged (multiples of the spacing).
     const int every = std::max(1, int(std::ceil(110.0 / slot)));
-    const qint64 spanMs = candles.back().openTime - candles[size_t(first)].openTime;
+    const qint64 spanMs = candles[size_t(last)].openTime - candles[size_t(first)].openTime;
+    const auto timeText = [spanMs](qint64 ms, bool full) {
+        const QDateTime time = QDateTime::fromMSecsSinceEpoch(ms);
+        if (full)
+            return time.toString(QStringLiteral("d MMM yyyy  HH:mm"));
+        return spanMs > 3 * 86400000LL ? time.toString(QStringLiteral("d MMM")) : time.toString(QStringLiteral("HH:mm"));
+    };
     painter->setPen(palette.text);
-    for (int i = first + every / 2; i < total; i += every) {
-        const QDateTime time = QDateTime::fromMSecsSinceEpoch(candles[size_t(i)].openTime);
-        const QString label = spanMs > 3 * 86400000LL ? time.toString(QStringLiteral("d MMM"))
-                                                      : time.toString(QStringLiteral("HH:mm"));
+    painter->setClipRect(QRectF(plot.left(), plot.top(), plot.width(), rect.bottom() - plot.top()));
+    QDate labelled;
+    for (int i = (first / every) * every; i <= last; i += every) {
+        if (i < first)
+            continue;
+        // The first label of each day carries the date.
+        const qint64 ms = candles[size_t(i)].openTime;
+        const QDate day = QDateTime::fromMSecsSinceEpoch(ms).date();
+        const QString label = labelled.isValid() && day != labelled
+            ? QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("d MMM")) : timeText(ms, false);
+        labelled = day;
         painter->drawText(QRectF(xOf(i) - 50, plot.bottom() + 4, 100, metrics.height()), Qt::AlignCenter, label);
     }
+
+    // Everything drawn in the plot stays in the plot (candles that are half
+    // out of view at an edge).
+    painter->setClipRect(plot.adjusted(0, -1, 0, 1));
 
     // Overlay lines.
     painter->setRenderHint(QPainter::Antialiasing, true);
     const auto line = [&](const std::vector<double> &series, const QColor &color, qreal width) {
         QPainterPath path;
         bool started = false;
-        for (int i = first; i < total; ++i) {
+        for (int i = first; i <= last; ++i) {
             const double v = series[size_t(i)];
             if (!std::isfinite(v)) {
                 started = false;
@@ -155,7 +194,7 @@ void paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candle
     painter->setRenderHint(QPainter::Antialiasing, false);
 
     // Volume and candles.
-    for (int i = first; i < total; ++i) {
+    for (int i = first; i <= last; ++i) {
         const Trading::Candle &c = candles[size_t(i)];
         const bool up = c.close >= c.open;
         const QColor color = up ? palette.up : palette.down;
@@ -172,6 +211,7 @@ void paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candle
         const double bottom = yOf(std::min(c.open, c.close));
         painter->fillRect(QRectF(x - body / 2, top, body, std::max(1.0, bottom - top)), color);
     }
+    painter->setClipping(false);
 
     // A dashed line with a filled price tag on the axis.
     const auto level = [&](double price, const QColor &color, const QString &name) {
@@ -195,10 +235,42 @@ void paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candle
     level(levels.target, palette.target, QStringLiteral("TP"));
     level(levels.stop, palette.stop, QStringLiteral("SL"));
     level(levels.entry, palette.entry, QStringLiteral("Entry"));
-    const Trading::Candle &last = candles.back();
-    level(last.close, last.close >= last.open ? palette.up : palette.down, QString());
+    // The last price: its line and tag, wherever the view is.
+    const Trading::Candle &newest = candles.back();
+    level(newest.close, newest.close >= newest.open ? palette.up : palette.down, QString());
+
+    // The crosshair: a line through the candle under the pointer with its
+    // time, and a line at the pointer's height with the price there.
+    if (view.crosshair && plot.contains(view.pointer)) {
+        const int index = int(std::floor((view.pointer.x() - priceArea.left()) / slot + firstIndex));
+        QPen pen(palette.text, 1, Qt::DotLine);
+        painter->setPen(pen);
+        const double y = std::round(view.pointer.y()) + 0.5;
+        painter->drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
+        const bool onCandle = index >= 0 && index < total;
+        const double x = std::round(onCandle ? xOf(index) : view.pointer.x()) + 0.5;
+        painter->drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()));
+        if (view.pointer.y() <= priceArea.bottom()) {
+            geometry.hoveredPrice = low + (priceArea.bottom() - view.pointer.y()) / priceArea.height() * span;
+            const QRectF tag(priceArea.right() + 2, y - metrics.height() / 2 - 1, axisWidth + 2, metrics.height() + 2);
+            painter->fillRect(tag, palette.text);
+            painter->setPen(palette.background);
+            painter->drawText(tag, Qt::AlignCenter, priceText(geometry.hoveredPrice));
+        }
+        if (onCandle) {
+            geometry.hovered = index;
+            const QString label = timeText(candles[size_t(index)].openTime, true);
+            const double width = metrics.horizontalAdvance(label) + 12;
+            const double left = std::clamp(x - width / 2, plot.left(), plot.right() - width);
+            const QRectF tag(left, plot.bottom() + 2, width, metrics.height() + 4);
+            painter->fillRect(tag, palette.text);
+            painter->setPen(palette.background);
+            painter->drawText(tag, Qt::AlignCenter, label);
+        }
+    }
 
     painter->restore();
+    return geometry;
 }
 
 QByteArray renderPng(const Trading::Candles &candles, const QString &title)
@@ -221,7 +293,9 @@ QByteArray renderPng(const Trading::Candles &candles, const QString &title)
     QPainter painter(&image);
     const QRectF header(0, 0, image.width(), 30);
     painter.fillRect(image.rect(), palette.background);
-    paint(&painter, QRectF(0, header.height(), image.width(), image.height() - header.height()), candles, 120, {},
+    View view;
+    view.count = std::min<double>(120, std::max<size_t>(candles.size(), 10));
+    paint(&painter, QRectF(0, header.height(), image.width(), image.height() - header.height()), candles, view, {},
           palette, font);
     painter.setFont(font);
     painter.setPen(palette.text);
@@ -241,7 +315,12 @@ QByteArray renderPng(const Trading::Candles &candles, const QString &title)
 ChartItem::ChartItem(QQuickItem *parent)
     : QQuickPaintedItem(parent)
 {
+    setAcceptedMouseButtons(Qt::LeftButton);
+    setAcceptHoverEvents(true);
+    setFlag(ItemIsFocusScope, false);
+    setActiveFocusOnTab(true);
     connect(this, &ChartItem::appearanceChanged, this, [this] { update(); });
+    connect(this, &ChartItem::viewChanged, this, [this] { update(); });
 }
 
 void ChartItem::setSource(QObject *source)
@@ -251,19 +330,208 @@ void ChartItem::setSource(QObject *source)
     if (m_source)
         disconnect(m_source, nullptr, this, nullptr);
     m_source = source;
-    if (auto *engine = qobject_cast<TradingEngine *>(source))
-        connect(engine, &TradingEngine::chartChanged, this, [this] { update(); });
+    if (auto *engine = qobject_cast<TradingEngine *>(source)) {
+        connect(engine, &TradingEngine::chartChanged, this, &ChartItem::onChartChanged);
+        connect(engine, &TradingEngine::chartReset, this, [this] {
+            // Another market: its newest candles, at the zoom that was chosen.
+            m_tailSeen = 0;
+            m_offset = 0;
+            Q_EMIT viewChanged();
+        });
+        m_tailSeen = engine->tailAdded();
+    }
     Q_EMIT sourceChanged();
     update();
 }
 
+void ChartItem::onChartChanged()
+{
+    const auto *engine = qobject_cast<TradingEngine *>(m_source);
+    if (!engine)
+        return;
+    // A view of the past keeps showing the same candles when new ones arrive.
+    const int added = engine->tailAdded() - m_tailSeen;
+    m_tailSeen = engine->tailAdded();
+    const qsizetype total = qsizetype(engine->chartCandles().size());
+    if (added > 0 && !live())
+        m_offset += added;
+    // Older candles arrived, or the view moved with the new ones.
+    if (total != m_totalSeen || (added > 0 && !live()))
+        Q_EMIT viewChanged();
+    m_totalSeen = total;
+    update();
+}
+
+void ChartItem::setView(double count, double offset)
+{
+    const auto *engine = qobject_cast<TradingEngine *>(m_source);
+    const double total = engine ? double(engine->chartCandles().size()) : 0;
+    count = std::clamp(count, 20.0, 2000.0);
+    // Into the past until a tenth of the plot still shows candles; into the
+    // future until half of it is empty.
+    offset = std::clamp(offset, -count * 0.5, std::max(0.0, total - count * 0.1));
+    if (qFuzzyCompare(count + 1, m_count + 1) && qFuzzyCompare(offset + 1, m_offset + 1))
+        return;
+    m_count = count;
+    m_offset = offset;
+    Q_EMIT viewChanged();
+    // Near the oldest candle that is loaded: fetch what came before it.
+    if (auto *loader = qobject_cast<TradingEngine *>(m_source)) {
+        if (total > 0 && total - 1 - m_offset - m_count < 60 && loader->hasOlder() && !loader->loadingOlder())
+            loader->loadOlder();
+    }
+}
+
+bool ChartItem::atStart() const
+{
+    const auto *engine = qobject_cast<TradingEngine *>(m_source);
+    return engine && double(engine->chartCandles().size()) - 1 - m_offset - m_count < 1;
+}
+
 void ChartItem::setVisibleCandles(int count)
 {
-    count = std::clamp(count, 20, 300);
-    if (count == m_visible)
+    setView(count, m_offset);
+}
+
+void ChartItem::goLive()
+{
+    setView(m_count, 0);
+}
+
+void ChartItem::zoom(double factor)
+{
+    zoomAt(factor, m_geometry.plot.isValid() ? m_geometry.plot.center().x() : width() / 2);
+}
+
+void ChartItem::pan(double candles)
+{
+    setView(m_count, m_offset + candles);
+}
+
+// Show 'factor' times as many candles, keeping the candle at x where it is.
+void ChartItem::zoomAt(double factor, double x)
+{
+    if (!(m_geometry.slot > 0) || !m_geometry.plot.isValid()) {
+        setView(m_count * factor, m_offset);
         return;
-    m_visible = count;
-    Q_EMIT appearanceChanged();
+    }
+    const double count = std::clamp(m_count * factor, 20.0, 2000.0);
+    // Slots between x and the right edge, before and after: the difference
+    // is how far the right edge has to move.
+    const double fromRight = (m_geometry.plot.right() - x) / m_geometry.slot;
+    const double slotAfter = m_geometry.plot.width() / count;
+    const double fromRightAfter = (m_geometry.plot.right() - x) / slotAfter;
+    const double roomBefore = std::min(3.0, m_count * 0.04), roomAfter = std::min(3.0, count * 0.04);
+    setView(count, m_offset + (fromRight - roomBefore) - (fromRightAfter - roomAfter));
+}
+
+void ChartItem::setPointer(const QPointF &position, bool inside)
+{
+    m_pointer = position;
+    m_pointerInside = inside;
+    update();
+}
+
+void ChartItem::updateHovered()
+{
+    QVariantMap now;
+    const auto *engine = qobject_cast<TradingEngine *>(m_source);
+    if (engine && m_pointerInside && m_geometry.hovered >= 0
+        && m_geometry.hovered < int(engine->chartCandles().size())) {
+        const Trading::Candle &c = engine->chartCandles()[size_t(m_geometry.hovered)];
+        now = {{QStringLiteral("time"), double(c.openTime)}, {QStringLiteral("open"), c.open},
+               {QStringLiteral("high"), c.high}, {QStringLiteral("low"), c.low}, {QStringLiteral("close"), c.close},
+               {QStringLiteral("volume"), c.volume}, {QStringLiteral("change"), c.close - c.open},
+               {QStringLiteral("changePct"), c.open > 0 ? (c.close - c.open) / c.open * 100.0 : 0.0}};
+    }
+    if (now != m_hovered) {
+        m_hovered = now;
+        Q_EMIT hoveredChanged();
+    }
+}
+
+void ChartItem::mousePressEvent(QMouseEvent *event)
+{
+    forceActiveFocus(Qt::MouseFocusReason);
+    // The drag belongs to the chart: the page around it must not take it
+    // over to scroll.
+    setKeepMouseGrab(true);
+    m_dragging = true;
+    m_dragX = event->position().x();
+    m_dragOffset = m_offset;
+    setCursor(Qt::ClosedHandCursor);
+    event->accept();
+}
+
+void ChartItem::mouseMoveEvent(QMouseEvent *event)
+{
+    if (m_dragging && m_geometry.slot > 0) {
+        // Dragging to the right pulls older candles into view.
+        setView(m_count, m_dragOffset + (event->position().x() - m_dragX) / m_geometry.slot);
+    }
+    setPointer(event->position(), true);
+    event->accept();
+}
+
+void ChartItem::mouseReleaseEvent(QMouseEvent *event)
+{
+    m_dragging = false;
+    unsetCursor();
+    event->accept();
+}
+
+void ChartItem::mouseUngrabEvent()
+{
+    m_dragging = false;
+    unsetCursor();
+}
+
+void ChartItem::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    m_dragging = false;
+    setView(120, 0);
+    event->accept();
+}
+
+void ChartItem::wheelEvent(QWheelEvent *event)
+{
+    const QPoint angle = event->angleDelta();
+    if (angle.x() != 0 && std::abs(angle.x()) > std::abs(angle.y())) {
+        // A sideways wheel or a two-finger swipe moves through time.
+        pan(angle.x() / 120.0 * std::max(1.0, m_count * 0.08));
+    } else if (event->modifiers() & Qt::ShiftModifier) {
+        pan(angle.y() / 120.0 * std::max(1.0, m_count * 0.08));
+    } else if (angle.y() != 0) {
+        // Towards the user: more candles (further away).
+        zoomAt(std::pow(0.85, angle.y() / 120.0), event->position().x());
+    }
+    event->accept();
+}
+
+void ChartItem::hoverMoveEvent(QHoverEvent *event)
+{
+    setPointer(event->position(), true);
+}
+
+void ChartItem::hoverLeaveEvent(QHoverEvent *)
+{
+    setPointer(m_pointer, false);
+}
+
+void ChartItem::keyPressEvent(QKeyEvent *event)
+{
+    const double stepSize = std::max(1.0, m_count * (event->modifiers() & Qt::ShiftModifier ? 0.5 : 0.1));
+    switch (event->key()) {
+    case Qt::Key_Left: pan(stepSize); break;
+    case Qt::Key_Right: pan(-stepSize); break;
+    case Qt::Key_Plus:
+    case Qt::Key_Equal: zoom(0.8); break;
+    case Qt::Key_Minus: zoom(1.25); break;
+    case Qt::Key_Home:
+    case Qt::Key_End: goLive(); break;
+    default: QQuickPaintedItem::keyPressEvent(event); return;
+    }
+    event->accept();
 }
 
 void ChartItem::paint(QPainter *painter)
@@ -285,6 +553,14 @@ void ChartItem::paint(QPainter *painter)
     levels.entry = m_entry;
     levels.stop = m_stop;
     levels.target = m_target;
+    ChartRenderer::View view;
+    view.count = m_count;
+    view.offset = m_offset;
+    view.crosshair = m_pointerInside && !m_dragging;
+    view.pointer = m_pointer;
     static const Trading::Candles none;
-    ChartRenderer::paint(painter, boundingRect(), engine ? engine->candles() : none, m_visible, levels, palette, m_font);
+    m_geometry = ChartRenderer::paint(painter, boundingRect(), engine ? engine->chartCandles() : none, view, levels,
+                                      palette, m_font);
+    // After painting: the item must not change its properties while it paints.
+    QMetaObject::invokeMethod(this, &ChartItem::updateHovered, Qt::QueuedConnection);
 }

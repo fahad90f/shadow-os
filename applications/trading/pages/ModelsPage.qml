@@ -94,7 +94,8 @@ NxPage {
             readonly property string role: modelData.role
 
             title: words.role(role)
-            description: (role === "analysis" ? qsTr("Weighs trend, momentum and volatility into one overall read.")
+            description: (role === "analysis" ? qsTr("The analysis team. Each member reads the snapshot from its own seat: %1. With the team review on, they then read each other's calls and make their final ones.")
+                    .arg(trading.teamSeats.map(seat => seat.title.toLowerCase()).join(", "))
                 : role === "reasoning" ? qsTr("Argues against the obvious trade before accepting it.")
                 : role === "vision" ? qsTr("Also gets a picture of the chart and checks it against the numbers.")
                 : qsTr("Works the numbers: distances in ATR, where stops and targets fall."))
@@ -120,7 +121,8 @@ NxPage {
                     readonly property var result: page.results[modelData.model]
                     icon: words.roleIcon(modelData.role)
                     iconColor: words.stateColor(modelData.state)
-                    title: modelData.name
+                    title: modelData.seatTitle !== "" ? qsTr("%1  ·  %2 seat").arg(modelData.name).arg(modelData.seatTitle)
+                        : modelData.name
                     subtitle: modelData.model + (result !== undefined ? "  ·  " + result.message
                         : modelData.detail !== "" ? "  ·  " + modelData.detail : "")
                     NxBadge {
@@ -145,6 +147,17 @@ NxPage {
                         tooltip: qsTr("Take %1 off the panel").arg(row.modelData.name)
                         onClicked: trading.removeModel(row.modelData.model)
                     }
+                }
+            }
+            NxRow {
+                visible: section.role === "analysis"
+                icon: "users"
+                title: qsTr("Team review")
+                subtitle: qsTr("After the first calls, every member of the team is shown its teammates' calls and reasoning and makes its final call. It may keep its call. One more request per member.")
+                Switch {
+                    checked: trading.teamReview
+                    onToggled: trading.teamReview = checked
+                    Accessible.name: qsTr("Team review")
                 }
             }
         }
@@ -194,7 +207,7 @@ NxPage {
         NxRow {
             icon: "undo"
             title: qsTr("Built-in panel")
-            subtitle: qsTr("Twelve models, three per role.")
+            subtitle: qsTr("Fourteen models: six on the analysis team, three for reasoning, three for vision and two for compute.")
             NxButton {
                 text: qsTr("Restore")
                 onClicked: trading.resetPanel()

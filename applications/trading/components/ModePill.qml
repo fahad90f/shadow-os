@@ -14,7 +14,7 @@ Rectangle {
     radius: height / 2
     color: hover.hovered ? Theme.bgHover : Theme.alpha(Theme.bgRaised, 0.9)
     border.width: activeFocus ? 2 : Theme.borderWidth
-    border.color: activeFocus ? Theme.focusRing : Theme.alpha(Theme.accent, 0.6)
+    border.color: activeFocus ? Theme.textPrimary : Theme.alpha(Theme.accent, 0.6)
     activeFocusOnTab: true
     Accessible.role: Accessible.ButtonMenu
     Accessible.name: qsTr("Trading mode: paper trading")

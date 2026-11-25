@@ -6,7 +6,9 @@
 #include <QByteArray>
 #include <QColor>
 #include <QFont>
+#include <QPointF>
 #include <QQuickPaintedItem>
+#include <QVariantMap>
 #include <QRectF>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
@@ -40,9 +42,31 @@ struct Levels
     double target = 0;
 };
 
-// Draw the newest 'count' candles of 'candles' into 'rect'.
-void paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candles, int count, const Levels &levels,
-           const Palette &palette, const QFont &font);
+// Which part of the series is drawn, and what the pointer is over.
+struct View
+{
+    double count = 120;       // candles across the plot
+    // How far the view is moved into the past, in candles: 0 puts the newest
+    // candle at the right edge (with a little room), a positive number shows
+    // older candles, a negative one more empty room on the right.
+    double offset = 0;
+    bool crosshair = false;   // draw lines and tags at 'pointer'
+    QPointF pointer;          // in the coordinates of 'rect'
+};
+
+// What paint() worked out, for whoever handles the pointer.
+struct Geometry
+{
+    QRectF plot;              // where candles are drawn (prices and volume)
+    double slot = 0;          // width of one candle
+    double firstIndex = 0;    // the (fractional) index of the series at the plot's left edge
+    int hovered = -1;         // index of the candle under the pointer, -1 for none
+    double hoveredPrice = 0;  // the price at the pointer's height (0 outside the price area)
+};
+
+// Draw the part of 'candles' that 'view' selects into 'rect'.
+Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candles, const View &view,
+               const Levels &levels, const Palette &palette, const QFont &font);
 
 // A 960x540 PNG of the newest 120 candles with a title, on a dark background.
 QByteArray renderPng(const Trading::Candles &candles, const QString &title);
@@ -57,7 +81,13 @@ class ChartItem : public QQuickPaintedItem
     QML_ELEMENT
     // The TradingEngine ("trading"); the chart repaints when its candles change.
     Q_PROPERTY(QObject *source READ source WRITE setSource NOTIFY sourceChanged)
-    Q_PROPERTY(int visibleCandles READ visibleCandles WRITE setVisibleCandles NOTIFY appearanceChanged)
+    Q_PROPERTY(int visibleCandles READ visibleCandles WRITE setVisibleCandles NOTIFY viewChanged)
+    // True while the newest candle is in view at the right edge. goLive() returns there.
+    Q_PROPERTY(bool live READ live NOTIFY viewChanged)
+    // The oldest candle that is loaded is in view.
+    Q_PROPERTY(bool atStart READ atStart NOTIFY viewChanged)
+    // The candle under the pointer: {time, open, high, low, close, volume, change, changePct}, empty for none.
+    Q_PROPERTY(QVariantMap hovered READ hovered NOTIFY hoveredChanged)
     Q_PROPERTY(double entry MEMBER m_entry NOTIFY appearanceChanged)
     Q_PROPERTY(double stop MEMBER m_stop NOTIFY appearanceChanged)
     Q_PROPERTY(double target MEMBER m_target NOTIFY appearanceChanged)
@@ -77,18 +107,56 @@ public:
 
     QObject *source() const { return m_source; }
     void setSource(QObject *source);
-    int visibleCandles() const { return m_visible; }
+    int visibleCandles() const { return int(m_count); }
     void setVisibleCandles(int count);
+    bool live() const { return m_offset < 0.5; }
+    bool atStart() const;
+    QVariantMap hovered() const { return m_hovered; }
+
+    // The view: back to the newest candle; closer / further (factor < 1 shows
+    // fewer candles) around the middle; sideways by a number of candles.
+    Q_INVOKABLE void goLive();
+    Q_INVOKABLE void zoom(double factor);
+    Q_INVOKABLE void pan(double candles);
 
     void paint(QPainter *painter) override;
 
 Q_SIGNALS:
     void sourceChanged();
     void appearanceChanged();
+    void viewChanged();
+    void hoveredChanged();
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void mouseUngrabEvent() override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
+    void hoverMoveEvent(QHoverEvent *event) override;
+    void hoverLeaveEvent(QHoverEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
 
 private:
+    void setView(double count, double offset);
+    void zoomAt(double factor, double x);
+    void setPointer(const QPointF &position, bool inside);
+    void onChartChanged();
+    void updateHovered();
+
     QObject *m_source = nullptr;
-    int m_visible = 120;
+    double m_count = 120;
+    double m_offset = 0;
+    int m_tailSeen = 0;           // TradingEngine::tailAdded() when last looked
+    qsizetype m_totalSeen = 0;
+    bool m_dragging = false;
+    double m_dragX = 0;
+    double m_dragOffset = 0;
+    bool m_pointerInside = false;
+    QPointF m_pointer;
+    ChartRenderer::Geometry m_geometry;
+    QVariantMap m_hovered;
     double m_entry = 0;
     double m_stop = 0;
     double m_target = 0;

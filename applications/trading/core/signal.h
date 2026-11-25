@@ -30,6 +30,11 @@ struct Verdict
     double takeProfit = 0;
     std::string reasoning;
     long long ms = 0;      // how long the analyst took
+    // The analysis team: the member's seat, and what its team review changed.
+    std::string seat;      // "" for an analyst that has no seat
+    bool reviewed = false; // this is its final call, made after reading its teammates' calls
+    Action firstAction = Action::Hold; // its call before the review, when reviewed
+    double firstConfidence = 0;
 };
 
 // A stop on the losing side of the entry and a target on the winning side,

@@ -5,6 +5,7 @@
 
 #include <QHash>
 #include <QList>
+#include <QPair>
 #include <QObject>
 #include <QPointer>
 #include <QSet>
@@ -45,13 +46,18 @@ public:
     // Ask for the latest 'limit' candles; candles() or failed() follows, with
     // the same 'purpose' (what the caller wants them for). A request for a
     // series and purpose that is already being fetched is dropped.
+    // With 'beforeMs' the candles that end before that time (older history).
     void fetchCandles(const QString &symbol, const QString &interval, int limit,
-                      const QString &purpose = QStringLiteral("chart"));
+                      const QString &purpose = QStringLiteral("chart"), qint64 beforeMs = 0);
     void fetchTickers(const QStringList &symbols);
+    // The last price of every market the service lists: what can be added
+    // to the watchlist. allPrices() or allPricesFailed() follows.
+    void fetchAllPrices();
 
     // Parsers, public for the tests.
     static Trading::Candles parseKlines(const QByteArray &json, qint64 nowMs, QString *error);
     static QList<Ticker> parseTickers(const QByteArray &json, QString *error);
+    static QList<QPair<QString, double>> parseAllPrices(const QByteArray &json);
 
 Q_SIGNALS:
     void candles(const QString &symbol, const QString &interval, const Trading::Candles &series,
@@ -61,6 +67,8 @@ Q_SIGNALS:
     void failed(const QString &what, const QString &message);
     // The service has no market of this name. Sent once per name.
     void unlisted(const QString &symbol);
+    void allPrices(const QList<QPair<QString, double>> &prices);
+    void allPricesFailed(const QString &message);
 
 private:
     QString describe(QNetworkReply *reply) const;

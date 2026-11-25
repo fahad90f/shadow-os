@@ -12,12 +12,16 @@ file(GLOB TRADING_PROMPTS CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
 # a subdirectory (an implicit import of the module) and imports it by name.
 set_source_files_properties(components/Format.js PROPERTIES QT_QML_SKIP_QMLDIR_ENTRY TRUE)
 
+# The live price stream is a WebSocket.
+find_package(Qt6 REQUIRED COMPONENTS WebSockets)
+
 shadow_add_app(shadow-trading
     URI org.shadow.trading
     SOURCES
         main.cpp
         chartrenderer.cpp chartrenderer.h
         marketdata.cpp marketdata.h
+        marketstream.cpp marketstream.h
         modelclient.cpp modelclient.h
         tradingconfig.cpp tradingconfig.h
         tradingengine.cpp tradingengine.h
@@ -30,5 +34,5 @@ shadow_add_app(shadow-trading
     QML Main.qml ${TRADING_QML}
     RESOURCES ${TRADING_PROMPTS}
     DESKTOP org.shadow.trading.desktop
-    LIBS Qt6::Network
+    LIBS Qt6::Network Qt6::WebSockets
 )

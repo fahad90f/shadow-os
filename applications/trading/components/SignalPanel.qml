@@ -85,7 +85,9 @@ ColumnLayout {
                     }
                     Label {
                         Layout.fillWidth: true
-                        text: trading.analyzing ? qsTr("Analyzing market…  •  Finding best opportunities…")
+                        text: trading.analyzing ? (root.signalData.stage === "review"
+                                ? qsTr("Team review…  •  The analysis team compares its calls…")
+                                : qsTr("Analyzing market…  •  Finding best opportunities…"))
                             : root.ready ? qsTr("%1 %2  •  analyzed %3").arg(root.signalData.symbolName)
                                   .arg(root.signalData.interval).arg(Format.clock(root.signalData.time))
                             : root.readings.taValid === true ? qsTr("Ready  •  runs when the next candle closes")
@@ -185,7 +187,7 @@ ColumnLayout {
                     Layout.preferredHeight: 96
                     radius: Theme.radiusLg
                     border.width: activeFocus ? 2 : Theme.borderWidth
-                    border.color: activeFocus ? Theme.focusRing : Theme.alpha(Theme.accent, on ? 1 : 0.45)
+                    border.color: activeFocus ? Theme.textPrimary : Theme.alpha(Theme.accent, on ? 1 : 0.45)
                     gradient: Gradient {
                         GradientStop { position: 0; color: Theme.alpha(Theme.accent, auto.on ? 0.55 : 0.10) }
                         GradientStop { position: 1; color: Theme.alpha(Theme.accent, auto.on ? 0.25 : 0.04) }

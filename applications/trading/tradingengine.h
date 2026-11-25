@@ -5,6 +5,7 @@
 #include "core/risk.h"
 #include "core/signal.h"
 #include "marketdata.h"
+#include "marketstream.h"
 #include "skills/candle.h"
 #include "skills/indicators.h"
 #include "skills/smc.h"
@@ -41,6 +42,16 @@ class TradingEngine : public QObject
     Q_PROPERTY(QString dataState READ dataState NOTIFY marketChanged)
     Q_PROPERTY(QString dataError READ dataError NOTIFY marketChanged)
     Q_PROPERTY(QString dataSource READ dataSource CONSTANT)
+    // Prices arrive as they change (the live stream is connected); otherwise
+    // they are asked for every few seconds.
+    Q_PROPERTY(bool streaming READ streaming NOTIFY marketChanged)
+    Q_PROPERTY(int maxMarkets READ maxMarkets CONSTANT)
+    // Without the stream, prices are asked for this often.
+    Q_PROPERTY(int pollSeconds READ pollSeconds CONSTANT)
+    // The markets the data service lists, for adding one: loaded by refreshMarkets().
+    Q_PROPERTY(bool marketsLoaded READ marketsLoaded NOTIFY marketsChanged)
+    Q_PROPERTY(bool marketsLoading READ marketsLoading NOTIFY marketsChanged)
+    Q_PROPERTY(QString marketsError READ marketsError NOTIFY marketsChanged)
 
     Q_PROPERTY(QString symbol READ symbol WRITE setSymbol NOTIFY selectionChanged)
     Q_PROPERTY(QString symbolName READ symbolName NOTIFY selectionChanged)
@@ -49,6 +60,9 @@ class TradingEngine : public QObject
 
     // Bumped whenever the candles of the selected market change.
     Q_PROPERTY(int chartRevision READ chartRevision NOTIFY chartChanged)
+    // Older candles are being fetched for the chart / there are none before the oldest one.
+    Q_PROPERTY(bool loadingOlder READ loadingOlder NOTIFY chartChanged)
+    Q_PROPERTY(bool hasOlder READ hasOlder NOTIFY chartChanged)
     // The last candle: {time, open, high, low, close, change, changePct, closed}.
     Q_PROPERTY(QVariantMap quote READ quote NOTIFY chartChanged)
     // The closes of the newest candles of the selected market, oldest first.
@@ -67,6 +81,10 @@ class TradingEngine : public QObject
 
     Q_PROPERTY(bool autoTrade READ autoTrade WRITE setAutoTrade NOTIFY settingsChanged)
     Q_PROPERTY(bool autoAnalyze READ autoAnalyze WRITE setAutoAnalyze NOTIFY settingsChanged)
+    // The analysis team reads each other's first calls and then makes its final ones.
+    Q_PROPERTY(bool teamReview READ teamReview WRITE setTeamReview NOTIFY settingsChanged)
+    // The seats of the analysis team, in order: {key, title, focus}.
+    Q_PROPERTY(QVariantList teamSeats READ teamSeatList CONSTANT)
     Q_PROPERTY(QVariantMap riskSettings READ riskSettings NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap paperSettings READ paperSettings NOTIFY settingsChanged)
 
@@ -91,6 +109,14 @@ public:
     QString dataState() const { return m_dataState; }
     QString dataError() const { return m_dataError; }
     QString dataSource() const;
+    bool streaming() const;
+    int maxMarkets() const;
+    int pollSeconds() const;
+    bool marketsLoaded() const { return !m_marketCatalog.isEmpty(); }
+    bool marketsLoading() const { return m_marketsLoading; }
+    QString marketsError() const { return m_marketsError; }
+    bool loadingOlder() const { return m_loadingOlder; }
+    bool hasOlder() const { return !m_noOlder; }
     QString symbol() const;
     QString symbolName() const { return displayName(symbol()); }
     void setSymbol(const QString &symbol);
@@ -111,6 +137,9 @@ public:
     void setAutoTrade(bool on);
     bool autoAnalyze() const;
     void setAutoAnalyze(bool on);
+    bool teamReview() const;
+    void setTeamReview(bool on);
+    QVariantList teamSeatList() const;
     QVariantMap riskSettings() const;
     QVariantMap paperSettings() const;
     QVariantMap account() const;
@@ -121,8 +150,24 @@ public:
     bool webViewAvailable() const { return m_webViewAvailable; }
     void setWebViewAvailable(bool available) { m_webViewAvailable = available; }
 
-    // For the chart and the tests.
+    // For the chart and the tests. candles() is what the analysts read (the
+    // newest few hundred); chartCandles() is everything loaded for the chart,
+    // which grows backwards as the chart is moved into the past.
     const Trading::Candles &candles() const { return m_candles; }
+    const Trading::Candles &chartCandles() const { return m_chart; }
+    // How many candles were added at the newest end since the market was
+    // put on the chart: a chart that is looking at the past moves its view
+    // by as much, so that the same candles stay in view.
+    int tailAdded() const { return m_tailAdded; }
+    // Fetch the candles before the oldest one the chart has.
+    Q_INVOKABLE void loadOlder();
+
+    // Markets: the service's list (for the "add a market" dialog), and the
+    // watchlist. add/remove return "" on success, else what is wrong.
+    Q_INVOKABLE void refreshMarkets();
+    Q_INVOKABLE QVariantList findMarkets(const QString &text) const;
+    Q_INVOKABLE QString addMarket(const QString &symbol);
+    Q_INVOKABLE QString removeMarket(const QString &symbol);
     const Trading::Signal &lastSignal() const { return m_lastSignal; }
     Trading::PaperAccount &paperAccount() { return m_account; }
 
@@ -164,8 +209,21 @@ public:
                          const Trading::Smc::Analysis &smc) const;
     // A model's answer as a verdict; !ok with a reason when it is unusable.
     static Trading::Verdict parseVerdict(const QString &source, const QString &text);
-    // The instructions for one role: the task, the role's focus and its skill briefs.
-    static QString systemPrompt(const QString &role, double minRewardRisk);
+    // The instructions for one role: the task, the role's focus and its skill
+    // briefs. A member of the analysis team is also given its seat.
+    static QString systemPrompt(const QString &role, double minRewardRisk, const QString &seat = QString());
+    // The analysis team. Each member reads the snapshot from one seat, so six
+    // models are six different looks at the market and not one look six times.
+    struct Seat { QString key; QString title; QString focus; };
+    static const QList<Seat> &teamSeats();
+    static QString seatTitle(const QString &key);
+    // The seat of a model of the panel: by its place among the analysis
+    // models, so it keeps its seat when another model is switched off.
+    // Empty for a model that is not on the analysis team.
+    QString seatOf(const QString &model) const;
+    // What a team member is asked in the review: its own first call and its
+    // teammates' calls, by seat.
+    static QString reviewRequest(const Trading::Verdict &own, const std::vector<Trading::Verdict> &teammates);
     // The skills a role is briefed on: "ta", "smc", "risk", "chart".
     static QStringList skillsOf(const QString &role);
 
@@ -177,6 +235,9 @@ Q_SIGNALS:
     void marketChanged();
     void selectionChanged();
     void chartChanged();
+    // Another market or interval is on the chart: its view starts over.
+    void chartReset();
+    void marketsChanged();
     void signalChanged();
     void analystsChanged();
     void settingsChanged();
@@ -195,6 +256,12 @@ private:
     void onTickers(const QList<MarketData::Ticker> &list);
     void onDataFailed(const QString &what, const QString &message);
     void onUnlisted(const QString &symbol);
+    void onStreamTrade(const QString &symbol, double price, double quantity);
+    void onStreamKline(const QString &symbol, const QString &interval, const Trading::Candle &candle);
+    void onStreamTicker(const MarketData::Ticker &ticker);
+    void flushStream();
+    void subscribeStream();
+    void mergeChart();
     // Prices ("tickers") and candles fail and recover on their own; an empty
     // message means that source works. True when the state on screen changed.
     bool setDataError(const QString &what, const QString &message);
@@ -202,6 +269,8 @@ private:
     void onModelAnswered(const QString &id, const QString &text, qint64 ms);
     void onModelFailed(const QString &id, const QString &code, const QString &message, qint64 ms);
     void collect(const Trading::Verdict &verdict);
+    void startTeamReview();
+    void applyReview(const Trading::Verdict &final);
     void finishAnalysis();
     QString execute(const Trading::Signal &signal, const Trading::RiskDecision &decision);
     Trading::AccountView accountView(const QString &symbol, qint64 nowMs) const;
@@ -216,11 +285,27 @@ private:
     TradingConfig *m_config;
     QNetworkAccessManager *m_net;
     MarketData *m_data;
+    MarketStream *m_stream;
     ModelClient *m_models;
     QTimer *m_timer;
+    QTimer *m_flush;                  // trades are applied to the chart a few times a second
 
     // market
-    Trading::Candles m_candles;       // selected symbol and interval
+    Trading::Candles m_candles;       // selected symbol and interval: what the analysts read
+    Trading::Candles m_chart;         // the same plus the older candles loaded for the chart
+    bool m_loadingOlder = false;
+    bool m_noOlder = false;           // the market's history begins at m_chart.front()
+    int m_tailAdded = 0;
+    // Trades of the stream since the last flush.
+    bool m_tradePending = false;
+    double m_tradeLast = 0, m_tradeHigh = 0, m_tradeLow = 0, m_tradeVolume = 0;
+    bool m_marketDirty = false;
+    qint64 m_streamCandleAt = 0;      // when the stream last updated the forming candle
+    qint64 m_lastIdleUpdate = 0;
+    qint64 m_streamLoggedAt = 0;
+    QList<QPair<QString, double>> m_marketCatalog;
+    bool m_marketsLoading = false;
+    QString m_marketsError;
     Trading::Candles m_higherCandles; // the same symbol one timeframe up
     QString m_higherFor;              // "SYMBOL:interval" m_higherCandles belongs to
     QHash<QString, MarketData::Ticker> m_tickers;
@@ -243,6 +328,9 @@ private:
     int m_generation = 0;             // answers of an abandoned analysis are ignored
     QSet<QString> m_waiting;          // models that have not answered yet
     QSet<QString> m_testing;          // models being tested from the Model Panel
+    QSet<QString> m_teamAsked;        // team members whose first call is still out
+    QSet<QString> m_reviewing;        // team members whose final call is still out
+    QString m_analysisQuestion;       // the snapshot as the models were given it
     std::vector<Trading::Verdict> m_verdicts;
     Trading::Indicators::Summary m_ta;
     Trading::Smc::Analysis m_smc;

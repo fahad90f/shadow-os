@@ -48,6 +48,10 @@ public:
     void resetPanel();
     // "moonshotai/kimi-k3.1-pro" -> "Kimi K3.1 Pro", "Kimi", "moonshotai".
     static QString displayName(const QString &model);
+    // The name of a model of the panel: displayName(), with the model's size
+    // added when another model of the panel would have the same name
+    // ("Gemma 3 12B" and "Gemma 3 4B").
+    QString memberName(const QString &model) const;
     static QString shortName(const QString &model);
     static QString publisher(const QString &model);
 
@@ -66,7 +70,15 @@ public:
 
     // ---- market ------------------------------------------------------------
     QString dataUrl() const { return m_dataUrl; }
+    // The live stream ("wss://…"); empty when there is none to use.
+    QString streamUrl() const { return m_streamUrl; }
     QStringList watchlist() const { return m_watchlist; }
+    static constexpr int kMaxMarkets = 12;
+    static bool validSymbol(const QString &symbol);
+    // Add a market at the end of the watchlist, or take one out. They return
+    // "" on success, else what is wrong. The last market cannot be removed.
+    QString addMarket(const QString &symbol);
+    QString removeMarket(const QString &symbol);
     QString symbol() const { return m_symbol; }
     void setSymbol(const QString &symbol);
     QString interval() const { return m_interval; }
@@ -81,6 +93,9 @@ public:
     void setAutoTrade(bool on);
     bool autoAnalyze() const { return m_autoAnalyze; }
     void setAutoAnalyze(bool on);
+    // The analysis team reads each other's first calls and then makes its final ones.
+    bool teamReview() const { return m_teamReview; }
+    void setTeamReview(bool on);
 
     Trading::RiskSettings risk() const { return m_risk; }
     // One risk setting by name; false when the name or value is not valid.
@@ -104,11 +119,13 @@ private:
     QList<Member> m_panel;
     QString m_baseUrl;
     QString m_dataUrl;
+    QString m_streamUrl;
     QStringList m_watchlist;
     QString m_symbol;
     QString m_interval;
     bool m_autoTrade = false;
     bool m_autoAnalyze = true;
+    bool m_teamReview = true;
     Trading::RiskSettings m_risk;
     Trading::PaperSettings m_paper;
 };

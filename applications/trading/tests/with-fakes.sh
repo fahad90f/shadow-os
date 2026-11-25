@@ -12,6 +12,7 @@
 #   FAKE_TREND=up          up | down | flat: the shape of the made-up prices
 #   FAKE_SCENARIO=FILE     how the models answer (see fake_services.py)
 #   FAKE_KEYS=1            give the application the stand-in's test key
+#   FAKE_STREAM=0          no live stream
 #   FAKE_AUTO_TRADE=1      write a settings file with auto trade on
 #   FAKE_HISTORY=1         start from a paper account with a few made-up trades
 #   FAKE_LOG=FILE          request log of the stand-in services
@@ -32,6 +33,12 @@ done
 base="http://127.0.0.1:$port"
 export SHADOW_TRADING_DATA_URL="$base"
 export SHADOW_TRADING_NVIDIA_URL="$base/nvidia/v1"
+# The stand-in's live stream, unless FAKE_STREAM=0 (prices are then asked for every few seconds).
+if [ "${FAKE_STREAM:-1}" = 1 ]; then
+    export SHADOW_TRADING_STREAM_URL="ws://127.0.0.1:$port"
+else
+    export SHADOW_TRADING_STREAM_URL=off
+fi
 if [ "${FAKE_KEYS:-0}" = 1 ]; then
     # The stand-in's own test key: it opens nothing anywhere else.
     export NVIDIA_API_KEY="nvapi-test-00000000000000000000000"
