@@ -40,6 +40,7 @@ struct Levels
     double entry = 0; // 0 = not drawn
     double stop = 0;
     double target = 0;
+    QString entryLabel; // on the entry line; empty = "Entry"
 };
 
 // Which part of the series is drawn, and what the pointer is over.
@@ -91,6 +92,8 @@ class ChartItem : public QQuickPaintedItem
     Q_PROPERTY(double entry MEMBER m_entry NOTIFY appearanceChanged)
     Q_PROPERTY(double stop MEMBER m_stop NOTIFY appearanceChanged)
     Q_PROPERTY(double target MEMBER m_target NOTIFY appearanceChanged)
+    // What the entry line says: an open position's side and running profit.
+    Q_PROPERTY(QString entryLabel MEMBER m_entryLabel NOTIFY appearanceChanged)
     Q_PROPERTY(QColor backgroundColor MEMBER m_background NOTIFY appearanceChanged)
     Q_PROPERTY(QColor gridColor MEMBER m_grid NOTIFY appearanceChanged)
     Q_PROPERTY(QColor textColor MEMBER m_text NOTIFY appearanceChanged)
@@ -160,6 +163,7 @@ private:
     double m_entry = 0;
     double m_stop = 0;
     double m_target = 0;
+    QString m_entryLabel;
     QColor m_background, m_grid, m_text, m_up, m_down, m_fast, m_slow, m_band, m_entryColor;
     QFont m_font;
 };

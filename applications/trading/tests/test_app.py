@@ -32,6 +32,8 @@ HOLD = {"action": "hold"}
 # Auto trade on. The analyses are the ones a test asks for: left on, the
 # application would also analyze whenever a real quarter-hour passes mid-test.
 AUTO = "[engine]\nauto_trade=true\nauto_analyze=false\n"
+# The forex markets: currency pairs and gold from the stand-in for Kraken's public API.
+FOREX = "[market]\nkind=forex\n"
 
 
 def free_port():
@@ -630,6 +632,205 @@ class AppTest(unittest.TestCase):
         self.assertEqual(position["side"], "sell")
         self.assertGreater(position["stop"], position["entry"])
 
+    def test_an_open_position_stays_on_show_when_the_next_analysis_says_hold(self):
+        # The trade is placed; then the analysts see nothing more and say hold.
+        # The signal is hold, but the position is still there for the chart
+        # and the panel, with its own entry, stop and target.
+        out = self.act("analyze,wait:3,analyze,select:ETHUSDT,select:BTCUSDT", {"*": BUY}, settings=AUTO,
+                       moves=[(2.5, {"*": HOLD})])
+        self.assertEqual(out["signal"]["state"], "none")          # another market was looked at in between
+        positions = out["account"]["positions"]
+        self.assertEqual(len(positions), 1)
+        shown = out["account"]["position"]
+        self.assertEqual(shown["id"], positions[0]["id"])
+        self.assertEqual((shown["symbol"], shown["side"]), ("BTCUSDT", "buy"))
+        self.assertEqual((shown["entry"], shown["stop"], shown["takeProfit"]),
+                         (positions[0]["entry"], positions[0]["stop"], positions[0]["takeProfit"]))
+        said = [a["text"] for a in out["account"]["activity"]]
+        self.assertTrue(any("no trade" in text for text in said), said)   # the second analysis did say hold
+
+    def test_the_position_shown_is_the_selected_markets(self):
+        out = self.act("analyze,select:ETHUSDT", {"*": BUY}, settings=AUTO)
+        self.assertEqual(len(out["account"]["positions"]), 1)     # on BTC/USDT
+        self.assertEqual(out["account"]["position"], {})          # ETH/USDT is on the chart: nothing open there
+
+    # ---- forex -------------------------------------------------------------------
+
+    def test_the_forex_markets_come_from_the_forex_service(self):
+        self.serve()
+        self.assertEqual(self.dump("config")["marketKind"], "crypto")       # unless the settings say otherwise
+        self.settings(FOREX)
+        config = self.dump("config")
+        self.assertEqual((config["marketKind"], config["accountCurrency"]), ("forex", "USD"))
+        self.assertEqual(config["watchlist"], ["EURUSD", "GBPUSD", "AUDUSD", "USDCAD", "USDCHF", "PAXGUSD"])
+        self.assertEqual(config["symbol"], "EURUSD")
+        before = len(self.requests("market"))
+        market = self.dump("market")
+        listed = {m["symbol"]: m for m in market["watchlist"]}
+        self.assertEqual([listed[s]["name"] for s in ("EURUSD", "USDCHF", "PAXGUSD")],
+                         ["EUR/USD", "USD/CHF", "PAXG/USD"])
+        self.assertTrue(all(m["hasPrice"] for m in market["watchlist"]), market["watchlist"])
+        self.assertAlmostEqual(listed["EURUSD"]["price"], 1.0982, delta=0.04)
+        self.assertAlmostEqual(listed["USDCAD"]["price"], 1.4201, delta=0.05)   # keyed "ZUSDZCAD" by the service
+        self.assertEqual(market["quote"]["candles"], 300)
+        self.assertAlmostEqual(market["quote"]["close"], listed["EURUSD"]["price"], delta=0.01)
+        asked = self.requests("market")[before:]
+        self.assertEqual({r["path"] for r in asked}, {"/0/public/OHLC", "/0/public/Ticker"})
+        self.assertIn("pair=EURUSD&interval=15", [r["query"] for r in asked])
+        self.assertTrue(all(r["status"] == 200 for r in asked), asked)
+
+    def test_the_forex_stream_is_subscribed_to_once_connected(self):
+        self.stream = True
+        out = self.act("", {}, seconds=4, settings=FOREX + "[engine]\nauto_analyze=false\n",
+                       moves=[(2, {"market": {"move_pct": 2}})])
+        market = out["market"]
+        self.assertTrue(market["streaming"])
+        subscribed = {r["channel"]: r for r in self.requests("subscribe")}
+        self.assertEqual((subscribed["trade"]["symbols"], subscribed["trade"]["snapshot"]), (["EUR/USD"], False))
+        self.assertEqual((subscribed["ohlc"]["symbols"], subscribed["ohlc"]["interval"]), (["EUR/USD"], 15))
+        self.assertEqual(subscribed["ticker"]["symbols"],
+                         ["EUR/USD", "GBP/USD", "AUD/USD", "USD/CAD", "USD/CHF", "PAXG/USD"])
+        # The jump two seconds in can only have come through the stream.
+        self.assertGreater(market["quote"]["close"], 1.0982 * 1.012)
+        listed = {m["symbol"]: m for m in market["watchlist"]}
+        self.assertGreater(listed["USDCHF"]["price"], 0.8311 * 1.012)
+        self.assertEqual(len(self.market_requests("/0/public/Ticker")), 1)   # the first look, then the stream
+
+    def test_recorded_messages_of_the_real_forex_stream_are_understood(self):
+        # Messages recorded from the real public stream, replayed byte for byte.
+        self.stream = True
+        recorded = os.path.join(HERE, "fixtures", "real-kraken-stream.jsonl")
+        out = self.act("", {"stream": {"replay": recorded, "replay_after": 1.5, "silent": True}}, seconds=3,
+                       settings=FOREX + "[engine]\nauto_analyze=false\n")
+        tickers, trade = {}, None
+        with open(recorded, encoding="utf-8") as f:
+            for line in f:
+                message = json.loads(line)
+                for row in message.get("data", []) if message.get("channel") == "ticker" else []:
+                    tickers[row["symbol"]] = row
+                if message.get("channel") == "trade":
+                    trade = message["data"][-1]
+        self.assertEqual(sorted(tickers), ["EUR/USD", "GBP/USD", "USD/CHF"])
+        market = out["market"]
+        self.assertTrue(market["streaming"])
+        listed = {m["symbol"]: m for m in market["watchlist"]}
+        for pair, symbol in (("EUR/USD", "EURUSD"), ("GBP/USD", "GBPUSD"), ("USD/CHF", "USDCHF")):
+            self.assertEqual(listed[symbol]["price"], tickers[pair]["last"], pair)
+            self.assertEqual(listed[symbol]["changePct"], tickers[pair]["change_pct"], pair)
+        # The last recorded trade is the price of the forming candle.
+        self.assertEqual(market["quote"]["close"], trade["price"])
+        self.assertEqual(market["quote"]["candles"], 300)   # the recorded candle is older than the chart: left out
+
+    def test_recorded_answers_of_the_real_forex_service_are_understood(self):
+        # What the real service answered on 25 November 2026: its ticker of
+        # every currency pair and gold token, and its 15-minute candles of EUR/USD.
+        fixtures = os.path.join(HERE, "fixtures")
+        with open(os.path.join(fixtures, "real-kraken-ticker.json"), encoding="utf-8") as f:
+            ticker = json.load(f)["result"]
+        with open(os.path.join(fixtures, "real-kraken-ohlc.json"), encoding="utf-8") as f:
+            rows = json.load(f)["result"]["ZEURZUSD"]
+        plan = {"kraken": {"ticker": os.path.join(fixtures, "real-kraken-ticker.json"),
+                           "ohlc": os.path.join(fixtures, "real-kraken-ohlc.json")}}
+        out = self.act("find:", plan, settings=FOREX + "[engine]\nauto_analyze=false\n")
+        # Offered: the dollar pairs and gold with at least 500 trades that day.
+        offered = out["actions"][0]["result"].split()
+        self.assertEqual(offered, ["AUDUSD", "EURUSD", "GBPUSD", "PAXGUSD", "USDCAD", "USDCHF", "XAUTUSD"])
+        self.assertLess(ticker["ZUSDZJPY"]["t"][1], 500)             # why USD/JPY is not among them
+        self.assertGreater(ticker["EURGBP"]["t"][1], 500)            # a cross is left out whatever it trades
+        # The candles: the newest 300 of the recording, to the last digit.
+        quote = out["market"]["quote"]
+        self.assertEqual(quote["candles"], 300)
+        self.assertEqual((quote["open"], quote["high"], quote["low"], quote["close"]),
+                         tuple(float(v) for v in rows[-1][1:5]))
+        chart = out["market"]["chart"]
+        self.assertEqual((chart["first"], chart["last"]), (rows[-300][0] * 1000, rows[-1][0] * 1000))
+
+    def test_forex_offers_dollar_pairs_and_gold_that_trade_often_enough(self):
+        out = self.act("find:,find:jpy,add:XAUTUSD,add:USDJPY,add:EURGBP,add:XBTUSD,add:BTCUSDT,remove:AUDUSD,wait:1",
+                       {}, settings=FOREX + "[engine]\nauto_analyze=false\n")
+        results = {a["action"]: a["result"] for a in out["actions"]}
+        # Of everything the service lists: not the pair with a few trades a
+        # day (USD/JPY), not the cross (EUR/GBP), not the coin (XBT/USD).
+        self.assertEqual(results["find:"].split(),
+                         ["AUDUSD", "EURUSD", "GBPUSD", "PAXGUSD", "USDCAD", "USDCHF", "XAUTUSD"])
+        self.assertEqual(results["find:jpy"], "")
+        self.assertEqual(results["add:XAUTUSD"], "")
+        self.assertIn("too rarely", results["add:USDJPY"])
+        for name in ("EURGBP", "XBTUSD", "BTCUSDT"):
+            self.assertIn("only currency pairs with the US dollar", results["add:" + name], name)
+        self.assertEqual(results["remove:AUDUSD"], "")
+        listed = out["market"]["watchlist"]
+        self.assertEqual([m["symbol"] for m in listed], ["EURUSD", "GBPUSD", "USDCAD", "USDCHF", "PAXGUSD", "XAUTUSD"])
+        self.assertTrue(all(m["hasPrice"] for m in listed), listed)
+        # The forex list is kept apart from the crypto list.
+        self.assertEqual(self.dump("config")["watchlist"], ["EURUSD", "GBPUSD", "USDCAD", "USDCHF", "PAXGUSD", "XAUTUSD"])
+        with open(os.path.join(self.conf_dir, "trading.conf"), encoding="utf-8") as f:
+            saved = f.read()
+        self.assertIn("forex_watchlist=", saved)
+        self.assertNotIn("\nwatchlist=", saved)
+
+    def test_a_forex_chart_goes_back_as_far_as_the_service_keeps(self):
+        out = self.act("older", {}, settings=FOREX + "[engine]\nauto_analyze=false\n")
+        chart = out["market"]["chart"]
+        self.assertAlmostEqual(chart["candles"], 720, delta=2)     # all the service has of this interval
+        self.assertTrue(chart["hasOlder"])                          # not known yet that this is all
+        out = self.act("older,older", {}, settings=FOREX + "[engine]\nauto_analyze=false\n")
+        chart = out["market"]["chart"]
+        self.assertAlmostEqual(chart["candles"], 720, delta=2)
+        self.assertFalse(chart["hasOlder"])
+        self.assertEqual(out["market"]["quote"]["candles"], 300)   # the analysts' window is unchanged
+
+    def test_a_trade_on_a_dollar_base_pair_is_counted_in_dollars(self):
+        # USD/CHF on the dollar account: the quantity is dollars, and a profit
+        # in francs is turned back into dollars at the price it is taken at.
+        plan = {"*": BUY}
+        settings = "[market]\nkind=forex\nforex_symbol=USDCHF\n" + AUTO
+        out = self.act("analyze", plan, settings, moves=[(4, dict(plan, market={"move_pct": 0.3}))], seconds=9)
+        self.assertEqual(out["signal"]["symbol"], "USDCHF")
+        position = out["account"]["positions"][0]
+        self.assertEqual((position["symbol"], position["name"], position["side"]), ("USDCHF", "USD/CHF", "buy"))
+        # A third of the account at most, in dollars: the quantity itself.
+        self.assertAlmostEqual(position["value"], position["quantity"], places=6)
+        self.assertAlmostEqual(position["quantity"], 10000 / 3, delta=40)
+        # A one per cent stop on a third of the account: a third of a per cent of it is at risk, in dollars.
+        at_stop = (position["entry"] - position["stop"]) * position["quantity"] / position["stop"]
+        self.assertAlmostEqual(at_stop, 100 / 3, delta=1.5)
+        self.assertTrue(out["signal"]["risk"]["reducedByBalance"])
+        expected = (position["price"] - position["entry"]) * position["quantity"] / position["price"]
+        self.assertAlmostEqual(position["pnl"], expected, places=6)
+        self.assertGreater(position["pnl"], 0)
+        # And at the target.
+        out = self.act("wait:1", plan, settings, moves=[(1, dict(plan, market={"move_pct": 3.5}))], seconds=8)
+        self.assertEqual(out["account"]["positions"], [])
+        trade = out["account"]["trades"][0]
+        self.assertEqual(trade["reason"], "take_profit")
+        gross = (trade["exit"] - trade["entry"]) * trade["quantity"] / trade["exit"]
+        fees = 2 * trade["quantity"] * 0.001
+        self.assertAlmostEqual(trade["fees"], fees, places=6)
+        self.assertAlmostEqual(trade["pnl"], gross - fees, places=6)
+        self.assertAlmostEqual(out["account"]["account"]["balance"], 10000 + gross - fees, places=4)
+
+    def test_switching_between_crypto_and_forex(self):
+        out = self.act("kind:forex,kind:forex,analyze,kind:crypto,close-all,kind:crypto,kind:metals", {"*": BUY},
+                       settings=AUTO)
+        results = [a["result"] for a in out["actions"]]
+        self.assertEqual(results[:2], ["", ""])
+        self.assertIn("Close the open positions first", results[3])    # a position on EUR/USD is open
+        self.assertEqual(results[5], "")
+        self.assertIn("Unknown kind", results[6])
+        trade = out["account"]["trades"][0]
+        self.assertEqual((trade["symbol"], trade["name"]), ("EURUSD", "EUR/USD"))
+        self.assertEqual([m["symbol"] for m in out["market"]["watchlist"]],
+                         ["BTCUSDT", "ETHUSDT", "SOLUSDT", "PAXGUSDT", "EURUSDT"])
+        self.assertGreater(out["market"]["quote"]["close"], 1000)         # BTC/USDT is on the chart again
+        said = [a["text"] for a in out["account"]["activity"]]
+        self.assertTrue(any("Showing the forex markets" in text for text in said), said)
+        self.assertTrue(any("Showing the crypto markets" in text for text in said), said)
+        config = self.dump("config")
+        self.assertEqual((config["marketKind"], config["accountCurrency"]), ("crypto", "USDT"))
+        paths = {r["path"] for r in self.requests("market")}
+        self.assertTrue({"/api/v3/klines", "/0/public/OHLC"} <= paths, paths)
+
     # ---- the analysis team -------------------------------------------------------
 
     def test_the_analysis_team_reads_from_six_seats_and_reviews_its_calls(self):
@@ -764,6 +965,58 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.requests("chat", team[2])[0]["seat"], SEATS[2])
         self.assertEqual(signal["team"]["members"], 1)
         self.assertEqual(signal["voters"], 10)
+
+    # ---- slow and failing models -------------------------------------------------
+
+    def test_a_model_that_fails_once_is_asked_again_and_votes(self):
+        slow, limited, broken, down = PANEL_MODELS[6:10]
+        plan = {"*": BUY,
+                slow: dict(BUY, first={"delay": 5}),                         # no answer in time, then one
+                limited: dict(BUY, first={"status": 429, "retry_after": 1}),  # "too many requests", then an answer
+                broken: dict(BUY, first={"status": 503}),                     # a server error, then an answer
+                down: {"status": 500}}                                        # a server error both times
+        self.serve(plan)
+        self.key = TEST_KEY
+        self.settings("[nvidia]\ntimeout_seconds=3\n[engine]\nteam_review=false\n")
+        signal = self.dump("signal")["signal"]
+        verdicts = self.verdicts(signal)
+        for model in (slow, limited, broken):
+            self.assertTrue(verdicts[model]["ok"], verdicts[model])
+            self.assertEqual(verdicts[model]["action"], "buy")
+            self.assertEqual([c["attempt"] for c in self.requests("chat", model)], [1, 2], model)
+        self.assertFalse(verdicts[down]["ok"])
+        self.assertIn("has a problem", verdicts[down]["error"])
+        self.assertEqual(len(self.requests("chat", down)), 2)                 # asked twice, not more
+        # The ones that answered at once were asked once.
+        self.assertEqual(len(self.requests("chat", PANEL_MODELS[0])), 1)
+        self.assertEqual(signal["voters"], 14)
+        self.assertGreaterEqual(verdicts[slow]["seconds"], 3)                 # its time includes the first try
+
+    def test_a_model_that_never_answers_is_left_out_after_two_tries(self):
+        silent = PANEL_MODELS[9]
+        self.serve({"*": BUY, silent: dict(BUY, delay=6)})
+        self.key = TEST_KEY
+        self.settings("[nvidia]\ntimeout_seconds=2\n[engine]\nteam_review=false\n")
+        self.assertEqual(self.dump("config")["modelTimeout"], 2)
+        signal = self.dump("signal")["signal"]
+        verdict = self.verdicts(signal)[silent]
+        self.assertFalse(verdict["ok"])
+        self.assertEqual(verdict["error"], "No answer in 2 s, asked twice.")
+        self.assertEqual(len(self.requests("chat", silent)), 2)
+        self.assertEqual(signal["voters"], 14)                                # the others decide without it
+        self.assertEqual(signal["action"], "buy")
+
+    def test_only_so_many_questions_are_with_the_service_at_a_time(self):
+        self.serve({"*": dict(BUY, delay=0.4)})
+        self.key = TEST_KEY
+        config = self.dump("config")
+        self.assertEqual((config["modelTimeout"], config["modelParallel"]), (180, 6))
+        self.settings("[nvidia]\nparallel=3\n")
+        signal = self.dump("signal")["signal"]
+        self.assertEqual(signal["voters"], 15)                                # everybody still gets its turn
+        chats = self.requests("chat", review=None)
+        self.assertEqual(len(chats), 20)
+        self.assertEqual(max(c["inflight"] for c in chats), 3)
 
     def test_a_split_panel_means_no_trade(self):
         plan = {model: (BUY if index % 2 == 0 else SELL) for index, model in enumerate(PANEL_MODELS)}

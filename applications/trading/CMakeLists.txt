@@ -23,6 +23,7 @@ shadow_add_app(shadow-trading
         marketdata.cpp marketdata.h
         marketstream.cpp marketstream.h
         modelclient.cpp modelclient.h
+        tradesmodel.cpp tradesmodel.h
         tradingconfig.cpp tradingconfig.h
         tradingengine.cpp tradingengine.h
         core/paper.cpp core/paper.h

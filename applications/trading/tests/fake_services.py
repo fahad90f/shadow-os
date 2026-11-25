@@ -18,6 +18,9 @@ answers, by model id, with "*" for every model that is not named:
 "moonshotai/kimi-k3.1-pro": {"status": 429}, "z-ai/glm-5.3-flash": {"raw":
 "text"}}. Options of an answer: "fenced" (wrap in a code fence), "think"
 (thinking in <think> tags first), "refusal", "empty", "delay" (seconds).
+A model's "first": {...} is how it answers the first time it is asked a
+question (then its normal answer: a model that fails once and answers when
+asked again); "retry_after" goes with a "status" and sets that header.
 A model's "review": {...} is how it answers in the team review (the second
 request the members of the analysis team get); without it, it repeats its
 first answer.
@@ -64,6 +67,22 @@ INTERVAL_MS = {"1m": 60_000, "5m": 300_000, "15m": 900_000, "1h": 3_600_000, "4h
 BASE_PRICE = {"BTCUSDT": 92000.0, "ETHUSDT": 3200.0, "SOLUSDT": 140.0, "PAXGUSDT": 4050.0, "EURUSDT": 1.158,
               # Listed by the service but not on the built-in watchlist: for adding a market.
               "DOGEUSDT": 0.2314, "XRPUSDT": 2.41, "BNBUSDT": 912.0, "ETHBTC": 0.0348}
+# The forex service (Kraken's public API): symbol -> (the key its answers use,
+# trades in 24 hours). Its oldest pairs have keys with a class letter before
+# each currency. The answers below are shaped after recordings of the real
+# service, which a scenario can also have sent as they were
+# (tests/fixtures/real-kraken-*).
+KRAKEN = {
+    "EURUSD": ("ZEURZUSD", 81153), "GBPUSD": ("ZGBPZUSD", 22916), "USDCAD": ("ZUSDZCAD", 8511),
+    "USDCHF": ("USDCHF", 7168), "AUDUSD": ("AUDUSD", 4958), "PAXGUSD": ("PAXGUSD", 6302),
+    "XAUTUSD": ("XAUTUSD", 3813),
+    "USDJPY": ("ZUSDZJPY", 33),      # listed, but a few stray trades a day: not offered
+    "EURGBP": ("EURGBP", 1518),      # a cross: not offered
+    "XBTUSD": ("XXBTZUSD", 90210),   # not a currency pair
+}
+BASE_PRICE.update({"EURUSD": 1.0982, "GBPUSD": 1.3124, "USDCAD": 1.4201, "USDCHF": 0.8311, "AUDUSD": 0.6630,
+                   "PAXGUSD": 3541.4, "XAUTUSD": 3540.1, "USDJPY": 157.2, "EURGBP": 0.8367, "XBTUSD": 92000.0})
+KRAKEN_MINUTES = {1: "1m", 5: "5m", 15: "15m", 60: "1h", 240: "4h", 1440: "1d"}
 # The order a list of tickers comes back in, whatever order was asked for.
 LISTING_ORDER = ["BTCUSDT", "ETHUSDT", "EURUSDT", "SOLUSDT", "PAXGUSDT", "ETHBTC", "BNBUSDT", "XRPUSDT", "DOGEUSDT"]
 # The first candle the service has of any market, in hours before it started:
@@ -232,6 +251,151 @@ def tickers(query, now_ms):
     return 200, out[0] if single else out
 
 
+# ---- the forex service -----------------------------------------------------------
+
+def kraken_symbol(name):
+    """'EUR/USD', 'EURUSD' or 'ZEURZUSD' -> 'EURUSD'; None for a pair the service does not have."""
+    name = name.upper().replace("/", "")
+    for symbol, (key, _) in KRAKEN.items():
+        if name in (symbol, key):
+            return symbol
+    return None
+
+
+UNKNOWN_PAIR = {"error": ["EQuery:Unknown asset pair"]}
+
+
+def recorded(name):
+    """{"kraken": {"ticker": FILE, "ohlc": FILE}}: an answer recorded from the real
+    service, sent as it was received; None when the scenario names none."""
+    path = scenario().get("kraken", {}).get(name)
+    if not path:
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def kraken_ohlc(query, now_ms):
+    if recorded("ohlc"):
+        return 200, recorded("ohlc")
+    symbol = kraken_symbol(query.get("pair", [""])[0])
+    try:
+        minutes = int(query.get("interval", ["1"])[0])
+    except ValueError:
+        minutes = 0
+    if symbol is None:
+        return 200, UNKNOWN_PAIR
+    if minutes not in KRAKEN_MINUTES:
+        return 200, {"error": ["EGeneral:Invalid arguments"]}
+    step = minutes * 60_000
+    last = now_ms // step
+    rows = []
+    # The newest 720 candles, and nothing before them, whatever 'since' says.
+    for k in range(last - 720, last + 1):
+        c = candle(symbol, k, step, now_ms)
+        rows.append([c[0] // 1000, c[1][:-3], c[2][:-3], c[3][:-3], c[4][:-3], c[4][:-3], c[5], 100])
+    return 200, {"error": [], "result": {KRAKEN[symbol][0]: rows, "last": rows[-2][0]}}
+
+
+def kraken_now(symbol, now_ms):
+    step = 60_000
+    return level(symbol, now_ms / step, step) * (1 + scenario().get("market", {}).get("move_pct", 0) / 100)
+
+
+def kraken_ticker(query, now_ms):
+    wanted = [name for name in query.get("pair", [""])[0].split(",") if name]
+    if not wanted and recorded("ticker"):   # everything the service lists
+        return 200, recorded("ticker")
+    symbols = [kraken_symbol(name) for name in wanted] if wanted else list(KRAKEN)
+    if None in symbols:   # one unknown name refuses the whole list
+        return 200, UNKNOWN_PAIR
+    result = {}
+    for symbol in symbols:
+        key, trades = KRAKEN[symbol]
+        now = kraken_now(symbol, now_ms)
+        # "o" is today's opening price (midnight UTC), not the price 24 hours ago.
+        opened = level(symbol, (now_ms - now_ms % 86_400_000) / 60_000, 60_000)
+        text = lambda v: f"{v:.5f}"
+        result[key] = {"a": [text(now * 1.00001), "100", "100.000"], "b": [text(now * 0.99999), "100", "100.000"],
+                       "c": [text(now), "10.00000000"], "v": ["1000000.0", "2000000.0"],
+                       "p": [text(now), text(now)], "t": [trades // 2, trades],
+                       "l": [text(min(now, opened) * 0.996)] * 2, "h": [text(max(now, opened) * 1.004)] * 2,
+                       "o": text(opened)}
+    return 200, {"error": [], "result": result}
+
+
+def kraken_pair(symbol):
+    """'EURUSD' -> 'EUR/USD', as the stream names it."""
+    for quote in ("USD", "GBP", "JPY", "CHF", "CAD"):
+        if symbol.endswith(quote) and len(symbol) > len(quote):
+            return symbol[:-len(quote)] + "/" + quote
+    return symbol
+
+
+def kraken_ticker_row(symbol, now_ms):
+    now = kraken_now(symbol, now_ms)
+    day_ago = level(symbol, (now_ms - 86_400_000) / 60_000, 60_000)
+    return {"symbol": kraken_pair(symbol), "bid": now * 0.99999, "bid_qty": 100.0, "ask": now * 1.00001,
+            "ask_qty": 100.0, "last": now, "volume": 2000000.0, "vwap": now, "low": min(now, day_ago) * 0.996,
+            "high": max(now, day_ago) * 1.004, "change": now - day_ago,
+            "change_pct": round((now - day_ago) / day_ago * 100, 2), "trades": KRAKEN[symbol][1]}
+
+
+def kraken_stream_messages(subs, now_ms, last_sent):
+    """What the forex stream pushes now for the subscriptions made so far."""
+    out = []
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(now_ms / 1000)) + f".{now_ms % 1000:03d}000Z"
+    for symbol in subs.get("trade", []):
+        out.append({"channel": "trade", "type": "update", "data": [
+            {"symbol": kraken_pair(symbol), "side": "buy", "price": round(kraken_now(symbol, now_ms), 6),
+             "qty": 10.0, "ord_type": "limit", "trade_id": now_ms, "timestamp": stamp}]})
+    if now_ms - last_sent.get("slow", 0) < 1000:
+        return out
+    last_sent["slow"] = now_ms
+    for symbol, minutes in subs.get("ohlc", []):
+        step = minutes * 60_000
+        row = candle(symbol, now_ms // step, step, now_ms)
+        close = kraken_now(symbol, now_ms)
+        begin = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(row[0] / 1000)) + ".000000000Z"
+        out.append({"channel": "ohlc", "type": "update", "timestamp": stamp, "data": [
+            {"symbol": kraken_pair(symbol), "open": float(row[1]), "high": max(float(row[2]), close),
+             "low": min(float(row[3]), close), "close": close, "trades": 100, "volume": float(row[5]),
+             "vwap": close, "interval_begin": begin, "interval": minutes, "timestamp": stamp}]})
+    for symbol in subs.get("ticker", []):
+        out.append({"channel": "ticker", "type": "update", "data": [kraken_ticker_row(symbol, now_ms)]})
+    out.append({"channel": "heartbeat"})
+    return out
+
+
+def client_frames(buffer):
+    """The complete frames in 'buffer' (a bytearray of what a WebSocket client sent,
+    masked as clients must), removed from it: the text of each text frame, None
+    for a close frame."""
+    texts = []
+    while len(buffer) >= 2:
+        opcode, length, at = buffer[0] & 0x0F, buffer[1] & 0x7F, 2
+        if length == 126:
+            if len(buffer) < 4:
+                break
+            length, at = int.from_bytes(buffer[2:4], "big"), 4
+        elif length == 127:
+            if len(buffer) < 10:
+                break
+            length, at = int.from_bytes(buffer[2:10], "big"), 10
+        masked = bool(buffer[1] & 0x80)
+        need = at + (4 if masked else 0) + length
+        if len(buffer) < need:
+            break
+        mask = bytes(buffer[at:at + 4]) if masked else bytes(4)
+        payload = bytes(b ^ mask[i % 4] for i, b in enumerate(buffer[need - length:need]))
+        del buffer[:need]
+        if opcode == 0x8:
+            texts.append(None)
+        elif opcode == 0x1:
+            texts.append(payload.decode("utf-8", "replace"))
+    return texts
+
+
 # ---- models ------------------------------------------------------------------
 
 def catalog():
@@ -239,11 +403,21 @@ def catalog():
     return sorted(m for m in PANEL_MODELS + OTHER_MODELS if m not in missing)
 
 
-def plan_for(model, review=False):
-    """How a model answers; in the team review, its "review" plan when it has one."""
+ASKED = {}          # (model, review) -> requests so far
+IN_FLIGHT = [0]     # chat requests being answered right now
+COUNT_LOCK = threading.Lock()
+
+
+def plan_for(model, review=False, attempt=0):
+    """How a model answers; in the team review, its "review" plan when it has
+    one; and, the first time it is asked, its "first" plan when it has one."""
     plans = scenario()
     plan = plans.get(model, plans.get("*", {"action": "hold"}))
-    return plan.get("review", plan) if review else plan
+    if review:
+        plan = plan.get("review", plan)
+    if attempt == 1 and "first" in plan:
+        plan = plan["first"]
+    return plan
 
 
 REVIEW_MARK = "\n\nTeam review. "
@@ -278,8 +452,7 @@ def review_notes(user):
     return notes
 
 
-def verdict_text(model, snapshot_price, review=False):
-    plan = plan_for(model, review)
+def verdict_text(model, snapshot_price, plan):
     if "raw" in plan:
         return plan["raw"]
     action = plan.get("action", "hold")
@@ -326,8 +499,9 @@ def png_size(data_url):
     return f"{width}x{height}"
 
 
-def chat(body):
-    """(status, answer, notes) for a chat completions request."""
+def chat(body, attempt=0):
+    """(status, answer, notes) for a chat completions request; 'attempt' counts
+    the requests this model got for this question (1 = the first)."""
     notes = {}
     if not isinstance(body, dict) or "model" not in body or not isinstance(body.get("messages"), list):
         return 400, {"error": {"message": "model and messages are required"}}, notes
@@ -367,8 +541,8 @@ def chat(body):
     mark = "Your seat on the analysis team: "
     notes["seat"] = system[system.index(mark) + len(mark):].split(".", 1)[0] if mark in system else ""
     notes.update(review_notes(user))
-    plan = plan_for(model, notes["review"])
-    message = {"role": "assistant", "content": verdict_text(model, price_in(user), notes["review"])}
+    plan = plan_for(model, notes["review"], attempt)
+    message = {"role": "assistant", "content": verdict_text(model, price_in(user), plan)}
     if plan.get("refusal"):
         message = {"role": "assistant", "content": None, "refusal": "I can't help with that."}
     if plan.get("empty"):
@@ -441,12 +615,97 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError):
             return
 
+    def serve_kraken_stream(self):
+        """The forex service's stream (/v2): the client subscribes after connecting."""
+        plan = scenario().get("stream", {})
+        key = self.headers.get("Sec-WebSocket-Key", "")
+        if plan.get("off") or self.headers.get("Upgrade", "").lower() != "websocket" or not key:
+            record({"kind": "stream", "status": 404})
+            return self.reply(404, {"error": "no stream here"})
+        record({"kind": "stream", "status": 101, "service": "kraken"})
+        accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest())
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept.decode())
+        self.end_headers()
+        self.close_connection = True
+        send = lambda message: self.wfile.write(frame(json.dumps(message, separators=(",", ":"))))
+        started, last_sent, subs, received, replayed = time.time(), {}, {}, bytearray(), False
+        self.connection.settimeout(0.1)
+        try:
+            send({"channel": "status", "type": "update", "data": [{"system": "online", "api_version": "v2"}]})
+            while True:
+                try:
+                    chunk = self.connection.recv(65536)
+                    if not chunk:
+                        return
+                    received += chunk
+                except TimeoutError:
+                    pass
+                now_ms = int(time.time() * 1000)
+                for text in client_frames(received):
+                    if text is None:
+                        return
+                    try:
+                        params = json.loads(text).get("params", {})
+                    except ValueError:
+                        continue
+                    channel, names = params.get("channel"), params.get("symbol", [])
+                    record({"kind": "subscribe", "channel": channel, "symbols": names,
+                            "interval": params.get("interval"), "snapshot": params.get("snapshot")})
+                    for name in names:
+                        symbol = kraken_symbol(name)
+                        if symbol is None:
+                            send({"error": f"Currency pair not supported {name}", "method": "subscribe",
+                                  "success": False, "symbol": name})
+                            continue
+                        send({"method": "subscribe", "success": True,
+                              "result": {"channel": channel, "symbol": name}})
+                        if channel == "ohlc":
+                            subs.setdefault("ohlc", []).append((symbol, int(params.get("interval", 1))))
+                        else:
+                            subs.setdefault(channel, []).append(symbol)
+                        if channel == "ticker" and not plan.get("silent"):
+                            send({"channel": "ticker", "type": "snapshot", "data": [kraken_ticker_row(symbol, now_ms)]})
+                plan = scenario().get("stream", {})
+                if plan.get("replay") and not replayed and subs and time.time() - started >= plan.get("replay_after", 0):
+                    replayed = True
+                    with open(plan["replay"], encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip():
+                                self.wfile.write(frame(line.strip()))
+                if "drop_after" in plan and time.time() - started >= plan["drop_after"]:
+                    record({"kind": "stream", "status": "dropped"})
+                    return
+                if not plan.get("silent"):
+                    for message in kraken_stream_messages(subs, now_ms, last_sent):
+                        send(message)
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
         now_ms = int(time.time() * 1000)
         if parsed.path == "/stream":
             return self.serve_stream(query)
+        if parsed.path == "/v2":
+            return self.serve_kraken_stream()
+        if parsed.path.startswith("/0/public/"):
+            market = scenario().get("market", {})
+            if "status" in market:
+                record({"kind": "market", "path": parsed.path, "status": market["status"]})
+                return self.reply(market["status"], {"error": ["EService:Unavailable"]})
+            if parsed.path == "/0/public/OHLC":
+                status, payload = kraken_ohlc(query, now_ms)
+            elif parsed.path == "/0/public/Ticker":
+                status, payload = kraken_ticker(query, now_ms)
+            else:
+                status, payload = 404, {"error": ["EGeneral:Unknown method"]}
+            record({"kind": "market", "path": parsed.path, "query": parsed.query, "status": status})
+            return self.reply(status, payload)
         if parsed.path.startswith("/api/v3/"):
             market = scenario().get("market", {})
             if "status" in market:
@@ -488,15 +747,38 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(401, {"status": 401, "title": "Unauthorized",
                                     "detail": "Authentication failed for key nvapi-…abcd"})
         review = REVIEW_MARK in user_text(body)
-        plan = plan_for(model, review)
-        if plan.get("delay"):
-            time.sleep(float(plan["delay"]))
+        with COUNT_LOCK:
+            attempt = ASKED[(model, review)] = ASKED.get((model, review), 0) + 1
+            IN_FLIGHT[0] += 1
+            entry["attempt"] = attempt
+            entry["inflight"] = IN_FLIGHT[0]
+        try:
+            return self.answer_chat(body, model, review, attempt, entry)
+        finally:
+            with COUNT_LOCK:
+                IN_FLIGHT[0] -= 1
+
+    def answer_chat(self, body, model, review, attempt, entry):
+        plan = plan_for(model, review, attempt)
+        # A slow answer: the request is logged when it arrives, answered later
+        # (to a client that may have stopped waiting).
+        delay = float(plan.get("delay", 0))
         if "status" in plan:
             entry["status"] = plan["status"]
             entry["review"] = review
             record(entry)
+            time.sleep(delay)
+            if plan.get("retry_after"):
+                data = json.dumps({"status": plan["status"], "detail": "slow down"}).encode()
+                self.send_response(plan["status"])
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Retry-After", str(plan["retry_after"]))
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return None
             return self.reply(plan["status"], {"status": plan["status"], "detail": plan.get("message", "scenario error")})
-        status, payload, notes = chat(body)
+        status, payload, notes = chat(body, attempt)
         entry.update(notes)
         entry["status"] = status
         if status == 400:
@@ -504,7 +786,11 @@ class Handler(BaseHTTPRequestHandler):
         if isinstance(body, dict):
             entry["params"] = sorted(k for k in body if k != "messages")
         record(entry)
-        self.reply(status, payload)
+        time.sleep(delay)
+        try:
+            self.reply(status, payload)
+        except OSError:
+            pass  # the client stopped waiting
 
 
 def main():

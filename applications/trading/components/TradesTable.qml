@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.shadow.ui
+import org.shadow.trading
 import "Format.js" as Format
 
 // The trades of the paper account: open positions first (with their running
@@ -15,20 +16,17 @@ Item {
     property bool showClose: false   // a "Close" button on open positions
     property bool showReason: false  // why a trade closed, and who led it
 
-    readonly property var rows: {
-        var list = []
-        var open = trading.positions
-        for (var i = 0; i < open.length; i++)
-            list.push({ open: true, data: open[i] })
-        var closed = trading.trades
-        for (var j = 0; j < closed.length; j++)
-            list.push({ open: false, data: closed[j] })
-        return maxRows > 0 ? list.slice(0, maxRows) : list
+    // Rows change in place as prices arrive; they are added and removed only
+    // when a position opens or closes (TradesModel).
+    TradesModel {
+        id: rowsModel
+        source: trading
+        limit: root.maxRows
     }
     // The compact table (a row limit) shows the time of day only.
     readonly property bool compact: maxRows > 0
     readonly property var widths: showReason ? [0.13, 0.12, 0.07, 0.12, 0.12, 0.12, 0.10, 0.22]
-                                             : [0.15, 0.19, 0.08, 0.16, 0.16, 0.12, 0.14]
+                                             : [0.18, 0.18, 0.09, 0.15, 0.14, 0.12, 0.14]
     readonly property var titles: {
         var t = [qsTr("Time"), qsTr("Asset"), qsTr("Type"), qsTr("Entry"), qsTr("Exit"), qsTr("P&L"), qsTr("Status")]
         if (showReason)
@@ -72,16 +70,16 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            model: root.rows
+            model: rowsModel
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar {}
 
             delegate: Item {
                 id: row
-                required property var modelData
+                required property var trade
+                required property bool open
                 required property int index
-                readonly property var t: modelData.data
-                readonly property bool open: modelData.open
+                readonly property var t: trade
                 width: list.width
                 height: Theme.rowHeight
                 Accessible.name: qsTr("%1 %2 %3, entry %4, profit %5, %6").arg(Format.clock(t.openedAt)).arg(t.name)
@@ -161,7 +159,7 @@ Item {
         x: list.x + (list.width - width) / 2
         y: list.y + (list.height - height) / 2
         width: Math.min(list.width - Theme.spaceLg * 2, 420)
-        visible: root.rows.length === 0 && !root.compact
+        visible: rowsModel.count === 0 && !root.compact
         icon: "list"
         title: qsTr("No trades yet")
         message: root.emptyMessage
@@ -170,7 +168,7 @@ Item {
         x: list.x + (list.width - width) / 2
         y: list.y + Math.max(0, (list.height - height) / 2)
         width: Math.min(list.width - Theme.spaceLg * 2, 420)
-        visible: root.rows.length === 0 && root.compact
+        visible: rowsModel.count === 0 && root.compact
         spacing: Theme.spaceXs
         Label {
             Layout.fillWidth: true

@@ -17,7 +17,7 @@ GlowCard {
     padding: Theme.spaceSm + 2
     implicitWidth: 236
     implicitHeight: 64
-    Accessible.name: qsTr("Total profit and loss: %1 USDT").arg(Format.signedMoney(value))
+    Accessible.name: qsTr("Total profit and loss: %1 %2").arg(Format.signedMoney(value)).arg(trading.accountCurrency)
 
     RowLayout {
         anchors.fill: parent
@@ -42,7 +42,7 @@ GlowCard {
                 Label {
                     Layout.alignment: Qt.AlignBottom
                     Layout.bottomMargin: 3
-                    text: qsTr("USDT")
+                    text: trading.accountCurrency
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSizeCaption
                 }

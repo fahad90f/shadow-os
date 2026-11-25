@@ -39,6 +39,9 @@ struct AccountView
     bool positionOnSymbol = false;
     long long lastLossOnSymbolMs = 0; // close time of the last losing trade on this symbol, 0 = none
     bool halted = false;        // the drawdown limit was hit and the user has not resumed
+    // The market of the signal has the account's currency as its base
+    // (USD/CHF on a dollar account): see notionalOf() in paper.h.
+    bool inverse = false;
 };
 
 struct RiskCheck
@@ -54,7 +57,7 @@ struct RiskDecision
     bool allowed = false;
     std::string reason;   // the first failed check, for a one-line explanation
     double quantity = 0;  // base-currency amount to trade
-    double notional = 0;  // quantity * entry
+    double notional = 0;  // the order's value in the account's currency
     double riskAmount = 0; // lost if the stop is hit (before fees)
     double rewardRisk = 0;
     // The size was cut to what the balance covers or to this position's share

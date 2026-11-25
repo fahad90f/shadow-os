@@ -15,7 +15,8 @@ bool usable(double v)
 
 double grossPnl(const Position &p, double price)
 {
-    return (p.isLong ? price - p.entry : p.entry - price) * p.quantity;
+    const double value = moveValue(p.inverse, p.entry, price, p.quantity);
+    return p.isLong ? value : -value;
 }
 
 } // namespace
@@ -52,7 +53,7 @@ double PaperAccount::marginInUse() const
 {
     double margin = 0;
     for (const Position &p : m_positions)
-        margin += p.entry * p.quantity;
+        margin += notionalOf(p.inverse, p.entry, p.quantity);
     return margin;
 }
 
@@ -128,7 +129,7 @@ PaperStats PaperAccount::stats() const
 PaperAccount::OpenResult PaperAccount::open(const std::string &symbol, bool isLong, double quantity,
                                             double marketPrice, double stop, double takeProfit, long long nowMs,
                                             double confidence, const std::string &lead,
-                                            const std::string &reasoning)
+                                            const std::string &reasoning, bool inverse)
 {
     OpenResult result;
     if (symbol.empty() || !usable(quantity) || !usable(marketPrice)) {
@@ -148,7 +149,7 @@ PaperAccount::OpenResult PaperAccount::open(const std::string &symbol, bool isLo
         result.error = "The stop and target are not on the right sides of the fill price.";
         return result;
     }
-    const double notional = fill * quantity;
+    const double notional = notionalOf(inverse, fill, quantity);
     const double fee = notional * m_settings.feePct / 100.0;
     if (notional + fee > available() + 1e-9) {
         result.error = "The balance does not cover this order.";
@@ -159,6 +160,7 @@ PaperAccount::OpenResult PaperAccount::open(const std::string &symbol, bool isLo
     p.id = m_nextId++;
     p.symbol = symbol;
     p.isLong = isLong;
+    p.inverse = inverse;
     p.quantity = quantity;
     p.entry = fill;
     p.stop = stop;
@@ -182,7 +184,7 @@ Trade PaperAccount::settle(size_t index, double fillPrice, long long nowMs, cons
     const Position p = m_positions[index];
     m_positions.erase(m_positions.begin() + static_cast<std::ptrdiff_t>(index));
 
-    const double closeFee = fillPrice * p.quantity * m_settings.feePct / 100.0;
+    const double closeFee = notionalOf(p.inverse, fillPrice, p.quantity) * m_settings.feePct / 100.0;
     const double gross = grossPnl(p, fillPrice);
     m_balance += gross - closeFee;
 
@@ -190,6 +192,7 @@ Trade PaperAccount::settle(size_t index, double fillPrice, long long nowMs, cons
     t.id = p.id;
     t.symbol = p.symbol;
     t.isLong = p.isLong;
+    t.inverse = p.inverse;
     t.quantity = p.quantity;
     t.entry = p.entry;
     t.exit = fillPrice;
@@ -197,7 +200,7 @@ Trade PaperAccount::settle(size_t index, double fillPrice, long long nowMs, cons
     t.closedAt = nowMs;
     t.fees = p.openFee + closeFee;
     t.pnl = gross - t.fees; // the opening fee left the balance when the position opened
-    t.pnlPct = t.pnl / (p.entry * p.quantity) * 100.0;
+    t.pnlPct = t.pnl / notionalOf(p.inverse, p.entry, p.quantity) * 100.0;
     t.reason = reason;
     t.confidence = p.confidence;
     t.lead = p.lead;

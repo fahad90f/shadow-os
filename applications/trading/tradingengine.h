@@ -41,7 +41,9 @@ class TradingEngine : public QObject
     // "loading" | "live" | "error"
     Q_PROPERTY(QString dataState READ dataState NOTIFY marketChanged)
     Q_PROPERTY(QString dataError READ dataError NOTIFY marketChanged)
-    Q_PROPERTY(QString dataSource READ dataSource CONSTANT)
+    Q_PROPERTY(QString dataSource READ dataSource NOTIFY marketChanged)
+    // "crypto" or "forex": which markets the desk shows (setMarketKind()).
+    Q_PROPERTY(QString marketKind READ marketKind NOTIFY marketChanged)
     // Prices arrive as they change (the live stream is connected); otherwise
     // they are asked for every few seconds.
     Q_PROPERTY(bool streaming READ streaming NOTIFY marketChanged)
@@ -83,6 +85,8 @@ class TradingEngine : public QObject
     Q_PROPERTY(bool autoAnalyze READ autoAnalyze WRITE setAutoAnalyze NOTIFY settingsChanged)
     // The analysis team reads each other's first calls and then makes its final ones.
     Q_PROPERTY(bool teamReview READ teamReview WRITE setTeamReview NOTIFY settingsChanged)
+    // Seconds a model is given to answer before it is asked once more.
+    Q_PROPERTY(int modelTimeout READ modelTimeout WRITE setModelTimeout NOTIFY settingsChanged)
     // The seats of the analysis team, in order: {key, title, focus}.
     Q_PROPERTY(QVariantList teamSeats READ teamSeatList CONSTANT)
     Q_PROPERTY(QVariantMap riskSettings READ riskSettings NOTIFY settingsChanged)
@@ -90,6 +94,12 @@ class TradingEngine : public QObject
 
     Q_PROPERTY(QVariantMap account READ account NOTIFY accountChanged)
     Q_PROPERTY(QVariantList positions READ positions NOTIFY accountChanged)
+    // The open position on the selected market, {} when there is none. It is
+    // what the chart and the signal panel show for as long as it is open,
+    // whatever the newest analysis says.
+    Q_PROPERTY(QVariantMap position READ position NOTIFY accountChanged)
+    // The account's currency as the window names it ("USDT", "USD").
+    Q_PROPERTY(QString accountCurrency READ accountCurrency NOTIFY marketChanged)
     Q_PROPERTY(QVariantList trades READ trades NOTIFY accountChanged)       // newest first
     Q_PROPERTY(QVariantList equityCurve READ equityCurve NOTIFY accountChanged)
     Q_PROPERTY(QVariantList activity READ activity NOTIFY activityChanged)   // newest first
@@ -109,6 +119,13 @@ public:
     QString dataState() const { return m_dataState; }
     QString dataError() const { return m_dataError; }
     QString dataSource() const;
+    QString marketKind() const;
+    // Switch between crypto and forex. Refused, with the reason, while a
+    // position is open: its prices would stop arriving.
+    Q_INVOKABLE QString setMarketKind(const QString &kind);
+    // The account's currency is the market's base, not its quote (USD/CHF on
+    // a dollar account): see Trading::notionalOf().
+    bool inverseOf(const QString &symbol) const;
     bool streaming() const;
     int maxMarkets() const;
     int pollSeconds() const;
@@ -138,12 +155,17 @@ public:
     bool autoAnalyze() const;
     void setAutoAnalyze(bool on);
     bool teamReview() const;
+    int modelTimeout() const;
+    void setModelTimeout(int seconds);
     void setTeamReview(bool on);
     QVariantList teamSeatList() const;
     QVariantMap riskSettings() const;
     QVariantMap paperSettings() const;
     QVariantMap account() const;
     QVariantList positions() const;
+    QVariantMap position() const;
+    int closedTradeCount() const;
+    QString accountCurrency() const;
     QVariantList trades() const;
     QVariantList equityCurve() const;
     QVariantList activity() const { return m_activity; }
@@ -270,6 +292,7 @@ private:
     void onModelFailed(const QString &id, const QString &code, const QString &message, qint64 ms);
     void collect(const Trading::Verdict &verdict);
     void startTeamReview();
+    void applySource();
     void applyReview(const Trading::Verdict &final);
     void finishAnalysis();
     QString execute(const Trading::Signal &signal, const Trading::RiskDecision &decision);

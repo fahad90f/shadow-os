@@ -63,7 +63,7 @@ NxPage {
         SettingNumber {
             icon: "database"
             title: qsTr("Starting balance")
-            subtitle: qsTr("In USDT.")
+            subtitle: qsTr("In %1: USDT with the crypto markets, US dollars with the forex markets.").arg(trading.accountCurrency)
             value: page.paper.starting_balance; from: 100; to: 10000000; step: 1000
             onEdited: (v) => page.setPaper("starting_balance", v)
         }
@@ -86,9 +86,29 @@ NxPage {
     NxSection {
         title: qsTr("Market data")
         NxRow {
+            icon: "layers"
+            title: qsTr("Markets")
+            subtitle: qsTr("Crypto: coins against USDT. Forex: the US dollar against the euro, the pound and other currencies, and gold. Each has its own list of markets. The paper account is one and the same; switch with no position open.")
+            NxSegmented {
+                readonly property var kinds: ["crypto", "forex"]
+                Accessible.name: qsTr("Markets")
+                model: [qsTr("Crypto"), qsTr("Forex")]
+                currentIndex: Math.max(0, kinds.indexOf(trading.marketKind))
+                onActivated: (index) => {
+                    var error = trading.setMarketKind(kinds[index])
+                    if (error !== "") {
+                        ApplicationWindow.window.toaster.show(error, "warning")
+                        currentIndex = Qt.binding(() => Math.max(0, kinds.indexOf(trading.marketKind)))
+                    }
+                }
+            }
+        }
+        NxRow {
             icon: "globe"
             title: qsTr("Source")
-            subtitle: qsTr("Public prices and candles, fetched every 5 seconds. No account or key is used. Gold and the euro are shown as they trade on this exchange (PAXG and EUR against USDT).")
+            subtitle: trading.marketKind === "forex"
+                ? qsTr("Public prices and candles of the currency pairs and gold that trade on Kraken, in real time. No account or key is used. These are that exchange's own prices: close to the interbank rates for the pairs that trade often there, and it trades at weekends too.")
+                : qsTr("Public prices and candles, in real time. No account or key is used. Gold and the euro are shown as they trade on this exchange (PAXG and EUR against USDT); the currency pairs themselves are the forex markets.")
             value: trading.dataSource
             monoValue: true
         }

@@ -204,6 +204,17 @@ NxPage {
                 onClicked: trading.refreshCatalog()
             }
         }
+        SettingNumber {
+            icon: "clock"
+            title: qsTr("Time to answer")
+            subtitle: qsTr("How long a model is given for one answer. A large model can need minutes. A model that does not answer in this time is asked once more, then left out of that analysis. The analysis waits for every model, so a long time here can delay the signal.")
+            value: trading.modelTimeout
+            from: 30
+            to: 600
+            step: 30
+            unit: qsTr("s")
+            onEdited: (value) => trading.modelTimeout = value
+        }
         NxRow {
             icon: "undo"
             title: qsTr("Built-in panel")

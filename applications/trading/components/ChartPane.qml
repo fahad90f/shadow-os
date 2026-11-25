@@ -21,6 +21,10 @@ GlowCard {
     readonly property var signalData: trading.signal
     readonly property bool showLevels: (signalData.state || "") === "ready" && signalData.action !== "hold"
         && signalData.symbol === trading.symbol
+    // An open position on this market: its lines stay on the chart for as long
+    // as it is open, whatever the newest analysis says.
+    readonly property var position: trading.position
+    readonly property bool holding: position.id !== undefined
 
     padding: Theme.spaceSm + 2
     implicitWidth: 480
@@ -121,9 +125,12 @@ GlowCard {
                 anchors.fill: parent
                 visible: root.view === 1 && root.quote.close !== undefined
                 source: trading
-                entry: root.showLevels ? root.signalData.entry : 0
-                stop: root.showLevels ? root.signalData.stop : 0
-                target: root.showLevels ? root.signalData.takeProfit : 0
+                entry: root.holding ? root.position.entry : root.showLevels ? root.signalData.entry : 0
+                stop: root.holding ? root.position.stop : root.showLevels ? root.signalData.stop : 0
+                target: root.holding ? root.position.takeProfit : root.showLevels ? root.signalData.takeProfit : 0
+                entryLabel: root.holding
+                    ? qsTr("%1  %2").arg(root.labels.action(root.position.side)).arg(Format.signedMoney(root.position.pnl))
+                    : ""
                 backgroundColor: Theme.bgSurface
                 gridColor: Theme.borderSubtle
                 textColor: Theme.textMuted

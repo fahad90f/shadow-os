@@ -19,6 +19,10 @@ ColumnLayout {
     readonly property string action: ready ? signalData.action : "hold"
     readonly property bool directional: ready && action !== "hold"
     readonly property var readings: trading.readings
+    // The open position on the selected market. While there is one, the
+    // levels shown are its levels, not the newest signal's.
+    readonly property var position: trading.position
+    readonly property bool holding: position.id !== undefined
     readonly property color actionTone: labels.actionColor(action)
     // How many of the things on the panel are not in working order.
     readonly property int issues: {
@@ -238,9 +242,12 @@ ColumnLayout {
                 spacing: Theme.spaceSm
                 Repeater {
                     model: [
-                        { label: qsTr("Entry Price"), value: root.directional ? root.signalData.entry : 0, tone: Theme.success },
-                        { label: qsTr("Stop Loss"), value: root.directional ? root.signalData.stop : 0, tone: Theme.warning },
-                        { label: qsTr("Take Profit"), value: root.directional ? root.signalData.takeProfit : 0, tone: Theme.success },
+                        { label: qsTr("Entry Price"), tone: Theme.success,
+                          value: root.holding ? root.position.entry : root.directional ? root.signalData.entry : 0 },
+                        { label: qsTr("Stop Loss"), tone: Theme.warning,
+                          value: root.holding ? root.position.stop : root.directional ? root.signalData.stop : 0 },
+                        { label: qsTr("Take Profit"), tone: Theme.success,
+                          value: root.holding ? root.position.takeProfit : root.directional ? root.signalData.takeProfit : 0 },
                     ]
                     GlowCard {
                         required property var modelData
@@ -280,16 +287,31 @@ ColumnLayout {
                 }
             }
 
+            // The open position: there until it closes.
+            NxBanner {
+                Layout.fillWidth: true
+                visible: root.holding
+                kind: root.holding && root.position.pnl < 0 ? "warning" : "success"
+                title: root.holding ? qsTr("Open %1 · %2 %3").arg(root.labels.action(root.position.side))
+                    .arg(Format.quantity(root.position.quantity)).arg(Format.base(root.position.name)) : ""
+                message: root.holding ? qsTr("Profit %1 %2 (%3) at %4. The entry, stop and target above are this position's.")
+                    .arg(Format.signedMoney(root.position.pnl)).arg(trading.accountCurrency)
+                    .arg(Format.signedPct(root.position.pnlPct)).arg(Format.price(root.position.price)) : ""
+                actionText: qsTr("Close position")
+                onActionTriggered: trading.closePosition(root.position.id)
+            }
+
             // What happened with the signal.
             NxBanner {
                 Layout.fillWidth: true
-                visible: root.ready && (root.signalData.outcome || "") !== ""
+                visible: root.ready && (root.signalData.outcome || "") !== "" && !(root.holding && root.signalData.traded)
                 kind: root.signalData.traded ? "success" : root.signalData.placeable ? "info" : "warning"
                 message: (root.signalData.outcome || "")
                     + (root.directional && root.signalData.risk.quantity > 0
-                        ? "  " + qsTr("Size %1 %2, %3 USDT at risk, reward to risk %4.")
+                        ? "  " + qsTr("Size %1 %2, %3 %4 at risk, reward to risk %5.")
                               .arg(Format.quantity(root.signalData.risk.quantity)).arg(Format.base(root.signalData.symbolName))
-                              .arg(Format.money(root.signalData.risk.riskAmount)).arg(Format.number(root.signalData.rewardRisk, 2))
+                              .arg(Format.money(root.signalData.risk.riskAmount)).arg(trading.accountCurrency)
+                              .arg(Format.number(root.signalData.rewardRisk, 2))
                         : "")
                 actionText: root.signalData.placeable && !trading.autoTrade ? qsTr("Place paper trade") : ""
                 onActionTriggered: {

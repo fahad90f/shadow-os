@@ -13,7 +13,7 @@ NxPage {
     readonly property var account: trading.account
 
     title: qsTr("Portfolio")
-    subtitle: qsTr("Paper account · started with %1 USDT").arg(Format.money(account.startingBalance))
+    subtitle: qsTr("Paper account · started with %1 %2").arg(Format.money(account.startingBalance)).arg(trading.accountCurrency)
     maxContentWidth: 1100
     actions: NxButton {
         kind: "danger"
@@ -26,8 +26,8 @@ NxPage {
     NxConfirmDialog {
         id: resetDialog
         title: qsTr("Reset the paper account?")
-        message: qsTr("The balance goes back to %1 USDT. Open positions and the whole trade history are discarded. This cannot be undone.")
-            .arg(Format.money(trading.paperSettings.starting_balance))
+        message: qsTr("The balance goes back to %1 %2. Open positions and the whole trade history are discarded. This cannot be undone.")
+            .arg(Format.money(trading.paperSettings.starting_balance)).arg(trading.accountCurrency)
         confirmText: qsTr("Reset")
         destructive: true
         onConfirmed: trading.resetPaperAccount()
@@ -113,14 +113,16 @@ NxPage {
     NxSection {
         title: qsTr("Open positions")
         NxRow {
-            visible: trading.positions.length === 0
+            visible: openModel.count === 0
             icon: "list"
             title: qsTr("No open positions")
         }
         Repeater {
-            model: trading.positions
+            // Rows that stay while prices change, so Close can be clicked.
+            model: TradesModel { id: openModel; source: trading; openOnly: true }
             NxRow {
-                required property var modelData
+                required property var trade
+                readonly property var modelData: trade
                 icon: modelData.side === "buy" ? "arrow-up" : "arrow-down"
                 iconColor: words.actionColor(modelData.side)
                 title: qsTr("%1 %2 · %3 %4").arg(words.action(modelData.side)).arg(modelData.name)
@@ -128,7 +130,7 @@ NxPage {
                 subtitle: qsTr("Entry %1 · now %2 · stop %3 · target %4 · opened %5").arg(Format.price(modelData.entry))
                     .arg(Format.price(modelData.price)).arg(Format.price(modelData.stop))
                     .arg(Format.price(modelData.takeProfit)).arg(Format.stamp(modelData.openedAt))
-                value: qsTr("%1 USDT").arg(Format.signedMoney(modelData.pnl))
+                value: qsTr("%1 %2").arg(Format.signedMoney(modelData.pnl)).arg(trading.accountCurrency)
                 monoValue: true
                 NxButton {
                     text: qsTr("Close")

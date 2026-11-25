@@ -43,6 +43,21 @@ Item {
                 spacing: Theme.spaceSm
 
                 ModePill {}
+                // Which markets the desk shows: crypto, or currency pairs and gold.
+                NxSegmented {
+                    id: kindSwitch
+                    readonly property var kinds: ["crypto", "forex"]
+                    Accessible.name: qsTr("Markets")
+                    model: [qsTr("Crypto"), qsTr("Forex")]
+                    currentIndex: Math.max(0, kinds.indexOf(trading.marketKind))
+                    onActivated: (index) => {
+                        var error = trading.setMarketKind(kinds[index])
+                        if (error !== "") {
+                            ApplicationWindow.window.toaster.show(error, "warning")
+                            currentIndex = Qt.binding(() => Math.max(0, kinds.indexOf(trading.marketKind)))
+                        }
+                    }
+                }
                 Label {
                     Layout.fillWidth: true
                     Layout.leftMargin: Theme.spaceLg
@@ -88,7 +103,7 @@ Item {
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     model: trading.watchlist
-                    readonly property real cardWidth: Math.max(176, (width - spacing * (count - 1)) / Math.max(1, count))
+                    readonly property real cardWidth: Math.max(164, (width - spacing * (count - 1)) / Math.max(1, count))
                     delegate: TickerCard {
                         required property var modelData
                         width: markets.cardWidth
@@ -199,7 +214,7 @@ Item {
                                     }
                                     Label {
                                         text: (page.account.todayPnl >= 0 ? "▲ " : "▼ ")
-                                            + qsTr("%1 (%2 USDT) today").arg(Format.signedPct(page.account.todayPnlPct)).arg(Format.signedMoney(page.account.todayPnl))
+                                            + qsTr("%1 (%2 %3) today").arg(Format.signedPct(page.account.todayPnlPct)).arg(Format.signedMoney(page.account.todayPnl)).arg(trading.accountCurrency)
                                         color: page.account.todayPnl > 0 ? Theme.success : page.account.todayPnl < 0 ? Theme.danger : Theme.textMuted
                                         font.pixelSize: Theme.fontSizeSmall
                                     }

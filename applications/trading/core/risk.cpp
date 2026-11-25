@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "risk.h"
 
+#include "paper.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -101,7 +103,10 @@ RiskDecision evaluate(const Signal &signal, const AccountView &account, const Ri
     std::string sizeDetail = "Needs a valid signal";
     if (levels && account.equity > 0) {
         const double riskBudget = account.equity * settings.riskPerTradePct / 100.0;
-        const double perUnit = std::fabs(signal.entry - signal.stop);
+        // What one unit of the base loses, in the account's currency, when
+        // the stop is hit; and what one unit is worth.
+        const double perUnit = std::fabs(moveValue(account.inverse, signal.entry, signal.stop, 1.0));
+        const double unitValue = notionalOf(account.inverse, signal.entry, 1.0);
         double quantity = riskBudget / perUnit;
         // Two ceilings. What the balance covers: half a percent is kept
         // back so that the fee and the slippage of the fill still fit. And
@@ -110,12 +115,12 @@ RiskDecision evaluate(const Signal &signal, const AccountView &account, const Ri
         // whole account into a single trade and the others can still open.
         const double share = account.equity * settings.maxLeverage / std::max(1, settings.maxOpenPositions);
         const double maxNotional = std::min(std::max(0.0, account.available) * settings.maxLeverage * 0.995, share);
-        if (quantity * signal.entry > maxNotional) {
-            quantity = maxNotional / signal.entry;
+        if (quantity * unitValue > maxNotional) {
+            quantity = maxNotional / unitValue;
             decision.reducedByBalance = true;
         }
         decision.quantity = quantity;
-        decision.notional = quantity * signal.entry;
+        decision.notional = quantity * unitValue;
         decision.riskAmount = quantity * perUnit;
         sized = decision.notional >= settings.minNotional;
         sizeDetail = sized

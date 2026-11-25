@@ -53,7 +53,7 @@ Item {
                 Layout.fillWidth: true
                 label: qsTr("Realized profit")
                 value: Format.signedMoney(page.account.realizedPnl)
-                detail: qsTr("USDT, after fees")
+                detail: qsTr("%1, after fees").arg(trading.accountCurrency)
                 tone: page.account.realizedPnl < 0 ? "danger" : page.account.realizedPnl > 0 ? "success" : "neutral"
                 icon: "activity"
             }

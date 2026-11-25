@@ -88,6 +88,11 @@ int main(int argc, char **argv)
                 } else if (action.startsWith(QLatin1String("select:"))) {
                     engine.setSymbol(action.mid(7));
                     app.waitFor(&engine, SIGNAL(marketReady()), 20000);
+                } else if (action.startsWith(QLatin1String("kind:"))) {
+                    // The other kind of market: crypto or forex.
+                    result = engine.setMarketKind(action.mid(5));
+                    if (result.isEmpty())
+                        app.waitFor(&engine, SIGNAL(marketReady()), 20000);
                 } else if (action.startsWith(QLatin1String("find:"))) {
                     engine.refreshMarkets();
                     app.waitFor(&engine, SIGNAL(marketsChanged()), 20000);

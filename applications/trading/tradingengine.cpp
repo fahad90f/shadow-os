@@ -64,7 +64,7 @@ int closedCount(const Candles &candles)
 
 QJsonObject positionJson(const Position &p)
 {
-    return {{QStringLiteral("id"), qint64(p.id)}, {QStringLiteral("symbol"), qs(p.symbol)},
+    return {{QStringLiteral("inverse"), p.inverse}, {QStringLiteral("id"), qint64(p.id)}, {QStringLiteral("symbol"), qs(p.symbol)},
             {QStringLiteral("long"), p.isLong}, {QStringLiteral("quantity"), p.quantity},
             {QStringLiteral("entry"), p.entry}, {QStringLiteral("stop"), p.stop},
             {QStringLiteral("take_profit"), p.takeProfit}, {QStringLiteral("opened_at"), qint64(p.openedAt)},
@@ -79,6 +79,7 @@ Position positionFrom(const QJsonObject &o)
     p.id = o.value(QLatin1String("id")).toInteger();
     p.symbol = o.value(QLatin1String("symbol")).toString().toStdString();
     p.isLong = o.value(QLatin1String("long")).toBool(true);
+    p.inverse = o.value(QLatin1String("inverse")).toBool(false);
     p.quantity = o.value(QLatin1String("quantity")).toDouble();
     p.entry = o.value(QLatin1String("entry")).toDouble();
     p.stop = o.value(QLatin1String("stop")).toDouble();
@@ -94,7 +95,7 @@ Position positionFrom(const QJsonObject &o)
 
 QJsonObject tradeJson(const Trade &t)
 {
-    return {{QStringLiteral("id"), qint64(t.id)}, {QStringLiteral("symbol"), qs(t.symbol)},
+    return {{QStringLiteral("inverse"), t.inverse}, {QStringLiteral("id"), qint64(t.id)}, {QStringLiteral("symbol"), qs(t.symbol)},
             {QStringLiteral("long"), t.isLong}, {QStringLiteral("quantity"), t.quantity},
             {QStringLiteral("entry"), t.entry}, {QStringLiteral("exit"), t.exit},
             {QStringLiteral("opened_at"), qint64(t.openedAt)}, {QStringLiteral("closed_at"), qint64(t.closedAt)},
@@ -106,6 +107,7 @@ QJsonObject tradeJson(const Trade &t)
 Trade tradeFrom(const QJsonObject &o)
 {
     Trade t;
+    t.inverse = o.value(QLatin1String("inverse")).toBool(false);
     t.id = o.value(QLatin1String("id")).toInteger();
     t.symbol = o.value(QLatin1String("symbol")).toString().toStdString();
     t.isLong = o.value(QLatin1String("long")).toBool(true);
@@ -155,7 +157,6 @@ TradingEngine::TradingEngine(TradingConfig *config, QObject *parent)
 {
     qRegisterMetaType<Trading::Candles>("Trading::Candles");
     qRegisterMetaType<QList<MarketData::Ticker>>("QList<MarketData::Ticker>");
-    m_data->setBaseUrl(config->dataUrl());
     m_timer->setInterval(kPollMs);
     connect(m_timer, &QTimer::timeout, this, &TradingEngine::poll);
     connect(m_data, &MarketData::candles, this, &TradingEngine::onCandles);
@@ -173,7 +174,7 @@ TradingEngine::TradingEngine(TradingConfig *config, QObject *parent)
         m_marketsError = message;
         Q_EMIT marketsChanged();
     });
-    m_stream->setBaseUrl(config->streamUrl());
+    applySource();
     connect(m_stream, &MarketStream::trade, this, &TradingEngine::onStreamTrade);
     connect(m_stream, &MarketStream::kline, this, &TradingEngine::onStreamKline);
     connect(m_stream, &MarketStream::ticker, this, &TradingEngine::onStreamTicker);
@@ -193,7 +194,15 @@ TradingEngine::TradingEngine(TradingConfig *config, QObject *parent)
     m_flush->setInterval(kFlushMs);
     connect(m_flush, &QTimer::timeout, this, &TradingEngine::flushStream);
     connect(m_models, &ModelClient::answered, this, &TradingEngine::onModelAnswered);
+    // Another market on the chart: another position (or none) to show there.
+    connect(this, &TradingEngine::selectionChanged, this, &TradingEngine::accountChanged);
     connect(m_models, &ModelClient::failed, this, &TradingEngine::onModelFailed);
+    connect(m_models, &ModelClient::retrying, this, [this](const QString &id, const QString &why) {
+        // Still working: the model is asked once more before it is given up on.
+        m_analystState[id].state = QStringLiteral("working");
+        m_analystState[id].detail = why;
+        Q_EMIT analystsChanged();
+    });
     connect(m_models, &ModelClient::modelsListed, this, [this](const QStringList &, const QString &error) {
         m_catalogError = error;
         Q_EMIT catalogChanged();
@@ -225,17 +234,73 @@ QString TradingEngine::symbol() const { return m_config->symbol(); }
 QString TradingEngine::interval() const { return m_config->interval(); }
 QStringList TradingEngine::intervals() const { return TradingConfig::intervals(); }
 QString TradingEngine::dataSource() const { return QUrl(m_config->dataUrl()).host(); }
+QString TradingEngine::marketKind() const { return m_config->forex() ? QStringLiteral("forex") : QStringLiteral("crypto"); }
+
+// The data service and its stream, as the settings name them.
+void TradingEngine::applySource()
+{
+    const MarketData::Service service = m_config->forex() ? MarketData::Service::Kraken : MarketData::Service::Binance;
+    m_data->setService(service);
+    m_data->setBaseUrl(m_config->dataUrl());
+    m_stream->setService(service);
+    m_stream->setBaseUrl(m_config->streamUrl());
+}
+
+bool TradingEngine::inverseOf(const QString &symbol) const
+{
+    // On the dollar account of the forex markets: USD/CHF, USD/CAD, USD/JPY.
+    return m_config->forex() && symbol.size() == 6 && symbol.startsWith(QLatin1String("USD"));
+}
+
+QString TradingEngine::setMarketKind(const QString &kind)
+{
+    const bool forex = kind == QLatin1String("forex");
+    if (!forex && kind != QLatin1String("crypto"))
+        return tr("Unknown kind of market.");
+    if (forex == m_config->forex())
+        return {};
+    if (!m_account.positions().empty())
+        return tr("Close the open positions first: their prices come from the markets shown now.");
+    m_stream->stop();
+    m_config->setForex(forex);
+    applySource();
+    m_tickers.clear();
+    m_sparks.clear();
+    m_marketCatalog.clear();
+    m_marketsLoading = false;
+    m_marketsError.clear();
+    m_dataError.clear();
+    m_tickerError.clear();
+    m_candleError.clear();
+    m_dataState = QStringLiteral("loading");
+    resetMarket();
+    log(QStringLiteral("info"), forex ? tr("Showing the forex markets (prices from %1).").arg(dataSource())
+                                      : tr("Showing the crypto markets (prices from %1).").arg(dataSource()));
+    Q_EMIT marketsChanged();
+    Q_EMIT selectionChanged();
+    Q_EMIT marketChanged();
+    if (m_running) {
+        m_pollCount = 0;
+        poll();
+    }
+    return {};
+}
 bool TradingEngine::streaming() const { return m_stream->isConnected(); }
 int TradingEngine::maxMarkets() const { return TradingConfig::kMaxMarkets; }
 int TradingEngine::pollSeconds() const { return kPollMs / 1000; }
 bool TradingEngine::autoTrade() const { return m_config->autoTrade(); }
 bool TradingEngine::autoAnalyze() const { return m_config->autoAnalyze(); }
 bool TradingEngine::teamReview() const { return m_config->teamReview(); }
+int TradingEngine::modelTimeout() const { return m_config->modelTimeoutSeconds(); }
+void TradingEngine::setModelTimeout(int seconds) { m_config->setModelTimeoutSeconds(seconds); }
 
 QString TradingEngine::displayName(const QString &symbol)
 {
     static const QStringList quotes = {QStringLiteral("USDT"), QStringLiteral("USDC"), QStringLiteral("FDUSD"),
-                                       QStringLiteral("BTC"), QStringLiteral("ETH"), QStringLiteral("EUR")};
+                                       QStringLiteral("TUSD"), QStringLiteral("BTC"), QStringLiteral("ETH"),
+                                       QStringLiteral("EUR"), QStringLiteral("USD"), QStringLiteral("GBP"),
+                                       QStringLiteral("JPY"), QStringLiteral("CHF"), QStringLiteral("CAD"),
+                                       QStringLiteral("AUD"), QStringLiteral("NZD")};
     for (const QString &quote : quotes) {
         if (symbol.endsWith(quote) && symbol.size() > quote.size())
             return symbol.left(symbol.size() - quote.size()) + QLatin1Char('/') + quote;
@@ -506,6 +571,9 @@ void TradingEngine::onCandles(const QString &symbol, const QString &interval, co
         const bool streamFresh = !fromStream && m_stream->isConnected() && nowMs() - m_streamCandleAt < 5000;
         for (const Candle &c : series) {
             if (c.openTime > m_candles.back().openTime) {
+                // A candle that has a successor is closed, whether or not
+                // the service said so (one of them never does).
+                m_candles.back().closed = true;
                 m_candles.push_back(c);
             } else {
                 for (auto it = m_candles.rbegin(); it != m_candles.rend() && it->openTime >= c.openTime; ++it) {
@@ -738,8 +806,16 @@ QString TradingEngine::addMarket(const QString &raw)
     if (!m_marketCatalog.isEmpty()) {
         const bool known = std::any_of(m_marketCatalog.cbegin(), m_marketCatalog.cend(),
                                        [&symbol](const QPair<QString, double> &m) { return m.first == symbol; });
-        if (!known)
+        if (!known && m_config->forex() && MarketData::krakenForex(symbol)) {
+            return tr("%1 is not offered: the data service does not list it, or it trades there too rarely for "
+                      "its prices to mean anything.").arg(displayName(symbol));
+        }
+        if (!known && !m_config->forex())
             return tr("%1 is not a market the data service lists.").arg(symbol.isEmpty() ? raw.trimmed() : symbol);
+    }
+    if (m_config->forex() && !MarketData::krakenForex(symbol)) {
+        return tr("%1 cannot be added to the forex markets: only currency pairs with the US dollar, and gold "
+                  "against the dollar, are offered.").arg(symbol.isEmpty() ? raw.trimmed() : symbol);
     }
     const QString problem = m_config->addMarket(symbol);
     if (!problem.isEmpty())
@@ -791,10 +867,10 @@ void TradingEngine::recordClosed(const std::vector<Trade> &closed)
             : t.reason == "signal_flip" ? tr("signal reversed")
             : t.reason == "risk_halt" ? tr("risk halt") : tr("closed by you");
         log(QStringLiteral("trade"),
-            tr("Closed %1 %2 at %3 (%4): %5%6 USDT")
+            tr("Closed %1 %2 at %3 (%4): %5%6 %7")
                 .arg(t.isLong ? tr("long") : tr("short"), displayName(qs(t.symbol)))
                 .arg(t.exit, 0, 'g', 8).arg(reason)
-                .arg(t.pnl >= 0 ? QStringLiteral("+") : QString()).arg(t.pnl, 0, 'f', 2));
+                .arg(t.pnl >= 0 ? QStringLiteral("+") : QString()).arg(t.pnl, 0, 'f', 2).arg(accountCurrency()));
     }
 }
 
@@ -1344,6 +1420,7 @@ AccountView TradingEngine::accountView(const QString &symbol, qint64 now) const
     view.positionOnSymbol = m_account.positionOn(symbol.toStdString()) != nullptr;
     view.lastLossOnSymbolMs = m_account.lastLossOn(symbol.toStdString());
     view.halted = m_halted;
+    view.inverse = inverseOf(symbol);
     return view;
 }
 
@@ -1445,7 +1522,7 @@ QString TradingEngine::execute(const Signal &signal, const RiskDecision &decisio
     const qint64 now = nowMs();
     const PaperAccount::OpenResult result = m_account.open(
         m_analysisSymbol.toStdString(), signal.action == Action::Buy, decision.quantity, signal.entry, signal.stop,
-        signal.takeProfit, now, signal.confidence, signal.lead, signal.reasoning);
+        signal.takeProfit, now, signal.confidence, signal.lead, signal.reasoning, inverseOf(m_analysisSymbol));
     if (!result.ok) {
         log(QStringLiteral("error"), tr("Order refused: %1").arg(qs(result.error)));
         return qs(result.error);
@@ -1513,7 +1590,7 @@ void TradingEngine::resetPaperAccount()
     m_halted = false;
     m_equityCurve.clear();
     m_lastCurvePoint = 0;
-    log(QStringLiteral("info"), tr("Paper account reset to %1 USDT.").arg(m_config->paper().startingBalance, 0, 'f', 2));
+    log(QStringLiteral("info"), tr("Paper account reset to %1 %2.").arg(m_config->paper().startingBalance, 0, 'f', 2).arg(accountCurrency()));
     afterAccountChange(true);
 }
 
@@ -1594,7 +1671,8 @@ void TradingEngine::testModel(const QString &model)
                               "{\"action\": \"hold\", \"confidence\": 0, \"stop_loss\": 0, \"take_profit\": 0, "
                               "\"reasoning\": \"ok\"}");
     q.user = QStringLiteral("Connection test.");
-    q.timeoutMs = 60000;
+    q.timeoutMs = std::min(60, m_config->modelTimeoutSeconds()) * 1000;
+    q.attempts = 1; // a test says what happened; it does not try again
     m_testing.insert(model);
     m_analystState[model] = {QStringLiteral("working"), QString(), 0};
     Q_EMIT analystsChanged();
@@ -1926,7 +2004,8 @@ QVariantList TradingEngine::positions() const
     QVariantList list;
     for (const Position &p : m_account.positions()) {
         const double price = p.lastPrice > 0 ? p.lastPrice : p.entry;
-        const double pnl = (p.isLong ? price - p.entry : p.entry - price) * p.quantity;
+        const double pnl = moveValue(p.inverse, p.entry, price, p.quantity) * (p.isLong ? 1 : -1);
+        const double value = notionalOf(p.inverse, p.entry, p.quantity);
         list.append(QVariantMap{
             {QStringLiteral("id"), qlonglong(p.id)}, {QStringLiteral("symbol"), qs(p.symbol)},
             {QStringLiteral("name"), displayName(qs(p.symbol))},
@@ -1934,11 +2013,33 @@ QVariantList TradingEngine::positions() const
             {QStringLiteral("quantity"), p.quantity}, {QStringLiteral("entry"), p.entry},
             {QStringLiteral("stop"), p.stop}, {QStringLiteral("takeProfit"), p.takeProfit},
             {QStringLiteral("price"), price}, {QStringLiteral("pnl"), pnl},
-            {QStringLiteral("pnlPct"), pnl / (p.entry * p.quantity) * 100.0},
+            {QStringLiteral("pnlPct"), pnl / value * 100.0}, {QStringLiteral("value"), value},
             {QStringLiteral("openedAt"), double(p.openedAt)}, {QStringLiteral("confidence"), p.confidence},
             {QStringLiteral("lead"), qs(p.lead)}, {QStringLiteral("reasoning"), qs(p.reasoning)}});
     }
     return list;
+}
+
+QVariantMap TradingEngine::position() const
+{
+    const QString symbol = m_config->symbol();
+    const QVariantList all = positions();
+    for (const QVariant &v : all) {
+        const QVariantMap map = v.toMap();
+        if (map.value(QStringLiteral("symbol")).toString() == symbol)
+            return map;
+    }
+    return {};
+}
+
+int TradingEngine::closedTradeCount() const
+{
+    return int(m_account.trades().size());
+}
+
+QString TradingEngine::accountCurrency() const
+{
+    return m_config->forex() ? QStringLiteral("USD") : QStringLiteral("USDT");
 }
 
 QVariantList TradingEngine::trades() const
@@ -2117,12 +2218,14 @@ QJsonObject TradingEngine::dumpConfig() const
     return {{QStringLiteral("mode"), mode()},
             {QStringLiteral("dataSource"), m_config->dataUrl()},
             {QStringLiteral("streamSource"), m_config->streamUrl()},
+            {QStringLiteral("marketKind"), marketKind()}, {QStringLiteral("accountCurrency"), accountCurrency()},
             {QStringLiteral("modelService"), m_config->baseUrl()},
             {QStringLiteral("key"), QJsonObject::fromVariantMap(key())},
             {QStringLiteral("watchlist"), QJsonArray::fromStringList(m_config->watchlist())},
             {QStringLiteral("symbol"), symbol()}, {QStringLiteral("interval"), interval()},
             {QStringLiteral("autoTrade"), autoTrade()}, {QStringLiteral("autoAnalyze"), autoAnalyze()},
             {QStringLiteral("teamReview"), teamReview()},
+            {QStringLiteral("modelTimeout"), modelTimeout()}, {QStringLiteral("modelParallel"), m_config->modelParallel()},
             {QStringLiteral("risk"), QJsonObject::fromVariantMap(riskSettings())},
             {QStringLiteral("paper"), QJsonObject::fromVariantMap(paperSettings())},
             {QStringLiteral("panel"), panel},
@@ -2133,6 +2236,8 @@ QJsonObject TradingEngine::dumpAccount() const
 {
     return {{QStringLiteral("account"), QJsonObject::fromVariantMap(account())},
             {QStringLiteral("positions"), QJsonArray::fromVariantList(positions())},
+            // The open position on the selected market: what the chart and the signal panel show.
+            {QStringLiteral("position"), QJsonObject::fromVariantMap(position())},
             {QStringLiteral("trades"), QJsonArray::fromVariantList(trades())},
             {QStringLiteral("activity"), QJsonArray::fromVariantList(m_activity)}};
 }

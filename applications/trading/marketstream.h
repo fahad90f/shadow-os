@@ -12,10 +12,12 @@
 class QTimer;
 class QWebSocket;
 
-// Live market data pushed by a Binance-compatible WebSocket service: every
-// trade of the market on the chart, its candle as it forms, and the last
-// price of each market of the watchlist. Public data only: no account, no
-// key, and nothing is ever sent but the subscription (which is in the URL).
+// Live market data pushed over a WebSocket: every trade of the market on the
+// chart, its candle as it forms, and the last price of each market of the
+// watchlist. Public data only: no account, no key, and nothing is ever sent
+// but the subscription. Two services are understood, as in MarketData: a
+// Binance-compatible one (the subscription is in the address) and Kraken's
+// (the subscription is sent once the connection is made).
 //
 // It is an addition to MarketData, never a replacement: the history comes
 // from there, and when the stream is down the engine falls back to asking
@@ -28,6 +30,7 @@ public:
     explicit MarketStream(QObject *parent = nullptr);
     ~MarketStream() override;
 
+    void setService(MarketData::Service service);
     // "wss://host[:port]"; empty: no stream at all.
     void setBaseUrl(const QString &url);
     QString baseUrl() const { return m_baseUrl; }
@@ -54,6 +57,12 @@ public:
     // One message of the combined stream. Anything that is not one of the
     // three kinds, or has a number that is not a number, gives kind None.
     static Message parse(const QByteArray &json);
+    // One message of Kraken's stream, which can carry several trades or
+    // tickers; nothing for a heartbeat, a status or an acknowledgement.
+    static QList<Message> parseKraken(const QByteArray &json);
+    // What is sent to Kraken's stream once connected (public for the tests).
+    static QStringList krakenSubscriptions(const QString &symbol, const QString &interval,
+                                           const QStringList &watchlist);
 
 Q_SIGNALS:
     void trade(const QString &symbol, double price, double quantity);
@@ -67,8 +76,10 @@ private:
     void retryLater();
     void onText(const QString &text);
 
+    MarketData::Service m_service = MarketData::Service::Binance;
     QString m_baseUrl;
     QUrl m_url;               // what is (to be) connected; empty: nothing wanted
+    QStringList m_subscriptions; // sent once connected (Kraken)
     QWebSocket *m_socket = nullptr;
     QTimer *m_retry;
     QTimer *m_silence;        // fires when nothing has arrived for too long

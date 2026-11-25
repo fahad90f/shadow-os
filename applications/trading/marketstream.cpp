@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "marketstream.h"
 
+#include <QDateTime>
+#include <QJsonArray>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
@@ -49,6 +52,11 @@ MarketStream::~MarketStream()
     closeSocket();
 }
 
+void MarketStream::setService(MarketData::Service service)
+{
+    m_service = service;
+}
+
 void MarketStream::setBaseUrl(const QString &url)
 {
     QString base = url.trimmed();
@@ -74,12 +82,52 @@ QUrl MarketStream::streamUrl(const QString &baseUrl, const QString &symbol, cons
     return QUrl(baseUrl + QStringLiteral("/stream?streams=") + streams.join(QLatin1Char('/')), QUrl::StrictMode);
 }
 
+QStringList MarketStream::krakenSubscriptions(const QString &symbol, const QString &interval,
+                                              const QStringList &watchlist)
+{
+    const auto text = [](const QJsonObject &params) {
+        return QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("method"), QStringLiteral("subscribe")},
+                                                           {QStringLiteral("params"), params}})
+                                     .toJson(QJsonDocument::Compact));
+    };
+    QStringList list;
+    const QString pair = MarketData::krakenPair(symbol);
+    if (pair.isEmpty())
+        return list;
+    list.append(text({{QStringLiteral("channel"), QStringLiteral("trade")},
+                      {QStringLiteral("symbol"), QJsonArray{pair}}, {QStringLiteral("snapshot"), false}}));
+    const int minutes = MarketData::krakenMinutes(interval);
+    if (minutes > 0) {
+        list.append(text({{QStringLiteral("channel"), QStringLiteral("ohlc")},
+                          {QStringLiteral("symbol"), QJsonArray{pair}}, {QStringLiteral("interval"), minutes},
+                          {QStringLiteral("snapshot"), false}}));
+    }
+    QJsonArray pairs;
+    for (const QString &listed : watchlist) {
+        const QString name = MarketData::krakenPair(listed);
+        if (!name.isEmpty())
+            pairs.append(name);
+    }
+    if (!pairs.isEmpty())
+        list.append(text({{QStringLiteral("channel"), QStringLiteral("ticker")}, {QStringLiteral("symbol"), pairs}}));
+    return list;
+}
+
 void MarketStream::subscribe(const QString &symbol, const QString &interval, const QStringList &watchlist)
 {
-    const QUrl url = streamUrl(m_baseUrl, symbol, interval, watchlist);
-    if (url == m_url && (m_socket || m_retry->isActive()))
+    QUrl url;
+    QStringList subscriptions;
+    if (m_service == MarketData::Service::Kraken) {
+        subscriptions = krakenSubscriptions(symbol, interval, watchlist);
+        if (!m_baseUrl.isEmpty() && !subscriptions.isEmpty())
+            url = QUrl(m_baseUrl + QStringLiteral("/v2"), QUrl::StrictMode);
+    } else {
+        url = streamUrl(m_baseUrl, symbol, interval, watchlist);
+    }
+    if (url == m_url && subscriptions == m_subscriptions && (m_socket || m_retry->isActive()))
         return;
     m_url = url;
+    m_subscriptions = subscriptions;
     m_attempt = 0;
     m_retry->stop();
     closeSocket();
@@ -130,6 +178,8 @@ void MarketStream::open()
         if (socket != m_socket)
             return;
         m_silence->start();
+        for (const QString &subscription : std::as_const(m_subscriptions))
+            socket->sendTextMessage(subscription);
     });
     connect(socket, &QWebSocket::textMessageReceived, this, [this, socket](const QString &text) {
         if (socket == m_socket)
@@ -148,22 +198,92 @@ void MarketStream::open()
 
 void MarketStream::onText(const QString &text)
 {
-    m_silence->start();
-    const Message message = parse(text.toUtf8());
-    if (message.kind == Message::None)
-        return;
-    // "Connected" means data is arriving, not that a socket is open.
-    if (!m_connected) {
-        m_connected = true;
-        m_attempt = 0;
-        Q_EMIT connectedChanged();
+    m_silence->start(); // a heartbeat counts: the connection is alive
+    QList<Message> messages;
+    if (m_service == MarketData::Service::Kraken)
+        messages = parseKraken(text.toUtf8());
+    else
+        messages.append(parse(text.toUtf8()));
+    for (const Message &message : std::as_const(messages)) {
+        if (message.kind == Message::None)
+            continue;
+        // "Connected" means data is arriving, not that a socket is open.
+        if (!m_connected) {
+            m_connected = true;
+            m_attempt = 0;
+            Q_EMIT connectedChanged();
+        }
+        switch (message.kind) {
+        case Message::Trade: Q_EMIT trade(message.symbol, message.price, message.quantity); break;
+        case Message::Kline: Q_EMIT kline(message.symbol, message.interval, message.candle); break;
+        case Message::Ticker: Q_EMIT ticker(message.ticker); break;
+        case Message::None: break;
+        }
     }
-    switch (message.kind) {
-    case Message::Trade: Q_EMIT trade(message.symbol, message.price, message.quantity); break;
-    case Message::Kline: Q_EMIT kline(message.symbol, message.interval, message.candle); break;
-    case Message::Ticker: Q_EMIT ticker(message.ticker); break;
-    case Message::None: break;
+}
+
+QList<MarketStream::Message> MarketStream::parseKraken(const QByteArray &json)
+{
+    QList<Message> list;
+    const QJsonObject envelope = QJsonDocument::fromJson(json).object();
+    const QString channel = envelope.value(QLatin1String("channel")).toString();
+    const QString type = envelope.value(QLatin1String("type")).toString();
+    const QJsonArray rows = envelope.value(QLatin1String("data")).toArray();
+    static const QHash<int, QString> intervals{{1, QStringLiteral("1m")}, {5, QStringLiteral("5m")},
+                                               {15, QStringLiteral("15m")}, {30, QStringLiteral("30m")},
+                                               {60, QStringLiteral("1h")}, {240, QStringLiteral("4h")},
+                                               {1440, QStringLiteral("1d")}};
+    for (const QJsonValue &value : rows) {
+        const QJsonObject data = value.toObject();
+        Message message;
+        message.symbol = MarketData::krakenSymbol(data.value(QLatin1String("symbol")).toString());
+        if (message.symbol.isEmpty())
+            continue;
+        if (channel == QLatin1String("trade")) {
+            if (type == QLatin1String("snapshot"))
+                continue; // trades from before the connection
+            if (!number(data.value(QLatin1String("price")), &message.price) || !(message.price > 0))
+                continue;
+            number(data.value(QLatin1String("qty")), &message.quantity);
+            message.kind = Message::Trade;
+        } else if (channel == QLatin1String("ohlc")) {
+            Trading::Candle c;
+            if (!number(data.value(QLatin1String("open")), &c.open) || !number(data.value(QLatin1String("high")), &c.high)
+                || !number(data.value(QLatin1String("low")), &c.low) || !number(data.value(QLatin1String("close")), &c.close)
+                || !number(data.value(QLatin1String("volume")), &c.volume))
+                continue;
+            if (!(c.low > 0) || c.high < c.low || c.open < c.low || c.open > c.high || c.close < c.low
+                || c.close > c.high || c.volume < 0)
+                continue;
+            // "2026-11-25T19:00:00.000000000Z": to the second is all a candle needs.
+            const QDateTime begin = QDateTime::fromString(
+                data.value(QLatin1String("interval_begin")).toString().left(19) + QLatin1Char('Z'), Qt::ISODate);
+            message.interval = intervals.value(data.value(QLatin1String("interval")).toInt());
+            if (!begin.isValid() || message.interval.isEmpty())
+                continue;
+            c.openTime = begin.toMSecsSinceEpoch();
+            c.closed = false; // the service does not say; a newer candle closes this one
+            message.candle = c;
+            message.kind = Message::Kline;
+        } else if (channel == QLatin1String("ticker")) {
+            MarketData::Ticker t;
+            double volume = 0, vwap = 0;
+            if (!number(data.value(QLatin1String("last")), &t.price) || !(t.price > 0))
+                continue;
+            t.symbol = message.symbol;
+            number(data.value(QLatin1String("high")), &t.high);
+            number(data.value(QLatin1String("low")), &t.low);
+            number(data.value(QLatin1String("change_pct")), &t.changePct);
+            if (number(data.value(QLatin1String("volume")), &volume) && number(data.value(QLatin1String("vwap")), &vwap))
+                t.quoteVolume = volume * vwap;
+            message.ticker = t;
+            message.kind = Message::Ticker;
+        } else {
+            continue;
+        }
+        list.append(message);
     }
+    return list;
 }
 
 MarketStream::Message MarketStream::parse(const QByteArray &json)

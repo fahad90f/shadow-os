@@ -10,7 +10,10 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QTimer>
 #include <QUrl>
+
+#include <algorithm>
 
 namespace {
 
@@ -109,9 +112,38 @@ void ModelClient::ask(const Question &q)
         Q_EMIT failed(q.model, QStringLiteral("busy"), tr("Still working on the previous question."), 0);
         return;
     }
-    const QString key = m_config->apiKey();
-    if (key.isEmpty()) {
+    if (m_config->apiKey().isEmpty()) {
         Q_EMIT failed(q.model, QStringLiteral("no_key"), tr("No API key."), 0);
+        return;
+    }
+    Pending pending;
+    pending.question = q;
+    pending.startedMs = QDateTime::currentMSecsSinceEpoch();
+    pending.token = m_nextToken++;
+    m_pending.insert(q.model, pending);
+    m_queue.append(q.model);
+    pump();
+}
+
+// Send the waiting questions, as many as may be with the service at a time.
+void ModelClient::pump()
+{
+    const int limit = m_config->modelParallel();
+    while (m_inFlight < limit && !m_queue.isEmpty()) {
+        const QString model = m_queue.takeFirst();
+        const auto it = m_pending.constFind(model);
+        if (it != m_pending.constEnd() && !it->reply)
+            send(model);
+    }
+}
+
+void ModelClient::send(const QString &model)
+{
+    Pending &pending = m_pending[model];
+    const Question &q = pending.question;
+    const QString key = m_config->apiKey();
+    if (key.isEmpty()) { // removed while the question waited
+        fail(model, QStringLiteral("no_key"), tr("No API key."));
         return;
     }
 
@@ -139,27 +171,51 @@ void ModelClient::ask(const Question &q)
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setRawHeader("Accept", "application/json");
     req.setRawHeader("Authorization", "Bearer " + key.toUtf8());
-    req.setTransferTimeout(q.timeoutMs);
+    // Nothing arrives before the whole answer does, so this is how long the
+    // model is given.
+    pending.waitMs = q.timeoutMs > 0 ? q.timeoutMs : m_config->modelTimeoutSeconds() * 1000;
+    req.setTransferTimeout(pending.waitMs);
 
-    Pending pending;
     pending.net = takeNet();
-    pending.startedMs = QDateTime::currentMSecsSinceEpoch();
+    ++pending.attempt;
+    ++m_inFlight;
     QNetworkReply *reply = pending.net->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
     pending.reply = reply;
-    m_pending.insert(q.model, pending);
-    const QString model = q.model;
     connect(reply, &QNetworkReply::finished, this, [this, reply, model] {
         reply->deleteLater();
-        const auto current = m_pending.constFind(model);
-        if (current == m_pending.constEnd() || current->reply != reply)
+        const auto current = m_pending.find(model);
+        if (current == m_pending.end() || current->reply != reply)
             return; // cancelled
+        --m_inFlight;
+        m_idleNets.append(current->net);
+        current->net = nullptr;
+        current->reply = nullptr;
         finish(model, reply);
+        pump();
     });
+}
+
+bool ModelClient::retry(const QString &model, const QString &why, int delayMs)
+{
+    const auto it = m_pending.constFind(model);
+    if (it == m_pending.constEnd() || it->attempt >= it->question.attempts)
+        return false;
+    const quint64 token = it->token;
+    Q_EMIT retrying(model, why);
+    QTimer::singleShot(delayMs, this, [this, model, token] {
+        const auto now = m_pending.constFind(model);
+        if (now == m_pending.constEnd() || now->token != token || now->reply)
+            return; // cancelled meanwhile
+        m_queue.append(model);
+        pump();
+    });
+    return true;
 }
 
 void ModelClient::fail(const QString &model, const QString &code, const QString &message)
 {
     const Pending pending = m_pending.take(model);
+    m_queue.removeAll(model);
     if (pending.net)
         m_idleNets.append(pending.net);
     Q_EMIT failed(model, code, message, QDateTime::currentMSecsSinceEpoch() - pending.startedMs);
@@ -170,13 +226,31 @@ void ModelClient::finish(const QString &model, QNetworkReply *reply)
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QByteArray raw = reply->readAll();
 
+    const Pending &asked = m_pending[model];
+    const int seconds = std::max(1, asked.waitMs / 1000);
     if (reply->error() == QNetworkReply::TimeoutError || reply->error() == QNetworkReply::OperationCanceledError) {
-        fail(model, QStringLiteral("timeout"), tr("No answer in time."));
+        if (retry(model, tr("No answer in %1 s. Asking once more.").arg(seconds), 1000))
+            return;
+        fail(model, QStringLiteral("timeout"),
+             asked.attempt > 1 ? tr("No answer in %1 s, asked twice.").arg(seconds)
+                               : tr("No answer in %1 s.").arg(seconds));
         return;
     }
     if (status == 0) {
+        if (retry(model, tr("Could not reach NVIDIA's service. Trying once more."), 2000))
+            return;
         fail(model, QStringLiteral("network"), tr("Could not reach NVIDIA's service."));
         return;
+    }
+    if (status == 429 || status >= 500) {
+        // "Too many requests" says when to come back; not later than half a minute.
+        bool ok = false;
+        const int after = reply->rawHeader("Retry-After").trimmed().toInt(&ok);
+        const int delayMs = status == 429 ? std::clamp(ok ? after : 5, 1, 30) * 1000 : 2000;
+        if (retry(model, status == 429 ? tr("NVIDIA says too many requests. Asking again shortly.")
+                                       : tr("NVIDIA's service has a problem (error %1). Asking once more.").arg(status),
+                  delayMs))
+            return;
     }
     if (status != 200) {
         // For a rejected key the service's own words are not repeated: a
@@ -222,8 +296,6 @@ void ModelClient::finish(const QString &model, QNetworkReply *reply)
         return;
     }
     const Pending done = m_pending.take(model);
-    if (done.net)
-        m_idleNets.append(done.net);
     Q_EMIT answered(model, text, QDateTime::currentMSecsSinceEpoch() - done.startedMs);
 }
 
@@ -231,6 +303,8 @@ void ModelClient::cancelAll()
 {
     const QHash<QString, Pending> pending = m_pending;
     m_pending.clear();
+    m_queue.clear();
+    m_inFlight = 0;
     for (const Pending &p : pending) {
         if (p.reply)
             p.reply->abort();

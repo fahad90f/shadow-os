@@ -69,6 +69,10 @@ public:
     QString keyFilePath() const;
 
     // ---- market ------------------------------------------------------------
+    // Crypto (false) or forex (true): which data service, which list of
+    // markets and which selection the rest of this section is about.
+    bool forex() const { return m_forex; }
+    void setForex(bool forex);
     QString dataUrl() const { return m_dataUrl; }
     // The live stream ("wss://…"); empty when there is none to use.
     QString streamUrl() const { return m_streamUrl; }
@@ -93,6 +97,12 @@ public:
     void setAutoTrade(bool on);
     bool autoAnalyze() const { return m_autoAnalyze; }
     void setAutoAnalyze(bool on);
+    // How long a model is given to answer, in seconds (asked once more when
+    // it does not), and how many questions are with the service at a time.
+    static constexpr int kTimeoutMin = 30, kTimeoutMax = 600;
+    int modelTimeoutSeconds() const { return m_modelTimeout; }
+    QString setModelTimeoutSeconds(int seconds);
+    int modelParallel() const { return m_modelParallel; }
     // The analysis team reads each other's first calls and then makes its final ones.
     bool teamReview() const { return m_teamReview; }
     void setTeamReview(bool on);
@@ -118,6 +128,8 @@ private:
 
     QList<Member> m_panel;
     QString m_baseUrl;
+    bool m_forex = false;
+    QString marketKey(const QString &name) const; // "market/<name>" or "market/forex_<name>"
     QString m_dataUrl;
     QString m_streamUrl;
     QStringList m_watchlist;
@@ -126,6 +138,8 @@ private:
     bool m_autoTrade = false;
     bool m_autoAnalyze = true;
     bool m_teamReview = true;
+    int m_modelTimeout = 180;
+    int m_modelParallel = 6;
     Trading::RiskSettings m_risk;
     Trading::PaperSettings m_paper;
 };

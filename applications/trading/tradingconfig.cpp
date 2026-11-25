@@ -254,25 +254,30 @@ void TradingConfig::reload()
             m.enabled = m.enabled && raw.trimmed() != m.model;
     }
 
-    m_dataUrl = ini.value(QStringLiteral("market/data_url")).toString().trimmed();
+    // Which markets: crypto (Binance's public data) or forex (the currency
+    // pairs and gold of Kraken's public data). Each has its own source, its
+    // own list of markets and its own selection.
+    m_forex = ini.value(QStringLiteral("market/kind")).toString().trimmed().toLower() == QLatin1String("forex");
+    const QString dataKey = marketKey(QStringLiteral("data_url"));
+    m_dataUrl = ini.value(dataKey).toString().trimmed();
     const QByteArray dataEnv = qgetenv("SHADOW_TRADING_DATA_URL");
     if (!dataEnv.isEmpty())
         m_dataUrl = QString::fromUtf8(dataEnv).trimmed();
-    if (m_dataUrl.isEmpty())
-        m_dataUrl = QStringLiteral("https://data-api.binance.vision"); // public market data, no key
+    if (m_dataUrl.isEmpty()) // public market data, no key
+        m_dataUrl = m_forex ? QStringLiteral("https://api.kraken.com") : QStringLiteral("https://data-api.binance.vision");
     while (m_dataUrl.endsWith(QLatin1Char('/')))
         m_dataUrl.chop(1);
 
     // The live stream belongs to the data service: the built-in one has a
     // public stream; another service has one only when its address is given.
     // "off" turns it off (prices are then asked for every few seconds).
-    const bool builtinData = dataEnv.isEmpty() && ini.value(QStringLiteral("market/data_url")).toString().trimmed().isEmpty();
-    m_streamUrl = ini.value(QStringLiteral("market/stream_url")).toString().trimmed();
+    const bool builtinData = dataEnv.isEmpty() && ini.value(dataKey).toString().trimmed().isEmpty();
+    m_streamUrl = ini.value(marketKey(QStringLiteral("stream_url"))).toString().trimmed();
     const QByteArray streamEnv = qgetenv("SHADOW_TRADING_STREAM_URL");
     if (!streamEnv.isEmpty())
         m_streamUrl = QString::fromUtf8(streamEnv).trimmed();
-    if (m_streamUrl.isEmpty() && builtinData)
-        m_streamUrl = QStringLiteral("wss://data-stream.binance.vision"); // public market data, no key
+    if (m_streamUrl.isEmpty() && builtinData) // public market data, no key
+        m_streamUrl = m_forex ? QStringLiteral("wss://ws.kraken.com") : QStringLiteral("wss://data-stream.binance.vision");
     if (m_streamUrl.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0
         || !(m_streamUrl.startsWith(QLatin1String("wss://")) || m_streamUrl.startsWith(QLatin1String("ws://"))))
         m_streamUrl.clear();
@@ -281,20 +286,26 @@ void TradingConfig::reload()
 
     m_watchlist.clear();
     // QSettings reads "a, b" as a list (and a list has no text of its own).
-    const QStringList listed = ini.value(QStringLiteral("market/watchlist")).toStringList().join(QLatin1Char(','))
+    const QStringList listed = ini.value(marketKey(QStringLiteral("watchlist"))).toStringList().join(QLatin1Char(','))
                                    .split(QLatin1Char(','), Qt::SkipEmptyParts);
     for (const QString &raw : listed) {
         const QString symbol = raw.trimmed().toUpper();
         if (validSymbol(symbol) && !m_watchlist.contains(symbol) && m_watchlist.size() < 12)
             m_watchlist.append(symbol);
     }
-    if (m_watchlist.isEmpty()) {
+    if (m_watchlist.isEmpty() && m_forex) {
+        // The pairs with the dollar that trade often enough there to chart,
+        // and gold (the PAX Gold token against the dollar).
+        m_watchlist = {QStringLiteral("EURUSD"), QStringLiteral("GBPUSD"), QStringLiteral("AUDUSD"),
+                       QStringLiteral("USDCAD"), QStringLiteral("USDCHF"), QStringLiteral("PAXGUSD")};
+    } else if (m_watchlist.isEmpty()) {
         // Gold and the euro as they trade on a crypto exchange: the PAX Gold
-        // token and EUR against USDT. Real XAU/USD and EUR/USD need a broker.
+        // token and EUR against USDT. The currency pairs themselves are the
+        // forex markets (market/kind=forex).
         m_watchlist = {QStringLiteral("BTCUSDT"), QStringLiteral("ETHUSDT"), QStringLiteral("SOLUSDT"),
                        QStringLiteral("PAXGUSDT"), QStringLiteral("EURUSDT")};
     }
-    m_symbol = ini.value(QStringLiteral("market/symbol")).toString().trimmed().toUpper();
+    m_symbol = ini.value(marketKey(QStringLiteral("symbol"))).toString().trimmed().toUpper();
     if (!m_watchlist.contains(m_symbol))
         m_symbol = m_watchlist.first();
     m_interval = ini.value(QStringLiteral("market/interval")).toString().trimmed();
@@ -312,6 +323,9 @@ void TradingConfig::reload()
         const double v = ini.value(QString::fromLatin1(key)).toString().toDouble(&ok);
         return ok ? v : fallback;
     };
+    // The file may ask for less than the window offers (a test does not wait minutes).
+    m_modelTimeout = int(clampOr(number("nvidia/timeout_seconds", 180), 2, kTimeoutMax, 180));
+    m_modelParallel = int(clampOr(number("nvidia/parallel", 6), 1, 24, 6));
     m_risk = d;
     m_risk.riskPerTradePct = clampOr(number("risk/risk_per_trade_pct", d.riskPerTradePct), 0.1, 5, d.riskPerTradePct);
     m_risk.maxDailyLossPct = clampOr(number("risk/max_daily_loss_pct", d.maxDailyLossPct), 0.5, 20, d.maxDailyLossPct);
@@ -548,11 +562,25 @@ void TradingConfig::removeKey()
     Q_EMIT keysChanged();
 }
 
+QString TradingConfig::marketKey(const QString &name) const
+{
+    return (m_forex ? QStringLiteral("market/forex_") : QStringLiteral("market/")) + name;
+}
+
+void TradingConfig::setForex(bool forex)
+{
+    if (forex == m_forex)
+        return;
+    store(QStringLiteral("market/kind"), forex ? QStringLiteral("forex") : QStringLiteral("crypto"));
+    reload(); // the other source, list and selection
+    Q_EMIT changed();
+}
+
 void TradingConfig::setSymbol(const QString &symbol)
 {
     if (!m_watchlist.contains(symbol) || symbol == m_symbol)
         return;
-    store(QStringLiteral("market/symbol"), symbol);
+    store(marketKey(QStringLiteral("symbol")), symbol);
     m_symbol = symbol;
     Q_EMIT changed();
 }
@@ -561,13 +589,14 @@ QString TradingConfig::addMarket(const QString &raw)
 {
     const QString symbol = raw.trimmed().toUpper();
     if (!validSymbol(symbol))
-        return tr("\"%1\" is not a market name. Use the exchange's name, such as DOGEUSDT.").arg(raw.trimmed());
+        return tr("\"%1\" is not a market name. Use the data service's name, such as %2.")
+            .arg(raw.trimmed(), m_forex ? QStringLiteral("EURUSD") : QStringLiteral("DOGEUSDT"));
     if (m_watchlist.contains(symbol))
         return tr("%1 is already in the list.").arg(symbol);
     if (m_watchlist.size() >= kMaxMarkets)
         return tr("The list holds %1 markets at most. Remove one first.").arg(kMaxMarkets);
     m_watchlist.append(symbol);
-    store(QStringLiteral("market/watchlist"), m_watchlist.join(QStringLiteral(", ")));
+    store(marketKey(QStringLiteral("watchlist")), m_watchlist.join(QStringLiteral(", ")));
     Q_EMIT changed();
     return {};
 }
@@ -579,10 +608,10 @@ QString TradingConfig::removeMarket(const QString &symbol)
     if (m_watchlist.size() <= 1)
         return tr("The last market cannot be removed.");
     m_watchlist.removeAll(symbol);
-    store(QStringLiteral("market/watchlist"), m_watchlist.join(QStringLiteral(", ")));
+    store(marketKey(QStringLiteral("watchlist")), m_watchlist.join(QStringLiteral(", ")));
     if (m_symbol == symbol) {
         m_symbol = m_watchlist.first();
-        store(QStringLiteral("market/symbol"), m_symbol);
+        store(marketKey(QStringLiteral("symbol")), m_symbol);
     }
     Q_EMIT changed();
     return {};
@@ -622,6 +651,18 @@ void TradingConfig::setTeamReview(bool on)
     store(QStringLiteral("engine/team_review"), on);
     m_teamReview = on;
     Q_EMIT changed();
+}
+
+QString TradingConfig::setModelTimeoutSeconds(int seconds)
+{
+    if (seconds < kTimeoutMin || seconds > kTimeoutMax)
+        return tr("Between %1 and %2 seconds.").arg(kTimeoutMin).arg(kTimeoutMax);
+    if (seconds == m_modelTimeout)
+        return {};
+    store(QStringLiteral("nvidia/timeout_seconds"), seconds);
+    m_modelTimeout = seconds;
+    Q_EMIT changed();
+    return {};
 }
 
 bool TradingConfig::setRisk(const QString &name, double value)

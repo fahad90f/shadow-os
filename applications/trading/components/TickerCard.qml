@@ -20,9 +20,11 @@ GlowCard {
     readonly property string base: Format.base(market.name)
     // A colour and a short mark per asset; these are letters, not logos.
     readonly property color badge: base === "BTC" ? Theme.accentAmber : base === "ETH" ? Theme.accentBlue
-        : base === "SOL" ? Theme.accentEmerald : base === "PAXG" ? Theme.warning
-        : base === "EUR" ? Theme.accentCyan : Theme.accent
-    readonly property string mark: base === "PAXG" ? "Au" : base === "EUR" ? "€" : base.substring(0, 1)
+        : base === "SOL" ? Theme.accentEmerald : base === "PAXG" || base === "XAUT" ? Theme.warning
+        : base === "EUR" ? Theme.accentCyan : base === "GBP" ? Theme.accentViolet
+        : base === "USD" ? Theme.accentEmerald : base === "AUD" ? Theme.accentAmber : Theme.accent
+    readonly property string mark: base === "PAXG" || base === "XAUT" ? "Au" : base === "EUR" ? "€" : base === "GBP" ? "£"
+        : base === "USD" ? "$" : base === "AUD" ? "A$" : base === "JPY" ? "¥" : base.substring(0, 1)
 
     padding: Theme.spaceSm + 2
     glow: market.selected

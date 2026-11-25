@@ -20,11 +20,30 @@ struct PaperSettings
     double slippagePct = 0.02; // market and stop orders fill this much worse than the price
 };
 
+// What a quantity of the base currency is worth, and what a price move earns,
+// in the account's currency. Two kinds of market:
+//  - linear: the price is in the account's currency (BTC/USDT on a USDT
+//    account, EUR/USD on a dollar account). Value = price x quantity.
+//  - inverse: the account's currency is the base, and the price is in
+//    another currency (USD/CHF on a dollar account). The quantity is already
+//    in the account's currency, and a profit in the quote currency is turned
+//    back at the price it is taken at.
+inline double notionalOf(bool inverse, double price, double quantity)
+{
+    return inverse ? quantity : price * quantity;
+}
+// For a long position; a short earns the opposite.
+inline double moveValue(bool inverse, double entry, double price, double quantity)
+{
+    return inverse ? (price - entry) * quantity / price : (price - entry) * quantity;
+}
+
 struct Position
 {
     long long id = 0;
     std::string symbol;
     bool isLong = true;
+    bool inverse = false;   // see notionalOf()
     double quantity = 0;
     double entry = 0;       // fill price
     double stop = 0;
@@ -42,6 +61,7 @@ struct Trade
     long long id = 0;
     std::string symbol;
     bool isLong = true;
+    bool inverse = false;
     double quantity = 0;
     double entry = 0;
     double exit = 0;
@@ -49,7 +69,7 @@ struct Trade
     long long closedAt = 0;
     double fees = 0;     // both sides
     double pnl = 0;      // net of fees
-    double pnlPct = 0;   // pnl / (entry * quantity) * 100
+    double pnlPct = 0;   // pnl / the order's value * 100
     std::string reason;  // "take_profit" | "stop_loss" | "manual" | "signal_flip" | "risk_halt"
     double confidence = 0;
     std::string lead;
@@ -113,7 +133,7 @@ public:
     // value plus its fee.
     OpenResult open(const std::string &symbol, bool isLong, double quantity, double marketPrice, double stop,
                     double takeProfit, long long nowMs, double confidence = 0, const std::string &lead = {},
-                    const std::string &reasoning = {});
+                    const std::string &reasoning = {}, bool inverse = false);
 
     // A new price for 'symbol': 'last' is the current price, 'high' and 'low'
     // the extremes since the previous update. Closes the position on the

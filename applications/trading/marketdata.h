@@ -15,10 +15,13 @@
 class QNetworkAccessManager;
 class QNetworkReply;
 
-// Public market data from a Binance-compatible REST API: candles and 24-hour
-// tickers. No account and no key are involved; nothing here can place an
-// order. The base URL comes from the settings (default: Binance's public
-// market-data host).
+// Public market data over REST: candles and 24-hour tickers. No account and
+// no key are involved; nothing here can place an order. Two services are
+// understood, and the settings say which one is used and where it is:
+//  - Binance's public market data (crypto, quoted in USDT), and any service
+//    that speaks the same API;
+//  - Kraken's public market data, for the currency pairs and gold it lists
+//    (EUR/USD, GBP/USD, USD/CHF, ...), quoted in dollars.
 class MarketData : public QObject
 {
     Q_OBJECT
@@ -35,6 +38,9 @@ public:
 
     MarketData(QNetworkAccessManager *net, QObject *parent = nullptr);
 
+    enum class Service { Binance, Kraken };
+    void setService(Service service);
+    Service service() const { return m_service; }
     void setBaseUrl(const QString &url);
     QString baseUrl() const { return m_baseUrl; }
 
@@ -59,6 +65,28 @@ public:
     static QList<Ticker> parseTickers(const QByteArray &json, QString *error);
     static QList<QPair<QString, double>> parseAllPrices(const QByteArray &json);
 
+    // ---- Kraken ----
+    // "ZEURZUSD" -> "EURUSD", "EUR/USD" -> "EURUSD": the names the application
+    // uses are the service's short names without the separators.
+    static QString krakenSymbol(const QString &name);
+    // "EURUSD" -> "EUR/USD" (the stream's spelling); empty when it is not a pair.
+    static QString krakenPair(const QString &symbol);
+    // Minutes of an interval the service offers ("15m" -> 15); 0 when it has none.
+    static int krakenMinutes(const QString &interval);
+    // {"error":[...],"result":{"<pair>":[[time,o,h,l,c,vwap,volume,count],...]}}.
+    // 'unknown' is set when the service says it has no such pair.
+    static Trading::Candles parseKrakenOhlc(const QByteArray &json, qint64 intervalMs, qint64 nowMs, QString *error,
+                                            bool *unknown = nullptr);
+    struct KrakenTicker { Ticker ticker; int trades24h = 0; };
+    static QList<KrakenTicker> parseKrakenTickers(const QByteArray &json, QString *error, bool *unknown = nullptr);
+    static QList<Ticker> krakenTickers(const QByteArray &json, QString *error, bool *unknown = nullptr);
+    // A currency pair or gold against the dollar: what the forex list offers.
+    // Crosses (EUR/GBP) are left out: their profit would need a second rate.
+    static bool krakenForex(const QString &symbol);
+    // Fewer trades than this in 24 hours and a pair's candles are a few
+    // stray prices, not a market (USD/JPY there, at the time of writing).
+    static constexpr int kKrakenMinTrades = 500;
+
 Q_SIGNALS:
     void candles(const QString &symbol, const QString &interval, const Trading::Candles &series,
                  const QString &purpose);
@@ -77,6 +105,7 @@ private:
     void fetchTicker(const QString &symbol); // one market, after a list was refused
 
     QNetworkAccessManager *m_net;
+    Service m_service = Service::Binance;
     QString m_baseUrl;
     QHash<QString, QPointer<QNetworkReply>> m_inFlight;
     QSet<QString> m_unlisted;

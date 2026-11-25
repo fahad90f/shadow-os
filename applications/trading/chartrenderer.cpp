@@ -26,7 +26,9 @@ namespace {
 QString priceText(double v)
 {
     const double a = std::fabs(v);
-    const int decimals = a >= 1000 ? 2 : a >= 100 ? 2 : a >= 1 ? 4 : 6;
+    // Currency pairs are quoted to the fifth decimal, a tenth of a pip (the
+    // third for prices in the tens and hundreds, such as the yen pairs).
+    const int decimals = a >= 1000 ? 2 : a >= 100 ? 2 : a >= 10 ? 3 : a >= 1 ? 5 : 6;
     return QString::number(v, 'f', decimals);
 }
 
@@ -234,7 +236,7 @@ Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &ca
     };
     level(levels.target, palette.target, QStringLiteral("TP"));
     level(levels.stop, palette.stop, QStringLiteral("SL"));
-    level(levels.entry, palette.entry, QStringLiteral("Entry"));
+    level(levels.entry, palette.entry, levels.entryLabel.isEmpty() ? QStringLiteral("Entry") : levels.entryLabel);
     // The last price: its line and tag, wherever the view is.
     const Trading::Candle &newest = candles.back();
     level(newest.close, newest.close >= newest.open ? palette.up : palette.down, QString());
@@ -553,6 +555,7 @@ void ChartItem::paint(QPainter *painter)
     levels.entry = m_entry;
     levels.stop = m_stop;
     levels.target = m_target;
+    levels.entryLabel = m_entryLabel;
     ChartRenderer::View view;
     view.count = m_count;
     view.offset = m_offset;

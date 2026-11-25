@@ -781,6 +781,102 @@ static void testPaper()
     }
 }
 
+// A market whose base is the account's currency: USD/CHF on a dollar account.
+// The quantity is in dollars; a profit in francs comes back at the price it
+// is taken at.
+static void testInverseMarkets()
+{
+    NEAR(notionalOf(false, 0.8, 1000), 800, 1e-12);
+    NEAR(notionalOf(true, 0.8, 1000), 1000, 1e-12);
+    NEAR(moveValue(false, 100, 110, 2), 20, 1e-12);
+    // 1000 dollars of USD/CHF from 0.80 to 0.88: 80 francs, which are 90.909 dollars at 0.88.
+    NEAR(moveValue(true, 0.80, 0.88, 1000), 80.0 / 0.88, 1e-9);
+    NEAR(moveValue(true, 0.80, 0.72, 1000), -80.0 / 0.72, 1e-9);
+
+    PaperSettings settings;
+    settings.startingBalance = 10000;
+    settings.feePct = 0.1;
+    settings.slippagePct = 0;
+    const long long t0 = 20000LL * 86400000LL + 3600000LL;
+
+    { // a long that reaches its target
+        PaperAccount account(settings);
+        const PaperAccount::OpenResult r = account.open("USDCHF", true, 2000, 0.80, 0.76, 0.88, t0, 70, "a", "b", true);
+        CHECK(r.ok);
+        CHECK(r.position.inverse);
+        NEAR(account.balance(), 10000 - 2.0, 1e-9);   // fee 0.1 % of 2000 dollars, not of 1600
+        NEAR(account.marginInUse(), 2000, 1e-9);
+        CHECK(account.onPrice("USDCHF", 0.84, 0.84, 0.80, t0 + 1000).empty());
+        NEAR(account.unrealized(), 0.04 * 2000 / 0.84, 1e-9);
+        const std::vector<Trade> closed = account.onPrice("USDCHF", 0.89, 0.89, 0.84, t0 + 2000);
+        CHECK(closed.size() == 1);
+        if (closed.size() == 1) {
+            const Trade &t = closed[0];
+            CHECK(t.inverse);
+            CHECK(t.reason == "take_profit");
+            NEAR(t.exit, 0.88, 1e-12);
+            const double gross = 0.08 * 2000 / 0.88;
+            NEAR(t.fees, 2.0 + 2.0, 1e-9);            // 0.1 % of 2000 dollars on each side
+            NEAR(t.pnl, gross - 4.0, 1e-9);
+            NEAR(t.pnlPct, (gross - 4.0) / 2000 * 100, 1e-9);
+            NEAR(account.balance(), 10000 + gross - 4.0, 1e-9);
+        }
+        CHECK(account.positions().empty());
+    }
+    { // a short that is stopped out
+        PaperAccount account(settings);
+        CHECK(account.open("USDCAD", false, 1000, 1.40, 1.44, 1.30, t0, 0, {}, {}, true).ok);
+        const std::vector<Trade> closed = account.onPrice("USDCAD", 1.44, 1.44, 1.40, t0 + 1000);
+        CHECK(closed.size() == 1);
+        if (closed.size() == 1) {
+            CHECK(closed[0].reason == "stop_loss");
+            NEAR(closed[0].exit, 1.44, 1e-12);
+            NEAR(closed[0].pnl, -(0.04 * 1000 / 1.44) - 2.0, 1e-9);
+        }
+    }
+    { // what the balance covers is counted in dollars
+        PaperAccount account(settings);
+        CHECK(!account.open("USDCHF", true, 10001, 0.80, 0.76, 0.88, t0, 0, {}, {}, true).ok);
+        CHECK(account.open("USDCHF", true, 9000, 0.80, 0.76, 0.88, t0, 0, {}, {}, true).ok);
+    }
+
+    // The size: one per cent of the account is lost when the stop is hit.
+    Signal signal;
+    signal.action = Action::Buy;
+    signal.confidence = 80;
+    signal.entry = 0.80;
+    signal.stop = 0.796;          // half a per cent away
+    signal.takeProfit = 0.82;
+    signal.voters = 3;
+    signal.agreeing = 3;
+    AccountView view;
+    view.equity = view.available = view.dayStartEquity = view.peakEquity = 10000;
+    view.inverse = true;
+    RiskSettings risk;
+    risk.maxOpenPositions = 1;    // the whole account may go into this one
+    const RiskDecision sized = evaluate(signal, view, risk, t0);
+    CHECK(sized.allowed);
+    // Lost at the stop: 0.004 francs a dollar, in dollars at 0.796.
+    NEAR(sized.riskAmount, sized.quantity * 0.004 / 0.796, 1e-9);
+    NEAR(sized.notional, sized.quantity, 1e-9);                     // dollars are dollars
+    CHECK(sized.notional <= 10000 * 0.995 + 1e-9);
+    if (!sized.reducedByBalance)
+        NEAR(sized.riskAmount, 100, 1e-6);
+    // With a stop five per cent away nothing caps the size: exactly 100 dollars at risk.
+    signal.stop = 0.76;
+    signal.takeProfit = 0.90;
+    const RiskDecision wide = evaluate(signal, view, risk, t0);
+    CHECK(wide.allowed);
+    CHECK(!wide.reducedByBalance);
+    NEAR(wide.riskAmount, 100, 1e-9);
+    NEAR(wide.quantity, 100 * 0.76 / 0.04, 1e-6);
+    // The same signal on a linear market sizes differently, as before.
+    view.inverse = false;
+    const RiskDecision linear = evaluate(signal, view, risk, t0);
+    NEAR(linear.quantity, 100 / 0.04, 1e-6);
+    NEAR(linear.notional, linear.quantity * 0.80, 1e-6);
+}
+
 int main()
 {
     testNamesAndLevels();
@@ -788,6 +884,7 @@ int main()
     testRules();
     testRisk();
     testPaper();
+    testInverseMarkets();
     std::printf("%d checks, %d failed\n", g_checks, g_failed);
     return g_failed ? 1 : 0;
 }

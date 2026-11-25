@@ -14,6 +14,8 @@
 #   FAKE_KEYS=1            give the application the stand-in's test key
 #   FAKE_STREAM=0          no live stream
 #   FAKE_AUTO_TRADE=1      write a settings file with auto trade on
+#   FAKE_INTERVAL=1m       start on this candle interval
+#   FAKE_KIND=forex        start on the forex markets
 #   FAKE_HISTORY=1         start from a paper account with a few made-up trades
 #   FAKE_LOG=FILE          request log of the stand-in services
 set -euo pipefail
@@ -45,9 +47,14 @@ if [ "${FAKE_KEYS:-0}" = 1 ]; then
 fi
 config="${XDG_CONFIG_HOME:-$HOME/.config}/shadow"
 data="${XDG_DATA_HOME:-$HOME/.local/share}/shadow/trading"
-if [ "${FAKE_AUTO_TRADE:-0}" = 1 ]; then
+if [ "${FAKE_AUTO_TRADE:-0}" = 1 ] || [ -n "${FAKE_INTERVAL:-}" ] || [ -n "${FAKE_KIND:-}" ]; then
     mkdir -p "$config"
-    printf '[engine]\nauto_trade=true\n' > "$config/trading.conf"
+    {
+        [ "${FAKE_AUTO_TRADE:-0}" != 1 ] || printf '[engine]\nauto_trade=true\n'
+        printf '[market]\n'
+        [ -z "${FAKE_INTERVAL:-}" ] || printf 'interval=%s\n' "$FAKE_INTERVAL"
+        [ -z "${FAKE_KIND:-}" ] || printf 'kind=%s\n' "$FAKE_KIND"
+    } > "$config/trading.conf"
 fi
 if [ "${FAKE_HISTORY:-0}" = 1 ]; then
     mkdir -p "$data"

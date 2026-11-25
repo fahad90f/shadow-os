@@ -11,7 +11,8 @@ function price(v) {
     if (!usable(v) || v === 0)
         return "—"
     var a = Math.abs(v)
-    return Number(v).toLocaleString(Qt.locale(), "f", a >= 100 ? 2 : a >= 1 ? 4 : 6)
+    // Currency pairs are quoted to the fifth decimal (a tenth of a pip).
+    return Number(v).toLocaleString(Qt.locale(), "f", a >= 100 ? 2 : a >= 10 ? 3 : a >= 1 ? 5 : 6)
 }
 
 function money(v) {

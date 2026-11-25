@@ -84,6 +84,16 @@ real ones.
    fails, refuses or answers with something other than the JSON object is left
    out of that analysis and shown with the reason; its vote is never guessed.
    An answer wrapped in a code fence or preceded by `<think>` text is read.
+
+   **Slow models.** A large model can take minutes, and a hosted service
+   sometimes drops a request that would succeed a moment later. A model is
+   given 180 seconds for an answer (*Model Panel → Time to answer*, 30 to
+   600). One that does not answer in that time, or gets a "too many
+   requests" or server error, is asked once more before it is left out, and
+   its row says so while that happens. At most six questions are with the
+   service at a time (`nvidia/parallel`); the others wait their turn, which
+   does not count against their time. The analysis waits for every model, so
+   one that needs both tries delays the signal by up to twice that time.
 4. **Consensus** (`core/signal.cpp`). The side with more confidence behind it
    wins if enough analysts are on it. *Confidence* = (confidence of the
    agreeing analysts − confidence of the opposing ones) ÷ number of analysts
@@ -120,6 +130,19 @@ two nor changed).
 - **Live Trading**: the markets with 24-hour lines, chart, the signal (action,
   confidence, entry, stop, target, reasoning), models and skills, live trades,
   portfolio, risk.
+  **Crypto or forex**: the switch at the top chooses which markets the desk
+  shows. *Crypto*: coins against USDT, from Binance's public data. *Forex*:
+  the US dollar against the euro, the pound, the Australian and Canadian
+  dollar and the franc, and gold, from Kraken's public data; the account is
+  then counted in dollars. Each has its own list of markets. The paper
+  account is the same one, so the switch is refused while a position is open.
+  **An open position stays on show.** While a position is open on the market
+  on the chart, its entry, stop and target are the lines on the chart (the
+  entry line carries its side and running profit) and the three boxes of the
+  signal panel, and a strip under them shows its size and profit with a
+  *Close position* button. The newest analysis may say hold, or something
+  else, without the position disappearing from view; it leaves when it
+  closes.
   **Markets**: the **+** next to the cards opens *Add a market*: search what
   the data service lists and add up to
   12; the new market goes onto the chart at once. The **×** on a card (or
@@ -187,6 +210,11 @@ candle closes* turns the automatic analyses off.
 
 ```ini
 [market]
+; crypto (default) or forex. The window's switch writes this line.
+; kind=crypto
+; Forex has its own source, list and selection: forex_data_url
+; (https://api.kraken.com), forex_stream_url (wss://ws.kraken.com),
+; forex_watchlist (EURUSD,GBPUSD,AUDUSD,USDCAD,USDCHF,PAXGUSD), forex_symbol.
 ; Binance-compatible public market data; no account, no key.
 ; data_url=https://data-api.binance.vision
 ; The live stream (WebSocket). "off": no stream, prices every 5 seconds.
@@ -232,6 +260,10 @@ slippage_pct=0.02
 
 [nvidia]
 ; base_url=https://integrate.api.nvidia.com/v1
+; Seconds a model is given for one answer (asked once more when it does not).
+; timeout_seconds=180
+; Questions with the service at a time; the others wait their turn.
+; parallel=6
 ```
 
 A value outside its allowed range is ignored and the default used; a model id
@@ -239,6 +271,9 @@ that is not of the form `publisher/model` is ignored.
 
 ## Data sources and runtime dependencies
 
+- Forex market data: `GET <forex_data_url>/0/public/OHLC`, `/0/public/Ticker`
+  and the stream `<forex_stream_url>/v2` (channels `trade`, `ohlc`,
+  `ticker`, subscribed to once connected).
 - Market data: `GET <data_url>/api/v3/klines` (with `endTime` for older
   candles), `/api/v3/ticker/24hr` and, for *Add a market*,
   `/api/v3/ticker/price` (QtNetwork); the live stream
@@ -262,8 +297,8 @@ scripted `SHADOW_TRADING_SESSION_ACTIONS`, then reports).
 | Test | What it covers | Run |
 |---|---|---|
 | `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3276 checks) | build command in the file's header; plain `g++`, sanitizers |
-| `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account (309 checks) | as above |
-| `tests/test_app.py` | the real binary against `tests/fake_services.py` (49 tests): the watchlist and markets the data service does not list, adding and removing markets, the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
+| `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account, markets priced in another currency (346 checks) | as above |
+| `tests/test_app.py` | the real binary against `tests/fake_services.py` (62 tests): the watchlist and markets the data service does not list, adding and removing markets, the forex markets (the other service's requests and stream, what is offered, a dollar-base pair counted in dollars, switching kinds, recorded answers and messages of the real service), an open position staying on show after a hold, models that are slow or fail once (asked again, left out after two tries, only so many at a time), the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
 
 `tests/fake_services.py` stands in for the exchange and for NVIDIA's model
 service on one local port, checks each request (the key, the model, the shape
@@ -287,15 +322,31 @@ application against it by hand. Test hooks: `SHADOW_TRADING_DATA_URL`,
 - Markets that are not on the chart get one price a second from the stream
   (every 5 seconds without it), so a move and its reversal inside that
   interval can be missed there; on the chart every trade is seen.
-- The built-in data service lists crypto pairs only. Gold and the euro are
-  the PAX Gold token and EUR/USDT as they trade there; stocks, indices and
-  spot forex are not available from it.
+- **Forex prices are an exchange's, not a broker's.** They are the prices at
+  which the currency pairs trade on Kraken: within a pip or so of the
+  interbank rates for the pairs that trade often there, and trading goes on
+  at weekends. Offered are the pairs with the US dollar, and gold (the PAX
+  Gold and Tether Gold tokens against the dollar), that had at least 500
+  trades in the last 24 hours. At the time of writing that is EUR/USD,
+  GBP/USD, AUD/USD, USD/CAD, USD/CHF and the two gold tokens; **USD/JPY had
+  about thirty trades a day there, with prices percent apart, and is not
+  offered**. Crosses (EUR/GBP, EUR/JPY) are not offered: their profit would
+  need a second exchange rate. That service keeps the newest 720 candles of
+  an interval (a week of 15-minute candles, two years of daily ones) and
+  the chart goes back no further. No leverage, swaps or lot sizes are
+  simulated: an order is a plain amount of the base currency, paid in full.
+  Stocks and indices are not available from either service.
+- On a market whose base is the dollar (USD/CHF, USD/CAD) the quantity is
+  dollars, and a profit in the other currency is turned into dollars at the
+  price it is taken at (`Trading::notionalOf`, `moveValue` in `core/paper.h`).
 - The risk checks' detail texts and the rule-based analyst's reasoning come
   from the Qt-free core in English and are not translated.
 - **Checked against the real services:** the market data requests and the
-  live stream of the built-in data service (its messages were recorded and
-  are replayed in the tests, `tests/fixtures/real-stream.jsonl`), and NVIDIA's
-  public model list, to confirm the panel's ids.
+  live streams of both data services (their answers and messages were
+  recorded and are replayed in the tests, `tests/fixtures/real-stream.jsonl`
+  and `tests/fixtures/real-kraken-*`), and NVIDIA's public model list, to
+  confirm the panel's ids. The application itself was run against stand-ins
+  shaped after those recordings, not against the services directly.
 - **Not verified here** (no key in the build environment): real answers from
   NVIDIA's models. That every one of the fourteen answers in the JSON format,
   that the three vision models accept the chart picture, and how the team
