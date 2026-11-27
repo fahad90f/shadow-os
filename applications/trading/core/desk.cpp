@@ -1111,16 +1111,24 @@ std::vector<Change> DeskState::priceUpdate(const std::string &market, double pri
     Book &b = it->second;
     for (Level &l : b.levels) {
         const double distance = (price - l.price) / l.price * 100.0;
-        const LevelState now_state = price >= l.price ? LevelState::Above : LevelState::Below;
         const bool nearNow = std::fabs(distance) <= nearPct;
         const std::string what = std::string(levelWord(l.kind)) + " " + formatPrice(l.price);
         char pct[32];
         std::snprintf(pct, sizeof pct, "%.2f", std::fabs(distance));
-        if (l.state != LevelState::Unknown && now_state != l.state) {
-            changes.push_back({now, market, "price",
-                               (now_state == LevelState::Above ? "Price crossed above " : "Price crossed below ") + what
-                                   + " (live " + formatPrice(price) + ")",
-                               Source::Market});
+        // The side of the level the price is on; inside the dead band around
+        // it, the side it was on before.
+        const bool clear = std::fabs(distance) >= nearPct / 2;
+        LevelState side = l.state;
+        if (clear || l.state == LevelState::Unknown)
+            side = price >= l.price ? LevelState::Above : LevelState::Below;
+        if (l.state != LevelState::Unknown && side != l.state) {
+            if (l.crossedAt == 0 || now - l.crossedAt >= 60000) {
+                changes.push_back({now, market, "price",
+                                   (side == LevelState::Above ? "Price crossed above " : "Price crossed below ") + what
+                                       + " (live " + formatPrice(price) + ")",
+                                   Source::Market});
+                l.crossedAt = now;
+            }
             l.near = nearNow;
         } else if (nearNow && !l.near) {
             changes.push_back({now, market, "price",
@@ -1131,7 +1139,7 @@ std::vector<Change> DeskState::priceUpdate(const std::string &market, double pri
         } else if (std::fabs(distance) > 2 * nearPct) {
             l.near = false;
         }
-        l.state = now_state;
+        l.state = side;
         l.distancePct = distance;
         l.hasDistance = true;
     }

@@ -137,6 +137,9 @@ DeskEngine::DeskEngine(TradingConfig *config, TradingEngine *engine, QObject *pa
     , m_tickTimer(new QTimer(this))
 {
     m_clock.start();
+    // Kept: the destructor saves after the settings object may be gone.
+    m_path = m_config->dataDir() + QStringLiteral("/desk.json");
+    m_hasKey = !m_config->apiKey().isEmpty();
     m_stream->setLimit(4);
     m_readTimer->setSingleShot(true);
     m_readTimer->setInterval(kReadDelayMs);
@@ -153,6 +156,11 @@ DeskEngine::DeskEngine(TradingConfig *config, TradingEngine *engine, QObject *pa
         if (it == m_tasks.end())
             return;
         it->stage = QStringLiteral("sent");
+        if (it->kind == QLatin1String("answer"))
+            m_messages->update(it->message, [](DeskMessages::Message &m) {
+                if (m.state == QLatin1String("waiting"))
+                    m.state = QStringLiteral("thinking"); // with the model now
+            }, {DeskMessages::StateRole});
         logEvent(QStringLiteral("sent"), it->kind == QLatin1String("answer") ? it->message : 0, it->kind);
         taskChanged();
     });
@@ -188,14 +196,15 @@ DeskEngine::DeskEngine(TradingConfig *config, TradingEngine *engine, QObject *pa
     connect(m_engine, &TradingEngine::chartChanged, this, tick);
     connect(m_engine, &TradingEngine::marketChanged, this, [this, tick] {
         tick();
-        Q_EMIT statusChanged(); // the feed's state
+        invalidateStatus(); // the feed's state
     });
     connect(m_engine, &TradingEngine::selectionChanged, this, [this] { invalidate(); });
     connect(m_engine, &TradingEngine::signalChanged, this, &DeskEngine::onSignal);
     connect(m_engine, &TradingEngine::accountChanged, this, [this] { invalidate(); });
-    connect(m_config, &TradingConfig::changed, this, [this] { Q_EMIT settingsChanged(); Q_EMIT statusChanged(); });
+    connect(m_config, &TradingConfig::changed, this, [this] { Q_EMIT settingsChanged(); invalidateStatus(); });
     connect(m_config, &TradingConfig::keysChanged, this, [this] {
-        Q_EMIT statusChanged();
+        m_hasKey = !!m_hasKey; // read from disk once per change, not per update
+        invalidateStatus();
         scheduleRead(); // messages that waited for a key
     });
 }
@@ -214,7 +223,7 @@ void DeskEngine::start()
     load();
     m_running = true;
     logEvent(QStringLiteral("start"), 0);
-    Q_EMIT statusChanged();
+    invalidateStatus();
     invalidate();
     // Messages accepted before the application closed and never read.
     for (const DeskMessages::Message &m : m_messages->all()) {
@@ -259,7 +268,7 @@ QVariantMap DeskEngine::post(const QString &raw, const QString &token)
     QTimer::singleShot(0, this, [this, id = m.id] { readMessage(id); });
     logEvent(QStringLiteral("accepted"), m.id, QString::number((m_clock.nsecsElapsed() - t0) / 1000) + QStringLiteral("us"));
     Q_EMIT accepted(m.id);
-    Q_EMIT statusChanged();
+    invalidateStatus();
     return {{QStringLiteral("accepted"), true}, {QStringLiteral("id"), double(m.id)},
             {QStringLiteral("duplicate"), false}};
 }
@@ -367,6 +376,8 @@ void DeskEngine::readMessage(qint64 id)
     if (!market.symbol.isEmpty()) {
         const std::vector<Change> c = m_state.focus(ss(market.symbol), ss(market.name), now);
         changes.insert(changes.end(), c.begin(), c.end());
+        if (!c.empty())
+            m_focusMessage = id;
         if (!market.listed && !m_warnedUnlisted.contains(market.symbol)) {
             m_warnedUnlisted.insert(market.symbol);
             const bool forexLike = market.base == QLatin1String("XAU") || market.base == QLatin1String("EUR")
@@ -380,9 +391,17 @@ void DeskEngine::readMessage(qint64 id)
                           "to follow its price.").arg(market.name),
                  market.symbol);
         } else if (market.listed && m_config->deskFollowChart() && market.symbol != m_engine->symbol()) {
-            m_engine->setSymbol(market.symbol);
-            note(QStringLiteral("info"), tr("Chart switched to %1 to follow the conversation.").arg(market.name),
-                 market.symbol);
+            if (m_teamAsked && m_engine->analyzing()) {
+                // Switching now would cancel the call the desk asked the team for.
+                note(QStringLiteral("info"), tr("The chart stays on %1 until the analysis team's call is in; %2 is "
+                                                "followed from its price meanwhile.")
+                                                 .arg(m_engine->symbolName(), market.name),
+                     market.symbol);
+            } else {
+                m_engine->setSymbol(market.symbol);
+                note(QStringLiteral("info"), tr("Chart switched to %1 to follow the conversation.").arg(market.name),
+                     market.symbol);
+            }
         }
     }
     const QString current = qs(m_state.current());
@@ -415,7 +434,8 @@ void DeskEngine::readMessage(qint64 id)
     // The levels it named, against the live price, at once.
     if (!reading.levels.empty() && !current.isEmpty()) {
         if (haveLive) {
-            const std::vector<Change> moves = m_state.priceUpdate(ss(current), live, 0.25, now);
+            // The same check as the regular one: what it finds is said.
+            const std::vector<Change> moves = m_state.priceUpdate(ss(current), live, nearPctFor(current), now);
             QStringList lines;
             const Book *book = m_state.find(ss(current));
             for (const LevelNote &n : reading.levels) {
@@ -435,7 +455,7 @@ void DeskEngine::readMessage(qint64 id)
                      tr("Live %1: %2. %3").arg(qs(book->name.empty() ? book->market : book->name), price(live),
                                                 lines.join(QLatin1Char(' '))),
                      current);
-            Q_UNUSED(moves)
+            notes(moves);
         } else {
             note(QStringLiteral("market"), tr("No live price for %1 yet, so the level is noted but not yet compared.")
                                                .arg(current.isEmpty() ? tr("this market") : TradingEngine::displayName(current)),
@@ -465,7 +485,7 @@ void DeskEngine::readMessage(qint64 id)
             || lowerText.contains(QLatin1String("plan")) || lowerText.contains(QLatin1String("explain"))
             || lowerText.contains(QLatin1String("why")) || lowerText.contains(QLatin1String("compare"))
             || lowerText.contains(QLatin1String("strategy"));
-        startAnswer(id, deep);
+        startAnswer(id, deep, current);
         if (reading.tradeDecision)
             maybeStartTeam(current);
     }
@@ -474,7 +494,7 @@ void DeskEngine::readMessage(qint64 id)
     m_unread.append(id);
     scheduleRead();
     invalidate();
-    Q_EMIT statusChanged();
+    invalidateStatus();
     scheduleSave();
 }
 
@@ -639,7 +659,8 @@ QJsonObject DeskEngine::liveJson(const QString &symbol) const
     double p = 0;
     if (!livePrice(symbol, &p))
         return {{QStringLiteral("available"), false},
-                {QStringLiteral("note"), QStringLiteral("no live data for this market: it is not on the desk's market list")}};
+                {QStringLiteral("note"), listed(symbol) ? QStringLiteral("no live price yet (the market data is connecting or failing)")
+                                                        : QStringLiteral("no live data for this market: it is not on the desk's market list")}};
     QJsonObject live{{QStringLiteral("available"), true}, {QStringLiteral("price"), p},
                      {QStringLiteral("time"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}};
     if (symbol != m_engine->symbol()) {
@@ -731,12 +752,11 @@ QString DeskEngine::readSystem() const
         "Use empty lists, \"\" and 0 for what the new messages do not say.");
 }
 
-void DeskEngine::startAnswer(qint64 question, bool deep)
+void DeskEngine::startAnswer(qint64 question, bool deep, const QString &market, qint64 after)
 {
     if (m_answered.contains(question))
         return;
     m_answered.insert(question);
-    const QString market = qs(m_state.current());
     DeskMessages::Message a;
     a.id = ++m_nextId;
     a.role = QStringLiteral("desk");
@@ -744,14 +764,14 @@ void DeskEngine::startAnswer(qint64 question, bool deep)
     a.market = market;
     a.time = nowMs();
 
-    if (m_config->apiKey().isEmpty()) {
+    if (!m_hasKey) {
         a.kind = QStringLiteral("info");
         a.state = QStringLiteral("done");
         a.by = tr("desk");
         a.text = tr("I have read this and updated the analysis, but an opinion needs a model, and no NVIDIA API key "
                     "is set. Add one in Model Panel. Live facts (price, RSI, MACD, trend, the team's call, your "
                     "position, your levels) I can answer without one.");
-        m_messages->append(a);
+        m_messages->insertAfter(after, a);
         logEvent(QStringLiteral("answered-nokey"), a.id);
         Q_EMIT answerFinished(a.id);
         return;
@@ -761,7 +781,7 @@ void DeskEngine::startAnswer(qint64 question, bool deep)
     a.kind = QStringLiteral("model");
     a.state = QStringLiteral("waiting");
     a.by = TradingConfig::displayName(model);
-    m_messages->append(a);
+    m_messages->insertAfter(after, a);
     m_messages->trim(kMaxMessages);
 
     const DeskMessages::Message *q = m_messages->find(question);
@@ -831,7 +851,7 @@ void DeskEngine::startAnswer(qint64 question, bool deep)
 
 void DeskEngine::maybeStartTeam(const QString &market)
 {
-    if (market.isEmpty() || market != m_engine->symbol() || m_config->apiKey().isEmpty())
+    if (market.isEmpty() || market != m_engine->symbol() || !m_hasKey)
         return;
     if (m_engine->analyzing()) {
         m_teamAsked = true;
@@ -863,16 +883,18 @@ void DeskEngine::scheduleRead()
 {
     if (!m_running || m_unread.isEmpty() || m_reading)
         return;
-    if (!m_readTimer->isActive())
+    if (!m_readTimer->isActive()) {
         m_readTimer->start();
+        invalidateStatus();
+    }
 }
 
 void DeskEngine::flushRead()
 {
     if (m_reading || m_unread.isEmpty())
         return;
-    if (m_config->apiKey().isEmpty()) {
-        Q_EMIT statusChanged();
+    if (!m_hasKey) {
+        invalidateStatus();
         return; // read again when a key comes
     }
     QList<qint64> batch;
@@ -912,6 +934,7 @@ void DeskEngine::flushRead()
     task.stage = QStringLiteral("waiting");
     task.batch = batch;
     task.market = market;
+    task.focusAt = m_focusMessage;
     for (qint64 id : batch)
         m_messages->update(id, [this](DeskMessages::Message &m) {
             m.detail = tr("Being read by %1").arg(TradingConfig::displayName(m_config->deskFastModel()));
@@ -943,17 +966,22 @@ void DeskEngine::applyReading(const Task &task, const QString &text)
     const QString summary = o.value(QLatin1String("summary")).toString().trimmed();
     if (!summary.isEmpty())
         m_state.setSummary(ss(summary.left(600)));
-    // A market the regular reading missed ("the yellow metal").
+    // The messages were about the market discussed when they were sent,
+    // unless the model names another one (one the quick reading missed).
+    std::string market = ss(task.market);
     const QString named = o.value(QLatin1String("market")).toString().trimmed();
     if (!named.isEmpty()) {
-        const Reading r = read(ss(named));
-        const Resolved market = resolve(r);
-        if (!market.symbol.isEmpty() && ss(market.symbol) != m_state.current()) {
-            const std::vector<Change> c = m_state.focus(ss(market.symbol), ss(market.name), now);
-            changes.insert(changes.end(), c.begin(), c.end());
+        const Resolved found = resolve(read(ss(named)));
+        if (!found.symbol.isEmpty() && ss(found.symbol) != market) {
+            market = ss(found.symbol);
+            m_state.book(market).name = ss(found.name);
+            // The conversation moves there only if no newer message has moved it since.
+            if (m_focusMessage == task.focusAt) {
+                const std::vector<Change> c = m_state.focus(market, ss(found.name), now);
+                changes.insert(changes.end(), c.begin(), c.end());
+            }
         }
     }
-    const std::string market = m_state.current();
     const qint64 message = task.batch.isEmpty() ? 0 : task.batch.back();
     const QJsonArray observations = o.value(QLatin1String("observations")).toArray();
     QStringList added;
@@ -1028,7 +1056,7 @@ void DeskEngine::applyReading(const Task &task, const QString &text)
     for (const QJsonValue &v : needs) {
         const qint64 id = qint64(number(v));
         if (task.batch.contains(id) && !m_answered.contains(id)) {
-            startAnswer(id, true);
+            startAnswer(id, true, qs(market));
             logEvent(QStringLiteral("answer-from-reading"), id);
         }
     }
@@ -1036,6 +1064,12 @@ void DeskEngine::applyReading(const Task &task, const QString &text)
 }
 
 // ---- answers ---------------------------------------------------------------------------
+
+QString DeskEngine::withoutState(const QString &text)
+{
+    const int block = text.indexOf(QLatin1String("```state"));
+    return block >= 0 ? text.left(block) : text;
+}
 
 QString DeskEngine::visiblePart(const QString &text)
 {
@@ -1083,7 +1117,7 @@ void DeskEngine::onFinished(quint64 request, const QString &text, qint64 ms)
     }
     if (task.kind != QLatin1String("answer"))
         return;
-    QString visible = visiblePart(text).trimmed();
+    QString visible = withoutState(text).trimmed();
     const int block = text.indexOf(QLatin1String("```state"));
     if (block >= 0)
         applyAnswerState(task, firstObject(text.mid(block)));
@@ -1178,7 +1212,7 @@ void DeskEngine::onFailed(quint64 request, const QString &code, const QString &m
         return;
     const bool stopped = code == QLatin1String("cancelled");
     m_messages->update(task.message, [&](DeskMessages::Message &m) {
-        m.text = visiblePart(m.raw).trimmed();
+        m.text = withoutState(m.raw).trimmed();
         m.raw.clear();
         m.state = stopped ? QStringLiteral("stopped") : QStringLiteral("failed");
         m.detail = stopped ? tr("Stopped.") : message;
@@ -1209,14 +1243,12 @@ void DeskEngine::retryAnswer(double id)
     if (state != QLatin1String("failed") && state != QLatin1String("stopped") && state != QLatin1String("interrupted"))
         return;
     const qint64 question = m->replyTo;
+    const QString market = m->market; // asked again about what it was asked about
     m_answered.remove(question);
     m_messages->update(qint64(id), [](DeskMessages::Message &x) {
         x.state = QStringLiteral("superseded");
     }, {DeskMessages::StateRole});
-    const DeskMessages::Message *q = m_messages->find(question);
-    const Reading r = read(ss(q ? q->text : QString()));
-    startAnswer(question, true);
-    Q_UNUSED(r)
+    startAnswer(question, true, market, qint64(id));
 }
 
 void DeskEngine::clearConversation()
@@ -1267,16 +1299,7 @@ void DeskEngine::onMarketTick()
         double p = 0;
         if (!livePrice(qs(key), &p))
             continue;
-        // "Close" scales with how much the market moves: half an ATR on the
-        // chart's market, else a quarter of a per cent (crypto) or a twentieth (forex).
-        double nearPct = m_engine->marketKind() == QLatin1String("forex") ? 0.05 : 0.25;
-        const auto snap = m_snapshots.constFind(qs(key));
-        if (snap != m_snapshots.constEnd()) {
-            const double atrPct = snap->readings.value(QStringLiteral("atrPct")).toDouble();
-            if (atrPct > 0)
-                nearPct = std::clamp(atrPct * 0.5, 0.02, 1.0);
-        }
-        const std::vector<Change> c = m_state.priceUpdate(key, p, nearPct, now);
+        const std::vector<Change> c = m_state.priceUpdate(key, p, nearPctFor(qs(key)), now);
         moves.insert(moves.end(), c.begin(), c.end());
     }
     notes(moves);
@@ -1332,6 +1355,20 @@ void DeskEngine::onMarketTick()
         scheduleSave();
 }
 
+// "Close" scales with how much the market moves: half an ATR on the chart's
+// market, else a quarter of a per cent (crypto) or a twentieth (forex).
+double DeskEngine::nearPctFor(const QString &symbol) const
+{
+    double nearPct = m_engine->marketKind() == QLatin1String("forex") ? 0.05 : 0.25;
+    const auto snap = m_snapshots.constFind(symbol);
+    if (snap != m_snapshots.constEnd()) {
+        const double atrPct = snap->readings.value(QStringLiteral("atrPct")).toDouble();
+        if (atrPct > 0)
+            nearPct = std::clamp(atrPct * 0.5, 0.02, 1.0);
+    }
+    return nearPct;
+}
+
 void DeskEngine::onSignal()
 {
     const QVariantMap s = m_engine->signal();
@@ -1380,9 +1417,9 @@ void DeskEngine::onSignal()
         m_state.setBias(ss(market), b, &changes);
     m_state.record(changes);
     const QString text = action == QLatin1String("hold")
-        ? tr("Analysis team on %1 %2: no trade (%3 of %4 analysts answered). %5")
+        ? tr("Analysis team on %1 %2: no trade (%3 analysts answered). %4")
               .arg(name, s.value(QStringLiteral("interval")).toString())
-              .arg(s.value(QStringLiteral("voters")).toInt()).arg(s.value(QStringLiteral("voters")).toInt())
+              .arg(s.value(QStringLiteral("voters")).toInt())
               .arg(s.value(QStringLiteral("note")).toString())
         : tr("Analysis team on %1 %2: %3, confidence %4 (%5 of %6 agree). %7")
               .arg(name, s.value(QStringLiteral("interval")).toString(), action.toUpper())
@@ -1441,24 +1478,45 @@ void DeskEngine::touched(const QString &source, const QString &what)
     m_lastUpdate = nowMs();
     m_lastUpdateSource = source;
     m_lastUpdateText = what;
-    Q_EMIT statusChanged();
+    invalidateStatus();
 }
 
 void DeskEngine::taskChanged()
 {
     Q_EMIT tasksChanged();
-    Q_EMIT statusChanged();
+    invalidateStatus();
     if (idle())
         Q_EMIT becameIdle();
 }
 
 bool DeskEngine::idle() const
 {
-    return m_tasks.isEmpty() && (m_unread.isEmpty() || m_config->apiKey().isEmpty()) && !m_readTimer->isActive()
+    return m_tasks.isEmpty() && (m_unread.isEmpty() || !m_hasKey) && !m_readTimer->isActive()
         && !m_engine->analyzing();
 }
 
+bool DeskEngine::listed(const QString &symbol) const
+{
+    return m_config->watchlist().contains(symbol);
+}
+
+void DeskEngine::invalidateStatus()
+{
+    m_statusDirty = true;
+    Q_EMIT statusChanged();
+}
+
 QVariantMap DeskEngine::status() const
+{
+    // Read by many bindings at once; worked out once per change.
+    if (!m_statusDirty)
+        return m_statusCache;
+    m_statusCache = buildStatus();
+    m_statusDirty = false;
+    return m_statusCache;
+}
+
+QVariantMap DeskEngine::buildStatus() const
 {
     const QString data = m_engine->dataState();
     const QString feed = !m_running ? QStringLiteral("off")
@@ -1475,7 +1533,7 @@ QVariantMap DeskEngine::status() const
     int answering = 0;
     for (const Task &t : m_tasks)
         answering += t.kind == QLatin1String("answer");
-    const bool key = !m_config->apiKey().isEmpty();
+    const bool key = !!m_hasKey;
     const bool readError = !m_readError.isEmpty() && nowMs() - m_readErrorAt < 120000;
     return {
         {QStringLiteral("running"), m_running},
@@ -1625,6 +1683,7 @@ QVariantMap DeskEngine::buildAnalysis() const
         {QStringLiteral("market"), market},
         {QStringLiteral("name"), qs(book->name.empty() ? current : book->name)},
         {QStringLiteral("onChart"), !market.isEmpty() && market == m_engine->symbol()},
+        {QStringLiteral("listed"), listed(market)},
         {QStringLiteral("live"), live},
         {QStringLiteral("bias"), QVariantMap{{QStringLiteral("side"), QLatin1String(sideName(book->bias.side))},
                                              {QStringLiteral("source"), QLatin1String(sourceName(book->bias.source))},
@@ -1698,7 +1757,7 @@ void DeskEngine::scheduleSave()
 void DeskEngine::load()
 {
     m_loaded = true;
-    QFile file(m_config->dataDir() + QStringLiteral("/desk.json"));
+    QFile file(m_path);
     if (!file.exists() || !file.open(QIODevice::ReadOnly))
         return;
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
@@ -1828,7 +1887,7 @@ void DeskEngine::save()
         {QStringLiteral("team_calls"), calls},
         {QStringLiteral("last_signal_time"), m_lastSignalTime},
     };
-    QSaveFile file(m_config->dataDir() + QStringLiteral("/desk.json"));
+    QSaveFile file(m_path);
     if (!file.open(QIODevice::WriteOnly))
         return;
     file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));

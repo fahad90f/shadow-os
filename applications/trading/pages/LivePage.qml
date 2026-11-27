@@ -62,7 +62,12 @@ Item {
                 NxButton {
                     kind: "ghost"
                     iconName: "zap"
-                    text: desk.tasks.length > 0 ? qsTr("AI Desk  •  %1 working").arg(desk.tasks.length) : qsTr("AI Desk  •  live")
+                    // From the desk's real state: running, the market data, the tasks under way.
+                    text: !desk.status.running ? qsTr("AI Desk  •  stopped")
+                        : desk.status.feed === "error" ? qsTr("AI Desk  •  no market data")
+                        : desk.tasks.length > 0 ? qsTr("AI Desk  •  %1 working").arg(desk.tasks.length)
+                        : desk.status.feed === "waiting" ? qsTr("AI Desk  •  connecting")
+                        : qsTr("AI Desk  •  live")
                     onClicked: page.openPage("desk")
                     Accessible.name: qsTr("Open the AI desk")
                 }

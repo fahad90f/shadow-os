@@ -237,7 +237,8 @@ Flickable {
                 Row2 {
                     visible: root.a.market !== "" && !(root.a.live && root.a.live.text !== undefined)
                     label: qsTr("Live data")
-                    value: qsTr("None for this market (not on your markets list)")
+                    value: root.a.listed ? qsTr("No live price yet (the market data is connecting or failing)")
+                                         : qsTr("None for this market (not on your markets list)")
                     tone: Theme.warning
                 }
                 Row2 {

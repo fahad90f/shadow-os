@@ -52,6 +52,8 @@ public:
     int count() const { return int(m_rows.size()); }
 
     void append(const Message &message);
+    // Right below the message 'after' (at the end when there is none).
+    void insertAfter(qint64 after, const Message &message);
     // The row of a message, -1 when there is none.
     int rowOf(qint64 id) const;
     const Message *find(qint64 id) const;

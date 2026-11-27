@@ -339,13 +339,35 @@ static void testPriceUpdates()
     CHECK(c[0].text.find("below resistance 95,000") != std::string::npos);
     c = s.priceUpdate("BTCUSDT", 94900, 0.25, 4);
     CHECK(c.empty());
-    // Crossing it: one event.
+    // Just over it is not yet a crossing: inside the dead band (half of "near").
     c = s.priceUpdate("BTCUSDT", 95020, 0.25, 5);
+    CHECK(c.empty());
+    CHECK(s.currentBook().levels[0].state == LevelState::Below);
+    // Clearly past it: one event.
+    c = s.priceUpdate("BTCUSDT", 95300, 0.25, 6);
     CHECK(c.size() == 1 && c[0].text.find("crossed above") != std::string::npos);
-    CHECK(c[0].text.find("live 95,020") != std::string::npos);
+    CHECK(c[0].text.find("live 95,300") != std::string::npos);
+    // A price hovering on the level: it is close (said once), and no crossing.
+    size_t hover = 0;
+    for (int i = 0; i < 20; ++i) {
+        const std::vector<Change> h = s.priceUpdate("BTCUSDT", i % 2 ? 94999 : 95001, 0.25, 7 + i);
+        hover += h.size();
+        for (const Change &x : h)
+            CHECK(x.text.find("crossed") == std::string::npos);
+    }
+    CHECK(hover == 1);
+    // Back below and above again within a minute: crossings are not repeated.
+    CHECK(s.priceUpdate("BTCUSDT", 94700, 0.25, 30).empty());
+    CHECK(s.currentBook().levels[0].state == LevelState::Below);
+    CHECK(s.priceUpdate("BTCUSDT", 95300, 0.25, 40).empty());
+    // A minute later a crossing is news again.
+    c = s.priceUpdate("BTCUSDT", 94700, 0.25, 60100);
+    CHECK(c.size() == 1 && c[0].text.find("crossed below") != std::string::npos);
+    c = s.priceUpdate("BTCUSDT", 95300, 0.25, 130000);
+    CHECK(c.size() == 1 && c[0].text.find("crossed above") != std::string::npos);
     // Away and back: "near" again.
-    s.priceUpdate("BTCUSDT", 96000, 0.25, 6);
-    c = s.priceUpdate("BTCUSDT", 95100, 0.25, 7);
+    s.priceUpdate("BTCUSDT", 96000, 0.25, 130001);
+    c = s.priceUpdate("BTCUSDT", 95100, 0.25, 130002);
     CHECK(c.size() == 1 && c[0].text.find("above resistance") != std::string::npos);
     // A market without levels or a bad price: nothing.
     CHECK(s.priceUpdate("ETHUSDT", 3000, 0.25, 8).empty());

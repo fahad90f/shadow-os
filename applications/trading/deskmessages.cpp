@@ -50,6 +50,19 @@ void DeskMessages::append(const Message &message)
     Q_EMIT countChanged();
 }
 
+void DeskMessages::insertAfter(qint64 after, const Message &message)
+{
+    const int row = after ? rowOf(after) : -1;
+    if (row < 0) {
+        append(message);
+        return;
+    }
+    beginInsertRows({}, row + 1, row + 1);
+    m_rows.insert(row + 1, message);
+    endInsertRows();
+    Q_EMIT countChanged();
+}
+
 int DeskMessages::rowOf(qint64 id) const
 {
     // The rows that change are almost always the newest.

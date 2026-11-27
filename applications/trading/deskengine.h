@@ -112,6 +112,7 @@ private:
         qint64 message = 0;     // answer: the desk message being written
         qint64 question = 0;    // answer: the message it answers
         QString market;
+        qint64 focusAt = 0;     // read: the message that last moved the focus when it was sent
     };
     struct Resolved
     {
@@ -127,7 +128,13 @@ private:
     bool livePrice(const QString &symbol, double *price) const;
     QStringList describe(const Trading::Desk::Reading &reading) const;
     QString liveFacts(const Trading::Desk::Reading &reading) const;
-    void startAnswer(qint64 question, bool deep);
+    // 'after': the message the answer goes below (0: at the end).
+    void startAnswer(qint64 question, bool deep, const QString &market, qint64 after = 0);
+    double nearPctFor(const QString &symbol) const;
+    bool listed(const QString &symbol) const;
+    void invalidateStatus();
+    QVariantMap buildStatus() const;
+    static QString withoutState(const QString &text);
     void maybeStartTeam(const QString &market);
     void scheduleRead();
     void flushRead();
@@ -193,6 +200,11 @@ private:
     qint64 m_lastTick = 0;
     QJsonArray m_log;                // events with times, for the tests
     mutable QVariantMap m_analysisCache;
+    mutable QVariantMap m_statusCache;
+    mutable bool m_statusDirty = true;
+    qint64 m_focusMessage = 0;       // the message that last moved the conversation to a market
+    bool m_hasKey = false;
+    QString m_path;
     mutable bool m_analysisDirty = true;
     QElapsedTimer m_clock;
 };

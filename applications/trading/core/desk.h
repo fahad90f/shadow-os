@@ -103,6 +103,7 @@ struct Level
     bool near = false;        // the live price is close to it now
     double distancePct = 0;   // (price - level) / level * 100, at the last price
     bool hasDistance = false;
+    long long crossedAt = 0;  // when a crossing was last reported
 };
 
 struct Plan
@@ -194,7 +195,9 @@ public:
 
     // The live price of a market against its levels. A change is recorded
     // when the price comes within 'nearPct' of a level (once, until it has
-    // moved away twice as far) and when it crosses one.
+    // moved away twice as far) and when it crosses one: only once it is
+    // clearly past it (by 'nearPct' / 2), and at most once a minute per level,
+    // so a price hovering on a level is not reported again and again.
     std::vector<Change> priceUpdate(const std::string &market, double price, double nearPct, long long now);
 
     // A running summary of the conversation, kept by a model.

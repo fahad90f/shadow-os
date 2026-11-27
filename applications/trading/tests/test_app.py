@@ -1459,6 +1459,20 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.mine(out)[0]["state"], "understood")
         self.assertIn("Rising wedge", self.mine(out)[0]["tags"])
 
+    def test_desk_reading_stays_with_the_market_it_was_about(self):
+        # The model's reading of the BTC message comes back after the talk moved to ETH.
+        plan = {"desk": {"read": {"delay": 2.5,
+                                  "first": {"delay": 2.5, "market": "BTC",
+                                            "observations": [{"topic": "pattern", "text": "Rising wedge", "side": "bearish"}]},
+                                  "market": "", "observations": []}}}
+        out = self.desk([{"post": "BTC support at 95,000"}, {"wait": 0.8}, {"post": "ETH holding 3,500"},
+                         {"idle": 30}], plan)
+        self.assertEqual(out["analysis"]["market"], "ETHUSDT")  # the newer message keeps the focus
+        wedge = [c for c in out["changes"] if c["text"].startswith("Rising wedge")]
+        self.assertEqual(len(wedge), 1)
+        self.assertEqual(wedge[0]["market"], "BTCUSDT")
+        self.assertNotIn("Rising wedge", [e["text"] for e in out["analysis"]["bearish"]])
+
     def test_desk_stop_keeps_what_was_written(self):
         plan = {"desk": {"answer": {"chunk_ms": 150, "text": "word " * 120}}}
         out = self.desk([{"post": "Explain the BTC structure?"}, {"wait": 2.0}, {"stop": "last"}, {"idle": 20}], plan)
@@ -1470,7 +1484,7 @@ class AppTest(unittest.TestCase):
     def test_desk_conversation_survives_a_restart(self):
         plan = {"desk": {"answer": {"delay": 30}}}
         first = self.desk([{"post": "BTC resistance at 95,000"}, {"post": "should I short BTC?"}, {"wait": 2}], plan)
-        self.assertEqual(self.answers(first, "model")[0]["state"], "waiting")
+        self.assertEqual(self.answers(first, "model")[0]["state"], "thinking")  # sent, no words yet
         path = os.path.join(self.data_dir, "desk.json")
         self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
         with open(path, encoding="utf-8") as f:

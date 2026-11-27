@@ -96,7 +96,9 @@ quint64 ChatStream::start(const Request &request)
     while (at > 0 && m_requests.value(m_queue.at(at - 1)).request.priority < request.priority)
         --at;
     m_queue.insert(at, id);
-    pump();
+    // Sent on the next turn of the event loop, so the caller has filed the
+    // request under its id before started() can come.
+    QTimer::singleShot(0, this, &ChatStream::pump);
     return id;
 }
 
@@ -371,6 +373,11 @@ void ChatStream::cancel(quint64 id)
 
 void ChatStream::cancelAll()
 {
+    // The waiting ones first, so cancelling one under way sends none of them.
+    const QList<quint64> waiting = m_queue;
+    m_queue.clear();
+    for (quint64 id : waiting)
+        cancel(id);
     const QList<quint64> ids = m_requests.keys();
     for (quint64 id : ids)
         cancel(id);
