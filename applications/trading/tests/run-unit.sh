@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# run-unit.sh skills|core
+# run-unit.sh skills|core|desk
 #
 # Compiles and runs one of Shadow Trading's unit test programs: the analysis
 # skills (indicators, patterns) or the decision core (consensus, risk rules,
@@ -13,7 +13,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 case "${1:-}" in
 skills) sources=(skills/indicators.cpp skills/smc.cpp tests/test_skills.cpp) ;;
 core)   sources=(core/signal.cpp core/risk.cpp core/paper.cpp tests/test_core.cpp) ;;
-*) echo "usage: $0 skills|core" >&2; exit 2 ;;
+desk)   sources=(core/desk.cpp tests/test_desk.cpp) ;;
+*) echo "usage: $0 skills|core|desk" >&2; exit 2 ;;
 esac
 cxx="${CXX:-}"
 [ -n "$cxx" ] || cxx="$(command -v g++ || command -v clang++ || true)"

@@ -295,6 +295,7 @@ private:
     void applySource();
     void applyReview(const Trading::Verdict &final);
     void finishAnalysis();
+    void publishProvisional();
     QString execute(const Trading::Signal &signal, const Trading::RiskDecision &decision);
     Trading::AccountView accountView(const QString &symbol, qint64 nowMs) const;
     void afterAccountChange(bool tradeClosed);

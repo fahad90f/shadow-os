@@ -1278,6 +1278,7 @@ bool TradingEngine::analyzeNow()
 
     m_signal.insert(QStringLiteral("state"), QStringLiteral("analyzing"));
     m_signal.insert(QStringLiteral("stage"), QStringLiteral("first"));
+    m_signal.remove(QStringLiteral("provisional"));
     Q_EMIT signalChanged();
     Q_EMIT analystsChanged();
     if (m_waiting.isEmpty()) {
@@ -1349,8 +1350,39 @@ void TradingEngine::collect(const Verdict &verdict)
             startTeamReview();
     }
     Q_EMIT analystsChanged();
-    if (m_waiting.isEmpty())
+    if (m_waiting.isEmpty()) {
         finishAnalysis();
+        return;
+    }
+    publishProvisional();
+}
+
+// While the analysis runs: what the analysts who have answered say together
+// so far, so the call is visible as it forms instead of only when the last,
+// slowest model is done. It is shown as provisional and never traded on.
+void TradingEngine::publishProvisional()
+{
+    if (m_candles.empty() || m_analysisSymbol != m_config->symbol())
+        return;
+    ConsensusInput input;
+    input.price = m_candles.back().close;
+    input.atr = m_ta.atr14;
+    input.minRewardRisk = m_config->risk().minRewardRisk;
+    input.minAgreeing = m_config->risk().minAgreeing;
+    const Signal so = consensus(m_verdicts, input);
+    int answered = 0;
+    for (const Verdict &v : m_verdicts)
+        answered += v.ok ? 1 : 0;
+    const int asked = int(m_verdicts.size() + (m_waiting.size() - m_reviewing.size()));
+    m_signal.insert(QStringLiteral("provisional"),
+                    QVariantMap{{QStringLiteral("action"), QLatin1String(actionName(so.action))},
+                                {QStringLiteral("leaning"), QLatin1String(actionName(so.leaning))},
+                                {QStringLiteral("confidence"), so.confidence},
+                                {QStringLiteral("answered"), answered},
+                                {QStringLiteral("asked"), asked},
+                                {QStringLiteral("waiting"), int(m_waiting.size())},
+                                {QStringLiteral("time"), double(nowMs())}});
+    Q_EMIT signalChanged();
 }
 
 void TradingEngine::startTeamReview()

@@ -61,3 +61,25 @@ function base(name) {
     var i = name.indexOf("/")
     return i > 0 ? name.substring(0, i) : name
 }
+
+// How long ago, for a status line: "now", "12 s ago", "4 min ago", "2 h ago".
+function ago(ms, now) {
+    if (!usable(ms) || ms <= 0)
+        return "—"
+    var s = Math.max(0, Math.round((now - ms) / 1000))
+    if (s < 2)
+        return qsTr("now")
+    if (s < 60)
+        return qsTr("%1 s ago").arg(s)
+    if (s < 3600)
+        return qsTr("%1 min ago").arg(Math.floor(s / 60))
+    return qsTr("%1 h ago").arg(Math.floor(s / 3600))
+}
+
+// Seconds since, for a task that is running: "3 s", "1 min 12 s".
+function since(ms, now) {
+    if (!usable(ms) || ms <= 0)
+        return ""
+    var s = Math.max(0, Math.floor((now - ms) / 1000))
+    return s < 60 ? qsTr("%1 s").arg(s) : qsTr("%1 min %2 s").arg(Math.floor(s / 60)).arg(s % 60)
+}

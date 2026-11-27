@@ -58,6 +58,14 @@ Item {
                         }
                     }
                 }
+                // The desk runs behind every page; this says what it is doing and opens it.
+                NxButton {
+                    kind: "ghost"
+                    iconName: "zap"
+                    text: desk.tasks.length > 0 ? qsTr("AI Desk  •  %1 working").arg(desk.tasks.length) : qsTr("AI Desk  •  live")
+                    onClicked: page.openPage("desk")
+                    Accessible.name: qsTr("Open the AI desk")
+                }
                 Label {
                     Layout.fillWidth: true
                     Layout.leftMargin: Theme.spaceLg

@@ -25,6 +25,14 @@ A model's "review": {...} is how it answers in the team review (the second
 request the members of the analysis team get); without it, it repeats its
 first answer.
 Without a scenario every model answers hold.
+"desk": {...} is how the desk's requests are answered (they are told apart by
+their instructions): "read" (the quick model's reading of new messages: a JSON
+object, or {"raw": text}) and "answer" (the streamed answer: {"text": ...,
+"state": {...}} or {"raw": text}). Both take "delay" (seconds before the first
+byte), "status" (an error instead), "first" (the first request only), and the
+answer "chunk_ms" (pause between pieces). A model id as a key inside "desk"
+answers that model only. The desk's requests are logged with "desk": "read" or
+"answer", the message ids a read was given, and the context an answer got.
 "missing": [ids] takes models out of the catalog.
 "market": {"status": 451} makes the exchange refuse; "market": {"move_pct": -3}
 moves the current price (the forming candle and the tickers) by that much.
@@ -510,7 +518,7 @@ def chat(body, attempt=0):
     if model not in catalog():
         return 404, {"status": 404, "title": "Not Found", "detail": f"Function for {model} not found"}, notes
     if body.get("stream"):
-        return 400, {"error": {"message": "this stand-in does not stream"}}, notes
+        return 400, {"error": {"message": "the analysis team's requests are not streamed"}}, notes
     if not isinstance(body.get("max_tokens"), int) or not 1 <= body["max_tokens"] <= 16384:
         return 400, {"error": {"message": "max_tokens must be between 1 and 16384"}}, notes
     user = ""
@@ -550,6 +558,83 @@ def chat(body, attempt=0):
     return 200, {"id": "chatcmpl-test", "object": "chat.completion", "model": model,
                  "choices": [{"index": 0, "finish_reason": "stop", "message": message}],
                  "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}, notes
+
+
+DESK_READ_MARK = "You keep the running analysis of a trading conversation"
+DESK_ANSWER_MARK = "You are the analyst on a trading desk"
+DESK_ASKED = {}  # (kind) -> requests so far
+
+
+def desk_kind(body):
+    """'read', 'answer' or '' for a request that is not the desk's."""
+    for message in body.get("messages", []) if isinstance(body, dict) else []:
+        if isinstance(message, dict) and message.get("role") == "system":
+            content = message.get("content") or ""
+            if DESK_READ_MARK in content:
+                return "read"
+            if DESK_ANSWER_MARK in content:
+                return "answer"
+    return ""
+
+
+def desk_plan(kind, model, attempt):
+    desk = scenario().get("desk", {})
+    plan = desk.get(model, {}).get(kind) if isinstance(desk.get(model), dict) else None
+    if plan is None:
+        plan = desk.get(kind, {})
+    if attempt == 1 and isinstance(plan, dict) and "first" in plan:
+        plan = plan["first"]
+    return plan if isinstance(plan, dict) else {}
+
+
+def desk_notes(kind, body):
+    """What the desk sent, for the tests: the ids of the new messages a read
+    got, and the context and earlier turns an answer got."""
+    notes = {"desk": kind, "stream": bool(body.get("stream"))}
+    messages = [m for m in body.get("messages", []) if isinstance(m, dict)]
+    last = messages[-1].get("content", "") if messages else ""
+    if kind == "read":
+        new = last.split("New messages:\n", 1)[1] if "New messages:\n" in last else ""
+        notes["new_ids"] = [int(line[1:line.index(":")]) for line in new.splitlines()
+                            if line.startswith("#") and ":" in line and line[1:line.index(":")].isdigit()]
+        notes["new_text"] = new
+        notes["summary_in"] = last.split("Conversation summary so far:\n", 1)[1].split("\n", 1)[0] if "Conversation summary so far:\n" in last else ""
+        start = last.find("{")
+        try:
+            notes["state_in"] = json.JSONDecoder().raw_decode(last[start:])[0] if start >= 0 else {}
+        except ValueError:
+            notes["state_in"] = "malformed"
+    else:
+        notes["turns"] = [{"role": m.get("role"), "content": m.get("content")} for m in messages[1:-1]]
+        marker = "Desk context (live now; it may have changed since earlier turns):\n"
+        if marker in last:
+            rest = last.split(marker, 1)[1]
+            try:
+                notes["context"], end = json.JSONDecoder().raw_decode(rest)
+                notes["question"] = rest[end:].split("The trader's message:\n", 1)[-1]
+            except ValueError:
+                notes["context"] = "malformed"
+    return notes
+
+
+def desk_read_text(plan, notes):
+    if "raw" in plan:
+        return plan["raw"]
+    answer = {"summary": plan.get("summary", f"Test summary after messages {notes.get('new_ids')}"),
+              "market": plan.get("market", ""), "observations": plan.get("observations", []),
+              "levels": plan.get("levels", []), "plan": plan.get("plan", {"side": "", "entry": 0, "stop": 0, "target": 0}),
+              "needs_answer": plan.get("needs_answer", [])}
+    return json.dumps(answer)
+
+
+def desk_answer_text(plan, model):
+    if "raw" in plan:
+        return plan["raw"]
+    text = plan.get("text", f"Test answer from {model}. The trend is down on the live readings, so a short has the "
+                            "better case; invalidation above the level you named.")
+    state = plan.get("state", {"bias": "bearish", "why": "Test: bearish readings", "conclusion": "Test conclusion",
+                               "plan": {"side": "", "entry": 0, "stop": 0, "target": 0}})
+    return text + "\n\n```state\n" + json.dumps(state) + "\n```"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -758,7 +843,68 @@ class Handler(BaseHTTPRequestHandler):
             with COUNT_LOCK:
                 IN_FLIGHT[0] -= 1
 
+    def answer_desk(self, body, model, kind, entry):
+        with COUNT_LOCK:
+            attempt = DESK_ASKED[kind] = DESK_ASKED.get(kind, 0) + 1
+        entry["attempt"] = attempt
+        plan = desk_plan(kind, model, attempt)
+        entry.update(desk_notes(kind, body))
+        if model not in catalog():
+            entry["status"] = 404
+            record(entry)
+            return self.reply(404, {"status": 404, "title": "Not Found", "detail": f"Function for {model} not found"})
+        delay = float(plan.get("delay", 0))
+        if "status" in plan:
+            entry["status"] = plan["status"]
+            record(entry)
+            time.sleep(delay)
+            return self.reply(plan["status"], {"status": plan["status"], "detail": plan.get("message", "scenario error")})
+        entry["status"] = 200
+        record(entry)
+        time.sleep(delay)
+        if kind == "read" or not body.get("stream"):
+            text = desk_read_text(plan, entry) if kind == "read" else desk_answer_text(plan, model)
+            try:
+                self.reply(200, {"id": "chatcmpl-desk", "object": "chat.completion", "model": model,
+                                 "choices": [{"index": 0, "finish_reason": "stop",
+                                              "message": {"role": "assistant", "content": text}}]})
+            except OSError:
+                pass
+            return None
+        # A streamed answer: server-sent events, sent in chunks.
+        text = desk_answer_text(plan, model)
+        chunk_ms = float(plan.get("chunk_ms", 20))
+        size = int(plan.get("chunk_chars", 12))
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+
+            def event(payload):
+                data = ("data: " + payload + "\n\n").encode()
+                self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
+                self.wfile.flush()
+
+            if plan.get("think"):
+                event(json.dumps({"choices": [{"index": 0, "delta": {"reasoning_content": "Thinking it over."}}]}))
+                time.sleep(chunk_ms / 1000)
+            for i in range(0, len(text), size):
+                event(json.dumps({"choices": [{"index": 0, "delta": {"content": text[i:i + size]}}]}))
+                time.sleep(chunk_ms / 1000)
+            event(json.dumps({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}))
+            event("[DONE]")
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+        except OSError:
+            record({"kind": "chat", "desk": kind, "model": model, "status": "client-left"})
+        return None
+
     def answer_chat(self, body, model, review, attempt, entry):
+        kind = desk_kind(body)
+        if kind:
+            return self.answer_desk(body, model, kind, entry)
         plan = plan_for(model, review, attempt)
         # A slow answer: the request is logged when it arrives, answered later
         # (to a client that may have stopped waiting).

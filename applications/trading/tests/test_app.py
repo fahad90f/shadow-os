@@ -1236,6 +1236,272 @@ class AppTest(unittest.TestCase):
         for position in out["account"]["positions"]:
             self.assertEqual(position["side"], "sell")
 
+    # ---- the desk: the conversation analyst -----------------------------------------
+    QUIET = "[engine]\nauto_analyze=false\n"
+
+    def desk(self, steps, plan=None, settings=QUIET, key=True, moves=(), stream=False):
+        """Run the desk with the scripted steps (see main.cpp); 'moves' is [(after seconds, scenario)]."""
+        if self.server is None:
+            self.serve(plan)
+        else:
+            self.change_scenario(plan or {})
+        self.key = TEST_KEY if key else None
+        self.stream = stream
+        if settings:
+            self.settings(settings)
+
+        def mover():
+            started = time.time()
+            for after, scenario in moves:
+                time.sleep(max(0, after - (time.time() - started)))
+                self.change_scenario(scenario)
+
+        thread = threading.Thread(target=mover, daemon=True)
+        thread.start()
+        out = self.dump("desk", {"SHADOW_TRADING_DESK_SCRIPT": json.dumps(steps)})
+        thread.join()
+        return out
+
+    def mine(self, out):
+        return [m for m in out["messages"] if m["role"] == "you"]
+
+    def answers(self, out, kind=None):
+        return [m for m in out["messages"] if m["role"] == "desk" and (kind is None or m.get("kind") == kind)]
+
+    def notes_of(self, out, kind=None):
+        return [m for m in out["messages"] if m["role"] == "note" and (kind is None or m.get("kind") == kind)]
+
+    def events(self, out, name):
+        return [e for e in out["log"] if e["event"] == name]
+
+    def test_desk_builds_on_every_earlier_message(self):
+        plan = {"desk": {"answer": {"delay": 1.0}}}
+        out = self.desk([{"post": "BTC is approaching 95,000.", "token": "a"},
+                         {"post": "RSI is also showing bearish divergence.", "token": "b"},
+                         {"post": "What do you think about entering short?", "token": "c"},
+                         {"idle": 60}], plan)
+        posts = [s for s in out["steps"] if "post" in s["step"]]
+        # Accepted at once: nothing is analysed before post() returns.
+        for step in posts:
+            self.assertTrue(step["result"]["accepted"])
+            self.assertLess(step["us"], 50_000, step)
+        ids = [int(step["result"]["id"]) for step in posts]
+        self.assertEqual(ids, sorted(ids))
+        mine = self.mine(out)
+        self.assertEqual([m["id"] for m in mine], ids)
+        self.assertTrue(all(m["state"] == "understood" for m in mine), mine)
+        # Read at once, without a model: what each message said.
+        self.assertIn("level 95,000 · approaching", mine[0]["tags"])
+        self.assertIn("RSI bearish divergence", mine[1]["tags"])
+        self.assertIn("weighing a short", mine[2]["tags"])
+        # The level against the live price straight away, from the real quote.
+        live = [n for n in self.notes_of(out, "market") if n["text"].startswith("Live BTC/USDT")]
+        self.assertEqual(len(live), 1, out["messages"])
+        self.assertIn("% above the price", live[0]["text"])
+        # One answer, to the question, streamed, below it.
+        answers = self.answers(out, "model")
+        self.assertEqual(len(answers), 1, out["messages"])
+        answer = answers[0]
+        self.assertEqual(answer["reply_to"], ids[2])
+        self.assertEqual(answer["state"], "done")
+        self.assertTrue(answer["text"].startswith("Test answer from moonshotai/kimi-k3.1-pro"), answer["text"])
+        self.assertNotIn("```", answer["text"])  # the state block is not shown
+        self.assertEqual(answer["by"], "Kimi K3.1 Pro")
+        rows = [m["id"] for m in out["messages"]]
+        self.assertGreater(rows.index(answer["id"]), rows.index(ids[2]))
+        # The answer saw what was said before, without being told again.
+        asked = [e for e in self.requests("chat") if e.get("desk") == "answer"]
+        self.assertEqual(len(asked), 1)
+        self.assertTrue(asked[0]["stream"])
+        context = asked[0]["context"]
+        self.assertEqual(context["market"], "BTC/USDT")
+        self.assertEqual([l["price"] for l in context["analysis"]["levels"]], [95000])
+        self.assertIn("RSI bearish divergence", [o["text"] for o in context["analysis"]["observations"]])
+        self.assertEqual(context["analysis"]["plan"]["side"], "short")
+        self.assertTrue(context["live"]["available"])
+        self.assertIn("rsi14", context["live"]["readings"])
+        self.assertEqual([t["content"] for t in asked[0]["turns"]],
+                         ["BTC is approaching 95,000.", "RSI is also showing bearish divergence."])
+        self.assertEqual(asked[0]["question"], "What do you think about entering short?")
+        # Read by the model incrementally: every message once, never the whole conversation again.
+        reads = [e for e in self.requests("chat") if e.get("desk") == "read"]
+        self.assertTrue(reads)
+        seen = [i for e in reads for i in e["new_ids"]]
+        self.assertEqual(sorted(seen), ids)
+        self.assertEqual(len(seen), len(set(seen)))
+        # The state the answer left behind, with who said what.
+        a = out["analysis"]
+        self.assertEqual(a["market"], "BTCUSDT")
+        self.assertEqual((a["bias"]["side"], a["bias"]["source"], a["bias"]["by"]), ("bearish", "model", "Kimi K3.1 Pro"))
+        self.assertEqual(a["conclusions"][0]["text"], "Test conclusion")
+        self.assertEqual([e["text"] for e in a["bearish"] if e["source"] == "you"], ["RSI bearish divergence"])
+        self.assertEqual((a["lean"]["side"], a["lean"]["bearish"]), ("bearish", 1))
+        self.assertTrue(a["summary"].startswith("Test summary"))
+        self.assertEqual(a["levels"][0]["kind"], "level")
+        self.assertTrue(a["levels"][0]["hasDistance"])
+        # The order of events: all three accepted before the answer was even sent.
+        accepted = [e["t"] for e in self.events(out, "accepted")]
+        self.assertLess(max(accepted), self.events(out, "answer-asked")[0]["t"])
+        self.assertLess(self.events(out, "first-words")[0]["t"], self.events(out, "answered")[0]["t"])
+        self.assertTrue(out["status"]["running"])
+        self.assertEqual(out["tasks"], [])
+
+    def test_desk_takes_messages_while_an_answer_is_slow(self):
+        plan = {"desk": {"answer": {"delay": 4.0}}}
+        out = self.desk([{"post": "should I short BTC here?", "token": "q1"},
+                         {"wait": 0.5},
+                         {"post": "ETH support at 3,100", "token": "s1"},
+                         {"post": "and what about ETH?", "token": "q2"},
+                         {"post": "should I short BTC here?", "token": "q1"},  # the same draft again
+                         {"idle": 60}], plan)
+        posts = [s for s in out["steps"] if "post" in s["step"]]
+        self.assertFalse(posts[0]["result"]["duplicate"])
+        self.assertTrue(posts[3]["result"]["duplicate"])
+        self.assertEqual(posts[3]["result"]["id"], posts[0]["result"]["id"])
+        for step in posts:
+            self.assertLess(step["us"], 50_000, step)
+        mine = self.mine(out)
+        self.assertEqual([m["text"] for m in mine],
+                         ["should I short BTC here?", "ETH support at 3,100", "and what about ETH?"])
+        # Two questions, two answers, each below its own question.
+        answers = self.answers(out, "model")
+        self.assertEqual(sorted(a["reply_to"] for a in answers), [mine[0]["id"], mine[2]["id"]])
+        self.assertTrue(all(a["state"] == "done" for a in answers))
+        # The later messages were read while the first answer was still on its way.
+        first_done = min(e["t"] for e in self.events(out, "answered"))
+        later = [e for e in self.events(out, "read") if e["id"] in (mine[1]["id"], mine[2]["id"])]
+        self.assertEqual(len(later), 2)
+        self.assertTrue(all(e["t"] < first_done for e in later))
+        # The conversation moved to ETH, and the chart followed it.
+        self.assertEqual(out["analysis"]["market"], "ETHUSDT")
+        self.assertEqual(out["symbol"], "ETHUSDT")
+        self.assertIn("Chart switched to ETH/USDT", " ".join(n["text"] for n in self.notes_of(out, "info")))
+        self.assertEqual([l["price"] for l in out["analysis"]["levels"]], [3100])
+        # Both answers were under way at the same time.
+        asked = sorted(e["t"] for e in self.events(out, "answer-asked"))
+        self.assertLess(asked[1], first_done)
+
+    def test_desk_answers_live_facts_and_needs_no_key_to_follow(self):
+        out = self.desk([{"post": "BTC is approaching 95,000."},
+                         {"post": "what is the price of BTC?"},
+                         {"post": "where is rsi now"},
+                         {"post": "should I short?"},
+                         {"wait": 1.5}, {"idle": 20}], key=False)
+        self.assertEqual(self.requests("chat"), [])  # no key: no model asked
+        live = self.answers(out, "live")
+        self.assertEqual(len(live), 2)
+        self.assertEqual(live[0]["by"], "live data")
+        self.assertTrue(live[0]["text"].startswith("BTC/USDT is at "), live[0]["text"])
+        self.assertIn("RSI(14) on BTC/USDT", live[1]["text"])
+        rsi = out["analysis"]["live"]["rsi14"]
+        self.assertIn(f"{rsi:.1f}", live[1]["text"])
+        info = self.answers(out, "info")
+        self.assertEqual(len(info), 1)
+        self.assertIn("no NVIDIA API key", info[0]["text"])
+        # Still read and kept, without a model.
+        self.assertEqual([l["price"] for l in out["analysis"]["levels"]], [95000])
+        self.assertEqual(out["status"]["modelReading"], "no_key")
+        self.assertTrue(all(m["state"] == "read" for m in self.mine(out)))
+
+    def test_desk_level_alerts_follow_the_live_price(self):
+        self.serve({})
+        self.key = TEST_KEY
+        price = self.dump("market")["quote"]["close"]
+        level = round(price * 1.02)
+        out = self.desk([{"post": f"BTC resistance at {level}"}, {"wait": 12}], {},
+                        moves=[(4, {"market": {"move_pct": 4.0}})])
+        crossed = [n for n in self.notes_of(out, "market") if "crossed above resistance" in n["text"]]
+        self.assertEqual(len(crossed), 1, out["messages"])
+        level_text = f"{level:,}"
+        self.assertIn(level_text, crossed[0]["text"])
+        # The price in the note is the live one it was compared with.
+        self.assertIn("(live ", crossed[0]["text"])
+        lv = out["analysis"]["levels"][0]
+        self.assertTrue(lv["above"])
+        self.assertGreater(lv["distancePct"], 0)
+
+    def test_desk_asks_the_team_for_a_trade_question_and_shows_its_call_forming(self):
+        plan = {"*": SELL, "z-ai/glm-5.3-flash": dict(SELL, delay=3), "desk": {"answer": {"delay": 0.5}}}
+        settings = self.QUIET + "team_review=false\n"
+        out = self.desk([{"post": "BTC: should I short here?"}, {"idle": 120}], plan, settings=settings)
+        notes = [n["text"] for n in self.notes_of(out, "team")]
+        self.assertTrue(any(t.startswith("Asked the analysis team") for t in notes), notes)
+        self.assertTrue(any(t.startswith("Analysis team on BTC/USDT") and "SELL" in t for t in notes), notes)
+        # Its call formed while the slow member was still working.
+        forming = self.events(out, "team-forming")
+        self.assertTrue(forming)
+        counts = [tuple(int(n) for n in e["detail"].split(" ")[0].split("/")) for e in forming]
+        self.assertTrue(any(answered < asked for answered, asked in counts), forming)
+        self.assertEqual(out["signal"]["action"], "sell")
+        self.assertNotIn("provisional", out["signal"])  # gone once the call is final
+        a = out["analysis"]
+        self.assertEqual(a["team"]["action"], "sell")
+        self.assertIn("Team: SELL", [c["text"] for c in out["signalChanges"]])
+
+    def test_desk_model_reading_adds_what_the_quick_reading_missed(self):
+        plan = {"desk": {"read": {"summary": "Trader watches a BTC wedge.",
+                                  "observations": [{"topic": "pattern", "text": "Rising wedge", "side": "bearish"}],
+                                  "levels": [{"price": 96000, "kind": "resistance"}, {"price": 12, "kind": "level"}],
+                                  "plan": {"side": "short", "entry": 0, "stop": 0, "target": 0},
+                                  "needs_answer": [1]}}}
+        out = self.desk([{"post": "BTC, I am eyeing that wedge near the highs"}, {"idle": 60}], plan)
+        a = out["analysis"]
+        wedge = [e for e in a["bearish"] if e["text"] == "Rising wedge"]
+        self.assertEqual(len(wedge), 1)
+        self.assertEqual((wedge[0]["source"], wedge[0]["by"]), ("you", "read by Nemotron 3.5 Bolt"))
+        # A number far from the price is not taken as a level.
+        self.assertEqual([l["price"] for l in a["levels"]], [96000])
+        self.assertEqual(a["summary"], "Trader watches a BTC wedge.")
+        self.assertEqual(a["plan"]["side"], "short")
+        # Not a question by its words; the model saw that it wants an answer.
+        self.assertTrue(self.events(out, "answer-from-reading"))
+        self.assertEqual(len(self.answers(out, "model")), 1)
+        self.assertEqual(self.mine(out)[0]["state"], "understood")
+        self.assertIn("Rising wedge", self.mine(out)[0]["tags"])
+
+    def test_desk_stop_keeps_what_was_written(self):
+        plan = {"desk": {"answer": {"chunk_ms": 150, "text": "word " * 120}}}
+        out = self.desk([{"post": "Explain the BTC structure?"}, {"wait": 2.0}, {"stop": "last"}, {"idle": 20}], plan)
+        answer = self.answers(out, "model")[0]
+        self.assertEqual(answer["state"], "stopped")
+        self.assertTrue(answer["text"].startswith("word word"))
+        self.assertLess(len(answer["text"]), len("word " * 120))
+
+    def test_desk_conversation_survives_a_restart(self):
+        plan = {"desk": {"answer": {"delay": 30}}}
+        first = self.desk([{"post": "BTC resistance at 95,000"}, {"post": "should I short BTC?"}, {"wait": 2}], plan)
+        self.assertEqual(self.answers(first, "model")[0]["state"], "waiting")
+        path = os.path.join(self.data_dir, "desk.json")
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+        with open(path, encoding="utf-8") as f:
+            self.assertNotIn(TEST_KEY, f.read())
+        self.change_scenario({})
+        second = self.desk([{"idle": 30}, {"retry": "last"}, {"idle": 60}], {})
+        texts = [m["text"] for m in self.mine(second)]
+        self.assertEqual(texts, ["BTC resistance at 95,000", "should I short BTC?"])
+        answers = self.answers(second, "model")
+        self.assertEqual([a["state"] for a in answers], ["superseded", "done"])
+        self.assertIn("closed before this answer was complete", answers[0].get("detail", ""))
+        self.assertEqual([l["price"] for l in second["analysis"]["levels"]], [95000])
+        self.assertEqual(second["analysis"]["market"], "BTCUSDT")
+        # New messages go on from the old ids.
+        self.assertGreater(answers[1]["id"], max(m["id"] for m in self.mine(second)))
+
+    def test_desk_gold_is_found_where_it_is_listed(self):
+        crypto = self.desk([{"post": "XAUUSD looks strong"}, {"post": "GBPUSD looks weak"}, {"idle": 10}], {})
+        # Gold has a token on the crypto list; the pound does not.
+        self.assertEqual(self.mine(crypto)[0]["market"], "PAXGUSDT")
+        warning = self.notes_of(crypto, "warning")
+        self.assertEqual(len(warning), 1)
+        self.assertIn("GBP/USD is not on your crypto markets", warning[0]["text"])
+        self.assertIn("under Forex", warning[0]["text"])
+        self.assertEqual(crypto["analysis"]["market"], "GBPUSD")
+        self.assertFalse(crypto["analysis"]["live"])
+        forex = self.desk([{"post": "gold resistance at 3,600"}, {"idle": 10}], {},
+                          settings=FOREX + "[engine]\nauto_analyze=false\n")
+        self.assertEqual(forex["analysis"]["market"], "PAXGUSD")
+        self.assertEqual(forex["symbol"], "PAXGUSD")
+
     def test_an_unreadable_account_file_is_kept_aside(self):
         self.serve()
         os.makedirs(self.data_dir)

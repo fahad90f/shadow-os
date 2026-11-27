@@ -316,6 +316,15 @@ void TradingConfig::reload()
     m_autoTrade = ini.value(QStringLiteral("engine/auto_trade"), false).toBool();
     m_autoAnalyze = ini.value(QStringLiteral("engine/auto_analyze"), true).toBool();
     m_teamReview = ini.value(QStringLiteral("engine/team_review"), true).toBool();
+    // The desk: a quick model that reads every message, a deeper one that
+    // answers questions; "" = the built-in choice.
+    m_deskFast = ini.value(QStringLiteral("desk/fast_model")).toString().trimmed();
+    if (!validModelId(m_deskFast))
+        m_deskFast.clear();
+    m_deskDeep = ini.value(QStringLiteral("desk/deep_model")).toString().trimmed();
+    if (!validModelId(m_deskDeep))
+        m_deskDeep.clear();
+    m_deskFollow = ini.value(QStringLiteral("desk/follow_chart"), true).toBool();
 
     const Trading::RiskSettings d;
     const auto number = [&ini](const char *key, double fallback) {
@@ -650,6 +659,43 @@ void TradingConfig::setTeamReview(bool on)
         return;
     store(QStringLiteral("engine/team_review"), on);
     m_teamReview = on;
+    Q_EMIT changed();
+}
+
+QString TradingConfig::deskFastModel() const
+{
+    return m_deskFast.isEmpty() ? QLatin1String(kDeskFast) : m_deskFast;
+}
+
+QString TradingConfig::deskDeepModel() const
+{
+    return m_deskDeep.isEmpty() ? QLatin1String(kDeskDeep) : m_deskDeep;
+}
+
+QString TradingConfig::setDeskModel(const QString &which, const QString &model)
+{
+    const QString id = model.trimmed();
+    if (!id.isEmpty() && !validModelId(id))
+        return tr("That is not a model id.");
+    if (which == QLatin1String("fast")) {
+        store(QStringLiteral("desk/fast_model"), id);
+        m_deskFast = id;
+    } else if (which == QLatin1String("deep")) {
+        store(QStringLiteral("desk/deep_model"), id);
+        m_deskDeep = id;
+    } else {
+        return tr("Unknown desk model.");
+    }
+    Q_EMIT changed();
+    return {};
+}
+
+void TradingConfig::setDeskFollowChart(bool on)
+{
+    if (on == m_deskFollow)
+        return;
+    store(QStringLiteral("desk/follow_chart"), on);
+    m_deskFollow = on;
     Q_EMIT changed();
 }
 

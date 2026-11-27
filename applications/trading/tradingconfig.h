@@ -107,6 +107,20 @@ public:
     bool teamReview() const { return m_teamReview; }
     void setTeamReview(bool on);
 
+    // ---- desk ------------------------------------------------------------
+    // The model that reads every message of the conversation (quick, small)
+    // and the one that answers questions (deeper). Built-in choices unless
+    // the settings name others.
+    static constexpr const char *kDeskFast = "nvidia/nemotron-3.5-bolt-e4b";
+    static constexpr const char *kDeskDeep = "moonshotai/kimi-k3.1-pro";
+    QString deskFastModel() const;
+    QString deskDeepModel() const;
+    // which: "fast" | "deep"; "" puts the built-in choice back. "" on success.
+    QString setDeskModel(const QString &which, const QString &model);
+    // The chart shows the market the conversation is about.
+    bool deskFollowChart() const { return m_deskFollow; }
+    void setDeskFollowChart(bool on);
+
     Trading::RiskSettings risk() const { return m_risk; }
     // One risk setting by name; false when the name or value is not valid.
     bool setRisk(const QString &name, double value);
@@ -140,6 +154,9 @@ private:
     bool m_teamReview = true;
     int m_modelTimeout = 180;
     int m_modelParallel = 6;
+    QString m_deskFast;
+    QString m_deskDeep;
+    bool m_deskFollow = true;
     Trading::RiskSettings m_risk;
     Trading::PaperSettings m_paper;
 };

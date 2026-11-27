@@ -89,8 +89,13 @@ ColumnLayout {
                     }
                     Label {
                         Layout.fillWidth: true
+                        // While the team works, its call as it forms: the analysts that have answered so far.
+                        readonly property var forming: root.signalData.provisional
                         text: trading.analyzing ? (root.signalData.stage === "review"
                                 ? qsTr("Team review…  •  The analysis team compares its calls…")
+                                : forming && forming.answered > 0
+                                ? qsTr("Analyzing…  •  so far %1 (%2 of %3 answered)").arg(String(forming.leaning).toUpperCase())
+                                      .arg(forming.answered).arg(forming.asked)
                                 : qsTr("Analyzing market…  •  Finding best opportunities…"))
                             : root.ready ? qsTr("%1 %2  •  analyzed %3").arg(root.signalData.symbolName)
                                   .arg(root.signalData.interval).arg(Format.clock(root.signalData.time))

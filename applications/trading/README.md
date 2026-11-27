@@ -121,6 +121,81 @@ real ones.
 Everything on screen is real: prices from the exchange, verdicts from the
 models that answered, statistics from the trades the account made.
 
+## The AI Desk
+
+A conversation with an analyst that follows it, and the market, for as long
+as the application runs, whatever page is open. Nothing has to be started and
+there is no "Analyze" step: every message is taken in as it arrives.
+
+**Layers, none of which waits for another.**
+
+1. *Accepted.* `DeskEngine::post()` puts the message in the conversation and
+   returns at once (well under a millisecond); the box is emptied only then.
+   The box is never locked: a message can be written and sent while answers
+   to earlier ones are still being written. A draft has a token, so the same
+   draft sent twice (a double Enter) is one message. Messages keep their order.
+2. *Read*, on the next turn of the event loop, by `core/desk.cpp` (no model):
+   the market named (BTC, ETH, gold, EUR/USD, … resolved to a market on the
+   list), price levels (only where the words around a number make it one:
+   "approaching 95,000", "stop at 95.8k", not "RSI 72" or "the 200 EMA"; and
+   only within half to twice the live price), indicator and chart
+   observations (RSI divergence, overbought, MACD cross, patterns, structure,
+   trend, news), which way the message leans, the trade being weighed, and
+   whether it asks something. The chips under a message show what was taken
+   from it. Levels are compared with the live price at once.
+3. *Understood* in the background by a quick model (`desk/fast_model`,
+   built-in Nemotron 3.5 Bolt), which gets only the new messages, the running
+   summary and the market's current analysis, never the whole conversation
+   again, and returns what to add (observations, levels, plan, which messages
+   want an answer, a new summary). Messages that arrive while it works are
+   read together in its next request.
+4. *Answered* when a message asks something. A question that only asks for
+   live facts (price, RSI, MACD, trend, the team's call, the open position,
+   the levels named) is answered at once from the live data, without a model.
+   Other questions are answered by a model, streamed word by word: the deeper
+   one (`desk/deep_model`, built-in Kimi K3.1 Pro) for trade decisions and
+   analysis, the quick one for short questions. The answer gets the
+   accumulated analysis, the live readings of the market, the analysis team's
+   last call and the recent conversation, and is told to keep apart what the
+   trader said, what the live data shows and what the team concluded. Several
+   answers can be under way at once; each stays below its question and can be
+   stopped (what was written stays) or asked again.
+
+**The analysis kept** (one per market, `core/desk.h`): signals by side,
+indicator observations, levels with their distance from the live price, the
+trade weighed (side, entry, stop, target, reward/risk or what is wrong with
+it), the assessed bias, conclusions, a running summary, and every change with
+its time. Each entry says where it came from: *you* (what the trader said,
+also when a model read it from their words), a model by name, the live market,
+or the analysis team. Only the changed fields are updated.
+
+**The market side**, independent of the conversation: the live price against
+every level named (a note when it comes close, half an ATR on the chart's
+market, and when it crosses), the chart's indicator readings compared every
+few seconds (RSI zone, MACD state, trend, structure events, listed as market
+signal changes), and the analysis team. A trade question about the chart's
+market starts the team in the background when its last call there is missing
+or older than two candles; the answer does not wait for it, and the team's
+call arrives as a note and becomes the market's bias. While the team works,
+its call as it forms (the analysts that have answered so far) is shown on the
+signal panel and in the desk's task list; it is never traded on.
+
+**Live status** (right column): whether the desk runs, the conversation
+monitored (messages read, the last one), the model reading (on, no key, an
+error), the market feed (stream, polling, error), the last update and where
+it came from, and each task under way with its model, stage and how long it
+has run. Each value comes from a real event; nothing is shown as live that is
+not.
+
+**Without a key** the desk still reads every message, keeps the analysis,
+watches the levels and answers live facts; for an opinion it says that a
+model is needed. Nothing is sent anywhere.
+
+The conversation and the analysis are saved in `desk.json` (mode 600) and come
+back at the next start. An answer cut off by closing the application is
+marked so and can be asked again; a message that was not yet read by the
+model is read then.
+
 ## The window
 
 The window is always dark with a violet accent, whatever the system theme
@@ -165,6 +240,12 @@ two nor changed).
   at a time, back to the start of the market's history (at most 20,000 are
   kept). While the view is in the past it stays on the same candles as new
   ones arrive.
+- **AI Desk**: the conversation on the left (each message with the chips of
+  what was taken from it, answers written word by word with Stop and Ask
+  again, notes from the market and the analysis team), the live analysis on
+  the right (status, tasks under way, the market's bias and live readings,
+  signals, levels, the trade weighed, conclusions and changes). See *The AI
+  Desk* above. Live Trading has a button with the desk's state that opens it.
 - **AI Analysis**: every analyst's verdict, the risk rules one by one, the
   current readings, the activity log.
 - **Trade History**, **Portfolio** (account value over time, open positions,
@@ -207,6 +288,7 @@ candle closes* turns the automatic analyses off.
 | `~/.config/shadow/trading.conf` | settings (INI, see below) |
 | `~/.config/shadow/trading/nvidia.key` | the NVIDIA API key |
 | `~/.local/share/shadow/trading/paper.json` | the paper account: balance, open positions, trade history, equity curve (mode 600). A file that cannot be read is moved to `paper.json.unreadable`, never overwritten |
+| `~/.local/share/shadow/trading/desk.json` | the AI Desk: the conversation (the newest 400 messages), the analysis of each market discussed, the changes (mode 600). A file of another version is moved to `desk.json.unreadable` |
 
 ```ini
 [market]
@@ -292,13 +374,17 @@ that is not of the form `publisher/model` is ignored.
 `shadow-trading --dump <topic>` prints what the window would show, as JSON:
 `config` (never the key), `account`, `market`, `signal` (runs one analysis),
 `session` (runs the engine for `SHADOW_TRADING_SESSION_SECONDS` and the
-scripted `SHADOW_TRADING_SESSION_ACTIONS`, then reports).
+scripted `SHADOW_TRADING_SESSION_ACTIONS`, then reports), `desk` (runs the
+desk through the steps of `SHADOW_TRADING_DESK_SCRIPT`, a JSON list of
+`post`, `wait`, `idle`, `stop`, `retry`, `select`, `analyze`, `clear`, then
+prints the conversation, the analysis, the status and a timed event log).
 
 | Test | What it covers | Run |
 |---|---|---|
 | `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3276 checks) | build command in the file's header; plain `g++`, sanitizers |
 | `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account, markets priced in another currency (346 checks) | as above |
-| `tests/test_app.py` | the real binary against `tests/fake_services.py` (62 tests): the watchlist and markets the data service does not list, adding and removing markets, the forex markets (the other service's requests and stream, what is offered, a dollar-base pair counted in dollars, switching kinds, recorded answers and messages of the real service), an open position staying on show after a hold, models that are slow or fail once (asked again, left out after two tries, only so many at a time), the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
+| `tests/test_desk.cpp` | the desk's reading of messages (markets, levels and the numbers that are not levels, observations, intent, Roman Urdu questions) and its analysis state (books per market, merging, plan and reward/risk, levels against the live price) (134 checks) | `tests/run-unit.sh desk` |
+| `tests/test_app.py` | the real binary against `tests/fake_services.py` (62 tests): the watchlist and markets the data service does not list, adding and removing markets, the forex markets (the other service's requests and stream, what is offered, a dollar-base pair counted in dollars, switching kinds, recorded answers and messages of the real service), an open position staying on show after a hold, models that are slow or fail once (asked again, left out after two tries, only so many at a time), the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files; and the AI Desk (9 tests): messages accepted at once and built on (the answer sees the earlier messages, the model reads each message once), messages taken while a slow answer is written (two answers under way, a double send is one message, the chart following the conversation), live facts and no key, level alerts from the live price, the team started for a trade question and its call forming, a model's reading adding what the quick reading missed, stopping an answer, the conversation surviving a restart, gold found where it is listed | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
 
 `tests/fake_services.py` stands in for the exchange and for NVIDIA's model
 service on one local port, checks each request (the key, the model, the shape
@@ -308,6 +394,16 @@ application against it by hand. Test hooks: `SHADOW_TRADING_DATA_URL`,
 `SHADOW_TRADING_ANALYZE_ON_START=1`.
 
 ## Limits
+
+- **The desk's answers are only as good as the model.** The quick reading on
+  this computer is cautious and English-centred (with a few Roman Urdu
+  question words); what it misses, the model's reading adds. Neither the
+  models' real answers nor real streaming from NVIDIA could be checked in the
+  build environment (no key): the stand-in service streams the same way the
+  OpenAI-compatible protocol does.
+- **Indicators are measured for the chart's market.** For another market the
+  desk has its price only; "Chart follows the conversation" (on by default)
+  switches the chart to the market being discussed when it is on the list.
 
 - **No real-money trading.** The Execution Engine has one back end, the paper
   account. A live back end is added per exchange and tested on that

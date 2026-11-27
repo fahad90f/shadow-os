@@ -20,12 +20,16 @@ shadow_add_app(shadow-trading
     SOURCES
         main.cpp
         chartrenderer.cpp chartrenderer.h
+        chatstream.cpp chatstream.h
+        deskengine.cpp deskengine.h
+        deskmessages.cpp deskmessages.h
         marketdata.cpp marketdata.h
         marketstream.cpp marketstream.h
         modelclient.cpp modelclient.h
         tradesmodel.cpp tradesmodel.h
         tradingconfig.cpp tradingconfig.h
         tradingengine.cpp tradingengine.h
+        core/desk.cpp core/desk.h
         core/paper.cpp core/paper.h
         core/risk.cpp core/risk.h
         core/signal.cpp core/signal.h

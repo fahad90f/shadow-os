@@ -16,6 +16,7 @@ NxWindow {
     // key: stable identifier, also the command-line argument ("shadow-trading <key>").
     readonly property var pages: [
         { key: "live",      title: qsTr("Live Trading"),  icon: "activity" },
+        { key: "desk",      title: qsTr("AI Desk"),       icon: "zap" },
         { key: "analysis",  title: qsTr("AI Analysis"),   icon: "radar" },
         { key: "history",   title: qsTr("Trade History"), icon: "clock" },
         { key: "portfolio", title: qsTr("Portfolio"),     icon: "pie" },
@@ -96,6 +97,12 @@ NxWindow {
                 current: appWindow.currentKey === "live"
                 keepAlive: true
                 sourceComponent: LivePage { onOpenPage: (key) => appWindow.openPage(key) }
+            }
+            // Kept once opened, so the conversation keeps its scroll position and a draft.
+            PageSlot {
+                current: appWindow.currentKey === "desk"
+                keepAlive: true
+                sourceComponent: DeskPage { onOpenPage: (key) => appWindow.openPage(key) }
             }
             PageSlot { current: appWindow.currentKey === "analysis"; sourceComponent: AnalysisPage {} }
             PageSlot { current: appWindow.currentKey === "history"; sourceComponent: HistoryPage {} }

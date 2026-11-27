@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "deskengine.h"
 #include "tradingconfig.h"
 #include "tradingengine.h"
 
 #include <appearance.h>
 #include <shadowapp.h>
 
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 
 int main(int argc, char **argv)
@@ -28,7 +31,7 @@ int main(int argc, char **argv)
     info.singleInstance = true;
     Shadow::App app(argc, argv, info);
     app.setDumpTopics({QStringLiteral("config"), QStringLiteral("account"), QStringLiteral("market"),
-                       QStringLiteral("signal"), QStringLiteral("session")});
+                       QStringLiteral("signal"), QStringLiteral("session"), QStringLiteral("desk")});
     if (!app.processArguments())
         return 0;
 
@@ -36,6 +39,9 @@ int main(int argc, char **argv)
     auto *configObject = new TradingConfig(&app.engine());
     auto *engineObject = new TradingEngine(configObject, &app.engine());
     TradingEngine &engine = *engineObject;
+    // The desk follows the conversation and the market from the start, on
+    // whatever page the window shows.
+    auto *deskObject = new DeskEngine(configObject, engineObject, &app.engine());
 
     const QString topic = app.dumpTopic();
     if (!topic.isEmpty()) {
@@ -43,10 +49,79 @@ int main(int argc, char **argv)
             return app.finishDump(engine.dumpConfig());
         if (topic == QLatin1String("account"))
             return app.finishDump(engine.dumpAccount());
-        if (topic != QLatin1String("market") && topic != QLatin1String("signal") && topic != QLatin1String("session"))
+        if (topic != QLatin1String("market") && topic != QLatin1String("signal") && topic != QLatin1String("session")
+            && topic != QLatin1String("desk"))
             return app.dumpError(QStringLiteral("unknown dump topic '%1'").arg(topic));
         engine.start();
         app.waitFor(&engine, SIGNAL(marketReady()), 30000);
+        if (topic == QLatin1String("desk")) {
+            // The desk as a person would use it, for the tests:
+            // SHADOW_TRADING_DESK_SCRIPT='[{"post": "BTC is approaching 95,000"}, {"wait": 0.5},
+            //   {"post": "short?", "token": "t1"}, {"idle": 60}, {"stop": "last"}, {"retry": "last"},
+            //   {"select": "ETHUSDT"}, {"clear": true}]'
+            // "idle" waits until nothing is under way (at most that many seconds).
+            DeskEngine &desk = *deskObject;
+            desk.start();
+            QObject never;
+            const auto wait = [&app, &never](double seconds) {
+                app.waitFor(&never, SIGNAL(destroyed()), int(seconds * 1000));
+            };
+            QJsonArray done;
+            // The newest answer of the desk, for "stop" and "retry".
+            const auto lastDesk = [&desk] {
+                const QList<DeskMessages::Message> &all = desk.messages()->all();
+                for (auto it = all.crbegin(); it != all.crend(); ++it) {
+                    if (it->role == QLatin1String("desk"))
+                        return double(it->id);
+                }
+                return 0.0;
+            };
+            const QJsonArray steps = QJsonDocument::fromJson(qgetenv("SHADOW_TRADING_DESK_SCRIPT")).array();
+            for (const QJsonValue &v : steps) {
+                const QJsonObject step = v.toObject();
+                QJsonObject result{{QStringLiteral("step"), step}};
+                if (step.contains(QLatin1String("post"))) {
+                    QElapsedTimer t;
+                    t.start();
+                    const QVariantMap r = desk.post(step.value(QLatin1String("post")).toString(),
+                                                    step.value(QLatin1String("token")).toString());
+                    result.insert(QStringLiteral("us"), double(t.nsecsElapsed()) / 1000.0);
+                    result.insert(QStringLiteral("result"), QJsonObject::fromVariantMap(r));
+                } else if (step.contains(QLatin1String("wait"))) {
+                    wait(qBound(0.0, step.value(QLatin1String("wait")).toDouble(), 300.0));
+                } else if (step.contains(QLatin1String("idle"))) {
+                    QElapsedTimer t;
+                    t.start();
+                    const double limit = qBound(0.1, step.value(QLatin1String("idle")).toDouble(), 300.0);
+                    // A short settle first: a message is read on the next turn of the event loop.
+                    wait(0.3);
+                    while (!desk.idle() && t.elapsed() < limit * 1000)
+                        wait(0.1);
+                    result.insert(QStringLiteral("idle"), desk.idle());
+                    result.insert(QStringLiteral("ms"), double(t.elapsed()));
+                } else if (step.contains(QLatin1String("stop"))) {
+                    desk.stopAnswer(lastDesk());
+                } else if (step.contains(QLatin1String("retry"))) {
+                    desk.retryAnswer(lastDesk());
+                } else if (step.contains(QLatin1String("select"))) {
+                    engine.setSymbol(step.value(QLatin1String("select")).toString());
+                    app.waitFor(&engine, SIGNAL(marketReady()), 20000);
+                } else if (step.contains(QLatin1String("analyze"))) {
+                    result.insert(QStringLiteral("started"), engine.analyzeNow());
+                } else if (step.contains(QLatin1String("clear"))) {
+                    desk.clearConversation();
+                } else {
+                    result.insert(QStringLiteral("error"), QStringLiteral("unknown step"));
+                }
+                done.append(result);
+            }
+            QJsonObject out = desk.dump();
+            out.insert(QStringLiteral("steps"), done);
+            out.insert(QStringLiteral("signal"), QJsonObject::fromVariantMap(engine.signal()));
+            out.insert(QStringLiteral("quote"), QJsonObject::fromVariantMap(engine.quote()));
+            out.insert(QStringLiteral("symbol"), engine.symbol());
+            return app.finishDump(out);
+        }
         if (topic == QLatin1String("session")) {
             // The engine as it runs behind the window (prices every few
             // seconds, an analysis at each candle close, stops and targets
@@ -147,11 +222,13 @@ int main(int argc, char **argv)
     engine.setWebViewAvailable(webView);
 
     app.expose(QStringLiteral("trading"), &engine);
+    app.expose(QStringLiteral("desk"), deskObject);
     // For screenshots and manual testing: one analysis as soon as prices are in.
     if (qEnvironmentVariableIntValue("SHADOW_TRADING_ANALYZE_ON_START") == 1) {
         QObject::connect(&engine, &TradingEngine::marketReady, &engine, [&engine] { engine.analyzeNow(); },
                          Qt::SingleShotConnection);
     }
     engine.start();
+    deskObject->start();
     return app.run(QStringLiteral("org.shadow.trading"));
 }
