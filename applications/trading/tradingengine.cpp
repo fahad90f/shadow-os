@@ -559,6 +559,7 @@ void TradingEngine::onCandles(const QString &symbol, const QString &interval, co
         }
         ++m_chartRevision;
         Q_EMIT chartChanged();
+        updateSbtHistory(); // the strategy reads the older candles too
         return;
     }
     if (purpose == QLatin1String("higher")) {
@@ -891,6 +892,8 @@ void TradingEngine::recordClosed(const std::vector<Trade> &closed)
 
 void TradingEngine::afterAccountChange(bool tradeClosed)
 {
+    // The trades drawn on the chart.
+    QMetaObject::invokeMethod(this, &TradingEngine::updateSbtHistory, Qt::QueuedConnection);
     const qint64 now = nowMs();
     m_account.mark(now);
     const AccountView view = accountView(m_config->symbol(), now);
@@ -2033,7 +2036,8 @@ QVariantMap TradingEngine::signalMap(const Signal &signal, const RiskDecision &d
         {QStringLiteral("opposing"), signal.opposing}, {QStringLiteral("holding"), signal.holding},
         {QStringLiteral("lead"), qs(signal.lead)},
         {QStringLiteral("leadName"), signal.lead.empty() ? QString()
-                                         : signal.lead == "rules" ? tr("Rules") : m_config->memberName(qs(signal.lead))},
+                                         : signal.lead == "rules" ? tr("Rules")
+                                         : signal.lead == "sbt" ? tr("SBT Model 1 rules") : m_config->memberName(qs(signal.lead))},
         {QStringLiteral("reasoning"), qs(signal.reasoning)}, {QStringLiteral("note"), qs(signal.note)},
         {QStringLiteral("verdicts"), verdicts},
         // The analysis team: how its members called it, and what their review changed.
@@ -2345,5 +2349,6 @@ QJsonObject TradingEngine::dumpMarket() const
             {QStringLiteral("watchlist"), QJsonArray::fromVariantList(watchlist())},
             {QStringLiteral("quote"), QJsonObject::fromVariantMap(quote())},
             {QStringLiteral("sbt"), QJsonObject::fromVariantMap(sbt())},
+            {QStringLiteral("sbtHistory"), QJsonObject::fromVariantMap(sbtHistory())},
             {QStringLiteral("readings"), QJsonObject::fromVariantMap(readings())}};
 }

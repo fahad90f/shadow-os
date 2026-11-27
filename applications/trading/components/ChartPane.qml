@@ -14,8 +14,49 @@ GlowCard {
 
     // The shapes the chart draws for SBT Model 1. Bullish in the "up" colour,
     // bearish in the "down" colour; PD arrays dashed, in their own colours.
-    function sbtOverlay(sbt) {
+    // Show the strategy's past entries and the paper trades on the chart.
+    property bool showHistory: true
+
+    // The strategy over the loaded history: each entry (BUY/SELL where it
+    // entered), how it ended (Level 3 or the stop, in R), the path between;
+    // and the paper account's own trades on this market.
+    function historyShapes(history) {
         var shapes = []
+        var list = history.setups || []
+        for (var i = 0; i < list.length; i++) {
+            var h = list[i]
+            var bull = h.direction === "bullish"
+            var tone = bull ? Theme.success : Theme.danger
+            shapes.push({ kind: "mark", price: h.entry, from: h.entryTime, color: tone,
+                          label: bull ? qsTr("BUY") : qsTr("SELL") })
+            if (h.result === "open") {
+                shapes.push({ kind: "line", price: h.target, from: h.entryTime, to: 0, color: Theme.alpha(Theme.success, 0.6), dashed: true, label: "" })
+                shapes.push({ kind: "line", price: h.stop, from: h.entryTime, to: 0, color: Theme.alpha(Theme.danger, 0.6), dashed: true, label: "" })
+                continue
+            }
+            var won = h.result === "target"
+            shapes.push({ kind: "line", price: h.entry, from: h.entryTime, to: h.exitTime,
+                          color: Theme.alpha(Theme.textSecondary, 0.7), dashed: true, label: "" })
+            shapes.push({ kind: "mark", price: h.exit, from: h.exitTime, color: won ? Theme.success : Theme.danger,
+                          label: won ? qsTr("TP +%1R").arg(Number(h.r).toFixed(1)) : qsTr("SL −1R"), below: !won })
+        }
+        var trades = history.trades || []
+        for (var j = 0; j < trades.length; j++) {
+            var t = trades[j]
+            // The paper trades' labels go under their marks, clear of the strategy's.
+            shapes.push({ kind: "mark", price: t.entry, from: t.entryTime, color: Theme.accent, below: true,
+                          label: qsTr("Paper %1").arg(t.side === "buy" ? qsTr("BUY") : qsTr("SELL")) })
+            if (!t.open)
+                shapes.push({ kind: "mark", price: t.exit, from: t.exitTime, color: Theme.accent, below: true,
+                              label: qsTr("exit %1").arg(Format.signedMoney(t.pnl)) })
+        }
+        return shapes
+    }
+
+    function sbtOverlay(sbt, history, showHistory) {
+        var shapes = []
+        if (showHistory)
+            shapes = shapes.concat(historyShapes(history))
         var arrays = sbt.pdArrays || []
         for (var i = Math.max(0, arrays.length - 10); i < arrays.length; i++) {
             var a = arrays[i]
@@ -92,6 +133,15 @@ GlowCard {
                         root.tradingViewDown = false   // try again
                     root.view = index
                 }
+            }
+            // Where SBT Model 1 entered in the past and how it ended, and the paper trades.
+            NxButton {
+                visible: root.view === 1
+                kind: root.showHistory ? "secondary" : "ghost"
+                iconName: "clock"
+                text: qsTr("SBT history")
+                onClicked: root.showHistory = !root.showHistory
+                Accessible.name: root.showHistory ? qsTr("Hide the SBT history on the chart") : qsTr("Show the SBT history on the chart")
             }
             NxBadge {
                 // How fresh the prices are: pushed by the data service as trades
@@ -179,12 +229,34 @@ GlowCard {
                 bandColor: Theme.alpha(Theme.accentBlue, 0.7)
                 entryColor: Theme.textPrimary
                 // SBT Model 1: the setup's zone, levels and marks, and the PD arrays in play.
-                overlay: root.sbtOverlay(trading.sbt)
+                overlay: root.sbtOverlay(trading.sbt, trading.sbtHistory, root.showHistory)
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSizeCaption
                 Accessible.role: Accessible.Graphic
                 Accessible.name: qsTr("Candlestick chart of %1, %2 candles").arg(trading.symbolName).arg(trading.interval)
                 Accessible.description: qsTr("Drag or use the arrow keys to move through time, scroll or press plus and minus to zoom, Home for the newest candles.")
+            }
+            // What the strategy's history adds up to, on the candles loaded.
+            Label {
+                readonly property var stats: trading.sbtHistory.stats || ({})
+                anchors.left: chart.left
+                anchors.top: chart.top
+                anchors.leftMargin: 10
+                anchors.topMargin: 26
+                visible: chart.visible && root.showHistory && stats.entries !== undefined
+                text: stats.entries === 0
+                    ? qsTr("SBT history: no entry on the %1 candles loaded").arg(trading.sbtHistory.candles)
+                    : qsTr("SBT history on %1 candles: %2 · %3 target · %4 stop%5 · win %6 % · %7R  (by the rules, not traded)")
+                          .arg(trading.sbtHistory.candles)
+                          .arg(stats.entries === 1 ? qsTr("1 entry") : qsTr("%1 entries").arg(stats.entries))
+                          .arg(stats.targets).arg(stats.stops)
+                          .arg(stats.open > 0 ? qsTr(" · %1 open").arg(stats.open) : "")
+                          .arg(Number(stats.winRate).toFixed(0))
+                          .arg((stats.totalR >= 0 ? "+" : "") + Number(stats.totalR).toFixed(1))
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontSizeCaption
+                background: Rectangle { color: Theme.alpha(Theme.bgSurface, 0.8); radius: 3 }
+                padding: 3
             }
             Rectangle {
                 anchors.fill: chart

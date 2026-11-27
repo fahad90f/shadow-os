@@ -117,6 +117,7 @@ struct Settings
     double displacementAtr = 1.2; // a candle body this large is a displacement
     double minGapAtr = 0.05;      // smaller gaps are ignored
     int maxArmedCandles = 200;    // a setup waits this long for its retest
+    int keepFinished = 12;        // finished setups kept (the history view keeps many)
 };
 
 struct Event

@@ -142,6 +142,7 @@ void TradingEngine::feedSbt()
         events.insert(events.end(), e.begin(), e.end());
     }
     handleSbt(events);
+    updateSbtHistory();
     // Level 3 moving, the intrabar note… change the setup without an event:
     // the window is told whenever what it shows of the setup changed.
     const QString shown = sbtSignature();
@@ -277,8 +278,9 @@ Signal TradingEngine::signalFor(const Sbt::Setup &s, bool rulesOnly) const
         sig.lead = r.result.lead;
         sig.reasoning = r.result.reasoning;
     } else {
-        // The rules alone: the strategy itself is the one voter.
-        sig.confidence = 100;
+        // The rules alone: the strategy itself is the one voter, sure of an
+        // entry its rules made, and of nothing before that.
+        sig.confidence = signal ? 100 : 0;
         sig.voters = 1;
         sig.agreeing = 1;
         sig.lead = "sbt";
@@ -545,4 +547,150 @@ void TradingEngine::refreshSignal()
     m_signal = map;
     m_sbtShown = sbtSignature();
     Q_EMIT signalChanged();
+}
+
+// ---- the strategy over the chart's history -------------------------------------
+
+void TradingEngine::updateSbtHistory()
+{
+    if (m_chart.empty())
+        return;
+    const QString key = m_config->symbol() + QLatin1Char(':') + m_config->interval();
+    const long long first = m_chart.front().openTime;
+    // Older candles in front (the chart was moved into the past), another
+    // market or other rules: read everything again. Reading 20,000 candles
+    // takes a few milliseconds; otherwise only the new ones are read.
+    const bool rebuild = key != m_sbtHistoryKey || first != m_sbtHistoryFirst
+        || m_sbtHistory.settings().swingStrength != m_config->sbt().swingStrength
+        || m_sbtHistory.settings().zoneBody != m_config->sbt().zoneBody
+        || m_sbtHistory.settings().requirePdArray != m_config->sbt().requirePdArray
+        || m_sbtHistory.settings().stopBufferAtr != m_config->sbt().stopBufferAtr
+        || m_sbtHistory.settings().minRewardRisk != m_config->sbt().minRewardRisk
+        || m_sbtHistory.settings().pdDistanceAtr != m_config->sbt().pdDistanceAtr;
+    if (rebuild) {
+        Sbt::Settings settings = m_config->sbt();
+        settings.keepFinished = 5000;
+        m_sbtHistory = Sbt::Engine(settings);
+        m_sbtHistory.setIdPrefix((QStringLiteral("history:") + key + QLatin1Char(':')).toStdString());
+        m_sbtHistory.setLive(false);
+        m_sbtHistoryKey = key;
+        m_sbtHistoryFirst = first;
+    }
+    // The newest closed candles not read yet (from the end: usually one or none).
+    auto from = m_chart.end();
+    while (from != m_chart.begin() && (from - 1)->openTime > m_sbtHistory.lastTime())
+        --from;
+    for (auto it = from; it != m_chart.end(); ++it) {
+        if (it->closed)
+            m_sbtHistory.close(*it);
+    }
+    if (!m_chart.back().closed)
+        m_sbtHistory.forming(m_chart.back());
+    // Told only when something it shows changed.
+    QString shown = QString::number(m_sbtHistory.setups().size());
+    for (const Sbt::Setup &s : m_sbtHistory.setups()) {
+        if (s.entryTime > 0)
+            shown += QLatin1Char('|') + QString::number(int(s.status)) + QLatin1Char(':') + QString::number(s.entryTime);
+    }
+    shown += QLatin1Char('#') + QString::number(m_account.trades().size()) + QLatin1Char('/')
+        + QString::number(m_account.positions().size());
+    if (rebuild || shown != m_sbtHistoryShown) {
+        m_sbtHistoryShown = shown;
+        m_sbtHistoryDirty = true;
+        Q_EMIT sbtHistoryChanged();
+    }
+}
+
+QVariantMap TradingEngine::sbtHistory() const
+{
+    if (!m_sbtHistoryDirty)
+        return m_sbtHistoryCache;
+    m_sbtHistoryCache = buildSbtHistory();
+    m_sbtHistoryDirty = false;
+    return m_sbtHistoryCache;
+}
+
+QVariantMap TradingEngine::buildSbtHistory() const
+{
+    QVariantList setups;
+    int targets = 0, stops = 0, open = 0, missed = 0;
+    double totalR = 0;
+    const double price = m_candles.empty() ? 0 : m_candles.back().close;
+    for (const Sbt::Setup &s : m_sbtHistory.setups()) {
+        if (s.entryTime <= 0) {
+            missed += s.status == Sbt::Status::Invalidated || s.status == Sbt::Status::Skipped
+                    || s.status == Sbt::Status::Expired ? 1 : 0;
+            continue;
+        }
+        const bool bull = s.direction == Sbt::Direction::Bullish;
+        const double risk = bull ? s.entry - s.stop : s.stop - s.entry;
+        double r = 0, exit = 0;
+        QString result;
+        if (s.status == Sbt::Status::Target) {
+            exit = s.target;
+            r = s.rewardRisk;
+            result = QStringLiteral("target");
+            ++targets;
+        } else if (s.status == Sbt::Status::Stopped) {
+            exit = s.stop;
+            r = -1;
+            result = QStringLiteral("stop");
+            ++stops;
+        } else {
+            // Still open: where it stands at the price now.
+            r = risk > 0 && price > 0 ? (bull ? price - s.entry : s.entry - price) / risk : 0;
+            result = QStringLiteral("open");
+            ++open;
+        }
+        if (result != QLatin1String("open"))
+            totalR += r;
+        QVariantList pd;
+        for (const Sbt::PdArray &a : s.confirmations)
+            pd.append(QLatin1String(Sbt::pdName(a.kind, a.bullish)));
+        setups.append(QVariantMap{
+            {QStringLiteral("direction"), QLatin1String(Sbt::directionName(s.direction))},
+            {QStringLiteral("result"), result},
+            {QStringLiteral("entry"), s.entry}, {QStringLiteral("entryTime"), double(s.entryTime)},
+            {QStringLiteral("stop"), s.stop}, {QStringLiteral("target"), s.target},
+            {QStringLiteral("exit"), exit}, {QStringLiteral("exitTime"), double(s.outcomeTime)},
+            {QStringLiteral("r"), r}, {QStringLiteral("rewardRisk"), s.rewardRisk},
+            {QStringLiteral("level1"), s.level1.price}, {QStringLiteral("level1Time"), double(s.level1.time)},
+            {QStringLiteral("bosTime"), double(s.bos.time)},
+            {QStringLiteral("zoneTop"), s.zoneTop}, {QStringLiteral("zoneBottom"), s.zoneBottom},
+            {QStringLiteral("zoneTime"), double(s.zoneTime)}, {QStringLiteral("retestTime"), double(s.retest.time)},
+            {QStringLiteral("confirmations"), pd}});
+    }
+    // The paper account's own trades on this market: closed, and the open one.
+    QVariantList trades;
+    const std::string symbol = m_config->symbol().toStdString();
+    for (const Trade &t : m_account.trades()) {
+        if (t.symbol != symbol)
+            continue;
+        trades.append(QVariantMap{{QStringLiteral("side"), t.isLong ? QStringLiteral("buy") : QStringLiteral("sell")},
+                                  {QStringLiteral("entry"), t.entry}, {QStringLiteral("entryTime"), double(t.openedAt)},
+                                  {QStringLiteral("exit"), t.exit}, {QStringLiteral("exitTime"), double(t.closedAt)},
+                                  {QStringLiteral("pnl"), t.pnl}, {QStringLiteral("reason"), qs(t.reason)},
+                                  {QStringLiteral("open"), false}});
+    }
+    for (const Position &p : m_account.positions()) {
+        if (p.symbol != symbol)
+            continue;
+        trades.append(QVariantMap{{QStringLiteral("side"), p.isLong ? QStringLiteral("buy") : QStringLiteral("sell")},
+                                  {QStringLiteral("entry"), p.entry}, {QStringLiteral("entryTime"), double(p.openedAt)},
+                                  {QStringLiteral("open"), true}});
+    }
+    const int closed = targets + stops;
+    return {
+        {QStringLiteral("market"), m_sbtHistoryKey},
+        {QStringLiteral("candles"), m_sbtHistory.closedCount()},
+        {QStringLiteral("from"), double(m_sbtHistoryFirst)},
+        {QStringLiteral("setups"), setups},
+        {QStringLiteral("trades"), trades},
+        {QStringLiteral("stats"), QVariantMap{
+            {QStringLiteral("entries"), int(setups.size())}, {QStringLiteral("targets"), targets},
+            {QStringLiteral("stops"), stops}, {QStringLiteral("open"), open}, {QStringLiteral("missed"), missed},
+            {QStringLiteral("winRate"), closed > 0 ? double(targets) / closed * 100.0 : 0.0},
+            {QStringLiteral("totalR"), totalR},
+            {QStringLiteral("averageR"), closed > 0 ? totalR / closed : 0.0}}},
+    };
 }

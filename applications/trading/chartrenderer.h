@@ -57,6 +57,7 @@ struct Shape
     QColor color;
     QString label;
     bool dashed = false;
+    bool below = false;  // a mark's label under it instead of over it
 };
 using Overlay = std::vector<Shape>;
 

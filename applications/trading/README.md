@@ -151,7 +151,16 @@ reached, stopped, invalidated with the reason), Levels 1, 2 and 3, the zone,
 the PD arrays that confirmed it and the team's review. The AI chart draws the
 Level 2 zone, the lines of Levels 1, 2 and 3 (3 dashed while it forms), the
 BOS and retest marks, and the PD arrays in play (FVG blue, order blocks
-violet, demand green, supply red, dashed). The strategy's settings are under
+violet, demand green, supply red, dashed). With *SBT history* (on the chart's header, on by default) the AI chart
+also shows the strategy run over every candle it has loaded, and again over
+older ones as the chart is moved into the past: where each past setup
+entered (BUY or SELL), how it ended (TP at Level 3 with its R, or SL at
+−1R, joined by a dashed line; open ones with their target and stop), the
+paper account's own trades on the market (entry and exit, with the profit),
+and a line with the totals (entries, targets, stops, win rate, R). This is a
+record of the rules on past candles, computed from closed candles in order
+as they would have been seen, never traded, and not a forecast. The AI Desk
+gets the totals as context. The strategy's settings are under
 *Settings → Strategy: SBT Model 1* (`[sbt]` in the file: `ai_confirm`,
 `require_pd_array`, `zone=wick|body`, `swing_strength`, `stop_buffer_atr`,
 `pd_distance_atr`, `max_wait_candles`).

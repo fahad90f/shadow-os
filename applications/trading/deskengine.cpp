@@ -841,6 +841,13 @@ void DeskEngine::startAnswer(qint64 question, bool deep, const QString &market, 
         else
             strategy.insert(QStringLiteral("setup"), QJsonObject::fromVariantMap(current));
         strategy.insert(QStringLiteral("watching"), QJsonObject::fromVariantMap(sbt.value(QStringLiteral("watching")).toMap()));
+        // How the strategy's past entries on the loaded candles ended (by its rules, not traded).
+        const QVariantMap history = m_engine->sbtHistory();
+        QJsonObject past = QJsonObject::fromVariantMap(history.value(QStringLiteral("stats")).toMap());
+        past.insert(QStringLiteral("candles"), history.value(QStringLiteral("candles")).toInt());
+        past.insert(QStringLiteral("note"), QStringLiteral("the strategy's rules applied to the candles loaded; "
+                                                           "a record of the past, not a forecast"));
+        strategy.insert(QStringLiteral("history"), past);
         context.insert(QStringLiteral("strategy"), strategy);
     } else if (!market.isEmpty()) {
         context.insert(QStringLiteral("strategy"),

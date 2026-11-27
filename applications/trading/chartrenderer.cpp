@@ -254,6 +254,21 @@ Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &ca
     painter->save();
     painter->setClipRect(priceArea.adjusted(0, -metrics.height(), 0, metrics.height()));
     painter->setRenderHint(QPainter::Antialiasing, true);
+    // Labels are kept inside the price area and moved off the ones already
+    // drawn (several marks on neighbouring candles would print over each other).
+    std::vector<QRectF> placed;
+    auto placeLabel = [&](QRectF box, double shift) {
+        box.moveLeft(std::clamp(box.left(), priceArea.left() + 1, std::max(priceArea.left() + 1, priceArea.right() - box.width() - 1)));
+        for (int attempt = 0; attempt < 6; ++attempt) {
+            const bool clash = std::any_of(placed.begin(), placed.end(),
+                                           [&](const QRectF &other) { return other.intersects(box); });
+            if (!clash)
+                break;
+            box.translate(0, shift);
+        }
+        placed.push_back(box);
+        return box;
+    };
     for (const Shape &shape : overlay) {
         if (shape.kind == Shape::Zone)
             continue;
@@ -265,8 +280,10 @@ Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &ca
             painter->drawLine(QPointF(x0, y), QPointF(x1, y));
             if (!shape.label.isEmpty()) {
                 painter->setPen(shape.color);
-                painter->drawText(QRectF(x0 + 2, y - metrics.height() - 1, 220, metrics.height()),
-                                  Qt::AlignLeft | Qt::AlignVCenter, shape.label);
+                const double width = metrics.horizontalAdvance(shape.label) + 4;
+                const QRectF labelBox = placeLabel(QRectF(x0 + 2, y - metrics.height() - 1, width, metrics.height()),
+                                               -(metrics.height() + 1));
+                painter->drawText(labelBox, Qt::AlignLeft | Qt::AlignVCenter, shape.label);
             }
         } else {
             // A small diamond on the candle, with its label above; none for a
@@ -284,8 +301,11 @@ Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &ca
             painter->setBrush(Qt::NoBrush);
             if (!shape.label.isEmpty()) {
                 painter->setPen(shape.color);
-                painter->drawText(QRectF(x - 60, y - r - metrics.height() - 1, 120, metrics.height()),
-                                  Qt::AlignHCenter | Qt::AlignBottom, shape.label);
+                const double top = shape.below ? y + r + 1 : y - r - metrics.height() - 1;
+                const double width = metrics.horizontalAdvance(shape.label) + 4;
+                const QRectF labelBox = placeLabel(QRectF(x - width / 2, top, width, metrics.height()),
+                                               shape.below ? metrics.height() + 1 : -(metrics.height() + 1));
+                painter->drawText(labelBox, Qt::AlignCenter, shape.label);
             }
         }
     }
@@ -651,6 +671,7 @@ void ChartItem::paint(QPainter *painter)
         shape.color = m.value(QStringLiteral("color")).value<QColor>();
         shape.label = m.value(QStringLiteral("label")).toString();
         shape.dashed = m.value(QStringLiteral("dashed")).toBool();
+        shape.below = m.value(QStringLiteral("below")).toBool();
         if (shape.top > 0 && shape.from > 0)
             overlay.push_back(shape);
     }

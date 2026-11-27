@@ -79,6 +79,10 @@ class TradingEngine : public QObject
     // SBT Model 1 on the selected market: setups, PD arrays, the structure watched.
     Q_PROPERTY(QVariantMap sbt READ sbt NOTIFY signalChanged)
     Q_PROPERTY(QVariantMap sbtSettings READ sbtSettings NOTIFY settingsChanged)
+    // SBT Model 1 run over every candle the chart has loaded: where its
+    // setups entered and how they ended, by the rules (never traded), plus the
+    // paper account's own trades on this market.
+    Q_PROPERTY(QVariantMap sbtHistory READ sbtHistory NOTIFY sbtHistoryChanged)
     Q_PROPERTY(QVariantMap signal READ signal NOTIFY signalChanged)
     Q_PROPERTY(QVariantList analysts READ analysts NOTIFY analystsChanged)
     // The NVIDIA key: {hasKey, hint, source}. Never the key itself.
@@ -207,6 +211,7 @@ public:
     Q_INVOKABLE bool analyzeNow();
     QVariantMap sbt() const;
     QVariantMap sbtSettings() const;
+    QVariantMap sbtHistory() const;
     Q_INVOKABLE bool setSbtSetting(const QString &name, const QVariant &value);
     // Place the trade of the current signal on the paper account, through the
     // risk rules. "" on success, else why not.
@@ -266,6 +271,7 @@ public:
 
 Q_SIGNALS:
     void marketChanged();
+    void sbtHistoryChanged();
     void selectionChanged();
     void chartChanged();
     // Another market or interval is on the chart: its view starts over.
@@ -325,6 +331,8 @@ private:
     QVariantMap setupMap(const Trading::Sbt::Setup &setup) const;
     QJsonObject setupJson(const Trading::Sbt::Setup &setup) const;
     void refreshSignal();
+    void updateSbtHistory();
+    QVariantMap buildSbtHistory() const;
     QString execute(const Trading::Signal &signal, const Trading::RiskDecision &decision);
     Trading::AccountView accountView(const QString &symbol, qint64 nowMs) const;
     void afterAccountChange(bool tradeClosed);
@@ -407,6 +415,13 @@ private:
     QString m_lastDecisionFor;        // the setup m_lastSignal / m_lastDecision are about
     qint64 m_lastSignalAt = 0;
     QString m_sbtShown;               // what the window last got of the current setup
+    // The same strategy over the chart's whole history (shown, never traded).
+    Trading::Sbt::Engine m_sbtHistory;
+    QString m_sbtHistoryKey;
+    long long m_sbtHistoryFirst = 0;  // the chart's first candle when it was read
+    QString m_sbtHistoryShown;
+    mutable QVariantMap m_sbtHistoryCache;
+    mutable bool m_sbtHistoryDirty = true;
 
     // account
     Trading::PaperAccount m_account;
