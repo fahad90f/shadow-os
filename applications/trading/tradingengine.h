@@ -3,6 +3,7 @@
 
 #include "core/paper.h"
 #include "core/risk.h"
+#include "core/sbt.h"
 #include "core/signal.h"
 #include "marketdata.h"
 #include "marketstream.h"
@@ -24,9 +25,11 @@ class QNetworkAccessManager;
 class QTimer;
 class TradingConfig;
 
-// Shadow Trading's engine: live prices in, an analysis by every connected
-// model plus the rule-based analyst, one consensus signal, the risk rules,
-// and the paper account that the orders go to. Exposed to QML as "trading".
+// Shadow Trading's engine: live prices in, the trader's strategy (SBT Model 1,
+// core/sbt.h) finding setups in them, the AI team reviewing each setup
+// against the strategy's rules, the risk rules, and the paper account that
+// the orders go to. Exposed to QML as "trading". The models do not look for
+// trades of their own: every trade comes from the strategy.
 //
 // Everything shown comes from here and is real: prices from the exchange's
 // public API, verdicts from the models that actually answered, statistics
@@ -73,6 +76,9 @@ class TradingEngine : public QObject
     Q_PROPERTY(QVariantMap readings READ readings NOTIFY chartChanged)
 
     Q_PROPERTY(bool analyzing READ analyzing NOTIFY signalChanged)
+    // SBT Model 1 on the selected market: setups, PD arrays, the structure watched.
+    Q_PROPERTY(QVariantMap sbt READ sbt NOTIFY signalChanged)
+    Q_PROPERTY(QVariantMap sbtSettings READ sbtSettings NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap signal READ signal NOTIFY signalChanged)
     Q_PROPERTY(QVariantList analysts READ analysts NOTIFY analystsChanged)
     // The NVIDIA key: {hasKey, hint, source}. Never the key itself.
@@ -196,7 +202,12 @@ public:
     // Run the analysts on the selected market now. False (with a reason in
     // the activity log) when there is not enough price history yet or an
     // analysis is already running.
+    // Ask the AI team to review the current SBT setup; false when there is
+    // none in play (or a review is running).
     Q_INVOKABLE bool analyzeNow();
+    QVariantMap sbt() const;
+    QVariantMap sbtSettings() const;
+    Q_INVOKABLE bool setSbtSetting(const QString &name, const QVariant &value);
     // Place the trade of the current signal on the paper account, through the
     // risk rules. "" on success, else why not.
     Q_INVOKABLE QString placeSuggestedTrade();
@@ -296,6 +307,24 @@ private:
     void applyReview(const Trading::Verdict &final);
     void finishAnalysis();
     void publishProvisional();
+    // SBT Model 1 (tradingengine_sbt.cpp).
+    struct Review { bool running = false; bool done = false; bool confirmed = false; Trading::Signal result; qint64 time = 0; };
+    void feedSbt();
+    void handleSbt(const std::vector<Trading::Sbt::Event> &events);
+    void onSbtEntry(const Trading::Sbt::Setup &setup);
+    void executeSbt(const QString &id);
+    bool startReview(const QString &id);
+    bool aiAvailable() const;
+    const Trading::Sbt::Setup *sbtSetup(const QString &id) const;
+    const Trading::Sbt::Setup *currentSetup() const;
+    const Trading::Sbt::Setup *reviewable() const;
+    // rulesOnly: the strategy as the one voter, whatever the team said.
+    Trading::Signal signalFor(const Trading::Sbt::Setup &setup, bool rulesOnly = false) const;
+    QString sbtSignature() const;
+    bool sbtSettingsDiffer() const;
+    QVariantMap setupMap(const Trading::Sbt::Setup &setup) const;
+    QJsonObject setupJson(const Trading::Sbt::Setup &setup) const;
+    void refreshSignal();
     QString execute(const Trading::Signal &signal, const Trading::RiskDecision &decision);
     Trading::AccountView accountView(const QString &symbol, qint64 nowMs) const;
     void afterAccountChange(bool tradeClosed);
@@ -365,6 +394,19 @@ private:
     QVariantMap m_signal;
     struct AnalystState { QString state; QString detail; qint64 ms = 0; };
     QHash<QString, AnalystState> m_analystState;
+
+    // SBT Model 1
+    Trading::Sbt::Engine m_sbt;
+    QString m_sbtKey;                 // "SYMBOL:interval" the engine has read
+    QHash<QString, Review> m_reviews; // by setup id
+    QString m_reviewId;               // the setup the running review is about
+    QSet<QString> m_pendingEntries;   // entries that wait for the team's review
+    QSet<QString> m_traded;           // setups whose entry was handled (never twice)
+    QSet<QString> m_placed;           // setups that went on the paper account
+    QHash<QString, QString> m_outcomes;
+    QString m_lastDecisionFor;        // the setup m_lastSignal / m_lastDecision are about
+    qint64 m_lastSignalAt = 0;
+    QString m_sbtShown;               // what the window last got of the current setup
 
     // account
     Trading::PaperAccount m_account;

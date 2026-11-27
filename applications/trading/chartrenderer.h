@@ -8,6 +8,7 @@
 #include <QFont>
 #include <QPointF>
 #include <QQuickPaintedItem>
+#include <QVariantList>
 #include <QVariantMap>
 #include <QRectF>
 #include <QString>
@@ -43,6 +44,22 @@ struct Levels
     QString entryLabel; // on the entry line; empty = "Entry"
 };
 
+// Drawn over the candles at times of the series: a strategy's zones, levels
+// and marks (the SBT setup on the chart).
+struct Shape
+{
+    enum Kind { Zone, Line, Mark };
+    Kind kind = Line;
+    double top = 0;      // a zone's top; a line's or a mark's price
+    double bottom = 0;   // a zone's bottom
+    long long from = 0;  // open time of the first candle it covers (or of the mark's candle)
+    long long to = 0;    // open time of the last candle it covers; 0 = to the right edge
+    QColor color;
+    QString label;
+    bool dashed = false;
+};
+using Overlay = std::vector<Shape>;
+
 // Which part of the series is drawn, and what the pointer is over.
 struct View
 {
@@ -67,7 +84,7 @@ struct Geometry
 
 // Draw the part of 'candles' that 'view' selects into 'rect'.
 Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candles, const View &view,
-               const Levels &levels, const Palette &palette, const QFont &font);
+               const Levels &levels, const Palette &palette, const QFont &font, const Overlay &overlay = {});
 
 // A 960x540 PNG of the newest 120 candles with a title, on a dark background.
 QByteArray renderPng(const Trading::Candles &candles, const QString &title);
@@ -104,6 +121,9 @@ class ChartItem : public QQuickPaintedItem
     Q_PROPERTY(QColor bandColor MEMBER m_band NOTIFY appearanceChanged)
     Q_PROPERTY(QColor entryColor MEMBER m_entryColor NOTIFY appearanceChanged)
     Q_PROPERTY(QFont font MEMBER m_font NOTIFY appearanceChanged)
+    // Shapes over the candles: [{kind: "zone"|"line"|"mark", top, bottom, price,
+    // from, to (ms, 0 = now), color, label, dashed}].
+    Q_PROPERTY(QVariantList overlay MEMBER m_overlay NOTIFY appearanceChanged)
 
 public:
     explicit ChartItem(QQuickItem *parent = nullptr);
@@ -166,4 +186,5 @@ private:
     QString m_entryLabel;
     QColor m_background, m_grid, m_text, m_up, m_down, m_fast, m_slow, m_band, m_entryColor;
     QFont m_font;
+    QVariantList m_overlay;
 };

@@ -21,10 +21,12 @@ NxPage {
     maxContentWidth: 1100
     actions: NxButton {
         kind: "primary"
-        text: qsTr("Analyze now")
+        text: qsTr("Review setup now")
         iconName: "refresh"
         busy: trading.analyzing
-        enabled: !trading.analyzing && page.readings.taValid === true
+        // Only a setup of SBT Model 1 that is still in play can be reviewed.
+        enabled: !trading.analyzing && trading.sbt.current.id !== undefined
+                 && ["armed", "triggered", "entered"].indexOf(trading.sbt.current.status) >= 0
         onClicked: trading.analyzeNow()
     }
 
@@ -35,16 +37,16 @@ NxPage {
         Layout.preferredHeight: 200
         visible: !page.ready
         icon: "radar"
-        title: trading.analyzing ? qsTr("Analyzing…") : qsTr("No analysis yet")
+        title: trading.analyzing ? qsTr("Reviewing the setup…") : qsTr("No setup yet")
         message: page.readings.taValid === true
-            ? qsTr("The analysts are asked each time a candle closes, or when you choose Analyze now.")
-            : qsTr("Waiting for 60 closed candles of price history.")
+            ? qsTr("Trades come from SBT Model 1. The analysts review each setup it finds against its rules, as soon as the setup appears, or when you choose Review setup now.")
+            : qsTr("Waiting for price history.")
     }
 
     NxSection {
         visible: page.ready
-        title: qsTr("Consensus")
-        description: qsTr("Confidence is the agreeing analysts' confidence minus the opposing analysts', divided by everyone who answered. It measures agreement, not the chance of profit.")
+        title: qsTr("The team's review of the SBT setup")
+        description: qsTr("Each analyst confirms the setup (its direction) or rejects it (hold). Confidence is the confirming analysts' confidence minus the others', divided by everyone who answered. It measures agreement, not the chance of profit.")
         NxRow {
             icon: page.signalData.action === "buy" ? "arrow-up" : page.signalData.action === "sell" ? "arrow-down" : "pause"
             iconColor: words.actionColor(page.signalData.action || "hold")

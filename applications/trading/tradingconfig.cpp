@@ -335,6 +335,16 @@ void TradingConfig::reload()
     // The file may ask for less than the window offers (a test does not wait minutes).
     m_modelTimeout = int(clampOr(number("nvidia/timeout_seconds", 180), 2, kTimeoutMax, 180));
     m_modelParallel = int(clampOr(number("nvidia/parallel", 6), 1, 24, 6));
+    // SBT Model 1, the strategy trades come from.
+    const Trading::Sbt::Settings sd;
+    m_sbt = sd;
+    m_sbt.swingStrength = int(clampOr(number("sbt/swing_strength", sd.swingStrength), 1, 5, sd.swingStrength));
+    m_sbt.zoneBody = ini.value(QStringLiteral("sbt/zone")).toString().trimmed().toLower() == QLatin1String("body");
+    m_sbt.stopBufferAtr = clampOr(number("sbt/stop_buffer_atr", sd.stopBufferAtr), 0, 2, sd.stopBufferAtr);
+    m_sbt.requirePdArray = ini.value(QStringLiteral("sbt/require_pd_array"), true).toBool();
+    m_sbt.pdDistanceAtr = clampOr(number("sbt/pd_distance_atr", sd.pdDistanceAtr), 0.2, 5, sd.pdDistanceAtr);
+    m_sbt.maxArmedCandles = int(clampOr(number("sbt/max_wait_candles", sd.maxArmedCandles), 10, 1000, sd.maxArmedCandles));
+    m_sbtAiConfirm = ini.value(QStringLiteral("sbt/ai_confirm"), true).toBool();
     m_risk = d;
     m_risk.riskPerTradePct = clampOr(number("risk/risk_per_trade_pct", d.riskPerTradePct), 0.1, 5, d.riskPerTradePct);
     m_risk.maxDailyLossPct = clampOr(number("risk/max_daily_loss_pct", d.maxDailyLossPct), 0.5, 20, d.maxDailyLossPct);
@@ -688,6 +698,44 @@ QString TradingConfig::setDeskModel(const QString &which, const QString &model)
     }
     Q_EMIT changed();
     return {};
+}
+
+Trading::Sbt::Settings TradingConfig::sbt() const
+{
+    Trading::Sbt::Settings s = m_sbt;
+    s.minRewardRisk = m_risk.minRewardRisk; // one minimum for the whole desk
+    return s;
+}
+
+bool TradingConfig::setSbt(const QString &name, const QVariant &value)
+{
+    if (name == QLatin1String("ai_confirm") || name == QLatin1String("require_pd_array")) {
+        store(QStringLiteral("sbt/") + name, value.toBool());
+    } else if (name == QLatin1String("zone")) {
+        const QString zone = value.toString();
+        if (zone != QLatin1String("wick") && zone != QLatin1String("body"))
+            return false;
+        store(QStringLiteral("sbt/zone"), zone);
+    } else {
+        struct Range { const char *name; double low; double high; };
+        static const Range ranges[] = {{"swing_strength", 1, 5}, {"stop_buffer_atr", 0, 2},
+                                       {"pd_distance_atr", 0.2, 5}, {"max_wait_candles", 10, 1000}};
+        bool known = false;
+        for (const Range &r : ranges) {
+            if (name != QLatin1String(r.name))
+                continue;
+            const double v = value.toDouble();
+            if (!std::isfinite(v) || v < r.low || v > r.high)
+                return false;
+            store(QStringLiteral("sbt/") + name, v);
+            known = true;
+        }
+        if (!known)
+            return false;
+    }
+    reload();
+    Q_EMIT changed();
+    return true;
 }
 
 void TradingConfig::setDeskFollowChart(bool on)

@@ -537,24 +537,33 @@ QString DeskEngine::liveFacts(const Reading &r) const
                                  .arg(rd.value(QStringLiteral("trend")).toString(),
                                       rd.value(QStringLiteral("structureTrend"), tr("not read yet")).toString()));
         } else if (fact == "signal") {
-            const QVariantMap s = m_engine->signal();
-            const QVariantMap forming = s.value(QStringLiteral("provisional")).toMap();
-            if (m_engine->analyzing() && !forming.isEmpty())
-                lines.append(tr("The analysis team is working: %1 of %2 have answered, leaning %3 so far.")
-                                 .arg(forming.value(QStringLiteral("answered")).toInt())
-                                 .arg(forming.value(QStringLiteral("asked")).toInt())
-                                 .arg(forming.value(QStringLiteral("leaning")).toString().toUpper()));
-            else if (s.value(QStringLiteral("state")).toString() == QLatin1String("ready")
-                     && s.value(QStringLiteral("symbol")).toString() == market) {
-                const int minutes = int((nowMs() - qint64(s.value(QStringLiteral("time")).toDouble())) / 60000);
-                lines.append(tr("The team's last call on %1 %2, %3 min ago: %4, confidence %5 (%6 of %7 agree).")
-                                 .arg(name, s.value(QStringLiteral("interval")).toString()).arg(minutes)
-                                 .arg(s.value(QStringLiteral("action")).toString().toUpper())
-                                 .arg(s.value(QStringLiteral("confidence")).toDouble(), 0, 'f', 1)
-                                 .arg(s.value(QStringLiteral("agreeing")).toInt())
-                                 .arg(s.value(QStringLiteral("voters")).toInt()));
-            } else
-                lines.append(tr("The analysis team has made no call on %1 yet.").arg(name));
+            // Trades come from SBT Model 1: what it shows on this market.
+            if (!onChart) {
+                lines.append(tr("SBT Model 1 runs on the chart's market; %1 is not on the chart.").arg(name));
+                continue;
+            }
+            const QVariantMap current = m_engine->sbt().value(QStringLiteral("current")).toMap();
+            if (current.isEmpty()) {
+                lines.append(tr("SBT Model 1 on %1 %2: no setup yet; it is watching for a 1-2-3 with a break of "
+                                "structure.").arg(name, m_engine->interval()));
+                continue;
+            }
+            const QVariantMap zone = current.value(QStringLiteral("zone")).toMap();
+            const QVariantMap review = current.value(QStringLiteral("review")).toMap();
+            const QString status = current.value(QStringLiteral("status")).toString();
+            lines.append(tr("SBT Model 1 on %1 %2: %3 setup, %4. Level 1 %5, Level 2 zone %6 – %7, Level 3 %8.")
+                             .arg(name, m_engine->interval(), current.value(QStringLiteral("direction")).toString(), status)
+                             .arg(price(current.value(QStringLiteral("level1")).toMap().value(QStringLiteral("price")).toDouble()),
+                                  price(zone.value(QStringLiteral("bottom")).toDouble()),
+                                  price(zone.value(QStringLiteral("top")).toDouble()),
+                                  price(current.value(QStringLiteral("target")).toDouble())));
+            if (review.value(QStringLiteral("done")).toBool())
+                lines.append(review.value(QStringLiteral("confirmed")).toBool()
+                                 ? tr("The AI team confirmed it (%1 of %2).").arg(review.value(QStringLiteral("agreeing")).toInt())
+                                       .arg(review.value(QStringLiteral("voters")).toInt())
+                                 : tr("The AI team did not confirm it."));
+            else if (review.value(QStringLiteral("running")).toBool())
+                lines.append(tr("The AI team is reviewing it now."));
         } else if (fact == "position") {
             bool any = false;
             const QVariantList open = m_engine->positions();
@@ -723,6 +732,12 @@ QString DeskEngine::answerSystem() const
         "team concluded (\"team\"). When a claim of the trader disagrees with the live readings, say so plainly.\n"
         "- This is a paper-trading desk. Give a clear view: the bias, the case for and against, where the idea is "
         "wrong (invalidation), and when a trade is discussed: entry, stop, target and reward/risk. Promise nothing.\n"
+        "- The desk trades only by the trader's own strategy, SBT Model 1: a proper 1-2-3, a break of structure "
+        "(a close beyond Level 1), the Level 2 zone (the lowest bearish candle at 2; bearish: the highest bullish "
+        "one), a retest that does not close through the zone, entry at the next candle's open, target Level 3, with "
+        "PD arrays (FVG, order block, demand/supply) as confirmation. Neither you nor the other models trade on "
+        "your own view. Judge trade ideas in the strategy's terms, and say what it shows now (\"strategy\" in the "
+        "context): a setup in play, its status, its levels, or that there is none.\n"
         "- Be concise: at most 170 words, short paragraphs or bullets. Answer in the language the trader writes in "
         "(they may write Roman Urdu).\n\n"
         "After the answer, as the very last thing, add the desk's state in exactly this form:\n"
@@ -815,6 +830,23 @@ void DeskEngine::startAnswer(qint64 question, bool deep, const QString &market, 
     }
     if (!others.isEmpty())
         context.insert(QStringLiteral("other_markets_discussed"), others);
+    // The strategy on the chart's market: the setup in play, or what it watches.
+    if (!market.isEmpty() && market == m_engine->symbol()) {
+        const QVariantMap sbt = m_engine->sbt();
+        QJsonObject strategy{{QStringLiteral("name"), QStringLiteral("SBT Model 1")},
+                             {QStringLiteral("interval"), m_engine->interval()}};
+        const QVariantMap current = sbt.value(QStringLiteral("current")).toMap();
+        if (current.isEmpty())
+            strategy.insert(QStringLiteral("setup"), QStringLiteral("none yet: watching for a 1-2-3 with a break of structure"));
+        else
+            strategy.insert(QStringLiteral("setup"), QJsonObject::fromVariantMap(current));
+        strategy.insert(QStringLiteral("watching"), QJsonObject::fromVariantMap(sbt.value(QStringLiteral("watching")).toMap()));
+        context.insert(QStringLiteral("strategy"), strategy);
+    } else if (!market.isEmpty()) {
+        context.insert(QStringLiteral("strategy"),
+                       QJsonObject{{QStringLiteral("name"), QStringLiteral("SBT Model 1")},
+                                   {QStringLiteral("setup"), QStringLiteral("not read: the strategy runs on the chart's market")}});
+    }
 
     QJsonArray messages{QJsonObject{{QStringLiteral("role"), QStringLiteral("system")},
                                     {QStringLiteral("content"), answerSystem()}}};
@@ -853,25 +885,25 @@ void DeskEngine::maybeStartTeam(const QString &market)
 {
     if (market.isEmpty() || market != m_engine->symbol() || !m_hasKey)
         return;
-    if (m_engine->analyzing()) {
+    // The team reviews the strategy's setup: once per setup is enough.
+    const QVariantMap current = m_engine->sbt().value(QStringLiteral("current")).toMap();
+    if (current.isEmpty())
+        return; // nothing in play: the models do not trade on their own view
+    const QVariantMap review = current.value(QStringLiteral("review")).toMap();
+    if (review.value(QStringLiteral("done")).toBool())
+        return;
+    if (m_engine->analyzing() || review.value(QStringLiteral("running")).toBool()) {
         m_teamAsked = true;
         m_teamMarket = market;
         return;
     }
-    const QVariantMap s = m_engine->signal();
-    const qint64 age = nowMs() - qint64(s.value(QStringLiteral("time")).toDouble());
-    const bool fresh = s.value(QStringLiteral("state")).toString() == QLatin1String("ready")
-        && s.value(QStringLiteral("symbol")).toString() == market
-        && s.value(QStringLiteral("interval")).toString() == m_engine->interval()
-        && age < 2 * TradingConfig::intervalMs(m_engine->interval());
-    if (fresh)
-        return;
     if (m_engine->analyzeNow()) {
         m_teamAsked = true;
         m_teamMarket = market;
         m_teamSince = nowMs();
-        note(QStringLiteral("team"), tr("Asked the analysis team for a fresh call on %1 in the background; it will "
-                                        "appear here when it is in.").arg(TradingEngine::displayName(market)),
+        note(QStringLiteral("team"), tr("Asked the analysis team to review the SBT Model 1 setup on %1 in the "
+                                        "background; its verdict will appear here when it is in.")
+                                         .arg(TradingEngine::displayName(market)),
              market);
         taskChanged();
     }

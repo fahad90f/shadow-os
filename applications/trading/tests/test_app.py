@@ -194,21 +194,26 @@ class AppTest(unittest.TestCase):
         self.assertEqual(names["google/gemma-3-4b-it"][0], "Gemma 3 4B")
 
     def test_a_key_of_another_company_is_never_sent_to_nvidia(self):
-        self.serve({"*": BUY})
+        # A setup is in play, so a key that counted would have the team review it.
+        self.serve({"*": BUY, "market": self.BULL})
         for foreign in ("sk-ant-api03-0000000000000000000000000", "sk-proj-000000000000000000000000000",
                         "AIzaSy00000000000000000000000000000000"):
             self.key = foreign
             config = self.dump("config")
             self.assertFalse(config["key"]["hasKey"], foreign[:6])
             signal = self.dump("signal")["signal"]
-            self.assertEqual([v["source"] for v in signal["verdicts"]], ["rules"])
+            self.assertEqual(signal["sbt"]["status"], "entered")
+            # No key: nobody reviewed it, the strategy's rules are the only voice.
+            self.assertEqual(signal["verdicts"], [])
+            self.assertFalse(signal["sbt"]["review"]["done"])
+            self.assertEqual((signal["voters"], signal["lead"]), (1, "sbt"))
             self.assertNotIn(foreign, self.last_output)
         self.assertEqual(self.requests("chat"), [])
         # The catalog is public and was fetched without any key.
         self.assertTrue(all(e["auth"] == "missing" for e in self.requests("models")))
 
     def test_a_saved_key_file_is_used_and_made_private(self):
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})
         key_dir = os.path.join(self.conf_dir, "trading")
         os.makedirs(key_dir)
         path = os.path.join(key_dir, "nvidia.key")
@@ -219,7 +224,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(config["key"]["source"], "saved")
         self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
         signal = self.dump("signal")["signal"]
-        self.assertEqual(signal["voters"], 15)
+        self.assertEqual(signal["voters"], 14)  # every model reviewed the setup with the saved key
+        self.assertTrue(signal["sbt"]["review"]["done"])
         self.assertTrue(all(c["auth"] == "ok" for c in self.requests("chat", review=None)))
 
     def test_the_assistants_nvidia_key_is_shared(self):
@@ -247,7 +253,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual((config["symbol"], config["interval"]), ("BTCUSDT", "15m"))
 
     def test_the_panel_can_be_chosen_in_the_settings(self):
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})
         self.key = TEST_KEY
         self.settings("[panel]\nanalysis=moonshotai/kimi-k3.1-pro, not a model, ../../etc/passwd\n"
                       "reasoning=\nvision=nvidia/cosmos-reason2-8b, moonshotai/kimi-k3.1-pro\ncompute=\n")
@@ -255,19 +261,23 @@ class AppTest(unittest.TestCase):
         self.assertEqual([(m["model"], m["role"]) for m in config["panel"]],
                          [("moonshotai/kimi-k3.1-pro", "analysis"), ("nvidia/cosmos-reason2-8b", "vision")])
         signal = self.dump("signal")["signal"]
-        self.assertEqual(set(self.verdicts(signal)), {"rules", "moonshotai/kimi-k3.1-pro", "nvidia/cosmos-reason2-8b"})
+        # The two models of the chosen panel reviewed the setup, nobody else.
+        self.assertEqual(set(self.verdicts(signal)), {"moonshotai/kimi-k3.1-pro", "nvidia/cosmos-reason2-8b"})
+        self.assertEqual(sorted(c["model"] for c in self.requests("chat")),
+                         ["moonshotai/kimi-k3.1-pro", "nvidia/cosmos-reason2-8b"])
         self.assertEqual(self.requests("chat", "moonshotai/kimi-k3.1-pro")[0]["images"], [])
         self.assertEqual(self.requests("chat", "nvidia/cosmos-reason2-8b")[0]["images"], ["960x540"])
 
     def test_a_model_switched_off_is_not_asked(self):
         off = ["z-ai/glm-5.3-flash", "nvidia/nemotron-3.5-bolt-e4b"]
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})
         self.key = TEST_KEY
         self.settings("[panel]\noff=" + ", ".join(off) + "\n")
         signal = self.dump("signal")["signal"]
         asked = sorted(c["model"] for c in self.requests("chat"))
         self.assertEqual(asked, sorted(m for m in PANEL_MODELS if m not in off))
-        self.assertEqual(signal["voters"], 13)
+        self.assertEqual(signal["voters"], 12)
+        self.assertFalse(set(off) & set(self.verdicts(signal)))
 
     # ---- market ------------------------------------------------------------------
     def test_market_data_is_read(self):
@@ -410,11 +420,14 @@ class AppTest(unittest.TestCase):
 
     def test_a_stop_is_hit_by_the_stream_at_once(self):
         self.stream = True
-        out = self.act("analyze", {"*": BUY}, settings=AUTO, seconds=6,
-                       moves=[(4, {"*": BUY, "market": {"move_pct": -3}})])
+        # The setup's long is placed at the start; four seconds in the price
+        # falls 3 %, past its stop (about 1.9 % under the entry).
+        out = self.act("analyze", {"*": BUY, "market": self.BULL}, settings=AUTO, seconds=6,
+                       moves=[(4, {"*": BUY, "market": dict(self.BULL, move_pct=-3)})])
         trades = out["account"]["trades"]
         self.assertEqual(len(trades), 1, out["account"]["activity"])
         self.assertEqual(trades[0]["reason"], "stop_loss")
+        self.assertLess(trades[0]["exit"], trades[0]["entry"])
         self.assertEqual(out["account"]["positions"], [])
         self.assertTrue(out["market"]["streaming"])
         # Nobody asked for the newest candles in the meantime: the stream told.
@@ -513,7 +526,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(config["symbol"], "SOLUSDT")
 
     def test_what_cannot_be_removed_or_added(self):
-        out = self.act("analyze,remove:BTCUSDT", {"*": BUY}, settings=AUTO)
+        out = self.act("analyze,remove:BTCUSDT", {"*": BUY, "market": self.BULL}, settings=AUTO)
+        self.assertEqual(len(out["account"]["positions"]), 1)   # the setup's long on BTC/USDT
         self.assertIn("open position", out["actions"][1]["result"])
         self.assertEqual(len(out["market"]["watchlist"]), 5)
         self.settings("[market]\nwatchlist=BTCUSDT\n[engine]\nauto_analyze=false\n")
@@ -527,39 +541,55 @@ class AppTest(unittest.TestCase):
 
     # ---- the analysts ---------------------------------------------------------------
     def test_without_a_key_the_rules_decide_alone(self):
-        self.serve({"*": BUY})
+        # No key: SBT Model 1's rules are the one voice; no model is asked.
+        self.serve({"*": BUY, "market": self.BULL})
         signal = self.dump("signal")["signal"]
         self.assertEqual(signal["state"], "ready")
-        self.assertEqual([v["source"] for v in signal["verdicts"]], ["rules"])
-        self.assertEqual(signal["voters"], 1)
-        action, confidence = self.expected_consensus(signal)
-        self.assertEqual(signal["action"], action)
-        self.assertAlmostEqual(signal["confidence"], confidence, places=6)
+        self.assertEqual(signal["sbt"]["status"], "entered")
+        self.assertEqual(signal["verdicts"], [])
+        self.assertEqual((signal["voters"], signal["agreeing"], signal["lead"]), (1, 1, "sbt"))
+        self.assertEqual((signal["action"], signal["confidence"]), ("buy", 100))
+        # The levels are the strategy's: the stop below the zone, Level 3 the target.
+        self.assertAlmostEqual(signal["stop"], signal["sbt"]["stop"], places=6)
+        self.assertAlmostEqual(signal["takeProfit"], 106.5 * self.SCALE, delta=0.01)
+        self.assertTrue(signal["risk"]["allowed"], signal["risk"]["reason"])
+        self.assertTrue(signal["placeable"])        # auto trade is off: it waits to be placed by hand
+        self.assertEqual(self.requests("chat"), [])
+        # Asking for an analysis asks nobody: there is no model to review with.
+        out = self.dump("session", {"SHADOW_TRADING_SESSION_ACTIONS": "analyze"})
+        self.assertEqual(out["actions"], [{"action": "analyze", "result": "not started"}])
+        self.assertTrue(any("trades by its rules alone" in a["text"] for a in out["account"]["activity"]))
         self.assertEqual(self.requests("chat"), [])
 
     def test_every_model_is_asked_and_the_trade_is_placed(self):
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})
         self.key = TEST_KEY
         self.settings(AUTO)
         out = self.dump("signal")
         signal = out["signal"]
+        sbt = signal["sbt"]
         verdicts = self.verdicts(signal)
-        self.assertEqual(set(verdicts), {"rules", *PANEL_MODELS})
+        # The panel's models reviewed the setup; the strategy itself is not a verdict.
+        self.assertEqual(set(verdicts), set(PANEL_MODELS))
         for model in PANEL_MODELS:
             self.assertTrue(verdicts[model]["ok"], verdicts[model])
             self.assertEqual((verdicts[model]["action"], verdicts[model]["confidence"]), ("buy", 85))
         for role, models in PANEL.items():
             for model in models:
                 self.assertEqual(verdicts[model]["role"], role)
-        self.assertEqual(signal["voters"], 15)
+        self.assertEqual(signal["voters"], 14)
         action, confidence = self.expected_consensus(signal)
         self.assertEqual((signal["action"], action), ("buy", "buy"))
         self.assertAlmostEqual(signal["confidence"], confidence, places=6)
         self.assertGreaterEqual(signal["confidence"], 60)
-        # Levels: the middle of what the agreeing analysts proposed.
-        agreeing = [v for v in signal["verdicts"] if v["ok"] and v["action"] == "buy" and v["stop"] > 0]
-        self.assertAlmostEqual(signal["stop"], statistics.median(v["stop"] for v in agreeing), places=4)
-        self.assertAlmostEqual(signal["takeProfit"], statistics.median(v["takeProfit"] for v in agreeing), places=4)
+        self.assertEqual((sbt["review"]["agreeing"], sbt["review"]["voters"]), (14, 14))
+        self.assertTrue(sbt["review"]["confirmed"])
+        # Levels: the strategy's, not what the models proposed (1 % and 2.5 % from the price).
+        self.assertAlmostEqual(signal["stop"], sbt["stop"], places=6)
+        self.assertAlmostEqual(signal["takeProfit"], 106.5 * self.SCALE, delta=0.01)
+        proposed = [v["stop"] for v in signal["verdicts"] if v["ok"] and v["stop"] > 0]
+        self.assertTrue(proposed)
+        self.assertNotAlmostEqual(signal["stop"], statistics.median(proposed), delta=100)
         self.assertLess(signal["stop"], signal["entry"])
         self.assertGreater(signal["takeProfit"], signal["entry"])
         self.assertTrue(signal["traded"], signal["outcome"])
@@ -568,13 +598,17 @@ class AppTest(unittest.TestCase):
         self.assertEqual(len(positions), 1)
         position = positions[0]
         self.assertEqual((position["symbol"], position["side"]), ("BTCUSDT", "buy"))
+        # The entry candle's open, filled 0.02 % worse as a market order is.
+        self.assertAlmostEqual(position["entry"], 101.6 * self.SCALE * 1.0002, delta=0.01)
         self.assertAlmostEqual(position["stop"], signal["stop"], places=6)
         self.assertAlmostEqual(position["takeProfit"], signal["takeProfit"], places=6)
-        # A 1 % stop would need the whole account to put 1 % at risk; with
-        # three positions allowed, one takes a third of it at most.
+        # A stop about 1.9 % away would need half the account to put 1 % at
+        # risk; with three positions allowed, one takes a third of it at most.
         self.assertAlmostEqual(position["entry"] * position["quantity"], 10000 / 3, delta=40)
         at_risk = (position["entry"] - position["stop"]) * position["quantity"]
-        self.assertAlmostEqual(at_risk, 100 / 3, delta=2)
+        stop_pct = (position["entry"] - position["stop"]) / position["entry"]
+        self.assertAlmostEqual(at_risk, 10000 / 3 * stop_pct, delta=2)
+        self.assertLess(at_risk, 100)                 # never more than the 1 % per trade
         self.assertTrue(signal["risk"]["reducedByBalance"])
         account = out["account"]["account"]
         self.assertLess(account["balance"], 10000)  # the opening fee
@@ -598,32 +632,36 @@ class AppTest(unittest.TestCase):
         for role, models in PANEL.items():
             self.assertEqual(self.requests("chat", models[0])[0]["skills"], briefs[role], role)
 
-        # The account survives a restart, and a second signal does not double the position.
+        # The account survives a restart, and the setup read again does not double the position:
+        # it is known as the one that was traded, and cannot be placed a second time.
         saved = os.path.join(self.data_dir, "paper.json")
         self.assertEqual(stat.S_IMODE(os.stat(saved).st_mode), 0o600)
         again = self.dump("signal")
-        self.assertEqual(len(again["account"]["positions"]), 1)
-        self.assertFalse(again["signal"]["traded"])
-        checks = {c["key"]: c for c in again["signal"]["risk"]["checks"]}
-        self.assertFalse(checks["positions"]["pass"])
-        self.assertIn("Already in a position", again["signal"]["outcome"])
+        self.assertEqual([p["id"] for p in again["account"]["positions"]], [position["id"]])
+        self.assertEqual(again["account"]["trades"], [])
+        self.assertTrue(again["signal"]["traded"])
+        self.assertFalse(again["signal"]["placeable"])
 
     def test_auto_trade_off_places_nothing(self):
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})
         self.key = TEST_KEY
         out = self.dump("signal")
+        self.assertTrue(out["signal"]["sbt"]["review"]["confirmed"])   # the team confirmed the entry
         self.assertEqual(out["signal"]["action"], "buy")
         self.assertTrue(out["signal"]["risk"]["allowed"])
         self.assertFalse(out["signal"]["traded"])
         self.assertTrue(out["signal"]["placeable"])
+        self.assertIn("Auto trade is off", out["signal"]["outcome"])
         self.assertEqual(out["account"]["positions"], [])
 
     def test_a_falling_market_is_sold_short(self):
-        self.serve({"*": SELL}, trend="down")
+        # A bearish 1-2-3 and its retest, the team confirming the sell.
+        self.serve({"*": SELL, "market": self.BEAR}, trend="down")
         self.key = TEST_KEY
         self.settings(AUTO)
         out = self.dump("signal")
         signal = out["signal"]
+        self.assertEqual(signal["sbt"]["direction"], "bearish")
         self.assertEqual(signal["action"], "sell")
         self.assertGreater(signal["stop"], signal["entry"])
         self.assertLess(signal["takeProfit"], signal["entry"])
@@ -631,14 +669,18 @@ class AppTest(unittest.TestCase):
         position = out["account"]["positions"][0]
         self.assertEqual(position["side"], "sell")
         self.assertGreater(position["stop"], position["entry"])
+        self.assertAlmostEqual(position["takeProfit"], (200 - 106.5) * self.SCALE, delta=0.01)
 
     def test_an_open_position_stays_on_show_when_the_next_analysis_says_hold(self):
-        # The trade is placed; then the analysts see nothing more and say hold.
-        # The signal is hold, but the position is still there for the chart
-        # and the panel, with its own entry, stop and target.
-        out = self.act("analyze,wait:3,analyze,select:ETHUSDT,select:BTCUSDT", {"*": BUY}, settings=AUTO,
-                       moves=[(2.5, {"*": HOLD})])
-        self.assertEqual(out["signal"]["state"], "none")          # another market was looked at in between
+        # The trade is placed; then the team is asked about the setup again
+        # and now says hold. That does not undo the trade: the position is
+        # still there for the chart and the panel, with its own entry, stop
+        # and target, also after another market was looked at in between.
+        plan = {"*": BUY, "market": self.BULL}
+        out = self.act("analyze,wait:3,analyze,select:ETHUSDT,select:BTCUSDT", plan, settings=AUTO,
+                       moves=[(2.5, dict(plan, **{"*": HOLD}))])
+        self.assertEqual(out["actions"][2]["result"], "")         # the second review did run
+        self.assertEqual(out["signal"]["symbol"], "BTCUSDT")
         positions = out["account"]["positions"]
         self.assertEqual(len(positions), 1)
         shown = out["account"]["position"]
@@ -647,11 +689,16 @@ class AppTest(unittest.TestCase):
         self.assertEqual((shown["entry"], shown["stop"], shown["takeProfit"]),
                          (positions[0]["entry"], positions[0]["stop"], positions[0]["takeProfit"]))
         said = [a["text"] for a in out["account"]["activity"]]
-        self.assertTrue(any("no trade" in text for text in said), said)   # the second analysis did say hold
+        self.assertTrue(any("not confirmed" in text for text in said), said)   # the second review did say hold
 
     def test_the_position_shown_is_the_selected_markets(self):
-        out = self.act("analyze,select:ETHUSDT", {"*": BUY}, settings=AUTO)
-        self.assertEqual(len(out["account"]["positions"]), 1)     # on BTC/USDT
+        # One position at most: ETH/USDT's own setup is refused for it, so
+        # nothing is open on the market that is on the chart.
+        out = self.act("analyze,select:ETHUSDT,wait:3", {"*": BUY, "market": self.BULL},
+                       settings=AUTO + "[risk]\nmax_open_positions=1\n")
+        positions = out["account"]["positions"]
+        self.assertEqual([p["symbol"] for p in positions], ["BTCUSDT"])
+        self.assertEqual(out["signal"]["symbol"], "ETHUSDT")
         self.assertEqual(out["account"]["position"], {})          # ETH/USDT is on the chart: nothing open there
 
     # ---- forex -------------------------------------------------------------------
@@ -783,24 +830,30 @@ class AppTest(unittest.TestCase):
     def test_a_trade_on_a_dollar_base_pair_is_counted_in_dollars(self):
         # USD/CHF on the dollar account: the quantity is dollars, and a profit
         # in francs is turned back into dollars at the price it is taken at.
-        plan = {"*": BUY}
+        plan = {"*": BUY, "market": self.BULL}
         settings = "[market]\nkind=forex\nforex_symbol=USDCHF\n" + AUTO
-        out = self.act("analyze", plan, settings, moves=[(4, dict(plan, market={"move_pct": 0.3}))], seconds=9)
+        out = self.act("analyze", plan, settings, moves=[(4, dict(plan, market=dict(self.BULL, move_pct=0.3)))],
+                       seconds=9)
         self.assertEqual(out["signal"]["symbol"], "USDCHF")
         position = out["account"]["positions"][0]
         self.assertEqual((position["symbol"], position["name"], position["side"]), ("USDCHF", "USD/CHF", "buy"))
+        # The setup's entry on USD/CHF, filled 0.02 % worse as a market order is.
+        self.assertAlmostEqual(position["entry"], 101.6 * 0.8311 / 100 * 1.0002, delta=2e-5)  # prices have 5 decimals
         # A third of the account at most, in dollars: the quantity itself.
         self.assertAlmostEqual(position["value"], position["quantity"], places=6)
         self.assertAlmostEqual(position["quantity"], 10000 / 3, delta=40)
-        # A one per cent stop on a third of the account: a third of a per cent of it is at risk, in dollars.
+        # The stop (about 1.9 % under the entry) on a third of the account: what
+        # is at risk, in dollars, is that much of the third, and less than the 1 % allowed.
         at_stop = (position["entry"] - position["stop"]) * position["quantity"] / position["stop"]
-        self.assertAlmostEqual(at_stop, 100 / 3, delta=1.5)
+        self.assertAlmostEqual(at_stop, 10000 / 3 * (position["entry"] - position["stop"]) / position["stop"], delta=1.5)
+        self.assertLess(at_stop, 100)
         self.assertTrue(out["signal"]["risk"]["reducedByBalance"])
         expected = (position["price"] - position["entry"]) * position["quantity"] / position["price"]
         self.assertAlmostEqual(position["pnl"], expected, places=6)
         self.assertGreater(position["pnl"], 0)
-        # And at the target.
-        out = self.act("wait:1", plan, settings, moves=[(1, dict(plan, market={"move_pct": 3.5}))], seconds=8)
+        # And at the target, Level 3, about 4.8 % above the entry.
+        out = self.act("wait:1", plan, settings, moves=[(1, dict(plan, market=dict(self.BULL, move_pct=6.0)))],
+                       seconds=8)
         self.assertEqual(out["account"]["positions"], [])
         trade = out["account"]["trades"][0]
         self.assertEqual(trade["reason"], "take_profit")
@@ -811,8 +864,8 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(out["account"]["account"]["balance"], 10000 + gross - fees, places=4)
 
     def test_switching_between_crypto_and_forex(self):
-        out = self.act("kind:forex,kind:forex,analyze,kind:crypto,close-all,kind:crypto,kind:metals", {"*": BUY},
-                       settings=AUTO)
+        out = self.act("kind:forex,kind:forex,analyze,kind:crypto,close-all,kind:crypto,kind:metals",
+                       {"*": BUY, "market": self.BULL}, settings=AUTO)
         results = [a["result"] for a in out["actions"]]
         self.assertEqual(results[:2], ["", ""])
         self.assertIn("Close the open positions first", results[3])    # a position on EUR/USD is open
@@ -834,7 +887,7 @@ class AppTest(unittest.TestCase):
     # ---- the analysis team -------------------------------------------------------
 
     def test_the_analysis_team_reads_from_six_seats_and_reviews_its_calls(self):
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})
         self.key = TEST_KEY
         out = self.dump("signal")
         signal = out["signal"]
@@ -867,10 +920,12 @@ class AppTest(unittest.TestCase):
             if model not in team:
                 self.assertEqual((verdicts[model]["seat"], verdicts[model]["reviewed"]), ("", False), model)
         self.assertEqual(signal["team"], {"members": 6, "buy": 6, "sell": 0, "hold": 0, "reviewed": 6, "changed": 0})
-        # Listed as the panel is: the fixed rules, then the team by seat, then the other roles.
-        self.assertEqual([v["source"] for v in signal["verdicts"]], ["rules", *PANEL_MODELS])
-        # A member still has one vote: fifteen analysts, as without the review.
-        self.assertEqual(signal["voters"], 15)
+        # Listed as the panel is: the team by seat, then the other roles.
+        self.assertEqual([v["source"] for v in signal["verdicts"]], PANEL_MODELS)
+        # A member still has one vote: fourteen models, as without the review.
+        self.assertEqual(signal["voters"], 14)
+        # Every question, first call and review alike, was about the setup.
+        self.assertTrue(all(c.get("sbt") == "bullish" for c in self.requests("chat", review=None)))
         said = [a["text"] for a in out["account"]["activity"] if a["text"].startswith("Analysis team")]
         self.assertEqual(said, ["Analysis team (6 analysts): 6 buy, 0 sell, 0 hold. "
                                 "Nobody changed its call in the team review."])
@@ -882,7 +937,7 @@ class AppTest(unittest.TestCase):
         team = PANEL["analysis"]
         # Two of the team call sell first; one of them is convinced by its teammates, one is not.
         plan = {"*": BUY, team[1]: dict(SELL, review=dict(BUY, confidence=70, reasoning="The structure seat is right.")),
-                team[4]: SELL}
+                team[4]: SELL, "market": self.BULL}
         self.serve(plan)
         self.key = TEST_KEY
         out = self.dump("signal")
@@ -906,11 +961,11 @@ class AppTest(unittest.TestCase):
         action, confidence = self.expected_consensus(signal)
         self.assertEqual((signal["action"], action), ("buy", "buy"))
         self.assertAlmostEqual(signal["confidence"], confidence, places=6)
-        # Thirteen models buy, one of the team still sells; the fixed rules are the fifteenth voice.
-        models = [v for v in signal["verdicts"] if v["source"] != "rules"]
-        self.assertEqual(sorted(v["action"] for v in models), ["buy"] * 13 + ["sell"])
-        self.assertEqual(signal["agreeing"] + signal["opposing"] + signal["holding"], 15)
-        self.assertEqual(signal["opposing"], 1)
+        # Thirteen models buy, one of the team still sells: fourteen voices, and the setup is confirmed.
+        self.assertEqual(sorted(v["action"] for v in signal["verdicts"]), ["buy"] * 13 + ["sell"])
+        self.assertEqual(signal["agreeing"] + signal["opposing"] + signal["holding"], 14)
+        self.assertEqual((signal["agreeing"], signal["opposing"]), (13, 1))
+        self.assertTrue(signal["sbt"]["review"]["confirmed"])
         said = [a["text"] for a in out["account"]["activity"] if a["text"].startswith("Analysis team")]
         self.assertEqual(said, ["Analysis team (6 analysts): 5 buy, 1 sell, 0 hold after the team review; "
                                 "1 changed its call."])
@@ -918,7 +973,7 @@ class AppTest(unittest.TestCase):
     def test_a_member_that_fails_in_the_review_keeps_its_first_call(self):
         team = PANEL["analysis"]
         plan = {"*": BUY, team[0]: dict(BUY, review={"status": 500}), team[2]: dict(BUY, review={"raw": "Agreed!"}),
-                team[3]: dict(BUY, review={"empty": True}), team[5]: {"status": 429}}
+                team[3]: dict(BUY, review={"empty": True}), team[5]: {"status": 429}, "market": self.BULL}
         self.serve(plan)
         self.key = TEST_KEY
         signal = self.dump("signal")["signal"]
@@ -934,7 +989,7 @@ class AppTest(unittest.TestCase):
         review = self.requests("chat", team[1], review=True)[0]
         self.assertEqual(len(review["teammates"]), 4)
         self.assertEqual(signal["team"], {"members": 5, "buy": 5, "sell": 0, "hold": 0, "reviewed": 2, "changed": 0})
-        self.assertEqual(signal["voters"], 14)
+        self.assertEqual(signal["voters"], 13)
         panel = {m["model"]: m for m in self.dump("config")["panel"]}
         self.assertNotEqual(panel[team[0]]["state"], "error")
 
@@ -955,7 +1010,7 @@ class AppTest(unittest.TestCase):
 
     def test_a_team_of_one_has_nobody_to_review_with_and_keeps_its_seat(self):
         team = PANEL["analysis"]
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})
         self.key = TEST_KEY
         self.settings("[panel]\noff=" + ", ".join(team[:2] + team[3:]) + "\n")
         self.assertTrue(self.dump("config")["teamReview"])
@@ -964,7 +1019,7 @@ class AppTest(unittest.TestCase):
         # Its seat is its place on the panel, not among the ones that are switched on.
         self.assertEqual(self.requests("chat", team[2])[0]["seat"], SEATS[2])
         self.assertEqual(signal["team"]["members"], 1)
-        self.assertEqual(signal["voters"], 10)
+        self.assertEqual(signal["voters"], 9)   # the one member and the eight models of the other roles
 
     # ---- slow and failing models -------------------------------------------------
 
@@ -974,7 +1029,8 @@ class AppTest(unittest.TestCase):
                 slow: dict(BUY, first={"delay": 5}),                         # no answer in time, then one
                 limited: dict(BUY, first={"status": 429, "retry_after": 1}),  # "too many requests", then an answer
                 broken: dict(BUY, first={"status": 503}),                     # a server error, then an answer
-                down: {"status": 500}}                                        # a server error both times
+                down: {"status": 500},                                        # a server error both times
+                "market": self.BULL}
         self.serve(plan)
         self.key = TEST_KEY
         self.settings("[nvidia]\ntimeout_seconds=3\n[engine]\nteam_review=false\n")
@@ -989,12 +1045,12 @@ class AppTest(unittest.TestCase):
         self.assertEqual(len(self.requests("chat", down)), 2)                 # asked twice, not more
         # The ones that answered at once were asked once.
         self.assertEqual(len(self.requests("chat", PANEL_MODELS[0])), 1)
-        self.assertEqual(signal["voters"], 14)
+        self.assertEqual(signal["voters"], 13)
         self.assertGreaterEqual(verdicts[slow]["seconds"], 3)                 # its time includes the first try
 
     def test_a_model_that_never_answers_is_left_out_after_two_tries(self):
         silent = PANEL_MODELS[9]
-        self.serve({"*": BUY, silent: dict(BUY, delay=6)})
+        self.serve({"*": BUY, silent: dict(BUY, delay=6), "market": self.BULL})
         self.key = TEST_KEY
         self.settings("[nvidia]\ntimeout_seconds=2\n[engine]\nteam_review=false\n")
         self.assertEqual(self.dump("config")["modelTimeout"], 2)
@@ -1003,35 +1059,56 @@ class AppTest(unittest.TestCase):
         self.assertFalse(verdict["ok"])
         self.assertEqual(verdict["error"], "No answer in 2 s, asked twice.")
         self.assertEqual(len(self.requests("chat", silent)), 2)
-        self.assertEqual(signal["voters"], 14)                                # the others decide without it
-        self.assertEqual(signal["action"], "buy")
+        self.assertEqual(signal["voters"], 13)                                # the others decide without it
+        self.assertEqual(signal["sbt"]["review"]["agreeing"], 13)
+        self.assertTrue(signal["sbt"]["review"]["confirmed"])
 
     def test_only_so_many_questions_are_with_the_service_at_a_time(self):
-        self.serve({"*": dict(BUY, delay=0.4)})
+        self.serve({"*": dict(BUY, delay=0.4), "market": self.BULL})
         self.key = TEST_KEY
         config = self.dump("config")
         self.assertEqual((config["modelTimeout"], config["modelParallel"]), (180, 6))
         self.settings("[nvidia]\nparallel=3\n")
         signal = self.dump("signal")["signal"]
-        self.assertEqual(signal["voters"], 15)                                # everybody still gets its turn
+        self.assertEqual(signal["voters"], 14)                                # everybody still gets its turn
         chats = self.requests("chat", review=None)
-        self.assertEqual(len(chats), 20)
+        self.assertEqual(len(chats), 20)                                      # fourteen first calls, six reviews
         self.assertEqual(max(c["inflight"] for c in chats), 3)
 
     def test_a_split_panel_means_no_trade(self):
+        # Half the panel confirms the bullish setup, half calls it a sell: the
+        # team does not confirm it, so the strategy's entry is not traded.
         plan = {model: (BUY if index % 2 == 0 else SELL) for index, model in enumerate(PANEL_MODELS)}
+        plan["market"] = self.BULL
         self.serve(plan)
         self.key = TEST_KEY
         self.settings(AUTO)
         out = self.dump("signal")
         signal = out["signal"]
+        sbt = signal["sbt"]
+        self.assertEqual(sbt["status"], "entered")             # the rules were met
         action, confidence = self.expected_consensus(signal)
+        self.assertEqual((action, confidence), ("hold", 0.0))  # seven against seven
         self.assertAlmostEqual(signal["confidence"], confidence, places=6)
         self.assertLess(signal["confidence"], 60)
-        self.assertEqual(signal["agreeing"] + signal["opposing"] + signal["holding"], signal["voters"])
+        self.assertTrue(sbt["review"]["done"])
+        self.assertFalse(sbt["review"]["confirmed"])
+        self.assertEqual(signal["voters"], 14)
         self.assertFalse(signal["traded"])
-        self.assertFalse(signal["risk"]["allowed"])
+        self.assertFalse(sbt["traded"])
+        self.assertIn("did not confirm", sbt["outcome"])
         self.assertEqual(out["account"]["positions"], [])
+
+    # Agreeing and opposing are counted against the setup's direction, also when the team turns it down.
+    def test_the_counts_of_a_review_the_team_turns_down_add_up(self):
+        plan = {model: (BUY if index < 4 else SELL) for index, model in enumerate(PANEL_MODELS)}
+        plan["market"] = self.BULL
+        self.serve(plan)
+        self.key = TEST_KEY
+        signal = self.dump("signal")["signal"]
+        self.assertFalse(signal["sbt"]["review"]["confirmed"])
+        # Four models agree with the bullish setup, ten oppose it.
+        self.assertEqual((signal["voters"], signal["agreeing"], signal["opposing"], signal["holding"]), (14, 4, 10, 0))
 
     def test_failing_models_are_left_out_not_guessed(self):
         models = PANEL_MODELS
@@ -1039,7 +1116,7 @@ class AppTest(unittest.TestCase):
                 models[0]: {"status": 429}, models[1]: {"status": 500}, models[2]: {"raw": "I think it goes up!"},
                 models[3]: {"refusal": True}, models[4]: {"empty": True}, models[5]: {"status": 404},
                 models[6]: {"raw": "<think>still thinking about {this}"},
-                models[7]: {"raw": "{\"action\": \"moon\", \"confidence\": 99}"}}
+                models[7]: {"raw": "{\"action\": \"moon\", \"confidence\": 99}"}, "market": self.BULL}
         self.serve(plan)
         self.key = TEST_KEY
         signal = self.dump("signal")["signal"]
@@ -1058,24 +1135,31 @@ class AppTest(unittest.TestCase):
         self.assertIn("no action", verdicts[models[7]]["error"])
         for model in models[8:]:
             self.assertTrue(verdicts[model]["ok"], model)
-        self.assertEqual(signal["voters"], 7)  # the rules and the six models that answered
+        self.assertEqual(signal["voters"], 6)  # the six models that answered
         self.assertEqual(self.requests("chat", review=True), [])  # nobody of the team answered: no review
+        # Nobody guessed a buy for the ones that failed: the setup is not confirmed.
+        self.assertFalse(signal["sbt"]["review"]["confirmed"])
 
     def test_a_rejected_key_is_reported_without_repeating_what_the_service_said(self):
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})
         self.key = "nvapi-wrong-key-00000000000000000000"
-        signal = self.dump("signal")["signal"]
+        self.settings(AUTO)
+        out = self.dump("signal")
+        signal = out["signal"]
         verdicts = self.verdicts(signal)
         for model in PANEL_MODELS:
             self.assertFalse(verdicts[model]["ok"])
             self.assertIn("did not accept the API key", verdicts[model]["error"])
         self.assertNotIn("nvapi-wrong", self.last_output)
         self.assertNotIn("abcd", self.last_output)  # the service's echo of the key is not passed on
-        self.assertEqual(signal["voters"], 1)
+        # Nobody could answer: nobody confirmed the setup, so its entry is not traded.
+        self.assertEqual(signal["voters"], 0)
+        self.assertFalse(signal["sbt"]["review"]["confirmed"])
+        self.assertEqual(out["account"]["positions"], [])
 
     def test_a_model_the_service_no_longer_offers_is_left_out(self):
         gone = "z-ai/glm-5.3-flash"
-        self.serve({"*": BUY, "missing": [gone]})
+        self.serve({"*": BUY, "missing": [gone], "market": self.BULL})
         self.key = TEST_KEY
         signal = self.dump("signal")["signal"]
         verdicts = self.verdicts(signal)
@@ -1083,7 +1167,7 @@ class AppTest(unittest.TestCase):
         if gone in verdicts:
             self.assertFalse(verdicts[gone]["ok"])
             self.assertIn("does not offer this model", verdicts[gone]["error"])
-        self.assertEqual(signal["voters"], 14)
+        self.assertEqual(signal["voters"], 13)
 
     def test_answers_in_a_code_fence_or_after_thinking_are_read(self):
         models = PANEL_MODELS
@@ -1096,71 +1180,111 @@ class AppTest(unittest.TestCase):
         self.assertEqual((verdicts[models[2]]["ok"], verdicts[models[2]]["action"]), (True, "sell"))
 
     # ---- the account over time ---------------------------------------------------------
+    # The bullish setup's long is placed at the start (the forming candle is
+    # its entry candle, at 101.6 scaled); its stop is about 1.9 % below the
+    # entry, Level 3 about 4.8 % above it.
     def test_the_stop_closes_the_trade_when_the_price_falls(self):
-        plan = {"*": BUY}
-        out = self.act("analyze", plan, AUTO, moves=[(4, dict(plan, market={"move_pct": -3.0}))], seconds=13)
+        plan = {"*": BUY, "market": self.BULL}
+        out = self.act("analyze", plan, AUTO, moves=[(4, dict(plan, market=dict(self.BULL, move_pct=-3.0)))],
+                       seconds=13)
         self.assertEqual(out["account"]["positions"], [])
         trades = out["account"]["trades"]
         self.assertEqual(len(trades), 1)
         trade = trades[0]
         self.assertEqual((trade["side"], trade["reason"]), ("buy", "stop_loss"))
         self.assertLess(trade["exit"], trade["entry"])
-        # The price went 3 % down past a 1 % stop: the fill is the worse price, not the stop.
+        # The price went 3 % down past a stop 1.9 % away: the fill is the worse price, not the stop.
         self.assertLess(trade["exit"], out["signal"]["stop"])
-        self.assertLess(trade["pnl"], -100)
+        self.assertAlmostEqual(trade["exit"], 101.6 * 0.97 * self.SCALE * 0.9998, delta=0.01)   # with the slippage
+        self.assertLess(trade["pnl"], -100)          # 3 % of a third of the account, and the fees
         account = out["account"]["account"]
         self.assertAlmostEqual(account["equity"], 10000 + trade["pnl"], places=6)
         self.assertEqual((account["trades"], account["wins"], account["losses"]), (1, 0, 1))
         self.assertGreater(account["maxDrawdownPct"], 1)
         texts = [a["text"] for a in out["account"]["activity"]]
         self.assertTrue(any("stopped out" in t for t in texts), texts)
+        self.assertEqual(out["signal"]["sbt"]["status"], "stopped")   # the strategy saw it too
         self.assertEqual(len(self.dump("account")["trades"]), 1)  # saved
 
     def test_the_target_closes_the_trade_when_the_price_rises(self):
-        plan = {"*": BUY}
-        out = self.act("analyze", plan, AUTO, moves=[(4, dict(plan, market={"move_pct": 3.5}))], seconds=13)
+        plan = {"*": BUY, "market": self.BULL}
+        out = self.act("analyze", plan, AUTO, moves=[(4, dict(plan, market=dict(self.BULL, move_pct=6.0)))],
+                       seconds=13)
         self.assertEqual(out["account"]["positions"], [])
         trade = out["account"]["trades"][0]
         self.assertEqual(trade["reason"], "take_profit")
         self.assertAlmostEqual(trade["exit"], out["signal"]["takeProfit"], places=6)  # a limit order fills at its price
-        self.assertGreater(trade["pnl"], 70)  # 2.5 % of a third of the account, less fees
+        self.assertAlmostEqual(trade["exit"], 106.5 * self.SCALE, delta=0.01)           # Level 3
+        self.assertGreater(trade["pnl"], 140)  # 4.8 % of a third of the account, less fees
         self.assertEqual(out["account"]["account"]["wins"], 1)
         self.assertAlmostEqual(out["account"]["account"]["winRatePct"], 100)
 
     def test_a_position_stays_open_while_the_price_is_between_its_levels(self):
-        plan = {"*": BUY}
-        out = self.act("analyze", plan, AUTO, moves=[(4, dict(plan, market={"move_pct": 0.3}))], seconds=10)
+        plan = {"*": BUY, "market": self.BULL}
+        out = self.act("analyze", plan, AUTO, moves=[(4, dict(plan, market=dict(self.BULL, move_pct=0.3)))],
+                       seconds=10)
         self.assertEqual(len(out["account"]["positions"]), 1)
         self.assertEqual(out["account"]["trades"], [])
         self.assertGreater(out["account"]["positions"][0]["pnl"], 0)  # the price went up a little
+        self.assertEqual(out["signal"]["sbt"]["status"], "entered")
 
-    def test_a_closing_candle_starts_an_analysis_by_itself(self):
-        # One-minute candles: within 70 seconds one closes, and that alone,
-        # with nobody asking, has to produce an analysis and its trade.
-        out = self.act("", {"*": BUY}, "[engine]\nauto_trade=true\n[market]\ninterval=1m\n", seconds=70)
-        self.assertEqual(out["signal"]["state"], "ready")
+    def live_bos(self):
+        """A bullish 1-2-3 on one-minute candles whose BOS candle is the one
+        forming when the session starts: it closes during the session, so the
+        setup appears live, not in the history."""
+        # The BOS candle must still be forming when the history is read.
+        while time.time() % 60 > 45:
+            time.sleep(0.5)
+        return dict(self.BULL, stage="bos", pattern_interval="1m", at=int(time.time() * 1000))
+
+    def test_a_new_setup_starts_a_review_by_itself_a_closing_candle_does_not(self):
+        # One-minute candles: within 70 seconds one closes, the break of
+        # structure. That new setup, with nobody asking, is reviewed by the
+        # team; the candles that closed before it started nothing.
+        market = self.live_bos()
+        out = self.act("", {"*": BUY, "market": market}, "[engine]\nauto_trade=true\n[market]\ninterval=1m\n",
+                       seconds=72)
         self.assertEqual(out["signal"]["interval"], "1m")
-        self.assertEqual(len(out["account"]["positions"]) + len(out["account"]["trades"]), 1)
+        sbt = out["signal"]["sbt"]
+        self.assertEqual((sbt["direction"], sbt["status"]), ("bullish", "armed"))
+        self.assertFalse(sbt["historical"])
+        self.assertEqual(sbt["bos"]["time"], market["at"] // 60000 * 60000)   # the candle that closed during the session
+        self.assertAlmostEqual(sbt["bos"]["price"], 104.4 * self.SCALE, delta=0.01)
+        self.assertTrue(sbt["review"]["done"] and sbt["review"]["confirmed"])
         chats = self.requests("chat")
-        self.assertGreaterEqual(len(chats), 14)
-        self.assertLessEqual(len(chats), 28)  # one candle closed, two at most: not an analysis per price update
+        self.assertEqual(len(chats), 14)   # one review of the new setup: not one per candle or price update
+        self.assertTrue(all(c["sbt"] == "bullish" for c in chats))
+        # Confirmed, but there is no entry before the retest of the zone.
+        self.assertEqual((out["signal"]["action"], out["signal"]["leaning"]), ("hold", "buy"))
+        self.assertEqual(out["account"]["positions"], [])
         intervals = {q.split("interval=")[1].split("&")[0] for q in
                      (e.get("query", "") for e in self.requests("market")) if "interval=" in q}
         # The chart's candles, the higher timeframe for context, and the watchlist's 24-hour lines.
         self.assertEqual(intervals, {"1m", "15m", "1h"})
 
     def test_auto_analyze_off_waits_to_be_asked(self):
-        out = self.act("", {"*": BUY}, AUTO + "[market]\ninterval=1m\n", seconds=70)
-        self.assertEqual(out["signal"]["state"], "none")
+        market = self.live_bos()
+        plan = {"*": BUY, "market": market}
+        out = self.act("", plan, AUTO + "[market]\ninterval=1m\n", seconds=72)
+        sbt = out["signal"]["sbt"]
+        self.assertEqual((sbt["status"], sbt["historical"]), ("armed", False))
+        self.assertEqual(sbt["bos"]["time"], market["at"] // 60000 * 60000)   # it appeared during the session
+        self.assertFalse(sbt["review"]["done"])
         self.assertEqual(self.requests("chat"), [])
         self.assertEqual(out["account"]["positions"], [])
+        # Asked, the team reviews it.
+        signal = self.dump("signal")["signal"]
+        self.assertTrue(signal["sbt"]["review"]["done"])
+        self.assertEqual(len(self.requests("chat")), 14)
 
     def test_a_signal_can_be_placed_by_hand_once(self):
-        out = self.act("analyze,place,place", {"*": BUY}, "[engine]\nauto_analyze=false\n")  # auto trade is off
+        out = self.act("analyze,place,place", {"*": BUY, "market": self.BULL},
+                       "[engine]\nauto_analyze=false\n")  # auto trade is off
         results = [a["result"] for a in out["actions"]]
-        self.assertEqual(results[:2], ["", ""])   # analyzed, placed
+        self.assertEqual(results[:2], ["", ""])   # reviewed, placed
         self.assertNotEqual(results[2], "")       # not twice
         self.assertEqual(len(out["account"]["positions"]), 1)
+        self.assertAlmostEqual(out["account"]["positions"][0]["takeProfit"], 106.5 * self.SCALE, delta=0.01)
         self.assertTrue(out["signal"]["traded"])
         self.assertFalse(out["signal"]["placeable"])
 
@@ -1175,7 +1299,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(out["account"]["positions"], [])
 
     def test_a_position_closed_by_hand_becomes_a_trade(self):
-        out = self.act("analyze,wait:6,close-all", {"*": BUY}, AUTO)
+        out = self.act("analyze,wait:6,close-all", {"*": BUY, "market": self.BULL}, AUTO)
         self.assertEqual(out["actions"][2]["result"], "1")
         self.assertEqual(out["account"]["positions"], [])
         trade = out["account"]["trades"][0]
@@ -1190,51 +1314,257 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.dump("account")["account"]["equity"], 25000)
 
     def test_the_drawdown_limit_halts_trading_until_resumed(self):
-        plan = {"*": BUY}
-        # A 1 % drawdown limit. The price gaps 3 % through a 1 % stop, so the
-        # trade (a third of the account) loses a little over 1 % of the
-        # account; the daily limit is set wide so only the drawdown limit is in play.
-        out = self.act("analyze,wait:9,analyze", plan,
+        plan = {"*": BUY, "market": self.BULL}
+        # A 1 % drawdown limit. The price gaps 3 % through the stop (1.9 %
+        # away), so the trade (a third of the account) loses a little over 1 %
+        # of the account; the daily limit is set wide so only the drawdown
+        # limit is in play. Then the price is back, and ETH/USDT has a setup
+        # of its own that the team confirms: it is not traded while halted.
+        out = self.act("analyze,wait:10,select:ETHUSDT,analyze", plan,
                        AUTO + "[risk]\nmax_drawdown_pct=1\ncooldown_minutes=0\nmax_daily_loss_pct=20\n",
-                       moves=[(4, dict(plan, market={"move_pct": -3.0}))])
+                       moves=[(4, dict(plan, market=dict(self.BULL, move_pct=-3.0))), (8, plan)])
         account = out["account"]["account"]
         self.assertEqual(len(out["account"]["trades"]), 1)
         self.assertEqual(out["account"]["trades"][0]["reason"], "stop_loss")
         self.assertTrue(account["halted"])
-        self.assertEqual(out["account"]["positions"], [])  # the second signal was not traded
-        checks = {c["key"]: c for c in out["signal"]["risk"]["checks"]}
+        self.assertEqual(out["account"]["positions"], [])  # the second setup was not traded
+        signal = out["signal"]
+        self.assertEqual(signal["symbol"], "ETHUSDT")
+        self.assertTrue(signal["sbt"]["review"]["confirmed"])
+        checks = {c["key"]: c for c in signal["risk"]["checks"]}
         self.assertFalse(checks["drawdown"]["pass"])
         self.assertIn("halted", checks["drawdown"]["detail"])
+        self.assertIn("Not traded", signal["outcome"])
         self.assertTrue(any("Trading halted" in a["text"] for a in out["account"]["activity"]))
-        # Halted survives a restart; resuming lets the next signal through.
-        resumed = self.dump("session", {"SHADOW_TRADING_SESSION_ACTIONS": "resume,analyze"})
+        # Halted survives a restart; resuming lets the next setup through.
+        self.assertTrue(self.dump("account")["account"]["halted"])
+        resumed = self.dump("session", {"SHADOW_TRADING_SESSION_ACTIONS": "resume,select:SOLUSDT,analyze"})
         self.assertFalse(resumed["account"]["account"]["halted"])
-        self.assertEqual(len(resumed["account"]["positions"]), 1, resumed["signal"].get("outcome"))
+        self.assertEqual([p["symbol"] for p in resumed["account"]["positions"]], ["SOLUSDT"],
+                         resumed["signal"].get("outcome"))
 
     def test_the_daily_loss_limit_stops_new_trades(self):
-        plan = {"*": BUY}
-        # The gap makes the first trade lose 3 % of its size, a little over 1 % of the account.
-        out = self.act("analyze,wait:9,analyze", plan,
+        plan = {"*": BUY, "market": self.BULL}
+        # The gap makes the first trade lose 3 % of its size, a little over 1 %
+        # of the account. Then the price is back, and ETH/USDT's own setup,
+        # confirmed by the team, is refused for the day.
+        out = self.act("analyze,wait:10,select:ETHUSDT,analyze", plan,
                        AUTO + "[risk]\ncooldown_minutes=0\nmax_daily_loss_pct=1\n",
-                       moves=[(4, dict(plan, market={"move_pct": -3.0}))])
+                       moves=[(4, dict(plan, market=dict(self.BULL, move_pct=-3.0))), (8, plan)])
         account = out["account"]["account"]
         self.assertEqual(len(out["account"]["trades"]), 1)
         self.assertLess(account["todayPnlPct"], -1)
         self.assertTrue(account["dailyLossReached"])
         self.assertFalse(account["halted"])  # 1 % is not the 10 % drawdown limit
         self.assertEqual(out["account"]["positions"], [])
+        self.assertEqual(out["signal"]["symbol"], "ETHUSDT")
+        self.assertTrue(out["signal"]["sbt"]["review"]["confirmed"])
         self.assertIn("Daily loss limit", out["signal"]["outcome"])
 
-    def test_a_reversed_signal_closes_the_position(self):
-        out = self.act("analyze,wait:5,analyze", {"*": BUY}, AUTO,
-                       moves=[(3, {"*": dict(SELL, confidence=95)})])
-        self.assertEqual(out["signal"]["action"], "sell")
-        trades = out["account"]["trades"]
+    def test_a_setup_the_other_way_closes_the_position(self):
+        # The bullish setup's long is open on BTC/USDT. Then BTC/USDT's chart
+        # is a bearish 1-2-3 instead, whose entry candle has climbed to 100
+        # (scaled): above the long's stop, below the short's. When the chart
+        # is read again, the bearish entry closes the long first, then sells.
+        bull = {"*": BUY, "market": self.BULL}
+        bear = {"*": SELL, "market": dict(self.BEAR, move_pct=(100 / 98.4 - 1) * 100)}
+        out = self.act("wait:3,select:ETHUSDT,select:BTCUSDT,wait:2", bull,
+                       AUTO + "[sbt]\nai_confirm=false\n[risk]\ncooldown_minutes=0\n", moves=[(2, bear)])
+        self.assertEqual((out["signal"]["symbol"], out["signal"]["action"]), ("BTCUSDT", "sell"))
+        self.assertEqual(out["signal"]["sbt"]["direction"], "bearish")
+        trades = [t for t in out["account"]["trades"] if t["symbol"] == "BTCUSDT"]
         self.assertEqual(len(trades), 1)
         self.assertEqual((trades[0]["side"], trades[0]["reason"]), ("buy", "signal_flip"))
-        # The long is gone; whether the short opens depends on the cooldown after a losing close.
-        for position in out["account"]["positions"]:
-            self.assertEqual(position["side"], "sell")
+        self.assertAlmostEqual(trades[0]["exit"], 100.0 * self.SCALE * 0.9998, delta=1)   # with the slippage
+        self.assertLess(trades[0]["pnl"], 0)                 # bought at 101.6, closed at 100
+        short = [p for p in out["account"]["positions"] if p["symbol"] == "BTCUSDT"]
+        self.assertEqual([p["side"] for p in short], ["sell"])
+        self.assertGreater(short[0]["stop"], short[0]["entry"])
+        self.assertAlmostEqual(short[0]["takeProfit"], (200 - 106.5) * self.SCALE, delta=0.01)
+        self.assertTrue(any("signal reversed" in a["text"] for a in out["account"]["activity"]))
+
+    # ---- SBT Model 1: where every trade comes from -------------------------------
+    BULL = {"pattern": "sbt-bull"}
+    BEAR = {"pattern": "sbt-bear"}
+    # The pattern's levels at a price of 100 (tests/test_sbt.cpp), scaled to BTC/USDT's 92,000.
+    SCALE = 920.0
+
+    def sbt_requests(self):
+        return [e for e in self.requests("chat", review=None) if not e.get("desk")]
+
+    def test_sbt_bullish_setup_is_confirmed_by_the_team_and_traded(self):
+        self.serve({"*": BUY, "market": self.BULL})
+        self.key = TEST_KEY
+        self.settings(AUTO)
+        out = self.dump("signal")
+        signal = out["signal"]
+        sbt = signal["sbt"]
+        self.assertEqual(signal["strategy"], "SBT Model 1")
+        self.assertEqual((sbt["direction"], sbt["status"]), ("bullish", "entered"))
+        self.assertAlmostEqual(sbt["level1"]["price"], 103.5 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["level2"]["price"], 100.0 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["bos"]["price"], 104.4 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["level3"]["price"], 106.5 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["zone"]["bottom"], 100.0 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["zone"]["top"], 101.4 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["entry"], 101.6 * self.SCALE, delta=0.01)  # the open of the next candle
+        self.assertIn("order_block", [c["kind"] for c in sbt["confirmations"]])
+        self.assertTrue(sbt["review"]["done"] and sbt["review"]["confirmed"])
+        self.assertTrue(sbt["traded"])
+        # The trade is the strategy's: its stop beyond the zone, Level 3 as the target.
+        positions = out["account"]["positions"]
+        self.assertEqual(len(positions), 1)
+        p = positions[0]
+        self.assertEqual(p["side"], "buy")
+        self.assertAlmostEqual(p["takeProfit"], 106.5 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(p["stop"], sbt["stop"], delta=0.01)
+        self.assertLess(p["stop"], 100.0 * self.SCALE)
+        # Every model was asked about this setup, not for trades of its own.
+        asked = self.sbt_requests()
+        self.assertEqual(len([e for e in asked if not e.get("review")]), len(PANEL_MODELS))
+        reviews = [e for e in asked if e.get("sbt")]
+        self.assertEqual(len(reviews), len(asked))
+        self.assertEqual(len(reviews), len(PANEL_MODELS) + 6)  # first calls and the team's final calls
+        self.assertTrue(all(e["sbt"] == "bullish" for e in reviews))
+        self.assertTrue(all(e.get("system") for e in asked))
+        self.assertEqual(sorted({e["seat"] for e in asked if e["seat"]}), sorted(SEATS))
+
+    def test_sbt_bearish_setup_is_sold(self):
+        self.serve({"*": SELL, "market": self.BEAR})
+        self.key = TEST_KEY
+        self.settings(AUTO)
+        out = self.dump("signal")
+        sbt = out["signal"]["sbt"]
+        self.assertEqual((sbt["direction"], sbt["status"]), ("bearish", "entered"))
+        self.assertAlmostEqual(sbt["level1"]["price"], (200 - 103.5) * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["level3"]["price"], (200 - 106.5) * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["zone"]["top"], 100.0 * self.SCALE, delta=0.01)
+        p = out["account"]["positions"][0]
+        self.assertEqual(p["side"], "sell")
+        self.assertAlmostEqual(p["takeProfit"], (200 - 106.5) * self.SCALE, delta=0.01)
+        self.assertGreater(p["stop"], 100.0 * self.SCALE)
+
+    def test_sbt_setup_the_team_rejects_is_not_traded(self):
+        self.serve({"*": HOLD, "market": self.BULL})
+        self.key = TEST_KEY
+        self.settings(AUTO)
+        out = self.dump("signal")
+        sbt = out["signal"]["sbt"]
+        self.assertEqual(sbt["status"], "entered")  # the rules were met
+        self.assertTrue(sbt["review"]["done"])
+        self.assertFalse(sbt["review"]["confirmed"])
+        self.assertFalse(sbt["traded"])
+        self.assertIn("did not confirm", sbt["outcome"])
+        self.assertEqual(out["account"]["positions"], [])
+
+    def test_sbt_without_a_key_trades_by_the_rules_alone(self):
+        self.serve({"*": BUY, "market": self.BULL})
+        self.settings(AUTO)
+        out = self.dump("signal")
+        self.assertEqual(self.requests("chat"), [])
+        sbt = out["signal"]["sbt"]
+        self.assertTrue(sbt["traded"])
+        self.assertFalse(sbt["review"]["done"])
+        self.assertEqual(out["account"]["positions"][0]["side"], "buy")
+
+    def test_sbt_confirmation_can_be_left_out(self):
+        self.serve({"*": HOLD, "market": self.BULL})
+        self.key = TEST_KEY
+        self.settings(AUTO + "[sbt]\nai_confirm=false\n")
+        out = self.dump("signal")
+        # Traded at once by the rules; the team's later view does not undo it.
+        self.assertTrue(out["signal"]["sbt"]["traded"])
+        self.assertEqual(len(out["account"]["positions"]), 1)
+
+    def test_sbt_armed_setup_is_reviewed_and_waits(self):
+        self.serve({"*": BUY, "market": dict(self.BULL, stage="armed")})
+        self.key = TEST_KEY
+        self.settings(AUTO)
+        out = self.dump("signal")
+        signal = out["signal"]
+        sbt = signal["sbt"]
+        self.assertEqual(sbt["status"], "armed")
+        self.assertTrue(sbt["level3Confirmed"])
+        self.assertTrue(sbt["review"]["confirmed"])
+        self.assertEqual(signal["action"], "hold")       # no entry before the retest
+        self.assertEqual(signal["leaning"], "buy")
+        self.assertIn("waiting for the retest", signal["note"])
+        self.assertEqual(out["account"]["positions"], [])
+
+    def test_sbt_close_through_the_zone_is_not_a_retest(self):
+        self.serve({"*": BUY, "market": dict(self.BULL, stage="invalid")})
+        self.key = TEST_KEY
+        self.settings(AUTO)
+        out = self.dump("signal")
+        bull = [s for s in out["market"]["sbt"]["setups"] if s["direction"] == "bullish"]
+        self.assertEqual(len(bull), 1)
+        self.assertEqual(bull[0]["status"], "invalidated")
+        self.assertEqual(bull[0]["note"], "a candle closed below the Level 2 zone")
+        self.assertFalse(bull[0]["review"]["done"])
+        # That close below Level 1's low is itself a bearish break: a new setup, waiting for its retest.
+        self.assertTrue(all(e["sbt"] == "bearish" for e in self.sbt_requests()))
+        self.assertEqual(out["account"]["positions"], [])
+
+    def test_the_models_never_trade_on_their_own_view(self):
+        # Every model says buy, but the made-up market has no entry of the strategy in it.
+        self.serve({"*": BUY})
+        self.key = TEST_KEY
+        self.settings(AUTO)
+        out = self.dump("signal")
+        self.assertEqual(out["account"]["positions"], [])
+        self.assertNotEqual(out["signal"].get("sbt", {}).get("status"), "entered")
+        # The models were asked about SBT setups only, if about anything.
+        self.assertTrue(all(e.get("sbt") for e in self.sbt_requests()))
+
+    def test_sbt_level3_target_closes_the_trade(self):
+        plan = {"*": BUY, "market": self.BULL}
+        out = self.act("wait:9", plan, AUTO + "[sbt]\nai_confirm=false\n", moves=[(1, dict(plan, market=dict(self.BULL, move_pct=6.0)))])
+        trades = out["account"]["trades"]
+        self.assertEqual(len(trades), 1)
+        self.assertEqual(trades[0]["reason"], "take_profit")
+        self.assertGreater(trades[0]["pnl"], 0)
+
+    def test_sbt_stop_closes_the_trade(self):
+        plan = {"*": BUY, "market": self.BULL}
+        out = self.act("wait:9", plan, AUTO + "[sbt]\nai_confirm=false\n", moves=[(1, dict(plan, market=dict(self.BULL, move_pct=-3.0)))])
+        trades = out["account"]["trades"]
+        self.assertEqual(len(trades), 1)
+        self.assertEqual(trades[0]["reason"], "stop_loss")
+        self.assertLess(trades[0]["pnl"], 0)
+
+    def test_sbt_entry_is_never_made_twice(self):
+        plan = {"*": BUY, "market": self.BULL}
+        out = self.act("wait:3,close-all,wait:3,analyze", plan, AUTO + "[sbt]\nai_confirm=false\n")
+        self.assertEqual(len(out["account"]["trades"]), 1)  # closed by hand, not opened again
+        self.assertEqual(out["account"]["positions"], [])
+
+
+    # One setup is placed by hand once, also after its position was closed (no cooldown to hide a second one).
+    def test_sbt_setup_is_placed_by_hand_only_once(self):
+        out = self.act("analyze,place,close-all,place", {"*": BUY, "market": self.BULL},
+                       "[engine]\nauto_analyze=false\n[risk]\ncooldown_minutes=0\n")
+        self.assertEqual([a["result"] for a in out["actions"]][:3], ["", "", "1"])
+        self.assertNotEqual(out["actions"][3]["result"], "")   # this setup was placed already
+        self.assertEqual(out["account"]["positions"], [])
+
+    # A setup placed by hand says so at once, in the signal and in the market's setups.
+    def test_sbt_setup_placed_by_hand_shows_as_traded(self):
+        out = self.act("analyze,place,wait:6", {"*": BUY, "market": self.BULL}, "[engine]\nauto_analyze=false\n")
+        self.assertEqual(len(out["account"]["positions"]), 1)
+        self.assertTrue(out["signal"]["traded"])
+        self.assertTrue(out["signal"]["sbt"]["traded"])
+        self.assertTrue(out["market"]["sbt"]["current"]["traded"])
+
+    # Reading the chart again (another market and back, or a restart) does not enter the same setup again.
+    def test_sbt_setup_is_not_entered_again_when_its_market_is_read_again(self):
+        settings = AUTO + "[sbt]\nai_confirm=false\n[risk]\ncooldown_minutes=0\n"
+        out = self.act("wait:3,close-all,select:ETHUSDT,select:BTCUSDT,wait:2", {"*": BUY, "market": self.BULL},
+                       settings)
+        self.assertEqual([(t["symbol"], t["reason"]) for t in out["account"]["trades"]], [("BTCUSDT", "manual")])
+        self.assertNotIn("BTCUSDT", [p["symbol"] for p in out["account"]["positions"]])
+        # Nor after a restart.
+        again = self.dump("signal")
+        self.assertNotIn("BTCUSDT", [p["symbol"] for p in again["account"]["positions"]])
 
     # ---- the desk: the conversation analyst -----------------------------------------
     QUIET = "[engine]\nauto_analyze=false\n"
@@ -1421,12 +1751,17 @@ class AppTest(unittest.TestCase):
         self.assertGreater(lv["distancePct"], 0)
 
     def test_desk_asks_the_team_for_a_trade_question_and_shows_its_call_forming(self):
-        plan = {"*": SELL, "z-ai/glm-5.3-flash": dict(SELL, delay=3), "desk": {"answer": {"delay": 0.5}}}
+        # A bearish setup has just entered on BTC/USDT, so the team is already
+        # reviewing it when the question comes: the desk waits for that call
+        # instead of asking a second time.
+        plan = {"*": SELL, "z-ai/glm-5.3-flash": dict(SELL, delay=3), "desk": {"answer": {"delay": 0.5}},
+                "market": self.BEAR}
         settings = self.QUIET + "team_review=false\n"
         out = self.desk([{"post": "BTC: should I short here?"}, {"idle": 120}], plan, settings=settings)
         notes = [n["text"] for n in self.notes_of(out, "team")]
-        self.assertTrue(any(t.startswith("Asked the analysis team") for t in notes), notes)
         self.assertTrue(any(t.startswith("Analysis team on BTC/USDT") and "SELL" in t for t in notes), notes)
+        self.assertEqual(len([c for c in self.sbt_requests() if not c.get("review")]), len(PANEL_MODELS))  # once
+        self.assertTrue(all(c["sbt"] == "bearish" for c in self.sbt_requests() if c["status"] == 200))
         # Its call formed while the slow member was still working.
         forming = self.events(out, "team-forming")
         self.assertTrue(forming)
@@ -1437,6 +1772,16 @@ class AppTest(unittest.TestCase):
         a = out["analysis"]
         self.assertEqual(a["team"]["action"], "sell")
         self.assertIn("Team: SELL", [c["text"] for c in out["signalChanges"]])
+
+    # A setup nobody has reviewed yet is not a fresh call: the desk asks the team about it.
+    def test_desk_asks_the_team_about_a_setup_nobody_reviewed_yet(self):
+        out = self.desk([{"post": "BTC: should I short here?"}, {"idle": 60}],
+                        {"*": SELL, "market": dict(self.BEAR, stage="armed")})
+        self.assertEqual(out["signal"]["sbt"]["status"], "armed")
+        notes = [n["text"] for n in self.notes_of(out, "team")]
+        self.assertTrue(any(t.startswith("Asked the analysis team") for t in notes), notes)
+        self.assertTrue(out["signal"]["sbt"]["review"]["done"])
+        self.assertTrue(all(c["sbt"] == "bearish" for c in self.sbt_requests()))
 
     def test_desk_model_reading_adds_what_the_quick_reading_missed(self):
         plan = {"desk": {"read": {"summary": "Trader watches a BTC wedge.",

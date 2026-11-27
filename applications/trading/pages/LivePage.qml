@@ -25,7 +25,7 @@ Item {
         id: flick
         anchors.fill: parent
         contentWidth: width
-        contentHeight: Math.max(height, 860)
+        contentHeight: Math.max(height, 1010)
         boundsBehavior: Flickable.StopAtBounds
         clip: true
         ScrollBar.vertical: ScrollBar {}

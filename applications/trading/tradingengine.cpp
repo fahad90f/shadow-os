@@ -210,6 +210,11 @@ TradingEngine::TradingEngine(TradingConfig *config, QObject *parent)
     });
     connect(m_config, &TradingConfig::changed, this, [this] {
         m_account.setCosts(m_config->paper().feePct, m_config->paper().slippagePct);
+        // The strategy's rules (or the minimum reward/risk) changed: read the history again with them.
+        if (!m_sbtKey.isEmpty() && sbtSettingsDiffer()) {
+            m_sbtKey.clear();
+            feedSbt();
+        }
         Q_EMIT settingsChanged();
         Q_EMIT analystsChanged();
     });
@@ -336,6 +341,11 @@ void TradingEngine::resetMarket()
     m_seenTime = 0;
     m_lastSignal = Signal();
     m_lastDecision = RiskDecision();
+    m_lastDecisionFor.clear();
+    m_lastSignalAt = 0;
+    m_sbtKey.clear(); // the next market's history is read afresh
+    m_reviewId.clear();
+    m_pendingEntries.clear();
     m_signal = QVariantMap{{QStringLiteral("state"), QStringLiteral("none")}};
     m_marketReadySent = false;
     // An error about the candles was about the market that was on the chart.
@@ -571,6 +581,10 @@ void TradingEngine::onCandles(const QString &symbol, const QString &interval, co
         const bool streamFresh = !fromStream && m_stream->isConnected() && nowMs() - m_streamCandleAt < 5000;
         for (const Candle &c : series) {
             if (c.openTime > m_candles.back().openTime) {
+                // Candles missing in between (the computer slept): the whole
+                // history is asked for again to fill the hole.
+                if (c.openTime - m_candles.back().openTime > TradingConfig::intervalMs(interval) * 3 / 2)
+                    m_data->fetchCandles(symbol, interval, kHistory);
                 // A candle that has a successor is closed, whether or not
                 // the service said so (one of them never does).
                 m_candles.back().closed = true;
@@ -621,21 +635,21 @@ void TradingEngine::onCandles(const QString &symbol, const QString &interval, co
         Q_EMIT marketChanged();
     ++m_chartRevision;
     Q_EMIT chartChanged();
+    // The strategy reads every candle that closed, and the one forming.
+    feedSbt();
     if (!m_marketReadySent) {
         m_marketReadySent = true;
         Q_EMIT marketReady();
     }
 
-    // A candle just closed: that is when the analysts are asked.
+    // A candle just closed. Trades come from SBT Model 1 (fed above); the AI
+    // team is asked about its setups, not about every candle.
     const int closed = closedCount(m_candles);
     const long long newest = closed > 0 ? m_candles[size_t(closed - 1)].openTime : 0;
-    const bool first = m_lastClosedTime == 0;
     if (newest != m_lastClosedTime) {
         m_lastClosedTime = newest;
         // The skills' state depends on how much history there is.
         Q_EMIT analystsChanged();
-        if (!first && m_config->autoAnalyze() && !m_analyzing)
-            analyzeNow();
     }
 }
 
@@ -755,6 +769,7 @@ void TradingEngine::flushStream()
         }
         ++m_chartRevision;
         Q_EMIT chartChanged();
+        feedSbt();
     }
     if (m_marketDirty) {
         m_marketDirty = false;
@@ -916,25 +931,28 @@ QStringList TradingEngine::skillsOf(const QString &role)
 
 const QList<TradingEngine::Seat> &TradingEngine::teamSeats()
 {
+    // Each seat checks the setup from one side, so six models are six
+    // different checks of the trader's rules and not one check six times.
     static const QList<Seat> seats{
         {QStringLiteral("trend"), tr("Trend"),
-         QStringLiteral("the direction and strength of the trend: how the price and the 20, 50 and 200 EMAs are "
-                        "stacked and sloped, and how far the price has run from them.")},
+         QStringLiteral("the direction the setup trades in: whether the trend of this timeframe (the EMAs, their "
+                        "slope and stacking) supports it or works against it.")},
         {QStringLiteral("momentum"), tr("Momentum"),
-         QStringLiteral("RSI and MACD: whether momentum confirms the last move, is fading, or disagrees with the "
-                        "price.")},
+         QStringLiteral("the break of structure: whether RSI and MACD show a decisive break beyond Level 1 or a weak "
+                        "one, and whether momentum now favours the setup's direction.")},
         {QStringLiteral("volatility"), tr("Volatility"),
-         QStringLiteral("the Bollinger bands and ATR: squeeze or expansion, where the price sits in the bands, and "
-                        "whether the move is stretched.")},
+         QStringLiteral("the stop and the target: the stop beyond the Level 2 zone and Level 3 as the target against "
+                        "the ATR and the Bollinger bands, and whether the reward/risk is realistic.")},
         {QStringLiteral("structure"), tr("Structure"),
-         QStringLiteral("market structure: swing highs and lows, breaks of structure and changes of character, "
-                        "liquidity sweeps, order blocks and fair value gaps.")},
+         QStringLiteral("the 1-2-3 itself: whether Level 1, 2 and 3 are real swing points, the Level 2 zone is the "
+                        "right candle, and the PD arrays (gaps, order blocks, demand/supply) are where the rules "
+                        "want them.")},
         {QStringLiteral("volume"), tr("Volume and candles"),
-         QStringLiteral("volume and the candles themselves: whether volume confirms the last moves, and what the "
-                        "latest closed candles show (rejection wicks, engulfing bars, follow-through).")},
+         QStringLiteral("the candles: the candle that marks the zone, the move away from it, the retest and its "
+                        "close, and whether volume confirms them.")},
         {QStringLiteral("timeframes"), tr("Higher timeframe"),
-         QStringLiteral("the higher timeframe reading in the snapshot: whether this timeframe moves with it, "
-                        "against it, or sits at one of its levels.")},
+         QStringLiteral("the higher timeframe in the snapshot: whether the setup trades with it, against it, or into "
+                        "one of its levels.")},
     };
     return seats;
 }
@@ -986,7 +1004,7 @@ QString TradingEngine::reviewRequest(const Verdict &own, const std::vector<Verdi
         others.append(call(v));
     return QStringLiteral(
                "\n\nTeam review. You and the other analysts of the analysis team have each made a first call on "
-               "this snapshot, each from your own seat. Below are your first call and your teammates' calls. Now "
+               "this setup, each from your own seat. Below are your first call and your teammates' calls. Now "
                "give your final call, in the same JSON format as before.\n"
                "- Check each teammate's reading against the snapshot. Change your call only when a teammate points "
                "at something in the snapshot that you missed or weighed wrongly.\n"
@@ -1012,35 +1030,47 @@ QString TradingEngine::systemPrompt(const QString &role, double minRewardRisk, c
                 others.append(other.title.toLower());
         }
         // The line "Your seat on the analysis team:" is what the tests look for.
-        focus = QStringLiteral("you are one of the analysis team, and each of you reads the snapshot from one "
-                               "seat.\nYour seat on the analysis team: %1. Look first and hardest at %2\nYour "
-                               "teammates cover %3. Read the rest of the snapshot too, but let your seat's readings "
-                               "decide your call.")
+        focus = QStringLiteral("you are one of the analysis team, and each of you checks the setup from one seat.\n"
+                               "Your seat on the analysis team: %1. Check first and hardest %2\nYour teammates cover "
+                               "%3. Read the rest too, but let your seat's check decide your call.")
                     .arg(seat->title, seat->focus, others.join(QStringLiteral(", ")));
     } else if (role == QLatin1String("analysis"))
-        focus = QStringLiteral("weigh trend, momentum and volatility together into one overall read.");
+        focus = QStringLiteral("check every rule of the strategy against the snapshot.");
     else if (role == QLatin1String("reasoning"))
-        focus = QStringLiteral("argue the case against the obvious trade before you accept it, and name what would "
-                               "prove it wrong.");
+        focus = QStringLiteral("argue the case against the setup before you accept it, and name what would prove it "
+                               "wrong.");
     else if (role == QLatin1String("vision"))
-        focus = QStringLiteral("you also get a picture of the chart. Read its shape and check that the picture "
-                               "agrees with the numbers.");
+        focus = QStringLiteral("you also get a picture of the chart. Find Level 1, 2 and 3, the break and the retest "
+                               "in it, and check that the picture agrees with the numbers.");
     else
-        focus = QStringLiteral("work the numbers: distances to the moving averages and bands in ATR units, and where "
-                               "a stop and a target would fall relative to recent swings and gaps.");
+        focus = QStringLiteral("work the numbers: the distances from the entry to the stop and to Level 3 in ATR "
+                               "units, and the reward/risk.");
     QString prompt = QStringLiteral(
-        "You are one analyst on a panel that reviews one market at a time. You receive a JSON snapshot: recent "
-        "candles, indicator readings and market-structure readings, all computed from exchange data. Decide whether "
-        "the snapshot shows a trade worth taking right now. An order would be placed at the snapshot's price.\n\n"
-        "- Use only the snapshot. Do not assume news, events or prices that are not in it.\n"
-        "- Most snapshots show no clear edge. Answer hold unless the evidence for one direction is clear and the "
-        "evidence against it is weak.\n"
-        "- For a buy, stop_loss is below the price and take_profit above it; for a sell the opposite. The target "
-        "must be at least %1 times as far from the price as the stop.\n"
-        "- confidence is 0 to 100: how strongly the snapshot supports your action. It is not a probability of "
-        "profit. Use 0 for hold.\n"
-        "- reasoning: at most 60 words of plain language naming the two or three readings that decided it.\n\n"
-        "Your focus on the panel: %2\n\n"
+        "You review a trade setup that the trader's own strategy, SBT Model 1, found on live exchange data. You do "
+        "not look for trades of your own. You check this setup against the strategy's rules and the market snapshot, "
+        "and confirm or reject it.\n\n"
+        "SBT Model 1 (bullish; a bearish setup mirrors it):\n"
+        "1) There must be a proper 1-2-3: Level 1 a swing high, Level 2 the low after it, Level 3 the high after "
+        "the break.\n"
+        "2) There must be a break of structure (BOS): a candle closed beyond Level 1.\n"
+        "3) The lowest bearish candle at Level 2 marks the zone (bearish setup: the highest bullish candle).\n"
+        "4) Price comes back to test that zone.\n"
+        "5) The testing candle must not close below the zone (bearish: above it).\n"
+        "6) Entry at the next candle's open.\n"
+        "7) Target: Level 3.\n"
+        "PD arrays (fair value gaps, order blocks, demand or supply zones) at or beyond Level 2 add confirmation.\n\n"
+        "- The setup's numbers were computed from the candles by these rules. Check that they agree with the "
+        "snapshot and that the structure is clean: real swings, a decisive break, a meaningful pullback, PD arrays "
+        "that matter. Weigh what argues against it. Use only the snapshot and the setup; assume no news or prices "
+        "that are not in them.\n"
+        "- Confirm by answering with the setup's direction: buy for a bullish setup, sell for a bearish one. Reject "
+        "with hold. Answer the opposite direction only when the snapshot clearly shows the other side is stronger.\n"
+        "- confidence is 0 to 100: how clearly the setup follows the rules and the snapshot supports it. It is not a "
+        "probability of profit. Use 0 for hold.\n"
+        "- stop_loss and take_profit: the setup's stop and target (Level 3); you do not move them. The strategy "
+        "needs a reward/risk of at least %1.\n"
+        "- reasoning: at most 60 words of plain language naming the rules and readings that decided it.\n\n"
+        "Your focus: %2\n\n"
         "Answer with one JSON object and nothing else:\n"
         "{\"action\": \"buy\" | \"sell\" | \"hold\", \"confidence\": number, \"stop_loss\": number, "
         "\"take_profit\": number, \"reasoning\": string}\n"
@@ -1220,6 +1250,26 @@ bool TradingEngine::analyzeNow()
 {
     if (m_analyzing)
         return false;
+    const Sbt::Setup *setup = reviewable();
+    if (!setup) {
+        log(QStringLiteral("info"), tr("No SBT Model 1 setup on %1 %2 to review yet: the strategy is watching for a "
+                                       "1-2-3 with a break of structure.").arg(symbolName(), m_config->interval()));
+        return false;
+    }
+    if (!aiAvailable()) {
+        log(QStringLiteral("info"), tr("No AI model can review the setup (no NVIDIA API key, or every model is "
+                                       "switched off). SBT Model 1 trades by its rules alone."));
+        return false;
+    }
+    return startReview(QString::fromStdString(setup->id));
+}
+
+// The AI team reviews one SBT setup against the strategy's rules.
+bool TradingEngine::startReview(const QString &id)
+{
+    const Sbt::Setup *setup = sbtSetup(id);
+    if (m_analyzing || !setup)
+        return false;
     m_ta = Indicators::summarize(m_candles);
     if (!m_ta.valid) {
         log(QStringLiteral("info"), tr("Not enough price history to analyze %1 yet.").arg(symbolName()));
@@ -1240,11 +1290,15 @@ bool TradingEngine::analyzeNow()
     m_waiting.clear();
     m_teamAsked.clear();
     m_reviewing.clear();
-    m_verdicts.push_back(rulesVerdict(m_ta, haveHigher ? &higher : nullptr, m_smc, m_config->risk().minRewardRisk));
+    m_reviewId = id;
+    m_reviews[id].running = true;
 
+    // The snapshot first (it is what the numbers are read from), then the setup.
     const QString user = QStringLiteral("Market snapshot:\n")
         + QString::fromUtf8(QJsonDocument(snapshot(m_ta, haveHigher ? &higher : nullptr, m_smc))
-                                .toJson(QJsonDocument::Compact));
+                                .toJson(QJsonDocument::Compact))
+        + QStringLiteral("\n\nSBT Model 1 setup to review:\n")
+        + QString::fromUtf8(QJsonDocument(setupJson(*setup)).toJson(QJsonDocument::Compact));
     m_analysisQuestion = user;
     QByteArray picture; // rendered once, and only if a model that reads pictures takes part
     const bool haveKey = !m_config->apiKey().isEmpty();
@@ -1276,10 +1330,11 @@ bool TradingEngine::analyzeNow()
         m_models->ask(q);
     }
 
-    m_signal.insert(QStringLiteral("state"), QStringLiteral("analyzing"));
+    log(QStringLiteral("info"), tr("Asked the AI team to review the %1 SBT Model 1 setup on %2.")
+                                    .arg(QLatin1String(Sbt::directionName(setup->direction)), symbolName()));
     m_signal.insert(QStringLiteral("stage"), QStringLiteral("first"));
     m_signal.remove(QStringLiteral("provisional"));
-    Q_EMIT signalChanged();
+    refreshSignal();
     Q_EMIT analystsChanged();
     if (m_waiting.isEmpty()) {
         const int generation = m_generation;
@@ -1459,44 +1514,45 @@ AccountView TradingEngine::accountView(const QString &symbol, qint64 now) const
 void TradingEngine::finishAnalysis()
 {
     m_analyzing = false;
+    const QString id = m_reviewId;
+    m_reviewId.clear();
+    Review &review = m_reviews[id];
+    review.running = false;
     if (m_candles.empty() || m_analysisSymbol != m_config->symbol()) {
-        Q_EMIT signalChanged();
+        refreshSignal();
         return;
     }
     const RiskSettings risk = m_config->risk();
     const qint64 now = nowMs();
+    const Sbt::Setup *setup = sbtSetup(id);
     ConsensusInput input;
-    input.price = m_candles.back().close; // the price now, not when the models were asked
+    input.price = m_candles.back().close;
     input.atr = m_ta.atr14;
     input.minRewardRisk = risk.minRewardRisk;
     input.minAgreeing = risk.minAgreeing;
-    Signal signal = consensus(m_verdicts, input);
-    const std::string symbol = m_analysisSymbol.toStdString();
-
-    QString outcome;
-    bool traded = false;
-    // An open position that the analysts now clearly oppose is closed.
-    if (m_config->autoTrade() && signal.action != Action::Hold && signal.confidence >= risk.minConfidence) {
-        const Position *open = m_account.positionOn(symbol);
-        if (open && open->isLong != (signal.action == Action::Buy)) {
-            Trade closed;
-            if (m_account.close(open->id, input.price, now, "signal_flip", &closed)) {
-                recordClosed({closed});
-                afterAccountChange(true);
-            }
-        }
+    const Signal team = consensus(m_verdicts, input);
+    review.done = true;
+    review.time = now;
+    review.result = team;
+    const Action want = setup && setup->direction == Sbt::Direction::Bullish ? Action::Buy : Action::Sell;
+    const int required = std::max(1, std::min(risk.minAgreeing, team.voters));
+    review.confirmed = setup && team.action == want && team.confidence >= risk.minConfidence && team.agreeing >= required;
+    if (setup) {
+        const QString dir = setup->direction == Sbt::Direction::Bullish ? tr("bullish") : tr("bearish");
+        log(QStringLiteral("signal"),
+            review.confirmed
+                ? tr("AI team on the %1 SBT setup, %2 %3: confirmed (%4 of %5 agree, confidence %6).")
+                      .arg(dir, symbolName(), m_analysisInterval).arg(team.agreeing).arg(team.voters)
+                      .arg(team.confidence, 0, 'f', 1)
+                : tr("AI team on the %1 SBT setup, %2 %3: not confirmed (%4 of %5 answered; %6).")
+                      .arg(dir, symbolName(), m_analysisInterval).arg(team.voters)
+                      .arg(int(m_verdicts.size()))
+                      .arg(team.action == want ? tr("too little agreement") : qs(team.note).isEmpty()
+                               ? tr("they did not confirm it") : qs(team.note)));
     }
-    RiskDecision decision = evaluate(signal, accountView(m_analysisSymbol, now), risk, now);
-
-    const QString headline = signal.action == Action::Hold
-        ? tr("%1 %2: no trade. %3").arg(symbolName(), m_analysisInterval, qs(signal.note))
-        : tr("%1 %2: %3 signal, confidence %4 (%5 of %6 analysts).")
-              .arg(symbolName(), m_analysisInterval, signal.action == Action::Buy ? tr("BUY") : tr("SELL"))
-              .arg(signal.confidence, 0, 'f', 1).arg(signal.agreeing).arg(signal.voters);
-    log(QStringLiteral("signal"), headline);
     {
         int members = 0, buy = 0, sell = 0, hold = 0, reviewed = 0, changed = 0;
-        for (const Verdict &v : signal.verdicts) {
+        for (const Verdict &v : team.verdicts) {
             if (!v.ok || v.seat.empty())
                 continue;
             ++members;
@@ -1516,35 +1572,27 @@ void TradingEngine::finishAnalysis()
                       .arg(members).arg(calls));
         }
     }
-
-    if (signal.action != Action::Hold) {
-        if (!decision.allowed) {
-            outcome = tr("Not traded. %1").arg(qs(decision.reason));
-            log(QStringLiteral("risk"), outcome);
-        } else if (m_config->autoTrade()) {
-            const QString error = execute(signal, decision);
-            traded = error.isEmpty();
-            outcome = traded ? tr("Placed on the paper account.") : tr("Not placed: %1").arg(error);
-            if (traded) // the signal now shows the account as it is with the trade in it
-                decision = evaluate(signal, accountView(m_analysisSymbol, now), risk, now);
-        } else {
-            outcome = tr("Passes the risk rules. Auto trade is off, so nothing was placed.");
+    // An entry that waited for this review is placed now, or not at all.
+    if (setup && m_pendingEntries.contains(id)) {
+        m_pendingEntries.remove(id);
+        onSbtEntry(*setup);
+    }
+    // Other entries waiting behind this review: the next one is reviewed.
+    const QStringList waiting = m_pendingEntries.values();
+    for (const QString &next : waiting) {
+        if (m_analyzing)
+            break;
+        if (m_reviews.value(next).done) {
+            m_pendingEntries.remove(next);
+            if (const Sbt::Setup *other = sbtSetup(next))
+                onSbtEntry(*other);
+        } else if (!startReview(next)) {
+            m_pendingEntries.remove(next);
+            m_traded.insert(next);
+            m_outcomes.insert(next, tr("Not traded: the AI team could not be asked to review the setup."));
         }
     }
-
-    m_lastSignal = signal;
-    m_lastDecision = decision;
-    m_signal = signalMap(signal, decision);
-    m_signal.insert(QStringLiteral("state"), QStringLiteral("ready"));
-    m_signal.insert(QStringLiteral("time"), double(now));
-    m_signal.insert(QStringLiteral("symbol"), m_analysisSymbol);
-    m_signal.insert(QStringLiteral("symbolName"), displayName(m_analysisSymbol));
-    m_signal.insert(QStringLiteral("interval"), m_analysisInterval);
-    m_signal.insert(QStringLiteral("traded"), traded);
-    m_signal.insert(QStringLiteral("outcome"), outcome);
-    // Whether the "place this trade" button makes sense.
-    m_signal.insert(QStringLiteral("placeable"), signal.action != Action::Hold && !traded && decision.allowed);
-    Q_EMIT signalChanged();
+    refreshSignal();
     Q_EMIT analystsChanged();
     Q_EMIT analysisFinished();
 }
@@ -1574,6 +1622,8 @@ QString TradingEngine::placeSuggestedTrade()
         return tr("An analysis is running.");
     if (m_lastSignal.action == Action::Hold || m_analysisSymbol != m_config->symbol() || m_candles.empty())
         return tr("There is no trade signal for this market.");
+    if (m_placed.contains(m_lastDecisionFor) || m_traded.contains(m_lastDecisionFor))
+        return tr("This setup was placed already.");
     const qint64 now = nowMs();
     const qint64 age = now - qint64(m_signal.value(QStringLiteral("time")).toDouble());
     if (age > 2 * TradingConfig::intervalMs(m_analysisInterval))
@@ -1587,10 +1637,12 @@ QString TradingEngine::placeSuggestedTrade()
         return qs(decision.reason);
     const QString error = execute(signal, decision);
     if (error.isEmpty()) {
-        m_signal.insert(QStringLiteral("traded"), true);
-        m_signal.insert(QStringLiteral("placeable"), false);
-        m_signal.insert(QStringLiteral("outcome"), tr("Placed on the paper account."));
-        Q_EMIT signalChanged();
+        m_traded.insert(m_lastDecisionFor);
+        m_placed.insert(m_lastDecisionFor);
+        m_outcomes.insert(m_lastDecisionFor, tr("Placed on the paper account by hand."));
+        m_lastDecision = decision;
+        refreshSignal();
+        save();
     }
     return error;
 }
@@ -2191,6 +2243,10 @@ void TradingEngine::load()
         return;
     }
     m_halted = root.value(QLatin1String("halted")).toBool();
+    for (const QJsonValue &v : root.value(QLatin1String("sbt_handled")).toArray())
+        m_traded.insert(v.toString());
+    for (const QJsonValue &v : root.value(QLatin1String("sbt_placed")).toArray())
+        m_placed.insert(v.toString());
     const QJsonArray curve = root.value(QLatin1String("equity_curve")).toArray();
     for (const QJsonValue &v : curve) {
         const QJsonArray point = v.toArray();
@@ -2228,6 +2284,9 @@ void TradingEngine::save()
         {QStringLiteral("positions"), positions},
         {QStringLiteral("trades"), trades},
         {QStringLiteral("equity_curve"), curve},
+        // SBT setups whose entry was handled, so a restart never enters one again.
+        {QStringLiteral("sbt_handled"), QJsonArray::fromStringList(QStringList(m_traded.begin(), m_traded.end()))},
+        {QStringLiteral("sbt_placed"), QJsonArray::fromStringList(QStringList(m_placed.begin(), m_placed.end()))},
     };
     QSaveFile file(m_config->dataDir() + QStringLiteral("/paper.json"));
     if (!file.open(QIODevice::WriteOnly))
@@ -2285,5 +2344,6 @@ QJsonObject TradingEngine::dumpMarket() const
                                                   {QStringLiteral("hasOlder"), hasOlder()}}},
             {QStringLiteral("watchlist"), QJsonArray::fromVariantList(watchlist())},
             {QStringLiteral("quote"), QJsonObject::fromVariantMap(quote())},
+            {QStringLiteral("sbt"), QJsonObject::fromVariantMap(sbt())},
             {QStringLiteral("readings"), QJsonObject::fromVariantMap(readings())}};
 }

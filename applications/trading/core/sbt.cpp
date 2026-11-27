@@ -1,0 +1,532 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "sbt.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+namespace Trading::Sbt {
+
+namespace {
+
+const int kMinWindow = 400;   // closed candles kept at least
+const int kMaxWindow = 3000;  // and at most
+const size_t kMaxArrays = 80;
+const size_t kKeepFinished = 12;
+const int kAtrPeriod = 14;
+
+bool bullishCandle(const Candle &c) { return c.close > c.open; }
+bool bearishCandle(const Candle &c) { return c.close < c.open; }
+double body(const Candle &c) { return std::fabs(c.close - c.open); }
+
+std::string fixed(double v, int decimals)
+{
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%.*f", decimals, v);
+    return buf;
+}
+
+} // namespace
+
+const char *directionName(Direction d)
+{
+    return d == Direction::Bullish ? "bullish" : "bearish";
+}
+
+const char *statusName(Status s)
+{
+    switch (s) {
+    case Status::Armed: return "armed";
+    case Status::Triggered: return "triggered";
+    case Status::Entered: return "entered";
+    case Status::Target: return "target";
+    case Status::Stopped: return "stopped";
+    case Status::Invalidated: return "invalidated";
+    case Status::Skipped: return "skipped";
+    case Status::Expired: return "expired";
+    }
+    return "armed";
+}
+
+bool finished(Status s)
+{
+    return s == Status::Target || s == Status::Stopped || s == Status::Invalidated || s == Status::Skipped
+        || s == Status::Expired;
+}
+
+const char *pdName(PdKind kind, bool bullish)
+{
+    switch (kind) {
+    case PdKind::FairValueGap: return "fvg";
+    case PdKind::OrderBlock: return "order_block";
+    case PdKind::Zone: return bullish ? "demand" : "supply";
+    }
+    return "fvg";
+}
+
+Engine::Engine(const Settings &settings)
+    : m_settings(settings)
+{
+    m_settings.swingStrength = std::clamp(m_settings.swingStrength, 1, 10);
+}
+
+void Engine::reset()
+{
+    const Settings keep = m_settings;
+    const bool live = m_live;
+    *this = Engine(keep);
+    m_live = live;
+}
+
+bool Engine::inWindow(int index) const
+{
+    return index >= m_first && index < m_first + int(m_window.size());
+}
+
+const Candle &Engine::at(int index) const
+{
+    return m_window[size_t(index - m_first)];
+}
+
+void Engine::updateAtr(const Candle &c)
+{
+    double tr = c.high - c.low;
+    if (m_window.size() >= 2) {
+        const Candle &prev = m_window[m_window.size() - 2];
+        tr = std::max({tr, std::fabs(c.high - prev.close), std::fabs(c.low - prev.close)});
+    }
+    ++m_atrCount;
+    if (m_atrCount <= kAtrPeriod)
+        m_atr += (tr - m_atr) / m_atrCount; // the plain average while there are fewer than 14
+    else
+        m_atr = (m_atr * (kAtrPeriod - 1) + tr) / kAtrPeriod;
+}
+
+void Engine::emit(const std::string &kind, const Setup &s, std::vector<Event> *events) const
+{
+    events->push_back({kind, s, m_live});
+}
+
+std::vector<Event> Engine::close(const Candle &input)
+{
+    std::vector<Event> events;
+    if (!m_window.empty() && input.openTime <= m_window.back().openTime)
+        return events;
+    Candle c = input;
+    c.closed = true;
+    const int n = m_count;
+    m_window.push_back(c);
+    ++m_count;
+    updateAtr(c);
+
+    for (Setup &s : m_setups) {
+        if (s.status == Status::Triggered)
+            enter(s, c, &events);        // no forming candle was seen: this one opened the trade
+        else if (s.status == Status::Entered && c.openTime >= s.entryTime)
+            outcome(s, c, true, &events); // never from a candle before the entry
+        else if (s.status == Status::Armed && s.bos.index < n)
+            advance(s, c, &events);
+    }
+    updateArrays(c);
+    detectArrays();
+    checkBos(c, &events);
+    confirmSwing(&events);
+    for (Setup &s : m_setups) {
+        if (s.status == Status::Armed)
+            s.intrabar = false;
+    }
+    trim();
+    return events;
+}
+
+std::vector<Event> Engine::forming(const Candle &c)
+{
+    std::vector<Event> events;
+    if (m_window.empty() || c.openTime <= m_window.back().openTime)
+        return events;
+    m_formingTime = c.openTime;
+    for (Setup &s : m_setups) {
+        if (s.status == Status::Triggered) {
+            enter(s, c, &events);
+        } else if (s.status == Status::Entered && c.openTime >= s.entryTime) {
+            outcome(s, c, false, &events);
+        } else if (s.status == Status::Armed) {
+            // Shown only: a retest counts when the candle has closed.
+            const bool bull = s.direction == Direction::Bullish;
+            const bool in = bull ? c.low <= s.zoneTop : c.high >= s.zoneBottom;
+            const bool newExtreme = bull ? c.high > s.level3.price : c.low < s.level3.price;
+            s.intrabar = in && !newExtreme;
+        }
+    }
+    return events;
+}
+
+// A swing point 'k' candles back, now that 'k' candles have closed after it.
+void Engine::confirmSwing(std::vector<Event> *events)
+{
+    (void)events;
+    const int k = m_settings.swingStrength;
+    const int p = m_count - 1 - k;
+    if (p - k < m_first || p < 0)
+        return;
+    const Candle &mid = at(p);
+    bool high = true, low = true;
+    for (int i = 1; i <= k; ++i) {
+        high = high && mid.high > at(p - i).high && mid.high >= at(p + i).high;
+        low = low && mid.low < at(p - i).low && mid.low <= at(p + i).low;
+    }
+    if (high) {
+        m_swings.push_back({{mid.openTime, mid.high, p}, true});
+        m_bullCandidate = {mid.openTime, mid.high, p}; // the newest swing high is Level 1 of the next bullish 1-2-3
+    }
+    if (low) {
+        m_swings.push_back({{mid.openTime, mid.low, p}, false});
+        m_bearCandidate = {mid.openTime, mid.low, p};
+    }
+    if (m_swings.size() > 60)
+        m_swings.erase(m_swings.begin(), m_swings.begin() + long(m_swings.size() - 60));
+}
+
+void Engine::checkBos(const Candle &c, std::vector<Event> *events)
+{
+    const int n = m_count - 1;
+    for (Direction d : {Direction::Bullish, Direction::Bearish}) {
+        const bool bull = d == Direction::Bullish;
+        Point &level1 = bull ? m_bullCandidate : m_bearCandidate;
+        if (level1.index < 0)
+            continue;
+        const bool broken = bull ? c.close > level1.price : c.close < level1.price;
+        if (!broken)
+            continue;
+        const Point one = level1;
+        level1 = Point(); // broken once
+        if (!inWindow(one.index) || n - one.index < 2)
+            continue;
+        Setup s;
+        s.direction = d;
+        s.id = m_prefix + directionName(d) + ":" + std::to_string(one.time);
+        bool known = false;
+        for (const Setup &other : m_setups)
+            known = known || other.id == s.id;
+        if (known)
+            continue;
+        s.level1 = one;
+        s.bos = {c.openTime, c.close, n};
+        s.updated = c.openTime;
+        // Level 2: the extreme between Level 1 and the BOS.
+        int l2 = -1;
+        for (int i = one.index + 1; i < n; ++i) {
+            const Candle &x = at(i);
+            if (l2 < 0 || (bull ? x.low < at(l2).low : x.high > at(l2).high))
+                l2 = i;
+        }
+        if (l2 < 0)
+            continue;
+        s.level2 = {at(l2).openTime, bull ? at(l2).low : at(l2).high, l2};
+        // The zone: the lowest bearish candle (bullish setup) or the highest
+        // bullish candle (bearish setup) between Level 1 and the BOS.
+        int z = -1;
+        for (int i = one.index + 1; i < n; ++i) {
+            const Candle &x = at(i);
+            if (bull ? !bearishCandle(x) : !bullishCandle(x))
+                continue;
+            if (z < 0 || (bull ? x.low < at(z).low : x.high > at(z).high))
+                z = i;
+        }
+        s.level3 = {c.openTime, bull ? c.high : c.low, n};
+        if (z < 0) {
+            s.status = Status::Invalidated;
+            s.note = bull ? "no bearish candle at Level 2" : "no bullish candle at Level 2";
+            m_setups.push_back(s);
+            emit("invalidated", s, events);
+            continue;
+        }
+        const Candle &zc = at(z);
+        s.zoneTime = zc.openTime;
+        if (bull) {
+            s.zoneBottom = zc.low;
+            s.zoneTop = m_settings.zoneBody ? std::max(zc.open, zc.close) : zc.high;
+        } else {
+            s.zoneTop = zc.high;
+            s.zoneBottom = m_settings.zoneBody ? std::min(zc.open, zc.close) : zc.low;
+        }
+        s.status = Status::Armed;
+        m_setups.push_back(s);
+        emit("armed", s, events);
+    }
+}
+
+void Engine::advance(Setup &s, const Candle &c, std::vector<Event> *events)
+{
+    const int n = m_count - 1;
+    const bool bull = s.direction == Direction::Bullish;
+    const int k = m_settings.swingStrength;
+    // Level 3 follows the move after the BOS until it is confirmed and price
+    // comes back. A candle that reaches the zone without a new extreme
+    // confirms it too: the turn is plain.
+    const bool newExtreme = bull ? c.high > s.level3.price : c.low < s.level3.price;
+    const bool reached = bull ? c.low <= s.zoneTop : c.high >= s.zoneBottom;
+    if (newExtreme) {
+        s.level3 = {c.openTime, bull ? c.high : c.low, n};
+        s.level3Confirmed = false;
+    } else if (!s.level3Confirmed && (n - s.level3.index >= k || reached)) {
+        s.level3Confirmed = true;
+    }
+    s.updated = c.openTime;
+    // A close through the zone ends it, retest or not.
+    if (bull ? c.close < s.zoneBottom : c.close > s.zoneTop) {
+        s.status = Status::Invalidated;
+        s.note = bull ? "a candle closed below the Level 2 zone" : "a candle closed above the Level 2 zone";
+        s.outcomeTime = c.openTime;
+        emit("invalidated", s, events);
+        return;
+    }
+    if (s.level3Confirmed && reached && !newExtreme) {
+        s.retest = {c.openTime, c.close, n};
+        s.confirmations = confirmationsFor(s, c);
+        s.target = s.level3.price;
+        // Past the zone and Level 2 (a wick below the zone candle is part of the structure).
+        const double buffer = m_settings.stopBufferAtr * m_atr;
+        s.stop = bull ? std::min(s.zoneBottom, s.level2.price) - buffer : std::max(s.zoneTop, s.level2.price) + buffer;
+        const double risk = bull ? c.close - s.stop : s.stop - c.close;
+        s.rewardRisk = risk > 0 ? (bull ? s.target - c.close : c.close - s.target) / risk : 0;
+        if (m_settings.requirePdArray && s.confirmations.empty()) {
+            s.status = Status::Skipped;
+            s.note = bull ? "no PD array (FVG, order block, demand) at or below Level 2 confirms the retest"
+                          : "no PD array (FVG, order block, supply) at or above Level 2 confirms the retest";
+            s.outcomeTime = c.openTime;
+            emit("skipped", s, events);
+            return;
+        }
+        s.status = Status::Triggered;
+        emit("triggered", s, events);
+        return;
+    }
+    if (n - s.bos.index > m_settings.maxArmedCandles) {
+        s.status = Status::Expired;
+        s.note = "no retest within " + std::to_string(m_settings.maxArmedCandles) + " candles";
+        s.outcomeTime = c.openTime;
+        emit("expired", s, events);
+    }
+}
+
+void Engine::enter(Setup &s, const Candle &e, std::vector<Event> *events)
+{
+    const bool bull = s.direction == Direction::Bullish;
+    s.entry = e.open;
+    s.entryTime = e.openTime;
+    s.updated = e.openTime;
+    s.intrabar = false;
+    const double risk = bull ? s.entry - s.stop : s.stop - s.entry;
+    const double reward = bull ? s.target - s.entry : s.entry - s.target;
+    s.rewardRisk = risk > 0 && reward > 0 ? reward / risk : 0;
+    std::string why;
+    if (reward <= 0)
+        why = "the entry candle opened at or beyond Level 3";
+    else if (risk <= 0)
+        why = "the entry candle opened beyond the stop";
+    else if (s.rewardRisk + 1e-9 < m_settings.minRewardRisk)
+        why = "reward/risk " + fixed(s.rewardRisk, 2) + " is below " + fixed(m_settings.minRewardRisk, 2);
+    if (!why.empty()) {
+        s.status = Status::Skipped;
+        s.note = why;
+        s.outcomeTime = e.openTime;
+        emit("skipped", s, events);
+        return;
+    }
+    s.status = Status::Entered;
+    s.historical = !m_live;
+    emit("entered", s, events);
+    // A closed entry candle happened after the entry: its whole range counts.
+    if (e.closed)
+        outcome(s, e, true, events);
+}
+
+void Engine::outcome(Setup &s, const Candle &c, bool closed, std::vector<Event> *events)
+{
+    (void)closed;
+    const bool bull = s.direction == Direction::Bullish;
+    // Within one candle the order of high and low is unknown: the stop is
+    // assumed to come first.
+    const bool stop = bull ? c.low <= s.stop : c.high >= s.stop;
+    const bool target = bull ? c.high >= s.target : c.low <= s.target;
+    if (!stop && !target)
+        return;
+    s.status = stop ? Status::Stopped : Status::Target;
+    s.outcomeTime = c.openTime;
+    s.updated = c.openTime;
+    emit(stop ? "stopped" : "target", s, events);
+}
+
+std::vector<PdArray> Engine::confirmationsFor(const Setup &s, const Candle &r) const
+{
+    std::vector<PdArray> found;
+    const bool bull = s.direction == Direction::Bullish;
+    const double reach = m_settings.pdDistanceAtr * m_atr;
+    const double slack = 0.1 * m_atr;
+    const int n = m_count - 1;
+    for (const PdArray &a : m_arrays) {
+        if (a.bullish != bull || a.formed >= n || a.broken)
+            continue;
+        if (a.time == s.zoneTime)
+            continue; // the zone's own candle is not an additional confirmation
+        if (a.kind == PdKind::FairValueGap && a.filled)
+            continue;
+        const bool overlap = a.top >= s.zoneBottom && a.bottom <= s.zoneTop;
+        bool placed, reached;
+        if (bull) {
+            // At or below Level 2: its top no higher than the zone's, not too far under it.
+            placed = a.top <= s.zoneTop + slack && a.top >= s.zoneBottom - reach;
+            reached = r.low <= a.top || overlap;
+            if (r.close < a.bottom)
+                continue; // the retest closed through it
+        } else {
+            placed = a.bottom >= s.zoneBottom - slack && a.bottom <= s.zoneTop + reach;
+            reached = r.high >= a.bottom || overlap;
+            if (r.close > a.top)
+                continue;
+        }
+        if (placed && reached)
+            found.push_back(a);
+    }
+    // Nearest to the zone first; a few are enough.
+    std::sort(found.begin(), found.end(), [&](const PdArray &x, const PdArray &y) {
+        const double dx = bull ? s.zoneTop - x.top : x.bottom - s.zoneBottom;
+        const double dy = bull ? s.zoneTop - y.top : y.bottom - s.zoneBottom;
+        return std::fabs(dx) < std::fabs(dy);
+    });
+    if (found.size() > 4)
+        found.resize(4);
+    return found;
+}
+
+void Engine::detectArrays()
+{
+    if (m_atrCount < 5 || m_atr <= 0)
+        return;
+    const int n = m_count - 1;
+    const Candle &c = at(n);
+    const auto add = [&](PdArray a) {
+        for (const PdArray &o : m_arrays) {
+            if (o.kind == a.kind && o.bullish == a.bullish && o.index == a.index)
+                return;
+        }
+        a.formed = n;
+        m_arrays.push_back(a);
+    };
+    // Fair value gaps: candle n-1 left a gap between candles n-2 and n.
+    if (n - 2 >= m_first) {
+        const Candle &a = at(n - 2), &mid = at(n - 1);
+        if (c.low > a.high && c.low - a.high >= m_settings.minGapAtr * m_atr)
+            add({PdKind::FairValueGap, true, c.low, a.high, mid.openTime, n - 1});
+        if (c.high < a.low && a.low - c.high >= m_settings.minGapAtr * m_atr)
+            add({PdKind::FairValueGap, false, a.low, c.high, mid.openTime, n - 1});
+    }
+    // A displacement: a large body. Before it, an order block (the last
+    // opposite candle) and a demand or supply zone (the small-bodied base).
+    const bool up = bullishCandle(c) && body(c) >= m_settings.displacementAtr * m_atr;
+    const bool down = bearishCandle(c) && body(c) >= m_settings.displacementAtr * m_atr;
+    if (!up && !down)
+        return;
+    for (int j = n - 1; j >= n - 3 && j >= m_first; --j) {
+        const Candle &x = at(j);
+        if (up && bearishCandle(x) && c.close > x.high) {
+            add({PdKind::OrderBlock, true, x.high, x.low, x.openTime, j});
+            break;
+        }
+        if (down && bullishCandle(x) && c.close < x.low) {
+            add({PdKind::OrderBlock, false, x.high, x.low, x.openTime, j});
+            break;
+        }
+    }
+    int base = 0;
+    double low = 0, high = 0;
+    long long time = 0;
+    int first = n;
+    for (int j = n - 1; j >= n - 3 && j >= m_first; --j) {
+        const Candle &x = at(j);
+        if (body(x) > 0.5 * m_atr)
+            break;
+        const double bodyHigh = std::max(x.open, x.close), bodyLow = std::min(x.open, x.close);
+        if (base == 0) {
+            low = up ? x.low : bodyLow;
+            high = up ? bodyHigh : x.high;
+        } else {
+            low = std::min(low, up ? x.low : bodyLow);
+            high = std::max(high, up ? bodyHigh : x.high);
+        }
+        ++base;
+        time = x.openTime;
+        first = j;
+    }
+    if (base > 0 && high > low)
+        add({PdKind::Zone, up, high, low, time, first});
+}
+
+void Engine::updateArrays(const Candle &c)
+{
+    const int n = m_count - 1;
+    for (PdArray &a : m_arrays) {
+        if (a.formed >= n)
+            continue;
+        if (a.bullish) {
+            a.broken = a.broken || c.close < a.bottom;
+            a.touched = a.touched || c.low <= a.top;
+            if (a.kind == PdKind::FairValueGap)
+                a.filled = a.filled || c.low <= a.bottom;
+        } else {
+            a.broken = a.broken || c.close > a.top;
+            a.touched = a.touched || c.high >= a.bottom;
+            if (a.kind == PdKind::FairValueGap)
+                a.filled = a.filled || c.high >= a.top;
+        }
+    }
+}
+
+void Engine::trim()
+{
+    const int n = m_count - 1;
+    // PD arrays: the ones that can still matter.
+    std::vector<PdArray> kept;
+    for (const PdArray &a : m_arrays) {
+        const bool dead = a.broken || (a.kind == PdKind::FairValueGap && a.filled);
+        if (!(dead && n - a.formed > 50) && n - a.formed <= kMaxWindow)
+            kept.push_back(a);
+    }
+    if (kept.size() > kMaxArrays)
+        kept.erase(kept.begin(), kept.begin() + long(kept.size() - kMaxArrays));
+    m_arrays = kept;
+    // Setups: every open one, and the newest finished ones.
+    size_t done = 0;
+    for (const Setup &s : m_setups)
+        done += finished(s.status) ? 1 : 0;
+    if (done > kKeepFinished) {
+        size_t drop = done - kKeepFinished;
+        std::vector<Setup> next;
+        for (const Setup &s : m_setups) {
+            if (drop > 0 && finished(s.status)) {
+                --drop;
+                continue;
+            }
+            next.push_back(s);
+        }
+        m_setups = next;
+    }
+    // Candles: back to the oldest Level 1 still watched, within limits.
+    int need = n - kMinWindow;
+    for (const Point *p : {&m_bullCandidate, &m_bearCandidate}) {
+        if (p->index >= 0)
+            need = std::min(need, p->index - m_settings.swingStrength - 1);
+    }
+    need = std::max(need, n - kMaxWindow);
+    if (need > m_first) {
+        m_window.erase(m_window.begin(), m_window.begin() + (need - m_first));
+        m_first = need;
+    }
+    for (Point *p : {&m_bullCandidate, &m_bearCandidate}) {
+        if (p->index >= 0 && p->index < m_first)
+            *p = Point(); // too old to be Level 1 of anything
+    }
+}
+
+} // namespace Trading::Sbt

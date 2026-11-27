@@ -8,6 +8,7 @@
 #include <QDateTime>
 #include <QImage>
 #include <QPainter>
+#include <QPolygonF>
 #include <QCursor>
 #include <QHoverEvent>
 #include <QKeyEvent>
@@ -46,7 +47,7 @@ double niceStep(double range, int lines)
 } // namespace
 
 Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &candles, const View &view,
-               const Levels &levels, const Palette &palette, const QFont &font)
+               const Levels &levels, const Palette &palette, const QFont &font, const Overlay &overlay)
 {
     Geometry geometry;
     painter->save();
@@ -90,6 +91,16 @@ Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &ca
         return geometry;
     }
     const double body = std::max(1.0, slot * 0.62);
+    // The (fractional) series index of a candle's open time; 0 = the right edge.
+    const auto indexOf = [&](long long time) -> double {
+        if (time <= 0)
+            return rightIndex + 1;
+        if (time < candles.front().openTime)
+            return firstIndex - 1e6; // before the series: off the left edge
+        const auto it = std::lower_bound(candles.begin(), candles.end(), time,
+                                         [](const Trading::Candle &c, long long t) { return c.openTime < t; });
+        return double(it - candles.begin());
+    };
 
     // Overlays are computed over the whole series so their first visible
     // values are already settled.
@@ -195,6 +206,30 @@ Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &ca
     line(fast, palette.fast, 1.4);
     painter->setRenderHint(QPainter::Antialiasing, false);
 
+    // The strategy's zones, behind the candles.
+    painter->save();
+    painter->setClipRect(priceArea);
+    for (const Shape &shape : overlay) {
+        if (shape.kind != Shape::Zone || !(shape.top > shape.bottom))
+            continue;
+        const double x0 = xOf(indexOf(shape.from)) - slot / 2;
+        const double x1 = shape.to > 0 ? xOf(indexOf(shape.to)) + slot / 2 : priceArea.right();
+        const QRectF box(QPointF(x0, yOf(shape.top)), QPointF(std::max(x1, x0 + 2), yOf(shape.bottom)));
+        QColor fill = shape.color;
+        fill.setAlphaF(0.16f);
+        painter->fillRect(box, fill);
+        QColor edge = shape.color;
+        edge.setAlphaF(0.65f);
+        painter->setPen(QPen(edge, 1, shape.dashed ? Qt::DashLine : Qt::SolidLine));
+        painter->drawRect(box);
+        if (!shape.label.isEmpty()) {
+            painter->setPen(shape.color);
+            painter->drawText(QRectF(box.left() + 3, box.top() + 1, std::max(60.0, box.width() - 6), metrics.height()),
+                              Qt::AlignLeft | Qt::AlignTop, shape.label);
+        }
+    }
+    painter->restore();
+
     // Volume and candles.
     for (int i = first; i <= last; ++i) {
         const Trading::Candle &c = candles[size_t(i)];
@@ -214,6 +249,47 @@ Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &ca
         painter->fillRect(QRectF(x - body / 2, top, body, std::max(1.0, bottom - top)), color);
     }
     painter->setClipping(false);
+
+    // The strategy's levels and marks, over the candles.
+    painter->save();
+    painter->setClipRect(priceArea.adjusted(0, -metrics.height(), 0, metrics.height()));
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    for (const Shape &shape : overlay) {
+        if (shape.kind == Shape::Zone)
+            continue;
+        const double y = std::round(yOf(shape.top)) + 0.5;
+        if (shape.kind == Shape::Line) {
+            const double x0 = xOf(indexOf(shape.from)) - slot / 2;
+            const double x1 = shape.to > 0 ? xOf(indexOf(shape.to)) + slot / 2 : priceArea.right();
+            painter->setPen(QPen(shape.color, 1.4, shape.dashed ? Qt::DashLine : Qt::SolidLine));
+            painter->drawLine(QPointF(x0, y), QPointF(x1, y));
+            if (!shape.label.isEmpty()) {
+                painter->setPen(shape.color);
+                painter->drawText(QRectF(x0 + 2, y - metrics.height() - 1, 220, metrics.height()),
+                                  Qt::AlignLeft | Qt::AlignVCenter, shape.label);
+            }
+        } else {
+            // A small diamond on the candle, with its label above; none for a
+            // candle the chart does not have.
+            const double at = indexOf(shape.from);
+            if (at < 0)
+                continue;
+            const double x = xOf(at);
+            const double r = std::max(3.0, std::min(6.0, slot * 0.45));
+            QPolygonF diamond;
+            diamond << QPointF(x, y - r) << QPointF(x + r, y) << QPointF(x, y + r) << QPointF(x - r, y);
+            painter->setPen(QPen(palette.background, 1));
+            painter->setBrush(shape.color);
+            painter->drawPolygon(diamond);
+            painter->setBrush(Qt::NoBrush);
+            if (!shape.label.isEmpty()) {
+                painter->setPen(shape.color);
+                painter->drawText(QRectF(x - 60, y - r - metrics.height() - 1, 120, metrics.height()),
+                                  Qt::AlignHCenter | Qt::AlignBottom, shape.label);
+            }
+        }
+    }
+    painter->restore();
 
     // A dashed line with a filled price tag on the axis.
     const auto level = [&](double price, const QColor &color, const QString &name) {
@@ -561,9 +637,26 @@ void ChartItem::paint(QPainter *painter)
     view.offset = m_offset;
     view.crosshair = m_pointerInside && !m_dragging;
     view.pointer = m_pointer;
+    ChartRenderer::Overlay overlay;
+    for (const QVariant &v : std::as_const(m_overlay)) {
+        const QVariantMap m = v.toMap();
+        ChartRenderer::Shape shape;
+        const QString kind = m.value(QStringLiteral("kind")).toString();
+        shape.kind = kind == QLatin1String("zone") ? ChartRenderer::Shape::Zone
+                   : kind == QLatin1String("mark") ? ChartRenderer::Shape::Mark : ChartRenderer::Shape::Line;
+        shape.top = m.value(shape.kind == ChartRenderer::Shape::Zone ? QStringLiteral("top") : QStringLiteral("price")).toDouble();
+        shape.bottom = m.value(QStringLiteral("bottom")).toDouble();
+        shape.from = qint64(m.value(QStringLiteral("from")).toDouble());
+        shape.to = qint64(m.value(QStringLiteral("to")).toDouble());
+        shape.color = m.value(QStringLiteral("color")).value<QColor>();
+        shape.label = m.value(QStringLiteral("label")).toString();
+        shape.dashed = m.value(QStringLiteral("dashed")).toBool();
+        if (shape.top > 0 && shape.from > 0)
+            overlay.push_back(shape);
+    }
     static const Trading::Candles none;
     m_geometry = ChartRenderer::paint(painter, boundingRect(), engine ? engine->chartCandles() : none, view, levels,
-                                      palette, m_font);
+                                      palette, m_font, overlay);
     // After painting: the item must not change its properties while it paints.
     QMetaObject::invokeMethod(this, &ChartItem::updateHovered, Qt::QueuedConnection);
 }

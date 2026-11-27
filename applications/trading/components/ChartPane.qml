@@ -12,6 +12,44 @@ import "Format.js" as Format
 GlowCard {
     id: root
 
+    // The shapes the chart draws for SBT Model 1. Bullish in the "up" colour,
+    // bearish in the "down" colour; PD arrays dashed, in their own colours.
+    function sbtOverlay(sbt) {
+        var shapes = []
+        var arrays = sbt.pdArrays || []
+        for (var i = Math.max(0, arrays.length - 10); i < arrays.length; i++) {
+            var a = arrays[i]
+            var color = a.kind === "fvg" ? Theme.accentBlue : a.kind === "order_block" ? Theme.accentViolet
+                      : a.kind === "demand" ? Theme.success : Theme.danger
+            var name = a.kind === "fvg" ? qsTr("FVG") : a.kind === "order_block" ? qsTr("OB")
+                     : a.kind === "demand" ? qsTr("Demand") : qsTr("Supply")
+            shapes.push({ kind: "zone", top: a.top, bottom: a.bottom, from: a.time, to: 0, color: Theme.alpha(color, 0.7),
+                          label: name, dashed: true })
+        }
+        var s = sbt.current
+        if (!s || s.id === undefined || s.status === "expired")
+            return shapes
+        var tone = s.direction === "bullish" ? Theme.success : Theme.danger
+        var end = s.entryTime > 0 ? s.entryTime : (s.retest && s.retest.time ? s.retest.time : 0)
+        shapes.push({ kind: "zone", top: s.zone.top, bottom: s.zone.bottom, from: s.zone.time, to: end, color: tone,
+                      label: qsTr("Level 2 zone") })
+        shapes.push({ kind: "line", price: s.level1.price, from: s.level1.time, to: s.bos.time, color: Theme.textSecondary,
+                      label: "1", dashed: true })
+        shapes.push({ kind: "line", price: s.level2.price, from: s.level2.time, to: end, color: Theme.textSecondary,
+                      label: "2", dashed: true })
+        if (s.level3 && s.level3.price)
+            shapes.push({ kind: "line", price: s.target, from: s.level3.time, to: 0, color: tone,
+                          label: s.level3Confirmed ? qsTr("3 · target") : qsTr("3 (forming)"), dashed: !s.level3Confirmed })
+        shapes.push({ kind: "mark", price: s.level1.price, from: s.bos.time, color: Theme.accent, label: qsTr("BOS") })
+        // The retest candle's close; the entry is the position's own line once it is open.
+        if (s.retest && s.retest.time)
+            shapes.push({ kind: "mark", price: s.retest.price, from: s.retest.time, color: tone, label: "" })
+        if (s.entryTime > 0 && !root.holding)
+            shapes.push({ kind: "mark", price: s.entry, from: s.entryTime, color: Theme.textPrimary,
+                          label: s.direction === "bullish" ? qsTr("BUY") : qsTr("SELL") })
+        return shapes
+    }
+
     property Labels labels
     // 0 = TradingView, 1 = AI chart. Without the web view there is only the AI chart.
     property int view: trading.webViewAvailable ? 0 : 1
@@ -140,6 +178,8 @@ GlowCard {
                 slowColor: Theme.accentViolet
                 bandColor: Theme.alpha(Theme.accentBlue, 0.7)
                 entryColor: Theme.textPrimary
+                // SBT Model 1: the setup's zone, levels and marks, and the PD arrays in play.
+                overlay: root.sbtOverlay(trading.sbt)
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSizeCaption
                 Accessible.role: Accessible.Graphic

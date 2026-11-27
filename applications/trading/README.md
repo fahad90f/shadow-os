@@ -1,9 +1,10 @@
 # Shadow Trading (`shadow-trading`)
 
 A trading desk for Shadow OS. Live prices and a chart on the left; on the
-right, what a panel of analysts (models hosted by NVIDIA plus fixed rules)
-says about the market, the trade that follows from it, and every trade that
-was made.
+right, the setup the trader's own strategy (**SBT Model 1**) has found, what
+a panel of AI analysts (models hosted by NVIDIA) says about that setup, the
+trade that follows from it, and every trade that was made. The models do
+not trade on their own view: every trade comes from the strategy.
 
 - **Application id:** `org.shadow.trading`
 - **Binary / package:** `shadow-trading` / `shadow-trading`, single instance
@@ -36,72 +37,93 @@ real ones.
      price sits in the current range.
    These are fixed formulas on closed candles. They measure; they do not
    predict.
-3. **Analysts.** When a candle closes (or on *Analyze now*) every model on
-   the panel gets the same JSON snapshot (the last 40 candles, the readings
-   above, the higher timeframe's trend, any open position) and answers with
-   one JSON object: buy, sell or hold, a confidence, a stop and a target, and
-   its reasoning. Every model is one of **NVIDIA's hosted models**, reached
-   through one endpoint (`https://integrate.api.nvidia.com/v1`,
-   `/chat/completions`) with one key. The panel has four roles, and each role
-   is briefed with its skills (`prompts/skill-*.md`, compiled into the binary
-   and added to the model's instructions):
+3. **SBT Model 1** (`core/sbt.cpp`, plain C++17, unit-tested in
+   `tests/test_sbt.cpp`): the trader's strategy, and the only source of
+   trades. One engine for both directions; bearish mirrors bullish:
+   1. a proper **1-2-3**: Level 1 a swing high (a high above the two candles
+      on each side; *Swing strength*), Level 2 the lowest low after it;
+   2. a **break of structure** (BOS): a candle **closes** above Level 1;
+   3. the **Level 2 zone**: the lowest **bearish** candle between Level 1
+      and the BOS, its whole range (or low to body, *Level 2 zone*); no
+      bearish candle there, no setup;
+   4. **Level 3**: the high after the BOS, confirmed once two candles have
+      closed without going higher, or by a candle that comes back to the
+      zone without a new high; it follows a new high until then;
+   5. the **retest**: a closed candle reaches the zone; if it (or any candle
+      before it) closes **below** the zone, the setup is invalid;
+   6. **PD arrays** (a dedicated detector in the same engine): fair value
+      gaps, order blocks (the last opposite candle before a displacement)
+      and demand zones (a small-bodied base before a displacement); for a
+      bearish setup supply. Valid only if on the setup's side, at or below
+      Level 2 (bearish: at or above), within 1.5 ATR, unbroken (no close
+      through it), a gap not yet filled, and reached by the move into the
+      zone. The candle that marks the zone does not confirm itself. At least
+      one must confirm the retest (*PD array required*);
+   7. **entry at the next candle's open**, target **Level 3**, the stop past
+      the zone and Level 2 by a quarter ATR (*Stop beyond the zone*); entered
+      only when reward/risk meets the minimum of the risk rules.
 
-   | Role | Focus | Skill briefs | Built-in models |
+   Only closed candles decide; the forming candle gives the entry's open
+   and an "in the zone now" note that is shown, never acted on. Nothing is
+   recomputed later: an entered setup keeps its levels. Each setup (one per
+   Level 1 and market) enters at most once, also after the market is opened
+   again or the application restarts (the handled setups are kept with the
+   paper account), and is placed by hand at most once. Candles missing after
+   a gap (the computer slept) are read as history, not traded. Work per candle is constant: the engine
+   keeps its own state (swings, setups, PD arrays, a bounded window of
+   candles) and never rescans the history. When a market or interval is
+   opened, its history is read once as **history**: setups found there are
+   shown but never traded, except an entry whose candle is the one forming
+   now. A setup expires without a retest within 200 candles.
+4. **The AI team reviews each setup** (it does not look for trades). As
+   soon as a setup is armed (structure, BOS, zone known; waiting for the
+   retest), every model on the panel gets the market snapshot (the last 40
+   candles, indicators, structure, the higher timeframe) and the setup, with
+   the strategy's rules in its instructions, and answers with one JSON
+   object: the setup's direction to confirm it, hold to reject it, a
+   confidence and its reasoning. The review happens while the setup waits,
+   so an entry need not wait for it; an entry that comes first waits for the
+   review and is then filled at the price of that moment. *Review setup now*
+   asks again. With *AI team confirms each setup* on (the default) an entry
+   is placed only when the team confirms: the setup's direction wins the
+   consensus with at least the minimum confidence and agreement of the risk
+   rules. Without a key, or with it off, the rules alone decide.
+
+   Every model is one of **NVIDIA's hosted models**, reached through one
+   endpoint (`https://integrate.api.nvidia.com/v1`, `/chat/completions`)
+   with one key. The panel has four roles, each briefed with its skills
+   (`prompts/skill-*.md`, compiled into the binary):
+
+   | Role | Checks | Skill briefs | Built-in models |
    |---|---|---|---|
    | Analysis (the team) | six seats, one per model, see below | TA Indicators, SMC Patterns, Risk Engine | Mistral Large 4, GLM 5.3 Flash, Gemma 3 12B, Nemotron 3.5 Lightning, Laguna XS 2.1, Gemma 3 4B |
-   | Reasoning | argues against the obvious trade first | SMC Patterns, TA Indicators, Risk Engine | Kimi K3.1 Pro, Nemotron 3 Ultra, Step 5 Preview |
-   | Vision | also gets a picture of the chart | Chart Reading, SMC Patterns, Risk Engine | Nemotron 3.5 Super VL, Nemotron 3 Nano Omni, Cosmos Reason 2 |
-   | Compute | works the numbers | TA Indicators, Risk Engine | MiniMax M3.1 Flash, Nemotron 3.5 Bolt |
+   | Reasoning | argues against the setup first | SMC Patterns, TA Indicators, Risk Engine | Kimi K3.1 Pro, Nemotron 3 Ultra, Step 5 Preview |
+   | Vision | also gets a picture of the chart and finds the 1-2-3 in it | Chart Reading, SMC Patterns, Risk Engine | Nemotron 3.5 Super VL, Nemotron 3 Nano Omni, Cosmos Reason 2 |
+   | Compute | distances to stop and target in ATRs, reward/risk | TA Indicators, Risk Engine | MiniMax M3.1 Flash, Nemotron 3.5 Bolt |
 
-   All fourteen ids were in NVIDIA's public model list in late November 2026
-   (which then held fourteen general chat models in all; two of the earlier
-   panel, Gemma 4 and Muse Glimmer, were no longer listed). The Model Panel
-   switches models on and off, tests each one, adds any other chat model from
-   NVIDIA's list and restores the built-in panel. A model NVIDIA no longer
-   lists is shown as unavailable and not asked.
+   All fourteen ids were in NVIDIA's public model list in late November 2026.
+   The Model Panel switches models on and off, tests each one, adds any other
+   chat model from NVIDIA's list and restores the built-in panel.
 
-   **The analysis team.** The analysis models work as a team in two steps.
-   - *Seats.* Each member reads the snapshot from one seat, by its place on
-     the panel: trend, momentum, volatility, structure, volume and candles,
-     higher timeframe. Six models are six different looks at the market, not
-     one look six times. A seventh model shares the first seat, and so on.
-   - *Team review.* When the team's first calls are in, every member that
-     answered is asked once more, with its own call and its teammates' calls
-     and reasoning (by seat, without model names), and makes its final call.
-     It is told that agreement is not evidence and that keeping its call is a
-     normal outcome. The final call replaces the first one; a member that
-     fails in the review keeps its first call. Each member still has one
-     vote. The review costs one more request per member and can be switched
-     off (*Model Panel → Analysis → Team review*, or `team_review=false`).
+   **The analysis team.** Each member checks the setup from one seat: the
+   trend it trades with or against, the quality of the break (momentum), the
+   stop and target against volatility, the 1-2-3 and the PD arrays
+   (structure), the candles of the zone and the retest, the higher
+   timeframe. Then, in the *team review*, every member sees its teammates'
+   calls and makes its final call (told that agreement is not evidence); it
+   can be switched off (*Model Panel → Analysis → Team review*).
 
-   The AI Analysis page shows each member's seat, the team's calls, and who
-   changed its call in the review. The review makes the team's members less
-   independent of each other: agreement after it says less than the same
-   agreement before it would.
+   A model that fails, refuses or answers with something other than the JSON
+   object is left out of that review and shown with the reason; its vote is
+   never guessed. A model gets 180 seconds (*Time to answer*, 30 to 600) and
+   is asked once more after a timeout, "too many requests" or a server
+   error. At most six questions are with the service at a time.
 
-   A **rule-based analyst** (a fixed scoring of the readings, `core/signal.cpp`)
-   always votes, so the application works with no key at all. A model that
-   fails, refuses or answers with something other than the JSON object is left
-   out of that analysis and shown with the reason; its vote is never guessed.
-   An answer wrapped in a code fence or preceded by `<think>` text is read.
-
-   **Slow models.** A large model can take minutes, and a hosted service
-   sometimes drops a request that would succeed a moment later. A model is
-   given 180 seconds for an answer (*Model Panel → Time to answer*, 30 to
-   600). One that does not answer in that time, or gets a "too many
-   requests" or server error, is asked once more before it is left out, and
-   its row says so while that happens. At most six questions are with the
-   service at a time (`nvidia/parallel`); the others wait their turn, which
-   does not count against their time. The analysis waits for every model, so
-   one that needs both tries delays the signal by up to twice that time.
-4. **Consensus** (`core/signal.cpp`). The side with more confidence behind it
-   wins if enough analysts are on it. *Confidence* = (confidence of the
-   agreeing analysts − confidence of the opposing ones) ÷ number of analysts
-   that answered. It measures agreement, **not** the chance of profit. The
-   stop and target are the middle of what the agreeing analysts proposed; the
-   entry is the market price at that moment.
+   The rule-based analyst and the models' own buy/sell analysis of earlier
+   versions no longer take part in trading.
 5. **Risk Engine** (`core/risk.cpp`). Fixed arithmetic that no model takes
-   part in: minimum confidence and agreement, a stop on the right side and
+   part in, applied to the strategy's entry: minimum confidence and agreement
+   (of the review; the rules alone count as one voter at 100), a stop on the right side and
    within range, minimum reward to risk, one position per market and a
    maximum in total, a daily loss limit, a drawdown limit that halts trading
    until you resume it, a cooldown after a loss, and the order size: a set
@@ -109,17 +131,30 @@ real ones.
    covers, and never more than one position's share of the account (a third
    with three positions allowed), so a tight stop cannot put everything into
    one trade.
-6. **Execution Engine** (`core/paper.cpp`). With *Auto trade* on, a signal
-   that passes the rules is placed on the paper account: a market order with
-   fee and slippage, long or short. The stop and target are checked on every
+6. **Execution Engine** (`core/paper.cpp`). With *Auto trade* on, an SBT
+   entry that passes the rules is placed on the paper account: a market order
+   with fee and slippage, long or short, its stop and Level 3 as its levels. The stop and target are checked on every
    price update; a stop fills at the stop or, if price has gone past it, at
    the worse price; a target fills at its price; when one update covers both,
-   the stop is assumed first. A signal that clearly reverses closes the open
-   position. With *Auto trade* off (the default) the signal is shown and
+   the stop is assumed first. An SBT entry the other way closes the open
+   position first. With *Auto trade* off (the default) the signal is shown and
    *Place paper trade* places it by hand.
 
-Everything on screen is real: prices from the exchange, verdicts from the
-models that answered, statistics from the trades the account made.
+Everything on screen is real: prices from the exchange, setups from the
+strategy's rules, verdicts from the models that answered, statistics from the
+trades the account made.
+
+**On the screen.** The signal panel has an *SBT Model 1* card: the
+direction (green for bullish, red for bearish), the status (armed and waiting
+for the retest, price in the zone now, retest confirmed, entered, Level 3
+reached, stopped, invalidated with the reason), Levels 1, 2 and 3, the zone,
+the PD arrays that confirmed it and the team's review. The AI chart draws the
+Level 2 zone, the lines of Levels 1, 2 and 3 (3 dashed while it forms), the
+BOS and retest marks, and the PD arrays in play (FVG blue, order blocks
+violet, demand green, supply red, dashed). The strategy's settings are under
+*Settings → Strategy: SBT Model 1* (`[sbt]` in the file: `ai_confirm`,
+`require_pd_array`, `zone=wick|body`, `swing_strength`, `stop_buffer_atr`,
+`pd_distance_atr`, `max_wait_candles`).
 
 ## The AI Desk
 
@@ -383,6 +418,7 @@ prints the conversation, the analysis, the status and a timed event log).
 |---|---|---|
 | `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3276 checks) | build command in the file's header; plain `g++`, sanitizers |
 | `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account, markets priced in another currency (346 checks) | as above |
+| `tests/test_sbt.cpp` | SBT Model 1: a hand-drawn bullish chart and the same chart upside down for bearish; Level 1/2/3, the BOS, the zone, the retest, a close through the zone, a wick through it, no retest before Level 3, Level 3 following a new high, no BOS without a close, reward/risk and the PD requirement, history not traded, expiry, no bearish candle at 2, FVG/order block/supply detection, old candles ignored, a 6000-candle random run (bounded memory, no entry twice) (12126 checks) | `tests/run-unit.sh sbt` |
 | `tests/test_desk.cpp` | the desk's reading of messages (markets, levels and the numbers that are not levels, observations, intent, Roman Urdu questions) and its analysis state (books per market, merging, plan and reward/risk, levels against the live price) (134 checks) | `tests/run-unit.sh desk` |
 | `tests/test_app.py` | the real binary against `tests/fake_services.py` (62 tests): the watchlist and markets the data service does not list, adding and removing markets, the forex markets (the other service's requests and stream, what is offered, a dollar-base pair counted in dollars, switching kinds, recorded answers and messages of the real service), an open position staying on show after a hold, models that are slow or fail once (asked again, left out after two tries, only so many at a time), the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files; and the AI Desk (9 tests): messages accepted at once and built on (the answer sees the earlier messages, the model reads each message once), messages taken while a slow answer is written (two answers under way, a double send is one message, the chart following the conversation), live facts and no key, level alerts from the live price, the team started for a trade question and its call forming, a model's reading adding what the quick reading missed, stopping an answer, the conversation surviving a restart, gold found where it is listed | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
 

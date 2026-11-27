@@ -28,10 +28,11 @@ shadow_add_app(shadow-trading
         modelclient.cpp modelclient.h
         tradesmodel.cpp tradesmodel.h
         tradingconfig.cpp tradingconfig.h
-        tradingengine.cpp tradingengine.h
+        tradingengine.cpp tradingengine.h tradingengine_sbt.cpp
         core/desk.cpp core/desk.h
         core/paper.cpp core/paper.h
         core/risk.cpp core/risk.h
+        core/sbt.cpp core/sbt.h
         core/signal.cpp core/signal.h
         skills/candle.h
         skills/indicators.cpp skills/indicators.h

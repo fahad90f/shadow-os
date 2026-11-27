@@ -138,7 +138,7 @@ int main(int argc, char **argv)
             for (const QString &action : actions) {
                 QString result;
                 if (action == QLatin1String("analyze")) {
-                    if (engine.analyzeNow())
+                    if (engine.analyzeNow() || engine.analyzing())
                         app.waitFor(&engine, SIGNAL(analysisFinished()), 180000);
                     else
                         result = QStringLiteral("not started");
@@ -205,7 +205,7 @@ int main(int argc, char **argv)
             return app.finishDump(engine.dumpMarket());
         }
         // One analysis of the selected market, by every analyst that is set up.
-        if (engine.analyzeNow())
+        if (engine.analyzeNow() || engine.analyzing())
             app.waitFor(&engine, SIGNAL(analysisFinished()), 180000);
         QJsonObject out{{QStringLiteral("signal"), QJsonObject::fromVariantMap(engine.signal())},
                         {QStringLiteral("market"), engine.dumpMarket()},

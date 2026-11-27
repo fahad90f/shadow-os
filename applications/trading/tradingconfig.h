@@ -3,6 +3,7 @@
 
 #include "core/paper.h"
 #include "core/risk.h"
+#include "core/sbt.h"
 
 #include <QList>
 #include <QObject>
@@ -121,6 +122,15 @@ public:
     bool deskFollowChart() const { return m_deskFollow; }
     void setDeskFollowChart(bool on);
 
+    // ---- SBT Model 1 -------------------------------------------------------
+    // The trader's strategy: every trade comes from it ([sbt] in the file).
+    Trading::Sbt::Settings sbt() const;
+    // The AI team must confirm a setup before it is traded (when there is a key).
+    bool sbtAiConfirm() const { return m_sbtAiConfirm; }
+    // name: ai_confirm, require_pd_array (bool), zone ("wick" | "body"),
+    // swing_strength, stop_buffer_atr, pd_distance_atr, max_wait_candles.
+    bool setSbt(const QString &name, const QVariant &value);
+
     Trading::RiskSettings risk() const { return m_risk; }
     // One risk setting by name; false when the name or value is not valid.
     bool setRisk(const QString &name, double value);
@@ -154,6 +164,8 @@ private:
     bool m_teamReview = true;
     int m_modelTimeout = 180;
     int m_modelParallel = 6;
+    Trading::Sbt::Settings m_sbt;
+    bool m_sbtAiConfirm = true;
     QString m_deskFast;
     QString m_deskDeep;
     bool m_deskFollow = true;

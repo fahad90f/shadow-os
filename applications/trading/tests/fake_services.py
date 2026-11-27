@@ -36,6 +36,19 @@ answers that model only. The desk's requests are logged with "desk": "read" or
 "missing": [ids] takes models out of the catalog.
 "market": {"status": 451} makes the exchange refuse; "market": {"move_pct": -3}
 moves the current price (the forming candle and the tickers) by that much.
+"market": {"pattern": "sbt-bull" | "sbt-bear", "stage": "retest" | "armed" |
+"invalid"} draws an SBT Model 1 setup in the newest candles of every market
+(the same chart as tests/test_sbt.cpp, scaled to the market's price; "sbt-bear"
+is it upside down): "retest" ends with the retest candle closed and the entry
+candle forming, "armed" with the retest candle still forming above the zone,
+"invalid" with the retest candle closed through the zone, "bos" with the
+candle that breaks Level 1 still forming. Before the pattern the candles are
+flat. Its interval is 15m unless "pattern_interval" says otherwise; other
+intervals keep the made-up path. The pattern ends at the newest candle
+whenever it is asked for, unless "at" (a time in ms) fixes it in time: the
+candle forming then is the stage's forming candle, and the candles after it
+go on through the pattern (the entry candle repeats after its end), so
+candles of the pattern close while the application watches.
 
 Every request is appended to the log file as one JSON line. The key is never
 written there: only whether the right one was sent.
@@ -143,7 +156,74 @@ def close_of(symbol, k, step_ms):
     return level(symbol, k + 1, step_ms) * (1 + (unit(symbol, k, "c") - 0.5) * 0.0012)
 
 
+# SBT Model 1, drawn by hand (tests/test_sbt.cpp, bullish()): open, high, low, close at a price of 100.
+SBT_BULL = [
+    (100.0, 101.6, 99.9, 101.5), (101.5, 102.4, 101.4, 102.2), (102.2, 103.5, 102.0, 103.2),  # 20-22, Level 1
+    (103.2, 103.3, 102.0, 102.2), (102.2, 102.4, 101.0, 101.2), (101.2, 101.4, 100.0, 100.3),  # 23-25, Level 2 zone
+    (100.3, 101.6, 100.2, 101.5), (101.5, 102.8, 101.4, 102.7), (102.7, 104.6, 102.6, 104.4),  # 26-28, BOS
+    (104.4, 106.0, 104.2, 105.8), (105.8, 106.5, 105.0, 105.2), (105.2, 105.6, 104.0, 104.2),  # 29-31, Level 3 at 30
+    (104.2, 104.4, 103.0, 103.2), (103.2, 103.4, 102.0, 102.2), (102.2, 102.3, 101.2, 101.6),  # 32-34, the retest
+    (101.6, 103.0, 101.5, 102.9),                                                              # 35, the entry candle
+]
+SBT_START = 20   # the template's first candle, counted as in tests/test_sbt.cpp
+
+
+def sbt_template(k, last):
+    """(open, high, low, close) at a price of 100 for candle k of the pattern,
+    with 'last' the k of the stage's forming candle; None when no pattern is drawn."""
+    market = scenario().get("market", {})
+    pattern = market.get("pattern")
+    if pattern not in ("sbt-bull", "sbt-bear"):
+        return None
+    stage = market.get("stage", "retest")
+    forming_at = {"armed": 34, "bos": 28}.get(stage, 35)   # the template index of the forming candle
+    t = k - last + forming_at
+    if t < SBT_START:
+        bar = (100.0, 100.6, 99.6, 100.3) if t % 2 == 0 else (100.3, 100.6, 99.6, 100.0)
+    else:
+        bar = SBT_BULL[min(t, 35) - SBT_START]
+        if stage == "invalid" and t == 34:
+            bar = (102.2, 102.3, 99.5, 99.8)              # closes through the zone
+    if pattern == "sbt-bear":
+        o, h, l, c = bar
+        bar = (200 - o, 200 - l, 200 - h, 200 - c)
+    return bar
+
+
+def pattern_on(step_ms):
+    market = scenario().get("market", {})
+    return market.get("pattern") in ("sbt-bull", "sbt-bear") and \
+        step_ms == INTERVAL_MS.get(market.get("pattern_interval", "15m"))
+
+
+def pattern_candle(symbol, k, step_ms, now_ms):
+    last = now_ms // step_ms
+    at = scenario().get("market", {}).get("at")
+    o, h, l, c = sbt_template(k, int(at) // step_ms if at else last)
+    scale = BASE_PRICE.get(symbol, 100.0) / 100.0
+    o, h, l, c = o * scale, h * scale, l * scale, c * scale
+    if k >= last:
+        # The forming candle: it opened; the price is where the test puts it.
+        c = o * (1 + scenario().get("market", {}).get("move_pct", 0) / 100)
+        h, l = max(o, c), min(o, c)
+    text = lambda v: f"{v:.8f}"
+    volume = 50 + 400 * unit(symbol, k, "v")
+    return [k * step_ms, text(o), text(h), text(l), text(c), text(volume), k * step_ms + step_ms - 1,
+            text(volume * c), 100, text(volume / 2), text(volume * c / 2), "0"]
+
+
+def current_price(symbol, now_ms):
+    """The price now: the pattern's forming candle when a pattern is drawn, else the made-up path."""
+    market = scenario().get("market", {})
+    if market.get("pattern") in ("sbt-bull", "sbt-bear"):
+        step = INTERVAL_MS.get(market.get("pattern_interval", "15m"))
+        return float(pattern_candle(symbol, now_ms // step, step, now_ms)[4])
+    return level(symbol, now_ms / 60_000, 60_000) * (1 + market.get("move_pct", 0) / 100)
+
+
 def candle(symbol, k, step_ms, now_ms):
+    if pattern_on(step_ms):
+        return pattern_candle(symbol, k, step_ms, now_ms)
     open_time = k * step_ms
     close_time = open_time + step_ms - 1
     forming = close_time >= now_ms
@@ -196,7 +276,7 @@ def stream_messages(streams, now_ms, last_sent):
         if symbol not in BASE_PRICE:
             continue
         move = 1 + scenario().get("market", {}).get("move_pct", 0) / 100
-        price = level(symbol, now_ms / 60_000, 60_000) * move
+        price = current_price(symbol, now_ms)
         if kind == "aggTrade":
             data = {"e": "aggTrade", "E": now_ms, "s": symbol, "a": now_ms, "p": f"{price:.8f}", "q": "0.01000000",
                     "f": 1, "l": 1, "T": now_ms, "m": False, "M": True}
@@ -207,7 +287,7 @@ def stream_messages(streams, now_ms, last_sent):
             k = now_ms // step
             row = candle(symbol, k, step, now_ms)
             # The forming candle ends at the price the trades are at.
-            close = level(symbol, now_ms / step, step) * move
+            close = float(row[4]) if pattern_on(step) else level(symbol, now_ms / step, step) * move
             data = {"e": "kline", "E": now_ms, "s": symbol,
                     "k": {"t": row[0], "T": row[6], "s": symbol, "i": kind[6:], "o": row[1], "c": f"{close:.8f}",
                           "h": f"{max(float(row[2]), close):.8f}", "l": f"{min(float(row[3]), close):.8f}",
@@ -250,7 +330,7 @@ def tickers(query, now_ms):
     out = []
     for symbol in sorted(symbols, key=LISTING_ORDER.index):
         step = 60_000
-        now = level(symbol, now_ms / step, step) * (1 + scenario().get("market", {}).get("move_pct", 0) / 100)
+        now = current_price(symbol, now_ms)
         day_ago = level(symbol, (now_ms - 86_400_000) / step, step)
         out.append({"symbol": symbol, "lastPrice": f"{now:.8f}",
                     "priceChangePercent": f"{(now - day_ago) / day_ago * 100:.3f}",
@@ -306,8 +386,7 @@ def kraken_ohlc(query, now_ms):
 
 
 def kraken_now(symbol, now_ms):
-    step = 60_000
-    return level(symbol, now_ms / step, step) * (1 + scenario().get("market", {}).get("move_pct", 0) / 100)
+    return current_price(symbol, now_ms)
 
 
 def kraken_ticker(query, now_ms):
@@ -549,6 +628,13 @@ def chat(body, attempt=0):
     mark = "Your seat on the analysis team: "
     notes["seat"] = system[system.index(mark) + len(mark):].split(".", 1)[0] if mark in system else ""
     notes.update(review_notes(user))
+    # An SBT Model 1 setup the application asks the model to review: its direction.
+    if "SBT Model 1 setup to review:" in user:
+        tail = user.split("SBT Model 1 setup to review:\n", 1)[1]
+        try:
+            notes["sbt"] = json.JSONDecoder().raw_decode(tail)[0].get("direction", "")
+        except ValueError:
+            notes["sbt"] = "malformed"
     plan = plan_for(model, notes["review"], attempt)
     message = {"role": "assistant", "content": verdict_text(model, price_in(user), plan)}
     if plan.get("refusal"):

@@ -40,14 +40,15 @@ ColumnLayout {
     // One line on the strength of the agreement.
     function headline() {
         if (!ready)
-            return readings.taValid === true ? qsTr("No analysis yet") : qsTr("Waiting for price history")
+            return readings.taValid === true ? qsTr("No setup yet") : qsTr("Waiting for price history")
         if (!directional)
             return signalData.note
         var side = action === "buy" ? qsTr("bullish") : qsTr("bearish")
-        var strength = signalData.confidence >= 75 ? qsTr("Strong %1 agreement").arg(side)
-            : signalData.confidence >= 60 ? qsTr("Clear %1 agreement").arg(side)
-            : qsTr("Weak %1 agreement").arg(side)
-        return qsTr("%1 · %2 of %3 analysts").arg(strength).arg(signalData.agreeing).arg(signalData.voters)
+        var review = signalData.sbt ? signalData.sbt.review : undefined
+        if (!review || !review.done)
+            return qsTr("SBT Model 1 %1 entry · by the rules").arg(side)
+        return review.confirmed ? qsTr("SBT Model 1 %1 entry · AI team confirmed, %2 of %3").arg(side).arg(review.agreeing).arg(review.voters)
+                                : qsTr("SBT Model 1 %1 entry · AI team did not confirm").arg(side)
     }
 
     spacing: Theme.spaceSm
@@ -96,10 +97,10 @@ ColumnLayout {
                                 : forming && forming.answered > 0
                                 ? qsTr("Analyzing…  •  so far %1 (%2 of %3 answered)").arg(String(forming.leaning).toUpperCase())
                                       .arg(forming.answered).arg(forming.asked)
-                                : qsTr("Analyzing market…  •  Finding best opportunities…"))
-                            : root.ready ? qsTr("%1 %2  •  analyzed %3").arg(root.signalData.symbolName)
+                                : qsTr("Reviewing the SBT setup…  •  each analyst checks it against the rules…"))
+                            : root.ready ? qsTr("%1 %2  •  SBT Model 1  •  %3").arg(root.signalData.symbolName)
                                   .arg(root.signalData.interval).arg(Format.clock(root.signalData.time))
-                            : root.readings.taValid === true ? qsTr("Ready  •  runs when the next candle closes")
+                            : root.readings.taValid === true ? qsTr("Ready  •  SBT Model 1 reads every closed candle")
                             : qsTr("Waiting for price history…")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSizeSmall
@@ -292,6 +293,11 @@ ColumnLayout {
                 }
             }
 
+            // The strategy every trade comes from: its setup on this market.
+            SbtCard {
+                Layout.fillWidth: true
+            }
+
             // The open position: there until it closes.
             NxBanner {
                 Layout.fillWidth: true
@@ -352,13 +358,15 @@ ColumnLayout {
                             elide: Text.ElideRight
                         }
                         Button {
-                            text: qsTr("Analyze now")
+                            text: qsTr("Review setup")
                             flat: true
                             icon.source: "image://nxicon/refresh"
-                            enabled: !trading.analyzing && root.readings.taValid === true
+                            readonly property bool inPlay: trading.sbt.current.id !== undefined
+                                && ["armed", "triggered", "entered"].indexOf(trading.sbt.current.status) >= 0
+                            enabled: !trading.analyzing && inPlay
                             onClicked: trading.analyzeNow()
-                            ToolTip.visible: hovered && root.readings.taValid !== true
-                            ToolTip.text: qsTr("Needs 60 closed candles of price history.")
+                            ToolTip.visible: hovered && !inPlay
+                            ToolTip.text: qsTr("There is no SBT Model 1 setup in play to review.")
                         }
                     }
                     RowLayout {

@@ -94,6 +94,7 @@ user_suites() {
     suite trading-skills      bash applications/trading/tests/run-unit.sh skills
     suite trading-core        bash applications/trading/tests/run-unit.sh core
     suite trading-desk        bash applications/trading/tests/run-unit.sh desk
+    suite trading-sbt         bash applications/trading/tests/run-unit.sh sbt
     suite arsenal-validate    python3 -B arsenal/tools/validate.py --quiet
     suite fix-network         bash tests/network/fix-network-test.sh
     suite shellcheck          bash -c 'command -v shellcheck >/dev/null || { echo "SKIP: shellcheck is not installed"; exit 77; }
