@@ -51,13 +51,14 @@ Item {
         transformOrigin: Item.Bottom
         Behavior on scale { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
 
-        // Attention: gentle pulse until the window is activated.
+        // Attention: gentle pulse until the window is activated. Not with
+        // "Reduce motion": the entry is then marked by its dots alone.
         SequentialAnimation on opacity {
-            running: root.attention && !root.active
+            running: root.attention && !root.active && !Appearance.reduceMotion
             loops: Animation.Infinite
             alwaysRunToEnd: true
-            NumberAnimation { to: 0.45; duration: 520 }
-            NumberAnimation { to: 1.0; duration: 520 }
+            NumberAnimation { to: 0.45; duration: Theme.motionPage }
+            NumberAnimation { to: 1.0; duration: Theme.motionPage }
         }
     }
 

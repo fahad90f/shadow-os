@@ -8,6 +8,16 @@
 // back to a built-in screen that needs Plasma modules SHADOW does not ship,
 // and the user would be locked out.
 //
+// For the same reason everything decorative (scan line, ring, brackets) is
+// one separate file, components/LockDecor.qml, behind a Loader: this file
+// imports nothing new and reads one value from the decoration, "ent", the
+// progress of the 0.4 s entrance. If the decoration does not load, ent is 1
+// and the form below is complete and unlocks as before. The password field
+// exists, is enabled and focused from the first frame; the entrance only
+// changes opacity. There is no exit animation: a right password ends the
+// greeter at once. The setting reduceMotion (config.xml) switches every
+// movement off.
+//
 // Provided by the greeter (kscreenlocker 6.3, greeter/greeterapp.cpp):
 //   authenticator            PamAuthenticators: startAuthenticating(), respond(bytes), cancel(),
 //                            state, busy, prompt, promptForSecret, infoMessage, errorMessage,
@@ -34,7 +44,15 @@ Item {
     property bool suspendToDiskSupported: false
 
     onLockedChanged: if (locked) root.start()
-    onViewVisibleChanged: if (viewVisible) { field.forceActiveFocus(); root.start() }
+    onViewVisibleChanged: {
+        if (viewVisible) {
+            field.forceActiveFocus()
+            root.start()
+            // The screen is shown (again): the entrance runs (again).
+            if (decor.item)
+                decor.item.restart()
+        }
+    }
 
     // ---- state ----------------------------------------------------------------------
     readonly property real u: Math.max(0.9, Math.min(3, Math.min(width / 1280, height / 800)))
@@ -45,6 +63,12 @@ Item {
     readonly property string wallpaperPath: typeof config !== "undefined" && config && config.wallpaper
                                             ? String(config.wallpaper) : "/usr/share/backgrounds/shadow/shadow-horizon.jpg"
     readonly property string timeFormat: Qt.locale().timeFormat(Locale.ShortFormat).replace(/[:.]s+/, "")
+    // No entrance and no shake. Written by shadow-apply-appearance from the
+    // user's "Reduce motion" switch (kscreenlockerrc, see config.xml).
+    readonly property bool reduceMotion: typeof config !== "undefined" && config && config.reduceMotion === true
+    // Progress of the entrance, 0..1, counted by the decoration. Without the
+    // decoration (the file did not load) it is 1: a complete screen.
+    readonly property real ent: decor.status === Loader.Ready ? decor.item.t : 1
     property date now: new Date()
     property string errorText: ""
     property string infoText: ""
@@ -67,6 +91,13 @@ Item {
         errorText = ""
         infoText = ""
         S.submit(authenticator, field.text, authenticator.state === 0)
+    }
+
+    // Share of the window from..to (milliseconds of the entrance) that has
+    // passed, slowing down towards its end.
+    function ph(from, to) {
+        var x = 1 - Math.max(0, Math.min(1, (ent * T.motionEntranceLock - from) / (to - from)))
+        return 1 - x * x * x
     }
 
     function initials(text) {
@@ -97,7 +128,10 @@ Item {
             root.echoPrompt = false
             root.errorText = qsTr("Wrong password. Try again.")
             field.forceActiveFocus()
-            shake.restart()
+            if (!root.reduceMotion)
+                shake.restart()
+            if (decor.item)
+                decor.item.fail()
             restart.restart()
         }
         function onPromptForSecretChanged() {
@@ -139,32 +173,84 @@ Item {
     }
 
     // ---- background -----------------------------------------------------------------
+    // The near-black field of every start-up surface: the first frame, and
+    // what stays when there is no picture.
     Rectangle {
         anchors.fill: parent
-        color: T.bgBase
-    }
-    Image {
-        id: wallpaper
-        anchors.fill: parent
-        source: root.wallpaperPath !== "" ? "file://" + root.wallpaperPath : ""
-        fillMode: Image.PreserveAspectCrop
-        asynchronous: true
-        cache: false
-        sourceSize.width: Math.max(1, root.width)
-        sourceSize.height: Math.max(1, root.height)
-        visible: status === Image.Ready
-    }
-    Rectangle {
-        anchors.fill: parent
-        visible: wallpaper.visible
         gradient: Gradient {
-            GradientStop { position: 0.0; color: T.scrimTop }
-            GradientStop { position: 1.0; color: T.scrimBottom }
+            GradientStop { position: 0.0; color: T.fieldTop }
+            GradientStop { position: 1.0; color: T.fieldBottom }
+        }
+    }
+    // The scan line of the entrance resolves the picture from the top: the
+    // picture sits in a clip whose lower edge is the line (0–260 ms).
+    Item {
+        width: root.width
+        height: Math.round(root.height * Math.min(1, root.ent * T.motionEntranceLock / T.motionSweepLock))
+        clip: true
+
+        Item {
+            width: root.width
+            height: root.height
+            // A picture that is decoded only after the entrance has started
+            // fades in when it arrives.
+            opacity: wallpaper.status === Image.Ready ? 1 : 0
+            Behavior on opacity {
+                enabled: root.ent > 0 && !root.reduceMotion
+                NumberAnimation { duration: 300 }
+            }
+
+            Image {
+                id: wallpaper
+                anchors.fill: parent
+                source: root.wallpaperPath !== "" ? "file://" + root.wallpaperPath : ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: false
+                sourceSize.width: Math.max(1, root.width)
+                sourceSize.height: Math.max(1, root.height)
+                visible: status === Image.Ready
+            }
+            Rectangle {
+                anchors.fill: parent
+                visible: wallpaper.visible
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: T.scrimTop }
+                    GradientStop { position: 1.0; color: T.scrimBottom }
+                }
+            }
         }
     }
     MouseArea {
         anchors.fill: parent
         onClicked: field.forceActiveFocus()
+    }
+
+    // ---- decoration and the clock of the entrance ----------------------------------------
+    // Optional by construction: the only thing in this file that can fail to
+    // load, and nothing below depends on it (see the header).
+    Loader {
+        id: decor
+        anchors.fill: parent
+        source: "components/LockDecor.qml"
+    }
+    Binding { target: decor.item; property: "u"; value: root.u; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "reduce"; value: root.reduceMotion; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "now"; value: root.now; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "busy"; value: root.busy; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "focused"; value: fieldBox.ringed; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "caps"; value: root.capsLock; when: decor.status === Loader.Ready }
+    // Where the ring and the brackets belong: around the user picture and
+    // around the password row, wherever the card is (it moves when it shakes).
+    Binding {
+        target: decor.item; property: "ringCenter"; when: decor.status === Loader.Ready
+        value: Qt.point(unlockArea.x + card.x + ringSlot.x + ringSlot.width / 2,
+                        unlockArea.y + card.y + ringSlot.y + ringSlot.height / 2)
+    }
+    Binding {
+        target: decor.item; property: "fieldRect"; when: decor.status === Loader.Ready
+        value: Qt.rect(unlockArea.x + card.x + passwordRow.x, unlockArea.y + card.y + passwordRow.y,
+                       passwordRow.width, passwordRow.height)
     }
 
     // ---- clock ----------------------------------------------------------------------
@@ -181,6 +267,7 @@ Item {
             font.family: T.fontUi
             font.pixelSize: Math.round(76 * root.u)
             font.weight: Font.Light
+            opacity: root.ph(0, 200)
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -188,11 +275,13 @@ Item {
             color: T.textSecondary
             font.family: T.fontUi
             font.pixelSize: Math.round(T.fontTitle * root.u)
+            opacity: root.ph(40, 240)
         }
     }
 
     // ---- unlock ---------------------------------------------------------------------
     Item {
+        id: unlockArea
         anchors.top: clock.bottom
         anchors.bottom: parent.bottom
         anchors.left: parent.left
@@ -216,32 +305,44 @@ Item {
                 NumberAnimation { target: card; property: "shakeOffset"; to: 0; duration: 60 }
             }
 
-            Rectangle {
-                id: avatar
+            // The user picture, with room around it for the ring that the
+            // decoration draws (hexagon and tick ring, 152u across).
+            Item {
+                id: ringSlot
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.round(104 * root.u)
+                width: Math.round(152 * root.u)
                 height: width
-                radius: width / 2
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: T.gradientStart }
-                    GradientStop { position: 0.6; color: T.gradientMid }
-                    GradientStop { position: 1.0; color: T.gradientEnd }
-                }
-                Text {
+
+                Rectangle {
+                    id: avatar
                     anchors.centerIn: parent
-                    visible: text !== ""
-                    text: root.initials(root.userName)
-                    color: T.textOnAccent
-                    font.family: T.fontUi
-                    font.pixelSize: Math.round(avatar.width * 0.38)
-                    font.weight: Font.DemiBold
-                }
-                Image {
-                    anchors.centerIn: parent
-                    visible: root.initials(root.userName) === ""
-                    source: "icons/user-on-accent.svg"
-                    sourceSize.width: Math.round(avatar.width * 0.5)
-                    sourceSize.height: Math.round(avatar.width * 0.5)
+                    width: Math.round(104 * root.u)
+                    height: width
+                    radius: width / 2
+                    // Behind the scan line, which reaches the ring at
+                    // about 90 ms.
+                    opacity: root.ph(90, 210)
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: T.gradientStart }
+                        GradientStop { position: 0.6; color: T.gradientMid }
+                        GradientStop { position: 1.0; color: T.gradientEnd }
+                    }
+                    Text {
+                        anchors.centerIn: parent
+                        visible: text !== ""
+                        text: root.initials(root.userName)
+                        color: T.textOnAccent
+                        font.family: T.fontUi
+                        font.pixelSize: Math.round(avatar.width * 0.38)
+                        font.weight: Font.DemiBold
+                    }
+                    Image {
+                        anchors.centerIn: parent
+                        visible: root.initials(root.userName) === ""
+                        source: "icons/user-on-accent.svg"
+                        sourceSize.width: Math.round(avatar.width * 0.5)
+                        sourceSize.height: Math.round(avatar.width * 0.5)
+                    }
                 }
             }
 
@@ -255,29 +356,45 @@ Item {
                 font.family: T.fontUi
                 font.pixelSize: Math.round(T.fontHeading * root.u)
                 font.weight: Font.DemiBold
+                opacity: root.ph(130, 300)
             }
 
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: Math.round(T.spaceSm * root.u)
-                Image {
-                    anchors.verticalCenter: parent.verticalCenter
-                    source: "icons/lock.svg"
-                    sourceSize.width: Math.round(14 * root.u)
-                    sourceSize.height: Math.round(14 * root.u)
-                    opacity: 0.7
-                }
-                Text {
-                    text: root.promptText !== "" ? root.promptText : qsTr("Locked — enter your password to unlock")
-                    color: T.textSecondary
-                    font.family: T.fontUi
-                    font.pixelSize: Math.round(T.fontBody * root.u)
+            // The "Locked" line, with 6u more room below it than the
+            // column spacing, so the brackets around the password row keep
+            // clear of the text.
+            Item {
+                width: parent.width
+                height: lockLine.height + Math.round(6 * root.u)
+
+                Row {
+                    id: lockLine
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: Math.round(T.spaceSm * root.u)
+                    opacity: root.ph(150, 320)
+                    Image {
+                        anchors.verticalCenter: parent.verticalCenter
+                        source: "icons/lock.svg"
+                        sourceSize.width: Math.round(14 * root.u)
+                        sourceSize.height: Math.round(14 * root.u)
+                        opacity: 0.7
+                    }
+                    Text {
+                        text: root.promptText !== "" ? root.promptText : qsTr("Locked — enter your password to unlock")
+                        color: T.textSecondary
+                        font.family: T.fontUi
+                        font.pixelSize: Math.round(T.fontBody * root.u)
+                    }
                 }
             }
 
+            // Field and button exist, are enabled and focused from the first
+            // frame; the entrance only raises them from 55 % to full opacity
+            // (0–100 ms). They are never hidden, disabled or loaded later.
             Row {
+                id: passwordRow
                 width: parent.width
                 spacing: Math.round(T.spaceSm * root.u)
+                opacity: 0.55 + 0.45 * root.ph(0, 100)
 
                 // Password field.
                 Rectangle {
@@ -286,8 +403,19 @@ Item {
                     height: Math.round(T.controlHeight * root.u)
                     radius: Math.round(T.radiusMd * root.u)
                     color: T.glassField
-                    border.width: field.activeFocus ? Math.max(2, Math.round(T.focusRing * root.u)) : 1
-                    border.color: root.errorText !== "" ? T.danger : field.activeFocus ? T.accent : T.borderStrong
+                    // The ring means exactly "keys arrive here": it is drawn
+                    // only while the field really has the keyboard (which
+                    // needs the window to have it), never in advance.
+                    readonly property bool ringed: field.activeFocus
+                    // The ring changes colour over 140 ms when the focus comes
+                    // or goes; an error turns the border red at once.
+                    property color focusColor: ringed ? T.accent : T.borderStrong
+                    Behavior on focusColor {
+                        enabled: root.ent >= 1 && !root.reduceMotion
+                        ColorAnimation { duration: T.motionFast }
+                    }
+                    border.width: ringed ? Math.max(2, Math.round(T.focusRing * root.u)) : 1
+                    border.color: root.errorText !== "" ? T.danger : focusColor
 
                     TextInput {
                         id: field

@@ -72,9 +72,11 @@ these applications are not in the image yet
 Open it with the **Meta** key (the Super/Windows key, tapped on its own),
 **Alt+F1**, or the SHADOW button.
 
-* Type to search; the grid narrows as you type.
-* Arrow keys move, **Return** starts the selected application, **Escape**
-  closes the launcher.
+* Type to search; the grid narrows as you type. You can start typing at
+  once: the search field has the keyboard while the launcher is still
+  being drawn.
+* Arrow keys move, **Return** starts the selected application. **Escape**
+  clears the search text; on an empty field it closes the launcher.
 * The list on the left narrows the grid to one category; "All applications"
   shows everything.
 * The footer shows `user@host` (and "live session" on the live medium), the
@@ -353,6 +355,73 @@ opaque.
 Wallpapers shipped in `/usr/share/backgrounds/shadow/`: `shadow-horizon.jpg`
 (default, dark), `shadow-daylight.jpg` (default for the light scheme),
 `shadow-lattice.jpg`, `shadow-aurora.jpg`.
+
+### How menus and popups open and close
+
+The launcher, the popups under the panel, the session menu and the menus of
+the dock and the tray open the same way, each from the place it belongs to:
+
+1. a short line ties the menu to its origin (the panel edge, the icon);
+2. the outline of the card is traced from there, both ways round;
+3. a scan line crosses the card once, and rows and tiles appear behind it;
+4. on the launcher, four brackets close onto the corners, and the outline
+   settles from the accent colour most of the way to the ordinary border
+   colour; a trace of the accent and the brackets stay while it is open.
+   On the other surfaces the outline settles to the border colour.
+
+| Surface | Opens in | Closes in |
+|---|---|---|
+| Launcher, session menu | 300 ms | 100 ms |
+| Quick settings, calendar, notification centre | 220 ms | 100 ms |
+| Dock menu, tray menus | 160 ms | 80 ms |
+| Authentication dialog | 140 ms (background and brackets only) | at once |
+| Notification popup | 220 ms; the others move up in 140 ms when one goes | at once |
+| Volume and brightness display, messages of the shell | 140 ms | 140 ms |
+
+Things that hold in every one of them:
+
+* Nothing is moved, resized or re-arranged while a menu opens. Every row
+  and button is in its place and can be clicked from the first frame;
+  search and password fields have the keyboard from the first frame. Only
+  the opacity of things changes, and what is inside a row shifts by a few
+  pixels.
+* The animation is decoration. It never shows a number, a word or a state
+  that the system did not report.
+* Closing does not play the opening backwards. The menu stays as it is
+  and fades out as a whole, at an even pace; on the launcher, the tile of
+  an application that was just started stays lit until the menu is gone.
+* Closing is short on purpose. While a menu is still fading out, the
+  compositor keeps the keyboard on it, so keys typed in that moment are
+  lost: they reach neither the menu (which ignores them) nor the window
+  underneath. The pointer already passes through a closing menu. Measured
+  in the headless test session (KWin 6.3, software rendering): of twenty
+  keys typed at about 10 ms per key straight after Escape, those sent in
+  the first 90 to 120 ms were lost and every later one arrived in the
+  window below; with Reduce motion none was lost. The authentication
+  dialog closes without an exit for the same reason.
+* A menu that is opened while another one is closing or open replaces it
+  at once: two menus never hold the keyboard together.
+* With **Reduce motion** every menu appears complete in one frame and
+  disappears in one frame, and nothing pulses (the dock's attention pulse,
+  the travelling piece of a progress bar, the attention pulse of a tray
+  icon). The window switcher is meant to follow the same switch through
+  KWin's animation speed, which `shadow-apply-appearance` sets (see below:
+  not checked yet).
+* Without a GPU (software rendering) the soft glow around the traced
+  outline and the tail of the scan line are left out, and fewer rows are
+  staggered; everything else is the same.
+
+Popups inside applications (menus, drop-down lists, dialogs) fade in over
+140 ms while a line grows along their top edge, and fade out in 80 ms.
+
+Not seen yet: the glass (blur) look of these surfaces while they open and
+KWin's own window effects next to them (both need a GPU), the
+authentication dialog (the test session has no system bus), window
+previews in the window switcher, and whether the switcher really becomes
+instant with Reduce motion: its durations are multiples of Kirigami's
+`longDuration`, which KWin scales by `AnimationDurationFactor`; that needs
+a running KWin with the Plasma Kirigami units and has not been tried. The
+tray menus were looked at with a made-up tray item only.
 
 ## Settings files
 

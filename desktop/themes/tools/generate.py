@@ -20,6 +20,9 @@ and adds what a plain render cannot express:
     merge-groups      INI groups that occur twice are merged (kdeglobals)
     tinted icons      a SHADOW symbolic icon (desktop/ui/icons) with currentColor
                       replaced by a token colour, for QML that cannot tint
+    shared copies     the decoration of the login and the lock screen exists
+                      once (tools/templates/components) and is copied into
+                      both themes, so the two copies cannot drift apart
 
 Generated files are committed so the themes can be used straight from the
 source tree (sddm-greeter --theme desktop/themes/sddm/shadow); the CMake build
@@ -32,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -144,7 +148,7 @@ class Job:
     filters: tuple = ()
     icon: str = ""                    # tinted icon: name in desktop/ui/icons
     tint: str = "textPrimary"         # ... and the colour token that replaces currentColor
-    copy: str = ""                    # verbatim copy of a file elsewhere in the repository
+    copy: str = ""                    # copy of a file elsewhere in the repository (plus the notice)
 
     def source(self) -> str:
         if self.icon:
@@ -191,6 +195,28 @@ def glyph_markup(glyph: str) -> str:
             'stroke-linecap="round" stroke-linejoin="round" opacity="0.9">' + inner + "</g>")
 
 
+def ring_ticks(minor: str, minor_opacity: str, index: str) -> str:
+    """The 60 ticks of the ring around the user picture (login and lock
+    screen), every fifth one a longer index mark: lines from radius 71.5
+    (index marks: 70) to 75 around the centre of a 152 box."""
+    lines = []
+    for i in range(60):
+        angle = math.radians(i * 6)
+        is_index = i % 5 == 0
+        inner = 70.0 if is_index else 71.5
+        x1, y1 = 76 + inner * math.sin(angle), 76 - inner * math.cos(angle)
+        x2, y2 = 76 + 75.0 * math.sin(angle), 76 - 75.0 * math.cos(angle)
+        style = (f'stroke="{index}" stroke-width="1.6"' if is_index
+                 else f'stroke="{minor}" stroke-width="1" opacity="{minor_opacity}"')
+        lines.append(f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" {style}/>')
+    return "\n".join(lines)
+
+
+# The decoration both screens share: sources in tools/templates/components.
+SHARED_COMPONENTS = ("Entrance.qml", "Fx.js", "HexRing.qml", "Brackets.qml", "ScanSweep.qml", "Wing.qml",
+                     "LoginDecor.qml", "LockDecor.qml")
+
+
 def cap(s: str) -> str:
     return s[:1].upper() + s[1:]
 
@@ -221,7 +247,22 @@ def jobs() -> list[Job]:
         if (THEMES / f"defaults/{name}.in").exists():
             out.append(Job(f"defaults/{name}", f"defaults/{name}.in", "dark", default))
 
-    # ---- login and lock screen: shared token file and tinted icons -------------------
+    # ---- login and lock screen: shared token file, tinted icons, shared decoration ----
+    brand = ("@{brand.gradientStart}", "@{brand.gradientMid}", "@{brand.gradientEnd}")
+    rings = {
+        # The hexagon in the gradient of the symbol, and in the danger colour
+        # for a refused password.
+        "ring-hex.svg": ("ring-hex.svg.in", {"START": brand[0], "MID": brand[1], "END": brand[2],
+                                             "VARIANT": "Normal state: the gradient of the symbol."}),
+        "ring-hex-alert.svg": ("ring-hex.svg.in", {"START": "@{danger}", "MID": "@{danger}", "END": "@{danger}",
+                                                   "VARIANT": "Refused password: the danger colour."}),
+        # The tick ring at rest (slate ticks, accent index marks) and lit
+        # (an accepted login).
+        "ring-ticks.svg": ("ring-ticks.svg.in", {"TICKS": ring_ticks("#94A3B8", "0.5", "@{accent}"),
+                                                 "VARIANT": "At rest: slate ticks, index marks in the accent."}),
+        "ring-ticks-lit.svg": ("ring-ticks.svg.in", {"TICKS": ring_ticks("#A5F3FC", "1", "#CFFAFE"),
+                                                     "VARIANT": "Lit: an accepted login."}),
+    }
     screens = {
         "sddm/shadow": ("power", "refresh", "moon", "eye", "eye-off", "chevron-up", "keyboard", "users", "monitor",
                        "check"),
@@ -238,6 +279,11 @@ def jobs() -> list[Job]:
         out.append(Job(f"{base}/icons/user-on-accent.svg", icon="user", tint="textOnAccent"))
         out.append(Job(f"{base}/icons/alert-triangle-warning.svg", icon="alert-triangle", tint="warning"))
         out.append(Job(f"{base}/icons/alert-triangle-danger.svg", icon="alert-triangle", tint="danger"))
+        for name in SHARED_COMPONENTS:
+            out.append(Job(f"{base}/components/{name}", copy=f"desktop/themes/tools/templates/components/{name}"))
+        for name, (template, variables) in rings.items():
+            out.append(Job(f"{base}/components/{name}", f"tools/templates/components/{template}", "dark", default,
+                           dict(variables)))
 
     # ---- icon theme: places icons from the original folder templates ---------------------
     for theme, mode in (("shadow", "dark"), ("shadow-light", "light")):
@@ -259,6 +305,12 @@ def produce(job: Job) -> str:
         return f"<!-- {notice} -->\n" + svg.replace("currentColor", colour) + "\n"
     if job.copy:
         text = (ROOT / job.copy).read_text(encoding="utf-8")
+        if job.copy.endswith((".qml", ".js")):
+            # Under the licence line, as in the files rendered from templates.
+            first, _, rest = text.partition("\n")
+            if not first.startswith("// SPDX-License-Identifier:"):
+                raise SystemExit(f"generate: {job.copy} does not start with its licence line")
+            return f"{first}\n// {notice}\n{rest}"
         return f"<!-- {notice} -->\n" + text
     variables = dict(job.variables)
     variables["GENERATED"] = notice

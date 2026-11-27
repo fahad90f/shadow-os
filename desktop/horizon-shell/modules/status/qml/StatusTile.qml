@@ -26,6 +26,10 @@ Rectangle {
     property string tone: ""
     // Shown on hover while the tile can be used ('reason' while it cannot).
     property string tooltip: ""
+    // 0..1 while the popup opens (PopupSurface.rowAppear): the tile fades in
+    // and what it shows drops 4 px into place. The tile itself, and what it
+    // says about its state, never moves.
+    property real appear: 1
     readonly property color toneColor: tone === "danger" ? Theme.danger : tone === "warning" ? Theme.warning : Theme.accent
 
     signal toggled()
@@ -39,6 +43,7 @@ Rectangle {
     border.width: main.activeFocus ? Theme.focusRing : Theme.borderWidth
     border.color: main.activeFocus ? Theme.accent : tone !== "" || active ? Theme.alpha(toneColor, 0.45) : Theme.borderSubtle
     Behavior on color { ColorAnimation { duration: Theme.motionFast } }
+    opacity: appear
 
     RowLayout {
         anchors.fill: parent
@@ -70,6 +75,7 @@ Rectangle {
                 anchors.rightMargin: root.hasDetails ? 0 : Theme.spaceMd
                 spacing: Theme.spaceMd
                 opacity: root.switchable ? 1 : Theme.opacityDisabled
+                transform: Translate { y: -4 * (1 - root.appear) }
 
                 Rectangle {
                     implicitWidth: Theme.controlHeight

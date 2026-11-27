@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Everything on the login screen that is decoration: the scan line of the
+// entrance, the ring around the user picture with its two wings, and the
+// brackets around the password row. It also owns the clock of the entrance.
+//
+// Main.qml loads this file through a Loader and reads one value from it: t.
+// When the file does not load, the login screen is complete without it.
+// Nothing here takes input or focus, and nothing states a fact that is not
+// one: the nodes on the ring are the real time, the comet runs while a login
+// is really being checked, the colours follow the real result.
+import QtQuick 2.15
+import "../tokens.js" as T
+import "Fx.js" as Fx
+
+Item {
+    id: decor
+
+    // ---- set by Main.qml ---------------------------------------------------------------
+    property real u: 1
+    property bool primary: true           // the screen with the login form
+    property bool reduce: false           // no motion: everything is there at once
+    property date now: new Date()
+    property bool busy: false             // a login is being checked
+    property bool focused: false          // the password field has the keyboard
+    property bool caps: false             // Caps Lock is on
+    // A list or the shut-down question lies over the card: ring, wings and
+    // the brackets of the password row step back (opacity only), so no line
+    // runs out from under it and the only brackets on screen are those of
+    // the question.
+    property bool overlay: false
+    property point ringCenter: Qt.point(width / 2, height / 2)
+    property rect fieldRect: Qt.rect(0, 0, 0, 0)
+
+    // ---- read by Main.qml --------------------------------------------------------------
+    // Progress of the entrance, 0..1.
+    readonly property real t: entrance.t
+
+    // The login was refused: ring and brackets take the danger colour once
+    // and return to their own.
+    function fail() { failed.restart() }
+    // The login was accepted: the tick ring lights up and the brackets close.
+    function succeed() {
+        if (reduce)
+            accepted = 1
+        else
+            succeeded.restart()
+    }
+
+    // Milliseconds into the entrance.
+    readonly property real ms: entrance.t * T.motionEntrance
+    property real refused: 0
+    property real accepted: 0
+    readonly property color dangerColor: T.danger
+    // Resting colour of the brackets: slate, the accent while the field has
+    // the keyboard, amber while Caps Lock is on.
+    property color frameColor: caps ? Fx.alpha(warningColor, 0.9) : focused ? Fx.alpha(accentColor, 0.9) : Fx.alpha(slateColor, 0.45)
+    readonly property color warningColor: T.warning
+    readonly property color accentColor: T.accent
+    readonly property color slateColor: T.slate
+    Behavior on frameColor {
+        enabled: !decor.reduce
+        ColorAnimation { duration: T.motionFast }
+    }
+    property real away: overlay ? 1 : 0
+    Behavior on away {
+        enabled: !decor.reduce
+        NumberAnimation { duration: T.motionListExit }
+    }
+
+    Entrance {
+        id: entrance
+        duration: T.motionEntrance
+        reduce: decor.reduce
+    }
+    NumberAnimation { id: failed; target: decor; property: "refused"; from: 1; to: 0; duration: 900 }
+    NumberAnimation { id: succeeded; target: decor; property: "accepted"; from: 0; to: 1; duration: 200 }
+
+    // 0–420 ms: the scan line; Main.qml lets the wallpaper appear above it.
+    ScanSweep {
+        anchors.fill: parent
+        u: decor.u
+        progress: decor.reduce ? 1 : Fx.lin(decor.ms, 0, T.motionSweep)
+    }
+
+    Item {
+        anchors.fill: parent
+        visible: decor.primary && opacity > 0
+        opacity: 1 - decor.away
+
+        // 240–520 ms: the wings grow away from the ring.
+        Wing {
+            u: decor.u
+            leftward: true
+            x: Math.round(decor.ringCenter.x - 80 * decor.u - width)
+            y: Math.round(decor.ringCenter.y - height / 2)
+            grow: Fx.lin(decor.ms, 240, 520)
+            nodeColor: T.accent
+        }
+        Wing {
+            u: decor.u
+            x: Math.round(decor.ringCenter.x + 80 * decor.u)
+            y: Math.round(decor.ringCenter.y - height / 2)
+            grow: Fx.lin(decor.ms, 240, 520)
+            nodeColor: T.violet
+        }
+
+        // 160–420 ms: the hexagon, from the moment the scan line reaches the
+        // top of the ring; 200–420 ms: tick ring and time nodes.
+        HexRing {
+            u: decor.u
+            x: Math.round(decor.ringCenter.x - width / 2)
+            y: Math.round(decor.ringCenter.y - height / 2)
+            reveal: Fx.ph(decor.ms, 160, 420)
+            ticks: Fx.ph(decor.ms, 200, 420)
+            now: decor.now
+            busy: decor.busy
+            reduce: decor.reduce
+            alert: decor.refused
+            lit: decor.accepted
+        }
+
+        // 100–280 ms: the brackets arrive from 20u outside and stop 8u
+        // around the password row; an accepted login closes them by 6u.
+        Brackets {
+            u: decor.u
+            x: decor.fieldRect.x
+            y: decor.fieldRect.y
+            width: decor.fieldRect.width
+            height: decor.fieldRect.height
+            visible: width > 0 && opacity > 0
+            opacity: Fx.ph(decor.ms, 100, 280)
+            spread: (8 + 12 * (1 - Fx.ph(decor.ms, 100, 280)) - 6 * decor.accepted) * decor.u
+            color: Fx.mix(decor.frameColor, decor.dangerColor, decor.refused)
+        }
+    }
+}

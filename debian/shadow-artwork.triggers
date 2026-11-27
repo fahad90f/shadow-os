@@ -1,0 +1,4 @@
+# The Plymouth theme of this package is copied into the initramfs. Rebuild the
+# initramfs when the package is installed or upgraded, so that boot, the disk
+# passphrase prompt and the update screen show the same theme as shutdown.
+activate-noawait update-initramfs

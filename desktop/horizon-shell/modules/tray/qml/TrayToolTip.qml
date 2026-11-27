@@ -7,7 +7,8 @@ import org.shadow.ui
 //
 // A layer surface is placed by its anchors, not by coordinates: this one is
 // anchored to the top right corner and made just wide enough for the bubble
-// at its left end to sit under the icon.
+// at its left end to sit under the icon. It fades in (Theme.motionInstant)
+// and is gone at once.
 ShellSurface {
     id: root
 
@@ -27,6 +28,8 @@ ShellSurface {
     width: Math.max(bubble.width + margin, Math.min(screenWidth, screenWidth - anchorX + Math.round(bubble.width / 2)))
     height: bubble.height + margin * 2
     visible: item !== null && bubble.hasText
+    onVisibleChanged: if (visible) fade.restart()
+    NumberAnimation { id: fade; target: bubble; property: "opacity"; from: 0; to: 1; duration: Theme.motionInstant }
 
     Connections {
         target: tray

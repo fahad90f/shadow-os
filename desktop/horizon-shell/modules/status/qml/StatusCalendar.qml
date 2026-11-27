@@ -9,6 +9,10 @@ import org.shadow.ui
 //
 // Keys: Left / Page Up and Right / Page Down change the month, Home returns
 // to today.
+//
+// While the popup opens the rows appear behind the scan line of
+// PopupSurface. Changing the month slides the weeks in over 16 px from the
+// side the new month lies on (Theme.motionFast); the grid itself stays put.
 PopupSurface {
     id: popup
 
@@ -29,9 +33,23 @@ PopupSurface {
     readonly property real cellWidth: Math.floor((popupWidth - padding * 2 - weekColumnWidth) / 7)
     readonly property real cellHeight: Theme.controlHeight
 
+    // The change of month being shown: which way it went (-1 earlier,
+    // 1 later) and how far the weeks still are from their place (1..0).
+    property int travel: 0
+    property real monthShift: 0
+    NumberAnimation {
+        id: monthAnimation
+        target: popup; property: "monthShift"
+        from: 1; to: 0
+        duration: Theme.motionFast
+        easing.type: Easing.OutCubic
+    }
+
     function showToday() {
+        const direction = Math.sign((cal.todayYear - year) * 12 + cal.todayMonth - month)
         year = cal.todayYear
         month = cal.todayMonth
+        if (direction !== 0 && popup.open && popup.reveal >= 1) { travel = direction; monthAnimation.restart() }
     }
     function stepMonth(delta) {
         let y = year, m = month + delta
@@ -40,6 +58,8 @@ PopupSurface {
         if (y < 1 || y > 9999) return
         year = y
         month = m
+        travel = delta < 0 ? -1 : 1
+        monthAnimation.restart()
     }
 
     screen: shell.primaryScreen
@@ -75,6 +95,8 @@ PopupSurface {
 
         // ---- today ----------------------------------------------------------------
         RowLayout {
+            id: todayRow
+            opacity: popup.rowAppear(todayRow)
             Layout.fillWidth: true
             spacing: Theme.spaceSm
             ColumnLayout {
@@ -104,10 +126,12 @@ PopupSurface {
             }
         }
 
-        NxDivider { Layout.fillWidth: true }
+        NxDivider { id: upperDivider; opacity: popup.rowAppear(upperDivider); Layout.fillWidth: true }
 
         // ---- month ----------------------------------------------------------------
         RowLayout {
+            id: monthRow
+            opacity: popup.rowAppear(monthRow)
             Layout.fillWidth: true
             spacing: 0
             Text {
@@ -146,6 +170,8 @@ PopupSurface {
             spacing: 0
 
             Row {
+                id: dayNamesRow
+                opacity: popup.rowAppear(dayNamesRow)
                 Text {
                     width: popup.weekColumnWidth
                     height: popup.cellHeight
@@ -178,11 +204,19 @@ PopupSurface {
                     }
                 }
             }
+            // The weeks: nothing here takes input, so they may slide.
+            Column {
+                spacing: 0
+                opacity: 1 - popup.monthShift
+                transform: Translate { x: 16 * popup.travel * popup.monthShift }
             Repeater {
                 model: popup.weeks
                 Row {
                     id: weekRow
                     required property var modelData
+                    readonly property real appear: popup.rowAppear(weekRow)
+                    opacity: appear
+                    transform: Translate { y: -4 * (1 - weekRow.appear) }
                     Text {
                         width: popup.weekColumnWidth
                         height: popup.cellHeight
@@ -225,12 +259,15 @@ PopupSurface {
                     }
                 }
             }
+            }
         }
 
-        NxDivider { Layout.fillWidth: true }
+        NxDivider { id: lowerDivider; opacity: popup.rowAppear(lowerDivider); Layout.fillWidth: true }
 
         // ---- time and time zone ---------------------------------------------------
         RowLayout {
+            id: timeRow
+            opacity: popup.rowAppear(timeRow)
             Layout.fillWidth: true
             spacing: Theme.spaceSm
             NxIcon { name: "clock"; size: Theme.iconSmall; color: Theme.textSecondary }

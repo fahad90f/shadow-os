@@ -133,6 +133,50 @@ passive surfaces sized to their content, `OverlaySurface` for full-screen
 surfaces that take the keyboard, `PopupSurface` for cards hanging under the
 panel.
 
+### Start of the session, and showing and hiding panel and dock
+
+Wallpaper, panel and dock are created in the same moment and are there, and
+take input, from their first frame. What follows in the first 0.8 s is drawing
+only (`qml/StartClock.qml`, one instance in each of the three surfaces; the
+clock starts after two drawn frames, so a slow first frame cannot swallow the
+beginning):
+
+| Time | What |
+|---|---|
+| 0–0.46 s | a scan line (`StartScan.qml`) crosses the screen from the top; the wallpaper picture appears above it (it sits in a clip that follows the line). A picture that is decoded later fades in when it arrives |
+| 0–0.4 s | panel: the background fades in; clock, left group and right group light up one after the other, each dropping 6 px into place; a hairline in the accent colour grows from the centre along the lower edge and then fades into the border |
+| 0.08–0.4 s | dock: the bar fades in, the row of icons rises 12 px, the icons light up from the centre outwards and grow from 85 % to full size |
+| 0.4–0.8 s | four brackets (`StartBrackets.qml`) close on the dock, hold and fade |
+
+There is no sequence with "Reduce motion" (the durations are 0) and when an
+application window is already open — then the shell was restarted under a
+running session and everything is simply there.
+
+A panel or dock that hides (`panelHide`, `dockHide`: the default "smart"
+hides them while a window is open) is a layer-shell window that shrinks to a
+2 px / 4 px strip at the screen edge. Coming back, the window has its full
+height at once, the background fades in and the contents slide 8 px into
+place (140 ms). Leaving, everything fades (80 ms) and only then the window
+shrinks. With "Reduce motion" both are instant.
+
+One rule holds in both cases: the item that carries the blur (`BlurBehind`:
+the panel background, the dock bar) is never moved, scaled or clipped. It
+tells the compositor its rectangle only when its size or visibility changes,
+so only its opacity is animated and what moves are its contents.
+
+One departure from the design: the icons grow from 85 % as whole dock
+entries (`scale` on the `DockItem` in `Dock.qml`), not through the icon
+inside the entry, because `DockItem.qml` belongs to the shell's own files and
+does not expose that inner item. For the first 0.4 s the entry's hover and
+click area is therefore up to 15 % smaller, and the rectangle the dock tells
+KWin for the minimise animation is sent again once the sequence is over.
+Exposing the inner icon of `DockItem` would let the scale move there.
+
+Verified in the lab (KWin nested in Xvfb, llvmpipe and the software
+renderer, no blur): the sequence frame by frame, the restart under an open
+window, showing and hiding. Not verified: a real session start after a
+login, and anything with a GPU and blur.
+
 ### Modules
 
 `modules/<name>/` is compiled into the same binary; the core does not
@@ -240,6 +284,18 @@ GTK settings files and GSettings, and notifies running applications over the
 session bus. It is called by the session script at start and by the shell
 whenever `Appearance.dark` or `Appearance.accent` changes.
 
+It also carries "Reduce motion" (`ReduceMotion` in `appearance.conf`) to the
+two places that cannot read that file: KDE's animation speed factor
+(`kdeglobals` `[KDE] AnimationDurationFactor`, written with a change
+notification: KWin's effects, the Alt+Tab switcher and KDE applications) and
+the lock screen's own setting (`kscreenlockerrc` `[Greeter][LnF][General]
+reduceMotion`). The factor is set to 0 while Reduce motion is on; when it
+is off, only a 0 is removed again (KDE's default applies) and a speed the
+user chose in KDE's own settings is left alone. The shell runs the tool when
+that switch changes (as it does for mode and accent), so both follow it then;
+SHADOW's own applications and the shell follow at once. The run on a switch
+has not been seen in a real session.
+
 Tested in the build chroot: Qt widgets with the staged theme, including a
 live switch. Not tested: GTK and libadwaita (no GTK in the chroot), and the
 whole chain in the booted image.
@@ -260,6 +316,19 @@ whole chain in the booted image.
 * Features: user list and "Other user…", password field with show/hide and
   Caps Lock warning, session selector, suspend/restart/shut down when SDDM
   allows them.
+* Entrance (0.7 s): the first frame is the near-black field the boot splash
+  ends in, with the password field already there, focused and usable. A scan
+  line then resolves the wallpaper from the top while the rest lights up:
+  the hexagon of the SHADOW symbol around the user picture, a tick ring whose
+  two nodes show the real time, brackets around the password row, the clock,
+  the buttons of the bottom bar one after the other. While a login is checked
+  a comet circles the ring; a refused login turns ring and brackets red once,
+  next to the message and the shake. All of this decoration is one file
+  behind a `Loader` (`components/LoginDecor.qml`); the form works without it.
+* `reduceMotion=true` in the theme's `theme.conf` (or `theme.conf.user`)
+  switches every movement off. It is one setting for the whole computer:
+  the greeter runs before anyone is logged in and cannot know a user's
+  "Reduce motion" switch.
 * Live session: `system/live/2000-shadow-session` writes
   `/etc/sddm.conf.d/10-shadow-live.conf` with auto-login for the live user
   into the `shadow-horizon` session, unless `noautologin` is on the kernel
@@ -267,9 +336,12 @@ whole chain in the booted image.
 * Installed system with automatic login: the installer writes
   `/etc/sddm.conf.d/20-autologin.conf`.
 
-Verified: the theme in SDDM's test mode (build chroot); auto-login of the
-live user in QEMU. Not verified: an interactive login through the greeter on
-a booted system.
+Verified: the theme in SDDM's test mode (build chroot, and frame by frame
+in the lab with OpenGL on llvmpipe and with the software renderer);
+auto-login of the live user in QEMU. Not verified: an interactive login
+through the greeter on a booted system, the greeter on DRM, and what the
+screen shows between the end of the boot splash and the greeter's first
+frame (the splash is not kept; nothing here changes that).
 
 ## Lock screen
 
@@ -284,7 +356,13 @@ guarantee that nothing is displayed and no input reaches clients.
    named by `/etc/xdg/plasmashellrc` (`ShellPackage=org.shadow.horizon`) and
    `PLASMA_DEFAULT_SHELL`; the package is
    `/usr/share/plasma/shells/org.shadow.horizon/contents/lockscreen/LockScreen.qml`
-   — SHADOW's own QML, using only QtQuick.
+   — SHADOW's own QML, using only QtQuick. Its decoration (scan line,
+   ring, brackets; a 0.4 s entrance each time the screen is shown) is a
+   separate file behind a `Loader`, `components/LockDecor.qml`: when that
+   file cannot be loaded the form is complete and unlocks as before. There
+   is no exit animation: the right password ends the greeter at once. The
+   user's "Reduce motion" switch reaches it as `reduceMotion` in
+   `kscreenlockerrc` (see the theming chain above).
 4. Authentication is PAM, service `kde` (`/etc/pam.d/kde`, including
    Debian's `common-auth`). Two further non-interactive PAM services,
    `kde-fingerprint` and `kde-smartcard`, exist because the greeter always
@@ -298,8 +376,10 @@ Recovery is described in
 [../troubleshooting/README.md](../troubleshooting/README.md).
 
 Verified: the lock-screen QML with the real `kscreenlocker_greet --testing`
-and real PAM in the build chroot, as an X11 client. Not verified: a real
-lock from KWin on Wayland, the grace time, multiple screens.
+and real PAM in the build chroot, as an X11 client; in the lab also with the
+software renderer, with the decoration file removed, and with
+`reduceMotion` set. Not verified: a real lock from KWin on Wayland, the
+grace time, multiple screens.
 
 ## Authentication agent
 

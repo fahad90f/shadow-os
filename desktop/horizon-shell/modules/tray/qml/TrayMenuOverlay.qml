@@ -9,6 +9,13 @@ import org.shadow.ui
 //
 // Keyboard: Up/Down (Home/End) move, Right or Return opens a submenu, Left
 // or Escape leaves it, Return or Space chooses an entry.
+//
+// How a card opens (Theme.motionRevealMenu in all; see OverlaySurface): a
+// short line ties the icon to the menu, the card's outline is traced from
+// the side it came from (the icon; for a submenu, the row it belongs to),
+// and the rows appear one after the other from that side. The first card
+// follows the overlay's own clock; a submenu, which opens while the overlay
+// is already complete, has a clock of its own.
 OverlaySurface {
     id: root
 
@@ -29,6 +36,18 @@ OverlaySurface {
 
     screen: shell.primaryScreen
     scope: "shadow-tray-menu"
+    revealDuration: Theme.motionRevealMenu
+    exitDuration: Theme.motionExitMenu
+
+    FxTether {
+        visible: root.levels.length > 0 && progress > 0
+        x: root.anchorX
+        y: Theme.panelHeight
+        direction: "down"
+        length: Theme.spaceXs
+        progress: root.ph(0, 0.25)
+        color: Theme.mix(Theme.accent, Theme.borderStrong, root.settle)
+    }
 
     function showFor(newItem, x) {
         if (open && menu) menu.close()
@@ -127,6 +146,28 @@ OverlaySurface {
                 readonly property bool failed: root.menu !== null && !root.menu.loaded && root.menu.failure !== ""
                 property int current: -1
                 readonly property real maxHeight: root.height - Theme.panelHeight - root.margin * 2
+
+                // This card's clock, 0..1: the overlay's for the menu itself,
+                // its own for a submenu; closing, the picture is held where the
+                // overlay's exit began and fades with it (OverlaySurface.fade).
+                property real own: index === 0 ? 1 : 0
+                NumberAnimation on own {
+                    running: card.index > 0
+                    from: 0; to: 1
+                    duration: Theme.motionRevealMenu
+                }
+                readonly property real clock: Math.min(own, root.stage)
+                // Colours settle once the card is complete.
+                property real settled: clock >= 1 ? 1 : 0
+                Behavior on settled { NumberAnimation { duration: Theme.motionSettle } }
+                function ph(a, b) { return root.phOf(clock, a, b) }
+                // 0..1 for the row with this number, counted from the side
+                // the card came from; at most seven steps.
+                function rowAppear(row) {
+                    if (clock >= 1) return 1
+                    const start = Math.min(0.25 + 0.075 * Math.min(7, row), 0.6)
+                    return ph(start, start + 0.4)
+                }
                 readonly property real labelWidth: {
                     let widest = 0
                     for (const row of rows) widest = Math.max(widest, metrics.advanceWidth(row.label))
@@ -184,15 +225,34 @@ OverlaySurface {
                     : Math.max(Theme.panelHeight + Theme.spaceXs,
                                Math.min(root.height - height - root.margin, level.top - Theme.spaceXs))
                 radius: Theme.radiusMd
-                color: Theme.bgOverlay
-                border.width: Theme.borderWidth
-                border.color: index === root.levels.length - 1 ? Theme.borderStrong : Theme.border
+                // The background is an item of its own, so that it can fade
+                // in without taking the rows with it.
+                color: "transparent"
                 Accessible.role: Accessible.PopupMenu
                 Accessible.name: root.item ? root.item.toolTipTitle : ""
 
+                Rectangle {
+                    anchors.fill: parent
+                    radius: card.radius
+                    color: Theme.bgOverlay
+                    border.width: Theme.borderWidth
+                    border.color: card.index === root.levels.length - 1 ? Theme.borderStrong : Theme.border
+                    opacity: card.ph(0.1, 0.6)
+                }
+                FxFrame {
+                    anchors.fill: parent
+                    radius: card.radius
+                    origin: card.index === 0 ? "top" : card.side > 0 ? "left" : "right"
+                    originPosition: card.index === 0 ? root.anchorX - card.x
+                        : card.level.top - card.y + root.rowHeight / 2
+                    progress: card.ph(0.2, 0.9)
+                    color: Theme.mix(Theme.accent, card.index === root.levels.length - 1 ? Theme.borderStrong : Theme.border,
+                                     card.settled)
+                    glow: 1 - card.settled
+                }
+
                 // Clicks on the card itself do not close the menu.
                 TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds }
-                NumberAnimation on opacity { from: 0; to: 1; duration: Theme.motionFast }
 
                 Column {
                     id: body
@@ -203,6 +263,7 @@ OverlaySurface {
                     // Whose menu this is.
                     Text {
                         visible: card.index === 0 && text !== ""
+                        opacity: card.rowAppear(0)
                         width: parent.width
                         height: 26
                         leftPadding: Theme.spaceSm
@@ -270,6 +331,8 @@ OverlaySurface {
                             // Room for the scroll bar of a menu taller than the screen.
                             width: ListView.view.width - (list.interactive ? Theme.spaceMd : 0)
                             height: modelData.separator ? 9 : root.rowHeight
+                            // Appears in its turn; the row is in place from the start.
+                            opacity: card.rowAppear(index)
                             Accessible.role: modelData.separator ? Accessible.Separator
                                 : modelData.toggle === "check" ? Accessible.CheckBox
                                 : modelData.toggle === "radio" ? Accessible.RadioButton : Accessible.MenuItem

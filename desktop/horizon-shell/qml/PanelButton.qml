@@ -21,6 +21,12 @@ Item {
 
     signal clicked()
 
+    // A popup this button opens hangs its tether from the button's centre
+    // (PopupSurface.originButton). The panel spans its screen from x 0, so
+    // the x in the panel window is the x on the screen.
+    readonly property var hostScreen: Window.window ? Window.window.screen : null
+    function centreInWindow() { return mapToItem(null, width / 2, 0).x }
+
     implicitWidth: row.implicitWidth + Theme.spaceMd * 2
     implicitHeight: Theme.panelHeight
     activeFocusOnTab: interactive
@@ -83,11 +89,36 @@ Item {
         }
     }
 
-    HoverHandler { id: hover; cursorShape: root.interactive ? Qt.PointingHandCursor : Qt.ArrowCursor }
-    TapHandler { id: tap; enabled: root.interactive; onTapped: root.clicked() }
+    HoverHandler {
+        id: hover
+        cursorShape: root.interactive ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onHoveredChanged: if (!hovered) root.pressedSinceHover = false
+    }
+    TapHandler {
+        id: tap
+        enabled: root.interactive
+        onPressedChanged: if (pressed) root.pressedSinceHover = true
+        onTapped: root.clicked()
+    }
 
-    ToolTip.visible: tooltip !== "" && hover.hovered && !checked && !tap.pressed
-    ToolTip.timeout: 5000
-    ToolTip.text: tooltip
-    ToolTip.delay: 700
+    // A press hides the tool tip until the pointer has left the button.
+    property bool pressedSinceHover: false
+
+    // The panel window is only as high as its buttons, so a tool tip has no
+    // room above or below one. It is shown beside the button (towards the
+    // middle of the panel) and never takes the pointer: a tool tip on top
+    // of the button used to swallow the click it was explaining.
+    ToolTip {
+        id: tip
+        readonly property bool onLeft: hover.hovered
+            && root.mapToItem(null, root.width / 2, 0).x > (root.Window.window ? root.Window.window.width / 2 : 0)
+        x: onLeft ? -implicitWidth - Theme.spaceXs : root.width + Theme.spaceXs
+        y: Math.round((root.height - implicitHeight) / 2)
+        margins: 0
+        enabled: false
+        visible: root.tooltip !== "" && hover.hovered && !root.checked && !tap.pressed && !root.pressedSinceHover
+        text: root.tooltip
+        delay: 700
+        timeout: 5000
+    }
 }

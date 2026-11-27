@@ -1,27 +1,28 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# shadow-apply-appearance — carry the SHADOW appearance (dark/light, accent)
-# over to everything that is not a SHADOW application: Qt/KDE applications
-# and KWin decorations (kdeglobals), GTK 3/4 and libadwaita (GSettings,
-# settings.ini, and through kdeglobals the KDE settings portal).
+# shadow-apply-appearance — carry the SHADOW appearance (dark/light, accent,
+# reduce motion) over to everything that is not a SHADOW application: Qt/KDE
+# applications and KWin decorations (kdeglobals), GTK 3/4 and libadwaita
+# (GSettings, settings.ini, and through kdeglobals the KDE settings portal),
+# and for "reduce motion" the lock screen and KWin's own animations.
 #
 #   shadow-apply-appearance                         apply ~/.config/shadow/appearance.conf
 #   shadow-apply-appearance --mode light --accent violet
 #   shadow-apply-appearance --list                  installed colour schemes
 #
-# appearance.conf ([Appearance] ColorScheme=dark|light, Accent=<name>) is
-# written by the SHADOW shell and Control Center; a missing file or key means
-# the system default (dark, default accent). Only the user's own
-# configuration files are written. Running applications are told to reload
-# over the session bus; without a bus the change applies to applications
-# started afterwards.
+# appearance.conf ([Appearance] ColorScheme=dark|light, Accent=<name>,
+# ReduceMotion=true|false) is written by the SHADOW shell and Control Center;
+# a missing file or key means the system default (dark, default accent,
+# motion on). Only the user's own configuration files are written. Running
+# applications are told to reload over the session bus; without a bus the
+# change applies to applications started afterwards.
 set -eu
 
 config="${XDG_CONFIG_HOME:-$HOME/.config}"
 mode="" accent=""
 
-usage() { sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '4,19p' "$0" | sed 's/^# \{0,1\}//'; }
 
 find_scheme() {
     # Path of the colour scheme "$1", searched like KDE does.
@@ -65,6 +66,8 @@ mode="$(printf '%s' "${mode:-dark}" | tr 'A-Z' 'a-z')"
 accent="$(printf '%s' "$accent" | tr 'A-Z' 'a-z')"
 case "$mode" in dark|light) ;; *) echo "shadow-apply-appearance: unknown mode '$mode' (dark, light)" >&2; exit 2 ;; esac
 case "$accent" in *[!a-z]*) echo "shadow-apply-appearance: invalid accent '$accent'" >&2; exit 2 ;; esac
+# "Reduce motion" is stored as true/false; anything else means motion stays on.
+case "$(read_key ReduceMotion | tr 'A-Z' 'a-z')" in true|1|yes|on) reduce=true ;; *) reduce=false ;; esac
 
 cap() { printf '%s' "$1" | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }'; }
 scheme="Shadow$(cap "$mode")"
@@ -145,6 +148,75 @@ done
 write_key Colors:Header BackgroundNormal "$(scheme_value '[Colors:Header]' BackgroundNormal)"
 write_key Colors:Window BackgroundNormal "$(scheme_value '[Colors:Window]' BackgroundNormal)"
 write_key General ColorScheme "$scheme"
+
+# ---- reduce motion: KWin, KDE applications and the lock screen -------------------------
+# None of them reads appearance.conf. KWin (window effects, the Alt+Tab
+# switcher) and KDE applications follow KDE's animation speed factor, where 0
+# means "no animations"; it is written with a change notification, so they
+# follow at once. The factor is also the user's own (KDE's settings can set
+# it to any speed), so this tool owns only the 0: it writes 0 while Reduce
+# motion is on and, once the switch is off, removes a 0 (KDE's default
+# applies again); any other factor is left as it is. The lock screen has a
+# setting of its own (config.xml of the lock screen), which KScreenLocker
+# stores in kscreenlockerrc and reads each time the screen is locked. The
+# login screen is not reached from here: it runs before anyone is logged in
+# and has one setting for the whole computer (reduceMotion in its
+# theme.conf).
+animation_factor() {
+    # [KDE] AnimationDurationFactor in kdeglobals, empty when unset; the
+    # last entry wins, as in KConfig.
+    [ -f "$config/kdeglobals" ] || return 0
+    awk '
+        /^\[/ { inside = ($0 == "[KDE]"); next }
+        inside && /^AnimationDurationFactor[ \t]*=/ { value = $0; sub(/^[^=]*=/, "", value); gsub(/^[ \t]+|[ \t\r]+$/, "", value) }
+        END { print value }
+    ' "$config/kdeglobals"
+}
+set_animation_factor() {
+    # set_animation_factor <value>, or "" to remove the key.
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        if [ -n "$1" ]; then
+            kwriteconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor --notify "$1"
+        else
+            kwriteconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor --notify --delete
+        fi
+    else
+        # In place, so that repeated runs leave one entry and not a list.
+        awk -v value="$1" '
+            function flush_missing() { if (inside && !done && value != "") { print "AnimationDurationFactor=" value; done = 1 } }
+            /^\[/ { flush_missing(); inside = ($0 == "[KDE]") }
+            inside && /^AnimationDurationFactor[ \t]*=/ { next }
+            { print }
+            END { flush_missing(); if (!done && value != "") print "\n[KDE]\nAnimationDurationFactor=" value }
+        ' "$config/kdeglobals" > "$config/kdeglobals.new" && mv "$config/kdeglobals.new" "$config/kdeglobals"
+    fi
+}
+write_lock_key() {
+    # write_lock_key <key> <true|false>: group [Greeter][LnF][General] of kscreenlockerrc.
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        kwriteconfig6 --file kscreenlockerrc --group Greeter --group LnF --group General --key "$1" --type bool "$2"
+    else
+        lock_file="$config/kscreenlockerrc"
+        [ -f "$lock_file" ] || : > "$lock_file"
+        awk -v key="$1" -v value="$2" '
+            function flush_missing() { if (inside && !done) { print key "=" value; done = 1 } }
+            /^\[/ { flush_missing(); inside = ($0 == "[Greeter][LnF][General]") }
+            inside && index($0, key "=") == 1 { if (!done) print key "=" value; done = 1; next }
+            { print }
+            END { flush_missing(); if (!done) print "\n[Greeter][LnF][General]\n" key "=" value }
+        ' "$lock_file" > "$lock_file.new" && mv "$lock_file.new" "$lock_file"
+    fi
+}
+factor="$(animation_factor)"
+# "0", "0.0", "00" ...: a factor of zero, i.e. the one this tool writes.
+factor_is_zero=false
+case "$factor" in ''|*[!0.]*) ;; *[0]*) factor_is_zero=true ;; esac
+if [ "$reduce" = true ]; then
+    [ "$factor_is_zero" = true ] || set_animation_factor 0
+elif [ "$factor_is_zero" = true ]; then
+    set_animation_factor ""
+fi
+write_lock_key reduceMotion "$reduce"
 
 # ---- GTK: settings.ini (X11 clients, no portal) --------------------------------------
 for version in 3.0 4.0; do

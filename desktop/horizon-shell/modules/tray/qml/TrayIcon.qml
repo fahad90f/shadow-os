@@ -90,8 +90,8 @@ Item {
             running: root.item !== null && root.item.needsAttention && root.visible && !Appearance.reduceMotion
             loops: Animation.Infinite
             alwaysRunToEnd: true
-            NumberAnimation { to: 0.45; duration: 520 }
-            NumberAnimation { to: 1.0; duration: 520 }
+            NumberAnimation { to: 0.45; duration: Theme.motionPage }
+            NumberAnimation { to: 1.0; duration: Theme.motionPage }
         }
     }
     // An item without any usable icon still has to be reachable.

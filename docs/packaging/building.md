@@ -140,7 +140,7 @@ From `debian/control` (source package `shadow-os`):
 | `shadow-installer-gui` | any | graphical installer |
 | `shadow-live` | all | live-session configuration |
 | `shadow-hardening` | all | security baseline, including `shadow-harden` ([../security/hardening.md](../security/hardening.md#overview): diverted `/etc/nftables.conf`, removal, chroots) |
-| `shadow-artwork` | all | wallpapers, logos, GRUB and Plymouth themes |
+| `shadow-artwork` | all | wallpapers, logos, GRUB and Plymouth themes; dpkg trigger that asks for a new initramfs (the Plymouth theme is part of it) |
 | `shadow-themes` | all | colour schemes, icon themes, SDDM theme, lock screen, `shadow-apply-appearance` |
 | `shadow-ui` | any | ShadowUI library, style and icons |
 | `shadow-horizon` | any | shell and session |
@@ -206,7 +206,7 @@ booted image. The contract is in
 | `desktop/themes/tools/generate.py [--check\|--list]` | generated theme files (committed) |
 | `assets/src/icons/gen-symbolic.py`, `gen-app-icons.py` | symbolic icon set (`desktop/ui/icons`), application and category icons |
 | `assets/src/logos/gen-logos.py`, `assets/src/wallpapers/gen-wallpapers.py` | logo family, wallpapers |
-| `assets/src/boot/gen-boot-theme.sh <dir>` | binary parts of the GRUB and Plymouth themes |
+| `assets/src/boot/gen-boot-theme.sh <dir>` | binary parts of the GRUB and Plymouth themes; it calls `gen-plymouth-theme.py` (splash images; python3, `rsvg-convert`, Inter) and `gen-grub-theme.sh` (boot menu) |
 | `arsenal/tools/gen-control.py`, `gen-profiles-doc.py` | `arsenal/packaging/control.in`, `arsenal/docs/profiles.md` |
 
 Generated artwork and theme files are committed; the generators are run by

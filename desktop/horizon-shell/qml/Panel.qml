@@ -40,8 +40,38 @@ ShellSurface {
     width: screen ? screen.width : 1280
     // Hidden, a thin strip stays at the top edge: touching it with the
     // pointer brings the panel back.
-    height: revealed ? Theme.panelHeight : 2
+    height: tall ? Theme.panelHeight : 2
     visible: true
+
+    // ---- showing and hiding ------------------------------------------------------
+    // What is drawn follows "revealed" through "shown" (0..1). Coming back,
+    // the window has its full height at once and the panel fades in while
+    // its contents slide down 8 px (Theme.motionFast). Leaving, everything
+    // fades (Theme.motionInstant) and only then the window shrinks to the
+    // strip: "tall" stays true for as long as something is still drawn.
+    // With "Reduce motion" both are the instant jumps they always were.
+    property real shown: revealed ? 1 : 0
+    Behavior on shown {
+        enabled: !Theme.reduceMotion
+        NumberAnimation {
+            duration: root.revealed ? Theme.motionFast : Theme.motionInstant
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: root.revealed ? Theme.easingDecelerate : Theme.easingAccelerate
+        }
+    }
+    readonly property bool tall: revealed || shown > 0
+
+    // ---- start of the session ----------------------------------------------------
+    // The panel is there and takes input from the first frame. In the first
+    // 0.4 s its background fades in and its three groups (clock, left,
+    // right) light up one after the other, each dropping 6 px into place;
+    // a hairline in the accent colour grows along the lower edge. Only
+    // opacity and an offset of the contents change. The background, which
+    // carries the blur, is never moved.
+    StartClock { id: start }
+    function groupIn(from) { return start.ph(from, from + Theme.motionNormal) }
+    function groupOpacity(from) { return (0.2 + 0.8 * groupIn(from)) * shown }
+    function groupOffset(from) { return -6 * (1 - groupIn(from)) - (revealed ? 8 * (1 - shown) : 0) }
 
     HoverHandler {
         id: panelHover
@@ -71,11 +101,12 @@ ShellSurface {
     id: content
     width: root.width
     height: Theme.panelHeight
-    visible: root.revealed
+    visible: root.tall
 
     Rectangle {
         anchors.fill: parent
         color: panelBlur.glass ? Theme.glassPanel : Theme.bgSurface
+        opacity: start.lin(0, Theme.motionFast) * root.shown
         BlurBehind { id: panelBlur; anchors.fill: parent; surface: root }
         Rectangle {
             anchors.bottom: parent.bottom
@@ -84,6 +115,18 @@ ShellSurface {
             color: Theme.borderSubtle
         }
     }
+    // Start of the session: the hairline grows from the centre along the
+    // lower edge, then fades into the border under it. Nothing is drawn in
+    // the upper rows of the panel.
+    Rectangle {
+        anchors.bottom: parent.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.round(parent.width * start.lin(120, Theme.motionPage))
+        height: 1
+        color: Theme.accent
+        opacity: 1 - start.lin(Theme.motionPage, Theme.motionPage + Theme.motionNormal)
+        visible: opacity > 0 && width > 0
+    }
 
     // ---- left ---------------------------------------------------------------
     RowLayout {
@@ -91,6 +134,8 @@ ShellSurface {
         anchors.leftMargin: Theme.spaceXs
         height: parent.height
         spacing: Theme.spaceXs
+        opacity: root.groupOpacity(120)
+        transform: Translate { y: root.groupOffset(120) }
 
         PanelButton {
             icon: "shadow"
@@ -150,6 +195,8 @@ ShellSurface {
     // ---- centre ---------------------------------------------------------------
     PanelButton {
         anchors.centerIn: parent
+        opacity: root.groupOpacity(60)
+        transform: Translate { y: root.groupOffset(60) }
         text: {
             const time = Qt.formatTime(root.now, shellSettings.clock24h
                 ? (shellSettings.clockSeconds ? "HH:mm:ss" : "HH:mm")
@@ -168,6 +215,8 @@ ShellSurface {
         anchors.rightMargin: Theme.spaceXs
         height: parent.height
         spacing: 0
+        opacity: root.groupOpacity(180)
+        transform: Translate { y: root.groupOffset(180) }
 
         Row {
             id: moduleRow

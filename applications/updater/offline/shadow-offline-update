@@ -129,6 +129,9 @@ cmd_apply() {
     # update boot.
     rm -f "$LINK"
     if command -v plymouth >/dev/null && plymouth --ping 2>/dev/null; then
+        # The splash has its own picture for updates. Change the mode first: a
+        # mode change restarts the splash and drops any message shown before.
+        plymouth change-mode --updates || true
         plymouth display-message --text="Installing updates — do not turn off the computer" || true
     fi
 
@@ -163,6 +166,11 @@ cmd_apply() {
     [ "$result" = success ] && apt-get -q clean >/dev/null 2>&1 || true
 
     if [ "$reboot" -eq 1 ]; then
+        # The splash daemon of this boot keeps running into the restart (a
+        # second one does nothing while it runs): tell it what happens now.
+        if command -v plymouth >/dev/null && plymouth --ping 2>/dev/null; then
+            plymouth change-mode --reboot || true
+        fi
         systemctl --no-block reboot
     fi
     [ "$result" = success ]

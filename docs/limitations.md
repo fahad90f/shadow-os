@@ -87,8 +87,19 @@ downtime matters.
   password.
 * The live medium's "Recovery environment" entry starts a program
   (`shadow-recovery`) that does not exist in the image.
-* The Plymouth passphrase prompt on an encrypted installation of the
-  desktop image is unverified.
+* The Plymouth splash was only run in a preview (the real `plymouthd` with
+  its X11 renderer). A real boot of the desktop image with it, the
+  passphrase prompt on an encrypted installation, the frame-buffer and DRM
+  renderers and the rebuild of the initramfs when `shadow-artwork` is
+  upgraded are unverified ([architecture/boot.md](architecture/boot.md#the-splash)).
+* The splash does not follow the Reduce motion setting. Its still variant
+  (`motion=calm`) is chosen by editing the packaged `shadow.plymouth` by hand,
+  which the next upgrade of `shadow-artwork` undoes, and it reaches the boot
+  screens only after `update-initramfs -u`
+  ([architecture/boot.md](architecture/boot.md#the-splash)).
+* Between the splash and the login screen the screen may go black or show the
+  console for a moment: Plymouth quits without keeping its last picture and
+  the display manager is not started after it.
 
 ## Installer
 

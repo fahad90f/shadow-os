@@ -34,6 +34,13 @@ Rectangle {
     property bool current: false
     property double now: 0
     property int bodyLines: 4
+    // Arrival of a popup, 0..1: what the card shows comes in from the right
+    // over 24 px while a bar in the accent colour grows down its left edge.
+    // The card itself keeps its place.
+    property real enter: 1
+    // Vertical offset of what the card shows, in pixels (the notification
+    // centre lets its entries drop into place while it opens).
+    property real contentShift: 0
 
     signal activated()
     signal actionInvoked(string key)
@@ -76,6 +83,16 @@ Rectangle {
         onTapped: root.activated()
     }
 
+    // The mark of a popup: a bar down the left edge, red for a critical one.
+    Rectangle {
+        visible: root.popup
+        x: 0
+        y: root.radius
+        width: 2
+        height: (root.height - root.radius * 2) * root.enter
+        color: root.critical ? Theme.danger : Theme.accent
+    }
+
     RowLayout {
         id: content
         anchors.left: parent.left
@@ -83,6 +100,8 @@ Rectangle {
         anchors.top: parent.top
         anchors.margins: Theme.spaceMd
         spacing: Theme.spaceMd
+        opacity: root.enter
+        transform: Translate { x: 24 * (1 - root.enter) * (1 - root.enter); y: root.contentShift }
 
         // ---- picture ------------------------------------------------------------
         Item {

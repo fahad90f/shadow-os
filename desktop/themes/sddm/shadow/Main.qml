@@ -7,6 +7,15 @@
 // Keyboard: the password field has the focus; Return logs in; Tab/Shift+Tab
 // walk through user switch, password, reveal, log in, session, keyboard
 // layout and the power buttons; lists take arrows, Return and Escape.
+//
+// Entrance: the screen builds up in 0.7 s behind a scan line. The form is
+// there, focused and usable from the first frame; the entrance only changes
+// opacity and a few pixels of offset. All decoration (scan line, ring,
+// brackets, wings) is components/LoginDecor.qml behind a Loader; this file
+// reads one value from it, "ent". The brackets of the shut-down question
+// sit behind a Loader of their own. No decoration file is a static
+// dependency of this one. reduceMotion=true in theme.conf switches every
+// movement off.
 import QtQuick 2.15
 import SddmComponents 2.0
 import "components"
@@ -15,8 +24,13 @@ import "tokens.js" as T
 Rectangle {
     id: root
 
-    // Solid fallback when there is no wallpaper.
+    // The near-black field the boot splash ends in: what the first frame
+    // shows, and what stays when there is no wallpaper.
     color: T.bgBase
+    gradient: Gradient {
+        GradientStop { position: 0.0; color: T.fieldTop }
+        GradientStop { position: 1.0; color: T.fieldBottom }
+    }
     width: 1600
     height: 900
 
@@ -45,6 +59,25 @@ Rectangle {
     readonly property string timeFormat: config.timeFormat ? config.timeFormat
         : Qt.locale().timeFormat(Locale.ShortFormat).replace(/[:.]s+/, "")
     readonly property bool confirmPower: String(config.confirmPower) !== "false"
+    // No entrance, no shake, no unfolding lists (theme.conf; system-wide).
+    readonly property bool reduceMotion: String(config.reduceMotion) === "true"
+
+    // Progress of the entrance, 0..1, counted by the decoration. Without the
+    // decoration (the file did not load) it is 1: a complete screen.
+    readonly property real ent: decor.status === Loader.Ready ? decor.item.t : 1
+
+    // Share of the window from..to (milliseconds of the entrance) that has
+    // passed, slowing down towards its end. Every item that appears takes
+    // its opacity from one such window.
+    function ph(from, to) {
+        var x = 1 - Math.max(0, Math.min(1, (ent * T.motionEntrance - from) / (to - from)))
+        return 1 - x * x * x
+    }
+    // The buttons of the bottom bar follow each other, 40 ms apart.
+    function barIn(position) {
+        var from = T.motionSweep + position * T.motionStagger
+        return ph(from, Math.min(T.motionEntrance, from + T.motionFast))
+    }
 
     LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
     LayoutMirroring.childrenInherit: true
@@ -157,12 +190,19 @@ Rectangle {
             root.errorText = strings.loginFailed
             passwordField.text = ""
             passwordField.forceActiveFocus()
-            shake.restart()
+            if (!root.reduceMotion)
+                shake.restart()
+            if (decor.item)
+                decor.item.fail()
         }
         function onLoginSucceeded() {
             answerTimeout.stop()
             root.errorText = ""
             root.infoText = strings.loginSucceeded
+            // The form stays as it is: the greeter may be stopped at any
+            // frame, so every frame has to be a complete picture.
+            if (decor.item)
+                decor.item.succeed()
         }
         function onInformationMessage(message) {
             root.infoText = message
@@ -211,24 +251,46 @@ Rectangle {
     }
 
     // ---- background ---------------------------------------------------------------
-    Image {
-        id: wallpaper
-        anchors.fill: parent
-        source: config.background ? config.background : ""
-        fillMode: Image.PreserveAspectCrop
-        asynchronous: true
-        cache: false
-        // Decoded at screen size, not at the size of the file.
-        sourceSize.width: root.width
-        sourceSize.height: root.height
-        visible: status === Image.Ready
-    }
-    Rectangle {
-        anchors.fill: parent
-        visible: wallpaper.visible
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: T.scrimTop }
-            GradientStop { position: 1.0; color: T.scrimBottom }
+    // The scan line of the entrance resolves the picture from the top: the
+    // picture sits in a clip whose lower edge is the line (0–420 ms).
+    // Nothing of it is shown before the entrance starts.
+    Item {
+        width: root.width
+        height: Math.round(root.height * Math.min(1, root.ent * T.motionEntrance / T.motionSweep))
+        clip: true
+
+        Item {
+            width: root.width
+            height: root.height
+            // A picture that is decoded only after the entrance has started
+            // fades in when it arrives: behind the line if the line is still
+            // on its way, as a whole if it has passed.
+            opacity: wallpaper.status === Image.Ready ? 1 : 0
+            Behavior on opacity {
+                enabled: root.ent > 0 && !root.reduceMotion
+                NumberAnimation { duration: 300 }
+            }
+
+            Image {
+                id: wallpaper
+                anchors.fill: parent
+                source: config.background ? config.background : ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: false
+                // Decoded at screen size, not at the size of the file.
+                sourceSize.width: root.width
+                sourceSize.height: root.height
+                visible: status === Image.Ready
+            }
+            Rectangle {
+                anchors.fill: parent
+                visible: wallpaper.visible
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: T.scrimTop }
+                    GradientStop { position: 1.0; color: T.scrimBottom }
+                }
+            }
         }
     }
     // Clicking beside an open list closes it.
@@ -241,6 +303,37 @@ Rectangle {
         }
     }
 
+    // ---- decoration and the clock of the entrance ------------------------------------
+    // Scan line, ring, wings and brackets are one file behind this Loader,
+    // drawn under the form. Should it not load, the form below is complete
+    // and works without it (ent is 1 then).
+    Loader {
+        id: decor
+        anchors.fill: parent
+        source: "components/LoginDecor.qml"
+    }
+    Binding { target: decor.item; property: "u"; value: root.u; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "primary"; value: root.isPrimary; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "reduce"; value: root.reduceMotion; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "now"; value: root.now; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "busy"; value: root.busy; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "focused"; value: passwordField.ringed; when: decor.status === Loader.Ready }
+    Binding { target: decor.item; property: "caps"; value: root.capsLock; when: decor.status === Loader.Ready }
+    // The user list or the shut-down question covers the card.
+    Binding { target: decor.item; property: "overlay"; value: userList.shown || root.pendingPower !== ""; when: decor.status === Loader.Ready }
+    // Where the ring and the brackets belong: around the user picture and
+    // around the password row, wherever the card is (it moves when it shakes).
+    Binding {
+        target: decor.item; property: "ringCenter"; when: decor.status === Loader.Ready
+        value: Qt.point(loginArea.x + card.x + ringSlot.x + ringSlot.width / 2,
+                        loginArea.y + card.y + ringSlot.y + ringSlot.height / 2)
+    }
+    Binding {
+        target: decor.item; property: "fieldRect"; when: decor.status === Loader.Ready
+        value: Qt.rect(loginArea.x + card.x + passwordRow.x, loginArea.y + card.y + passwordRow.y,
+                       passwordRow.width, passwordRow.height)
+    }
+
     // ---- clock --------------------------------------------------------------------
     Column {
         id: clock
@@ -248,6 +341,8 @@ Rectangle {
         y: Math.round(root.height * 0.085)
         spacing: Math.round(2 * root.u)
 
+        // 180–400 ms of the entrance: the time settles 12u downwards into
+        // its place; the date follows 60 ms later.
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Qt.formatTime(root.now, root.timeFormat)
@@ -256,6 +351,8 @@ Rectangle {
             font.pixelSize: Math.round(76 * root.u)
             font.weight: Font.Light
             font.letterSpacing: -1 * root.u
+            opacity: root.ph(180, 400)
+            transform: Translate { y: -12 * root.u * (1 - root.ph(180, 400)) }
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -263,6 +360,8 @@ Rectangle {
             color: T.textSecondary
             font.family: T.fontUi
             font.pixelSize: Math.round(T.fontTitle * root.u)
+            opacity: root.ph(240, 460)
+            transform: Translate { y: -12 * root.u * (1 - root.ph(240, 460)) }
         }
     }
 
@@ -293,11 +392,21 @@ Rectangle {
                 NumberAnimation { target: card; property: "shakeOffset"; to: 0; duration: 60 }
             }
 
-            Avatar {
+            // The user picture, with room around it for the ring that the
+            // decoration draws (hexagon and tick ring, 152u across).
+            Item {
+                id: ringSlot
                 anchors.horizontalCenter: parent.horizontalCenter
-                size: Math.round(104 * root.u)
-                source: root.currentUser ? root.currentUser.icon : ""
-                name: root.manualUser ? userField.text : root.displayName(root.currentUser)
+                width: Math.round(152 * root.u)
+                height: width
+
+                Avatar {
+                    anchors.centerIn: parent
+                    size: Math.round(104 * root.u)
+                    source: root.currentUser ? root.currentUser.icon : ""
+                    name: root.manualUser ? userField.text : root.displayName(root.currentUser)
+                    opacity: root.ph(160, 320)
+                }
             }
 
             Text {
@@ -310,6 +419,7 @@ Rectangle {
                 font.family: T.fontUi
                 font.pixelSize: Math.round(T.fontHeading * root.u)
                 font.weight: Font.DemiBold
+                opacity: root.ph(220, 400)
             }
 
             NxButton {
@@ -322,6 +432,7 @@ Rectangle {
                 icon: "users"
                 iconSize: 16 * root.u
                 text: qsTr("Switch user")
+                opacity: (enabled ? 1 : 0.42) * root.ph(240, 420)
                 onClicked: userList.open ? userList.hide() : userList.show()
             }
 
@@ -331,15 +442,23 @@ Rectangle {
                 width: parent.width
                 visible: root.manualUser
                 enabled: !root.busy
+                animateFocus: root.ent >= 1 && !root.reduceMotion
+                // Like the password row: there from the first frame.
+                opacity: (enabled ? 1 : 0.6) * (0.55 + 0.45 * root.ph(0, 200))
                 placeholder: strings.userName
                 KeyNavigation.down: passwordField
                 onAccepted: passwordField.forceActiveFocus()
                 onLetterTyped: function (upper, shift) { root.capsGuess = (upper !== shift) }
             }
 
+            // Field and button exist, are enabled and focused from the first
+            // frame; the entrance only raises them from 55 % to full opacity
+            // (0–200 ms). They are never hidden, disabled or loaded later.
             Row {
+                id: passwordRow
                 width: parent.width
                 spacing: Math.round(T.spaceSm * root.u)
+                opacity: 0.55 + 0.45 * root.ph(0, 200)
 
                 NxField {
                     id: passwordField
@@ -347,6 +466,7 @@ Rectangle {
                     width: parent.width - loginButton.width - parent.spacing
                     secret: true
                     enabled: !root.busy
+                    animateFocus: root.ent >= 1 && !root.reduceMotion
                     error: root.errorText !== ""
                     placeholder: strings.password
                     showText: strings.showPasswordPrompt
@@ -433,6 +553,8 @@ Rectangle {
     }
 
     // ---- bottom bar: session, keyboard layout | power ---------------------------------
+    // 420–700 ms of the entrance: the buttons rise 8u into place one after
+    // the other. They take keys and clicks from the first frame.
     Item {
         id: bottomBar
         anchors.left: parent.left
@@ -454,7 +576,8 @@ Rectangle {
                 icon: "monitor"
                 trailingIcon: sessions.count > 1 ? "chevron-up" : ""
                 enabled: sessions.count > 1
-                opacity: 1
+                opacity: root.barIn(0)
+                transform: Translate { y: 8 * root.u * (1 - root.barIn(0)) }
                 text: root.currentSession ? root.currentSession.name : qsTr("No session installed")
                 description: strings.session
                 onClicked: sessionList.open ? sessionList.hide() : sessionList.show()
@@ -466,7 +589,8 @@ Rectangle {
                 icon: "keyboard"
                 trailingIcon: root.layouts.length > 1 ? "chevron-up" : ""
                 enabled: root.layouts.length > 1
-                opacity: 1
+                opacity: root.barIn(1)
+                transform: Translate { y: 8 * root.u * (1 - root.barIn(1)) }
                 text: root.layouts.length > 0 && keyboard.currentLayout >= 0 && keyboard.currentLayout < root.layouts.length
                       ? String(root.layouts[keyboard.currentLayout].shortName).toUpperCase() : ""
                 description: strings.layout
@@ -478,6 +602,7 @@ Rectangle {
             anchors.centerIn: parent
             visible: root.width >= 1000 * root.u
             text: sddm.hostName
+            opacity: root.barIn(2)
             color: T.textMuted
             font.family: T.fontUi
             font.pixelSize: Math.round(T.fontSmall * root.u)
@@ -491,6 +616,8 @@ Rectangle {
             NxButton {
                 u: root.u
                 visible: sddm.canSuspend
+                opacity: (enabled ? 1 : 0.42) * root.barIn(2)
+                transform: Translate { y: 8 * root.u * (1 - root.barIn(2)) }
                 icon: "moon"
                 text: strings.suspend
                 onClicked: root.power("suspend")
@@ -499,6 +626,8 @@ Rectangle {
                 id: rebootButton
                 u: root.u
                 visible: sddm.canReboot
+                opacity: (enabled ? 1 : 0.42) * root.barIn(3)
+                transform: Translate { y: 8 * root.u * (1 - root.barIn(3)) }
                 icon: "refresh"
                 text: strings.reboot
                 onClicked: root.power("reboot")
@@ -507,6 +636,8 @@ Rectangle {
                 id: powerOffButton
                 u: root.u
                 visible: sddm.canPowerOff
+                opacity: (enabled ? 1 : 0.42) * root.barIn(4)
+                transform: Translate { y: 8 * root.u * (1 - root.barIn(4)) }
                 icon: "power"
                 text: strings.shutdown
                 onClicked: root.power("poweroff")
@@ -515,10 +646,12 @@ Rectangle {
     }
 
     // ---- lists ------------------------------------------------------------------------
+    // "shown" is true while a list is open and while it fades out afterwards.
     NxPopupList {
         id: userList
         u: root.u
         opener: switchUser
+        reduce: root.reduceMotion
         hasSubtitles: true
         width: Math.round(340 * root.u)
         // Between the clock and the bottom bar.
@@ -527,7 +660,7 @@ Rectangle {
         maximumHeight: listRoom
         anchors.horizontalCenter: parent.horizontalCenter
         y: Math.round(listTop + (listRoom - height) / 2)
-        entries: open ? root.userEntries() : []
+        entries: shown ? root.userEntries() : []
         currentIndex: root.manualUser ? users.count : root.userIndex
         onChosen: function (index) { root.selectUser(index >= users.count ? -1 : index) }
     }
@@ -535,12 +668,13 @@ Rectangle {
         id: sessionList
         u: root.u
         opener: sessionButton
+        reduce: root.reduceMotion
         title: strings.session
         hasSubtitles: true
         maximumHeight: Math.round(root.height * 0.6)
         x: bottomBar.x
         y: bottomBar.y - height - Math.round(T.spaceSm * root.u)
-        entries: open ? root.sessionEntries() : []
+        entries: shown ? root.sessionEntries() : []
         currentIndex: root.sessionIndex
         onChosen: function (index) { root.sessionIndex = index; root.focusInput() }
     }
@@ -548,28 +682,71 @@ Rectangle {
         id: layoutList
         u: root.u
         opener: layoutButton
+        reduce: root.reduceMotion
         title: strings.layout
         hasSubtitles: true
         maximumHeight: Math.round(root.height * 0.6)
         x: Math.min(root.width - width - bottomBar.x, bottomBar.x + layoutButton.x)
         y: bottomBar.y - height - Math.round(T.spaceSm * root.u)
-        entries: open ? root.layoutEntries() : []
+        entries: shown ? root.layoutEntries() : []
         currentIndex: typeof keyboard !== "undefined" ? keyboard.currentLayout : -1
         onChosen: function (index) { keyboard.currentLayout = index; root.focusInput() }
     }
 
     // ---- confirmation for restart / shut down ---------------------------------------------
-    Rectangle {
+    // The screen dims in 160 ms, the card appears in 120 ms and the brackets
+    // close around it; Cancel has the focus from the first frame.
+    Item {
+        id: confirmLayer
         anchors.fill: parent
         visible: root.pendingPower !== ""
-        color: T.scrimBottom
+        // Milliseconds since the question appeared.
+        property real shownMs: 160
+        function passed(from, to) {
+            var x = 1 - Math.max(0, Math.min(1, (shownMs - from) / (to - from)))
+            return 1 - x * x * x
+        }
+        onVisibleChanged: {
+            if (visible && !root.reduceMotion) {
+                appear.restart()
+            } else {
+                appear.stop()
+                shownMs = 160
+            }
+        }
+        NumberAnimation { id: appear; target: confirmLayer; property: "shownMs"; from: 0; to: 160; duration: 160 }
+
+        Rectangle {
+            anchors.fill: parent
+            color: T.bgBase
+            opacity: 0.6 * Math.min(1, confirmLayer.shownMs / 160)
+        }
         MouseArea { anchors.fill: parent; hoverEnabled: true }
+
+        // Decoration, so behind a Loader like the rest of it: should the
+        // file not load, the question works without its brackets.
+        Loader {
+            id: confirmBrackets
+            anchors.fill: confirm
+            source: "components/Brackets.qml"
+        }
+        Binding { target: confirmBrackets.item; property: "u"; value: root.u; when: confirmBrackets.status === Loader.Ready }
+        Binding { target: confirmBrackets.item; property: "color"; value: T.accent; when: confirmBrackets.status === Loader.Ready }
+        Binding {
+            target: confirmBrackets.item; property: "spread"; when: confirmBrackets.status === Loader.Ready
+            value: (8 + 12 * (1 - confirmLayer.passed(20, 160))) * root.u
+        }
+        Binding {
+            target: confirmBrackets.item; property: "opacity"; when: confirmBrackets.status === Loader.Ready
+            value: confirmLayer.passed(20, 160)
+        }
 
         FocusScope {
             id: confirm
             anchors.centerIn: parent
             width: Math.round(380 * root.u)
             height: confirmColumn.implicitHeight + 2 * Math.round(T.spaceXl * root.u)
+            opacity: confirmLayer.passed(0, 120)
 
             function dismiss() {
                 var back = root.pendingPower === "reboot" ? rebootButton : powerOffButton

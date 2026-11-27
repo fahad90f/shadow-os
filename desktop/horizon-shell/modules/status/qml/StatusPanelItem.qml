@@ -124,6 +124,9 @@ Item {
         Accessible.name: qsTr("Quick settings")
         Accessible.description: root.summary
         onClicked: root.shell.trigger("quick-settings")
+        // Quick settings hang from this button (PopupSurface.originButton).
+        Component.onCompleted: root.shell.registerOverlayButton("quick-settings", button)
+        Component.onDestruction: root.shell.unregisterOverlayButton("quick-settings", button)
     }
 
     Row {

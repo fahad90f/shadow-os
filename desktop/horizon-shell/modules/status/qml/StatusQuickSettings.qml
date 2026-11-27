@@ -7,6 +7,10 @@ import org.shadow.ui
 // The quick settings popup (Meta+A, or the status area of the panel).
 // Everything in it reflects a back-end of the "status" object; what a
 // machine or session does not have is left out rather than shown dead.
+//
+// While the popup opens its rows appear behind the scan line of
+// PopupSurface (opacity only; the tiles' contents also drop 4 px). The
+// values the rows show (levels, states) are never animated by that.
 PopupSurface {
     id: popup
 
@@ -86,6 +90,19 @@ PopupSurface {
         status.killSwitch.refresh()
     }
 
+    // 0..1 for the tile at (x, y) of the grid while the popup opens: row by
+    // row with the scan line, the right column Theme.motionStagger after the
+    // left one (PopupSurface.rowAppear).
+    function tileAppear(x, y) {
+        const clock = popup.stage       // read first: bindings follow the clock
+        if (clock >= 1) return 1
+        const lag = x > 0 && !popup.lite && popup.revealDuration > 0 ? Theme.motionStagger / popup.revealDuration : 0
+        const start = Math.min(popup.beamStart + (popup.beamEnd - popup.beamStart)
+                               * Math.max(0, Math.min(1, tiles.mapToItem(popup.card, 0, y).y / Math.max(1, popup.card.height)))
+                               + lag, 1 - popup.rowSpan)
+        return popup.ph(start, start + popup.rowSpan)
+    }
+
     // Requests a back-end could not carry out.
     Connections {
         target: status
@@ -115,6 +132,7 @@ PopupSurface {
                 id: panicBox
                 readonly property var banner: popup.shell.panicBanner
                 objectName: "quickSettingsPanic"
+                opacity: popup.rowAppear(panicBox)
                 visible: banner !== null && banner.shown && (banner.canRestore || banner.canDismiss)
                 Layout.fillWidth: true
                 implicitHeight: panicColumn.implicitHeight + Theme.spaceMd * 2
@@ -177,6 +195,7 @@ PopupSurface {
 
             // ---- switches ---------------------------------------------------------
             GridLayout {
+                id: tiles
                 Layout.fillWidth: true
                 columns: 2
                 rowSpacing: Theme.spaceSm
@@ -184,6 +203,7 @@ PopupSurface {
 
                 // Wi-Fi where the computer has it; otherwise the network state.
                 StatusTile {
+                    appear: popup.tileAppear(x, y)
                     visible: popup.net.available && popup.net.wifiAvailable
                     icon: popup.net.wifiEnabled ? "wifi" : "wifi-off"
                     title: qsTr("Wi-Fi")
@@ -201,6 +221,7 @@ PopupSurface {
                     onDetailsRequested: popup.openSettings("wifi")
                 }
                 StatusTile {
+                    appear: popup.tileAppear(x, y)
                     visible: !(popup.net.available && popup.net.wifiAvailable)
                     icon: popup.net.available && popup.net.primaryKind === "wired" ? "ethernet" : "network"
                     title: qsTr("Network")
@@ -222,6 +243,7 @@ PopupSurface {
                 // only one) and disconnects whatever is up. Profiles are
                 // added, and one chosen among several, in the Control Center.
                 StatusTile {
+                    appear: popup.tileAppear(x, y)
                     objectName: "vpnTile"
                     readonly property var profiles: popup.net.vpnProfiles
                     readonly property bool up: popup.net.vpnActive || popup.net.vpnConnecting
@@ -243,6 +265,7 @@ PopupSurface {
                     onDetailsRequested: popup.openSettings("vpn")
                 }
                 StatusTile {
+                    appear: popup.tileAppear(x, y)
                     readonly property var bt: status.bluetooth
                     visible: bt.available
                     icon: "bluetooth"
@@ -259,6 +282,7 @@ PopupSurface {
                     onDetailsRequested: popup.openSettings("bluetooth")
                 }
                 StatusTile {
+                    appear: popup.tileAppear(x, y)
                     visible: status.radio.available
                     icon: "airplane"
                     title: qsTr("Airplane mode")
@@ -271,6 +295,7 @@ PopupSurface {
                 // tile opens the Control Center's privacy page instead of
                 // switching anything itself.
                 StatusTile {
+                    appear: popup.tileAppear(x, y)
                     objectName: "killSwitchTile"
                     visible: popup.ks.present
                     icon: popup.ks.state === "error" ? "shield-alert" : popup.ks.state === "on" ? "lock" : "lock-open"
@@ -285,6 +310,7 @@ PopupSurface {
                     onToggled: popup.openSettings("privacy")
                 }
                 StatusTile {
+                    appear: popup.tileAppear(x, y)
                     visible: popup.hasNotifications
                     readonly property bool dnd: popup.hasNotifications && notifications.doNotDisturb
                     icon: dnd ? "bell-off" : "bell"
@@ -294,6 +320,7 @@ PopupSurface {
                     onToggled: notifications.doNotDisturb = !dnd
                 }
                 StatusTile {
+                    appear: popup.tileAppear(x, y)
                     icon: Appearance.dark ? "moon" : "sun"
                     title: qsTr("Dark mode")
                     active: Appearance.dark
@@ -301,6 +328,7 @@ PopupSurface {
                     onToggled: Appearance.dark = !Appearance.dark
                 }
                 StatusTile {
+                    appear: popup.tileAppear(x, y)
                     readonly property var night: status.nightLight
                     visible: night.available
                     icon: "night-light"
@@ -320,7 +348,9 @@ PopupSurface {
                 model: [popup.ks.state === "error" ? popup.ks.errorText : "",
                         popup.ks.panicState === "error" ? popup.ks.panicErrorText : ""].filter(text => text !== "")
                 delegate: RowLayout {
+                    id: problemRow
                     required property string modelData
+                    opacity: popup.rowAppear(problemRow)
                     Layout.fillWidth: true
                     spacing: Theme.spaceSm
                     NxIcon {
@@ -342,6 +372,8 @@ PopupSurface {
 
             // ---- levels -----------------------------------------------------------
             StatusSliderRow {
+                id: outputRow
+                opacity: popup.rowAppear(outputRow)
                 Layout.fillWidth: true
                 visible: popup.audio.available && popup.audio.outputAvailable
                 icon: popup.audio.muted || popup.audio.volume <= 0 ? "volume-mute"
@@ -356,6 +388,8 @@ PopupSurface {
                 onMuteToggled: popup.audio.toggleMuted()
             }
             RowLayout {
+                id: noSoundRow
+                opacity: popup.rowAppear(noSoundRow)
                 Layout.fillWidth: true
                 visible: popup.audio.ready && !(popup.audio.available && popup.audio.outputAvailable)
                 spacing: Theme.spaceXs
@@ -374,6 +408,8 @@ PopupSurface {
                 }
             }
             StatusSliderRow {
+                id: inputRow
+                opacity: popup.rowAppear(inputRow)
                 Layout.fillWidth: true
                 visible: popup.audio.available && popup.audio.inputAvailable
                 icon: popup.audio.inputMuted ? "mic-off" : "mic"
@@ -387,6 +423,8 @@ PopupSurface {
                 onMuteToggled: popup.audio.toggleInputMuted()
             }
             StatusSliderRow {
+                id: brightnessRow
+                opacity: popup.rowAppear(brightnessRow)
                 Layout.fillWidth: true
                 visible: status.brightness.available
                 icon: "brightness"
@@ -398,6 +436,8 @@ PopupSurface {
 
             // ---- battery and power profile ----------------------------------------
             Rectangle {
+                id: powerBox
+                opacity: popup.rowAppear(powerBox)
                 Layout.fillWidth: true
                 visible: (popup.battery.available && popup.battery.present) || popup.profiles.available
                 implicitHeight: power.implicitHeight + Theme.spaceMd * 2
@@ -501,12 +541,16 @@ PopupSurface {
 
             // ---- media ------------------------------------------------------------
             StatusMediaCard {
+                id: mediaCard
+                opacity: popup.rowAppear(mediaCard)
                 Layout.fillWidth: true
                 visible: status.media.available && status.media.hasPlayer
             }
 
             // ---- footer -----------------------------------------------------------
             RowLayout {
+                id: footerRow
+                opacity: popup.rowAppear(footerRow)
                 Layout.fillWidth: true
                 spacing: Theme.spaceXs
                 NxButton {

@@ -79,8 +79,11 @@ T.ComboBox {
             currentIndex: control.highlightedIndex
             highlightMoveDuration: 0
             T.ScrollIndicator.vertical: ScrollIndicator { }
+            transform: Translate { y: drop.y }
         }
 
+        // Opening: the list fades in and drops 4 px into place while a line
+        // grows along its top edge. Closing: a short fade.
         enter: Transition {
             NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionFast }
         }
@@ -93,6 +96,17 @@ T.ComboBox {
             radius: Theme.radiusMd
             border.width: Theme.borderWidth
             border.color: Theme.border
+            transform: Translate { id: drop; y: -4 * (1 - control.popup.opacity) }
+            // The trace of this popup: a line in the accent colour that
+            // grows along the top edge while it opens.
+            Rectangle {
+                id: trace
+                readonly property real grown: control.popup.opacity
+                x: parent.radius
+                width: (parent.width - parent.radius * 2) * grown
+                height: 1
+                color: Theme.alpha(Theme.accent, 0.7)
+            }
             // See Popup.qml: presses on the popup never reach the content beneath it.
             TapHandler {
                 acceptedButtons: Qt.AllButtons

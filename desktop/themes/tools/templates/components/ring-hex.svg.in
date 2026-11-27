@@ -1,0 +1,17 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- @@GENERATED@@ -->
+<!-- The hexagon of the SHADOW symbol as an outline around the user picture of
+     the login and lock screens: pointy top, circumradius 64 in a 152 box, a
+     wide faint stroke under the line as its glow, a small joint on every
+     corner. @@VARIANT@@ -->
+<svg xmlns="http://www.w3.org/2000/svg" width="152" height="152" viewBox="0 0 152 152">
+<defs>
+<linearGradient id="g" gradientUnits="userSpaceOnUse" x1="20" y1="12" x2="132" y2="140"><stop offset="0" stop-color="@@START@@"/><stop offset="0.55" stop-color="@@MID@@"/><stop offset="1" stop-color="@@END@@"/></linearGradient>
+</defs>
+<path d="M76 12 L131.43 44 L131.43 108 L76 140 L20.57 108 L20.57 44Z" fill="none" stroke="url(#g)" stroke-width="7" stroke-linejoin="round" opacity="0.16"/>
+<path d="M76 12 L131.43 44 L131.43 108 L76 140 L20.57 108 L20.57 44Z" fill="none" stroke="url(#g)" stroke-width="2.25" stroke-linejoin="round"/>
+<g fill="@{bgBase}" stroke="url(#g)" stroke-width="1.5">
+<circle cx="76" cy="12" r="3"/><circle cx="131.43" cy="44" r="3"/><circle cx="131.43" cy="108" r="3"/>
+<circle cx="76" cy="140" r="3"/><circle cx="20.57" cy="108" r="3"/><circle cx="20.57" cy="44" r="3"/>
+</g>
+</svg>

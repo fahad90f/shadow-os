@@ -13,6 +13,21 @@ FocusScope {
     property bool secret: false
     property bool revealed: false
     property bool error: false
+    // The border changes colour over 140 ms when the keyboard focus comes or
+    // goes. Off until the screen has built up, so the focus ring appears at
+    // once when the window gets the keyboard. An error turns the border red
+    // at once.
+    property bool animateFocus: false
+    // The ring means exactly "keys arrive here": it is drawn only while the
+    // field really has the keyboard, which needs the window to have it too.
+    // It is never drawn in advance, not even during the entrance: with two
+    // monitors the window may not get the keyboard at all.
+    readonly property bool ringed: input.activeFocus
+    property color focusColor: ringed ? T.accent : T.borderStrong
+    Behavior on focusColor {
+        enabled: field.animateFocus
+        ColorAnimation { duration: T.motionFast }
+    }
     property string showText: "Show password"
     property string hideText: "Hide password"
     readonly property alias input: input
@@ -30,8 +45,8 @@ FocusScope {
         anchors.fill: parent
         radius: Math.round(T.radiusMd * field.u)
         color: T.glassField
-        border.width: input.activeFocus ? Math.max(2, Math.round(T.focusRing * field.u)) : 1
-        border.color: field.error ? T.danger : input.activeFocus ? T.accent : T.borderStrong
+        border.width: field.ringed ? Math.max(2, Math.round(T.focusRing * field.u)) : 1
+        border.color: field.error ? T.danger : field.focusColor
     }
 
     TextInput {

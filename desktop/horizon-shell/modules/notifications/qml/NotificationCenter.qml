@@ -7,6 +7,9 @@ import org.shadow.ui
 // The notification centre: what has arrived, grouped by application, with
 // the Do Not Disturb switch. Registered as the overlay "notifications", so
 // the panel's bell and Meta+N open it.
+//
+// While it opens, its rows appear behind the scan line of PopupSurface; in
+// the list that is worked out for the first eight entries only.
 PopupSurface {
     id: root
 
@@ -45,6 +48,7 @@ PopupSurface {
         // ---- header -------------------------------------------------------------
         RowLayout {
             id: header
+            opacity: root.rowAppear(header)
             Layout.fillWidth: true
             spacing: Theme.spaceSm
             Text {
@@ -69,6 +73,7 @@ PopupSurface {
         // ---- Do Not Disturb ---------------------------------------------------------
         Rectangle {
             id: dndRow
+            opacity: root.rowAppear(dndRow)
             Layout.fillWidth: true
             implicitHeight: dndLayout.implicitHeight + Theme.spaceSm * 2
             radius: Theme.radiusMd
@@ -147,8 +152,9 @@ PopupSurface {
             clip: true
             spacing: Theme.spaceSm
             boundsBehavior: Flickable.StopAtBounds
-            // No view work while the centre is closed, whatever arrives.
-            model: root.open ? notifications.history : null
+            // No view work while the centre is closed, whatever arrives. The
+            // list stays as it is while the popup's exit is still showing.
+            model: root.open || root.reveal > 0 ? notifications.history : null
             focus: true
             activeFocusOnTab: true
             keyNavigationEnabled: true
@@ -173,6 +179,7 @@ PopupSurface {
                 readonly property var info: { notifications.revision; return notifications.group(section) }
                 width: ListView.view ? ListView.view.width - (list.ScrollBar.vertical.visible ? Theme.spaceMd : 0) : 0
                 height: 32
+                opacity: root.rowAppear(groupHeader)
 
                 RowLayout {
                     anchors.fill: parent
@@ -225,9 +232,14 @@ PopupSurface {
             }
 
             delegate: NotificationCard {
+                id: entry
                 required property var model
                 required property int index
+                // Later entries are simply there.
+                readonly property real appear: index < 8 ? root.rowAppear(entry) : 1
 
+                opacity: appear
+                contentShift: -4 * (1 - appear)
                 width: ListView.view ? ListView.view.width - (list.ScrollBar.vertical.visible ? Theme.spaceMd : 0) : 0
                 popup: false
                 bodyLines: 6
@@ -256,6 +268,8 @@ PopupSurface {
 
         // ---- nothing there -----------------------------------------------------------------
         NxEmptyState {
+            id: emptyState
+            opacity: root.rowAppear(emptyState)
             Layout.fillWidth: true
             visible: notifications.count === 0
             icon: notifications.doNotDisturb ? "bell-off" : "bell"

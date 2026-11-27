@@ -58,7 +58,7 @@ architectures.
 | `15-firmware` | firmware and CPU microcode from Debian's `non-free-firmware` component ([../installation/hardware.md](../installation/hardware.md)) |
 | `20-boot` | GRUB common files, `efibootmgr`, `os-prober`, `mokutil`, signed shim and GRUB for UEFI, `grub-pc-bin` for BIOS; snapper for the opt-in btrfs snapshots (inert on ext4) |
 | `30-live` | live-boot, live-config, live-tools, user-setup |
-| `40-desktop` | Plymouth, SDDM, portals, KWin and Xwayland, Mesa, PipeWire, BlueZ, UPower, power-profiles-daemon, UDisks2, AccountsService, PackageKit, AppStream, fwupd, fonts, Firefox ESR, tools the SHADOW applications call |
+| `40-desktop` | Plymouth with `plymouth-label` (it draws the splash's texts), SDDM, portals, KWin and Xwayland, Mesa, PipeWire, BlueZ, UPower, power-profiles-daemon, UDisks2, AccountsService, PackageKit, AppStream, fwupd, fonts, Firefox ESR, tools the SHADOW applications call |
 | `45-security-core` | Tor, torsocks, proxychains, WireGuard and OpenVPN, systemd-resolved (encrypted DNS, configured by `shadow-hardening`; not in the minimal image, where Debian's defaults would answer LLMNR and send plain DNS), KeePassXC, GnuPG, age, cryptsetup, MAC and metadata privacy tools, restic (encrypted backups) |
 | `50-dev-languages` | C and C++ (GCC, Clang, GDB, CMake), assembly (NASM, YASM, GNU as), Python 3 with pip and venv, Node.js and npm, Go, Rust and Cargo, Ruby, Lua 5.4 and LuaRocks, PHP (CLI, no web server) and Composer, Swift, Kotlin with the default JDK, SQL (SQLite, PostgreSQL and MariaDB clients). No database servers |
 
@@ -165,7 +165,7 @@ numeric order, with the `SHADOW_*` identity variables, `SHADOW_ARCH` and
 |---|---|
 | `20-locale.sh` | generates `en_US.UTF-8`, sets it as default, time zone UTC (the installer sets the user's choices on the target) |
 | `50-live.sh` | locks the root password; removes `/etc/hostname` (the bootstrap copies the build host's name; live-config sets the live host name, the installer the final one) |
-| `60-plymouth.sh` | selects the `shadow` Plymouth theme when Plymouth and the theme are installed |
+| `60-plymouth.sh` | selects the `shadow` Plymouth theme when Plymouth and the theme are installed ([../architecture/boot.md](../architecture/boot.md#the-splash)); the theme reaches the initramfs through `85-initramfs.sh` |
 | `80-apt-sources.sh` | writes the shipped APT configuration (`debian.sources`, HTTPS) and fails if Debian's archive keyring is missing |
 | `85-initramfs.sh` | regenerates every initramfs (`update-initramfs -u -k all`) |
 

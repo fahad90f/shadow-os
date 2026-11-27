@@ -7,6 +7,10 @@ import org.shadow.ui
 // The keys arrive as shell actions (shell.unhandledAction); the display
 // shows the value the back-end reports afterwards, not the one asked for.
 // It never takes the keyboard or the pointer.
+//
+// It fades in while its outline is traced, and fades out again
+// (Theme.motionFast each way); the surface stays mapped until it has gone.
+// The pill carries the blur, so it is never moved or scaled.
 ShellSurface {
     id: osd
 
@@ -53,9 +57,14 @@ ShellSurface {
         }
     }
 
+    // Asked for; 'shown' follows it (0..1) and is what is drawn.
+    property bool wanted: false
+    property real shown: wanted ? 1 : 0
+    Behavior on shown { NumberAnimation { duration: Theme.motionFast } }
+
     function present(what) {
         kind = what
-        visible = true
+        wanted = true
         hideTimer.restart()
     }
 
@@ -68,9 +77,9 @@ ShellSurface {
     // As large as the card plus the distance kept from the screen edge (the dock).
     width: card.width
     height: card.height + Theme.dockIcon + Theme.spaceXxxl + Theme.spaceXl
-    visible: false
+    visible: wanted || shown > 0
 
-    Timer { id: hideTimer; interval: 1800; onTriggered: osd.visible = false }
+    Timer { id: hideTimer; interval: 1800; onTriggered: osd.wanted = false }
 
     Connections {
         target: osd.shell
@@ -99,8 +108,18 @@ ShellSurface {
         border.color: Theme.border
         Accessible.role: Accessible.Indicator
         Accessible.name: osd.showsLevel ? qsTr("%1 %").arg(Math.round(osd.level * 100)) : osd.message
+        opacity: osd.shown
 
         BlurBehind { id: blur; anchors.fill: parent; radius: card.radius; surface: osd }
+        // The trace runs only on the way in; on the way out the pill just fades.
+        FxFrame {
+            anchors.fill: parent
+            radius: card.radius
+            origin: "bottom"
+            progress: osd.wanted ? osd.shown : 1
+            color: Theme.mix(Theme.accent, Theme.border, osd.wanted ? osd.shown * osd.shown : 1)
+            glow: osd.wanted ? 1 - osd.shown : 0
+        }
 
         RowLayout {
             id: row

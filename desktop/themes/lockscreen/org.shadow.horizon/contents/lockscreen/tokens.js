@@ -73,3 +73,25 @@ var focusRing = 2;
 var motionFast = 140;
 var motionNormal = 220;
 var motionSlow = 340;
+
+// Entrance and feedback of the login and lock screens. Literals, not tokens of
+// the shell: these two screens run their own, shorter clocks (milliseconds).
+var motionEntrance = 700;
+var motionEntranceLock = 420;
+var motionSweep = 420;
+var motionSweepLock = 260;
+var motionList = 160;
+var motionListExit = 100;
+var motionStagger = 40;
+
+// Colours of the decoration that are not SHADOW design tokens: the near-black
+// field every start-up surface meets in (boot splash, boot menu, first frame
+// of these screens), an unlit trace, the core of the scan line, the second
+// node colour, and the slate and pale cyan of ticks and lit traces.
+var fieldTop = "#04060B";
+var fieldBottom = "#020306";
+var traceDim = "#2E4A5C";
+var hot = "#CFFAFE";
+var violet = "#8B5CF6";
+var slate = "#94A3B8";
+var pale = "#A5F3FC";

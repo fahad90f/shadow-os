@@ -20,12 +20,16 @@ T.Dialog {
     anchors.centerIn: T.Overlay.overlay
     modal: true
 
+    // Opening: the dialog fades in while a line grows along its top edge;
+    // title, content and buttons are in place from the first frame. Nothing
+    // moves: the style cannot move the content a dialog is given, and a
+    // background that moved alone would no longer frame it. Closing: a
+    // short fade.
     enter: Transition {
-        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionNormal; easing.type: Easing.OutCubic }
-        NumberAnimation { property: "scale"; from: 0.94; to: 1; duration: Theme.motionNormal; easing.type: Easing.OutCubic }
+        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionFast; easing.type: Easing.OutCubic }
     }
     exit: Transition {
-        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.motionFast }
+        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.motionInstant }
     }
 
     background: Rectangle {
@@ -33,6 +37,17 @@ T.Dialog {
         radius: Theme.radiusLg
         border.width: Theme.borderWidth
         border.color: Theme.border
+
+        // The trace of this popup: a line in the accent colour that grows
+        // along the top edge while it opens.
+        Rectangle {
+            id: trace
+            readonly property real grown: control.opacity
+            x: parent.radius
+            width: (parent.width - parent.radius * 2) * grown
+            height: 1
+            color: Theme.alpha(Theme.accent, 0.7)
+        }
 
         // Presses that nothing in the popup consumes stop here. Without this,
         // a tap on popup content that only uses pointer handlers with a passive

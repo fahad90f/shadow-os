@@ -1,162 +1,1650 @@
-# Shadow OS boot splash (Plymouth "script" module).
+# Shadow OS boot splash, "Conduit Lock" (Plymouth "script" module).
 #
-# A glowing logo over a pulsing cyan halo, a cyan spinner ring and a slower
-# violet inner arc, and a progress bar with a soft glow. It also asks for the
-# disk-encryption passphrase and shows boot messages. Escape switches to the
-# text log as usual; the splash never hides diagnostics that were asked for.
+# The symbol is the core of a circuit. At boot it lights up (node, S,
+# hexagon), an instrument forms around it (plate, progress ring, turning
+# bezel, four brackets) and a network of traces grows out of the six corners
+# and is powered. After that the picture holds still except for small life
+# signs. The same picture asks for the disk passphrase, shows messages, and
+# runs backwards at shutdown.
+#
+# What is decoration and what is data:
+#   decoration  the power-up of the network (it runs on a fixed clock), the
+#               comet on the hexagon, the turning bezel, the breathing glow
+#   data        progress ring = the daemon's boot estimate (or the update
+#               percentage once a client has sent one); one pulse per status
+#               the daemon reports and that status as text; messages; the
+#               prompt and the number of typed characters; brackets closing
+#               when the root file system is mounted
+# Nothing else is stated: no invented text, figure or state.
+#
+# Options, set in the [script-env-vars] group of shadow.plymouth (they are
+# strings and are only ever compared as strings):
+#   motion=full | calm   calm: a still picture, only ring, texts and glow
+#   status=1             show the status strings of the daemon as text
+# Two more exist for testing with the real daemon, and are not set in the
+# theme file: gov=test makes the governor (section 13) step down on a healthy
+# machine and report it, probe=1 writes the tick count every half second.
+# Both write through Image.Text, which the daemon's debug log records.
+#
+# Images: gen-plymouth-theme.py writes three sets (prefix s_, m_, l_) and a
+# few shared images. Only the set chosen for the screen is loaded.
+#   per set   logo_hex logo_s logo_dot logo_ghost_c logo_ghost_v plate
+#             ring_dim ring_lit wordmark entry entry_lit pulse_c pulse_v spark
+#             seg<0-5>_<dim|c|b|v>  node_<dim|c|b|v>  ping<0-3>
+#             br_<tl|tr|bl|br>  and, not in s_, bezel<0-5>
+#   shared    glow scan conn cell cell_hot caret more msg_mark
+#             corner_<tl|tr|bl|br>  field (not used on small screens)
+#
+# Rules of this file (each one cost a dead splash while it was developed):
+#   * the refresh rate is a literal number; option values are never used in
+#     arithmetic
+#   * no number is written with an exponent
+#   * arrays are created at the top level before a function fills them;
+#     functions write plain variables as global.x and their own as local.x
+#   * the Caps Lock state and the keyboard callback are not used (the first
+#     kills the daemon after a mode change, the second sees passphrase keys)
+#   * no image is rotated, scaled or cropped while the splash runs: all of
+#     that happens once below, or once when a text arrives
+#
+# A syntax error here means an empty screen at boot, at the passphrase
+# prompt and at shutdown. Check every change with the real daemon.
 
-Window.SetBackgroundTopColor(0.016, 0.022, 0.043);
-Window.SetBackgroundBottomColor(0.008, 0.012, 0.025);
+Window.SetBackgroundTopColor(0.016, 0.024, 0.043);
+Window.SetBackgroundBottomColor(0.008, 0.012, 0.024);
+Plymouth.SetRefreshRate(30);
 
-cx = Window.GetX() + Window.GetWidth() / 2;
-cy = Window.GetY() + Window.GetHeight() / 2;
+# ==== 1. Options, mode, screen ===================================================
+calm = 0;
+if (motion == "calm") calm = 1;
+show_status = 0;
+if (status == "1") show_status = 1;
+gov_test = 0;
+if (gov == "test") gov_test = 1;
+tracing = 0;
+if (probe == "1") tracing = 1;
 
-fun centered(image, z) {
-    s = Sprite(image);
-    s.SetX(cx - image.GetWidth() / 2);
-    s.SetY(cy - image.GetHeight() / 2 - 40);
-    s.SetZ(z);
-    return s;
+mode = Plymouth.GetMode();
+HK = 0;                                   # 0 boot, 1 updates, 2 shutdown, 3 restart
+if (mode == "shutdown") HK = 2;
+if (mode == "reboot") HK = 3;
+if (mode == "updates" || mode == "system-upgrade" || mode == "firmware-upgrade" || mode == "system-reset") HK = 1;
+
+# With several screens every one shows the middle of one shared canvas, so
+# the picture has to fit the smallest of them and sit at the common centre.
+W0 = Window.GetWidth(0);
+H0 = Window.GetHeight(0);
+WC = W0;
+HC = H0;
+for (i = 1; i < 8; i++) {
+    if (!Window.GetWidth(i)) break;
+    WC = Math.Min(WC, Window.GetWidth(i));
+    HC = Math.Min(HC, Window.GetHeight(i));
+}
+CX = Math.Int(Window.GetX(0) + W0 / 2);
+CYC = Math.Int(Window.GetY(0) + H0 / 2);
+LEFT = CX - Math.Int(WC / 2);
+TOP = CYC - Math.Int(HC / 2);
+
+# Tier: 0 small, 1 medium, 2 large. On 4K the large set is drawn twice as big.
+TIER = 0;
+XS = 1;
+if (WC >= 1000 && HC >= 700) TIER = 1;
+if (WC >= 1600 && HC >= 900) TIER = 2;
+if (WC >= 3000 && HC >= 1700) XS = 2;
+
+# One column per tier (pixels; lengths are measured from the logo centre).
+T_pre    = ["s_", "m_", "l_"];
+T_u      = [20, 36, 54];                  # length of one trace segment
+T_r      = [32.0, 58.6, 87.9];            # hexagon corner radius of the logo
+T_ringr  = [47, 84, 126];                 # progress ring
+T_nseg   = [30, 60, 60];
+T_tile   = [12, 14, 20];
+T_bzin   = [0, 99, 149];                  # the band of a bezel frame that holds ink
+T_bzout  = [0, 116, 173];
+T_seek   = [83, 156, 234];                # half size of the bracket frames
+T_lock   = [75, 142, 213];                # (small: clear of the top traces)
+T_wm     = [84, 150, 222];                # text column, below the logo centre
+T_slot   = [116, 196, 284];
+T_pline  = [110, 188, 276];
+T_fy     = [136, 222, 314];
+T_m0     = [192, 294, 396];
+T_mpitch = [18, 22, 26];
+T_mrows  = [3, 3, 3];
+T_fprm   = [12, 13, 15];                  # font sizes: prompt, messages,
+T_fmsg   = [12, 13, 14];                  # status, update figure
+T_fstat  = [10, 11, 12];
+T_fupd   = [13, 15, 17];
+T_cells  = [15, 22, 27];
+T_statw  = [280, 360, 360];
+T_corner = [24, 44, 44];
+T_cmarg  = [12, 32, 32];
+
+PRE = T_pre[TIER];
+U = T_u[TIER] * XS;
+R = T_r[TIER] * XS;
+NSEG = T_nseg[TIER];
+CY0 = CYC - Math.Int(HC * 0.10);
+if (TIER == 0) CY0 = CYC - Math.Int(HC * 0.14);
+BOTTOM = TOP + HC - 12 * XS;              # nothing is drawn below this line
+
+fun rnd(v) { return Math.Int(v + 0.5); }
+fun img(name) {
+    local.im = Image(name);
+    if (XS == 2) local.im = local.im.Scale(local.im.GetWidth() * 2, local.im.GetHeight() * 2);
+    return local.im;
+}
+fun put(image, x, y, z) {
+    local.sp = Sprite(image);
+    local.sp.SetPosition(x, y, z);
+    return local.sp;
+}
+fun trace(text) { if (tracing) Image.Text("PROBE " + text, 1, 1, 1); }
+
+# Fonts are loaded on first use, and a face first used after the switch to
+# the real root was drawn as boxes: use every face and size once now.
+F_PRM  = "Sans " + (T_fprm[TIER] * XS);
+F_PRM2 = "Sans " + ((T_fprm[TIER] - 1) * XS);
+F_MSG  = "Sans " + (T_fmsg[TIER] * XS);
+F_MSG2 = "Sans " + ((T_fmsg[TIER] - 2) * XS);
+F_STAT = "Monospace " + (T_fstat[TIER] * XS);
+F_UPD  = "Monospace " + (T_fupd[TIER] * XS);
+warm = Image.Text("0", 1, 1, 1, 1, F_PRM);
+warm = Image.Text("0", 1, 1, 1, 1, F_PRM2);
+warm = Image.Text("0", 1, 1, 1, 1, F_MSG);
+warm = Image.Text("0", 1, 1, 1, 1, F_MSG2);
+warm = Image.Text("0", 1, 1, 1, 1, F_STAT);
+warm = Image.Text("0", 1, 1, 1, 1, F_UPD);
+
+# ==== 2. State ===================================================================
+tick = -1;                 # refresh counter; the first refresh is tick 0
+seq = 1;                   # 1 boot entrance, 2 short entrance, 3 power-down, 0 hold
+if (HK == 2 || HK == 3) seq = 3;
+if (HK == 1 || calm) seq = 2;
+ht0 = 0;                   # tick at which the hold began
+prompting = 0;             # 1 passphrase, 2 question
+rooted = 0;                # the root file system was reported mounted
+p_real = 0;                # boot fraction as the daemon reports it
+q = 0;                     # the fraction the ring shows (never ahead of p_real)
+
+# ==== 3. Background layers =======================================================
+CS = T_corner[TIER] * XS;
+CM = T_cmarg[TIER] * XS;
+cnames = ["tl", "tr", "bl", "br"];
+corner.sp = [];
+corner.slide = [24, 10, 0];               # they slide in from outside in three steps
+for (i = 0; i < 4; i++) {
+    im = img("corner_" + cnames[i] + ".png");
+    # the small tier uses the inner 24 pixels of the 44 pixel corner
+    if (TIER == 0) im = im.Crop((i % 2) * 20, Math.Int(i / 2) * 20, 24, 24);
+    corner.sp[i] = Sprite(im);
+    corner.sp[i].SetZ(2);
+    corner.sp[i].SetOpacity(0);
+}
+fun corners_at(d) {
+    corner.sp[0].SetPosition(LEFT + CM - d, TOP + CM - d, 2);
+    corner.sp[1].SetPosition(LEFT + WC - CM - CS + d, TOP + CM - d, 2);
+    corner.sp[2].SetPosition(LEFT + CM - d, TOP + HC - CM - CS + d, 2);
+    corner.sp[3].SetPosition(LEFT + WC - CM - CS + d, TOP + HC - CM - CS + d, 2);
 }
 
-# ---- halo, rings, logo --------------------------------------------------------
-glow.image  = Image("glow.png");
-glow.sprite = centered(glow.image, 5);
-
-ring.image  = Image("ring.png");
-ring.sprite = centered(ring.image, 8);
-
-ring2.image  = Image("ring2.png");
-ring2.sprite = centered(ring2.image, 9);
-
-logo.image  = Image("logo.png");
-logo.sprite = centered(logo.image, 12);
-
-# ---- progress -----------------------------------------------------------------
-track.image = Image("track.png");
-track.x = cx - track.image.GetWidth() / 2;
-track.y = cy + 92;
-track.sprite = Sprite(track.image);
-track.sprite.SetPosition(track.x, track.y, 10);
-
-bar.full  = Image("bar.png");
-glowbar.full = Image("barglow.png");
-bar.sprite = Sprite();
-glowbar.sprite = Sprite();
-
-fun set_progress(fraction) {
-    if (fraction < 0.015) fraction = 0.015;
-    if (fraction > 1) fraction = 1;
-    w = Math.Int(bar.full.GetWidth() * fraction);
-    if (w < 1) w = 1;
-    bar.sprite.SetImage(bar.full.Crop(0, 0, w, bar.full.GetHeight()));
-    bar.sprite.SetPosition(track.x, track.y, 11);
-    gw = Math.Int(glowbar.full.GetWidth() * fraction);
-    if (gw < 1) gw = 1;
-    glowbar.sprite.SetImage(glowbar.full.Crop(0, 0, gw, glowbar.full.GetHeight()));
-    glowbar.sprite.SetPosition(track.x, track.y - 1, 10);
+FIELD = 0;
+if (TIER > 0) {
+    FIELD = 1;
+    field.image = img("field.png");
+    field.sprite = put(field.image, CX - field.image.GetWidth() / 2, CY0 - field.image.GetHeight() / 2, 1);
+    field.sprite.SetOpacity(0);
 }
-set_progress(0);
 
-fun boot_progress_cb(duration, progress) {
-    if (Plymouth.GetMode() == "boot") set_progress(progress);
-}
-Plymouth.SetBootProgressFunction(boot_progress_cb);
-
-# ---- wordmark -----------------------------------------------------------------
-title.image = Image.Text("SHADOW OS", 0.90, 0.95, 1.0, 1, "Sans 14");
-title.sprite = Sprite(title.image);
-title.sprite.SetPosition(cx - title.image.GetWidth() / 2, cy + 46, 12);
-
-# ---- animation ----------------------------------------------------------------
-tick = 0;
-fun refresh_cb() {
-    tick++;
-    # Spin the rings in opposite directions (radians).
-    ring.sprite.SetImage(ring.image.Rotate(tick * 0.06));
-    ring.sprite.SetX(cx - ring.image.GetWidth() / 2);
-    ring.sprite.SetY(cy - ring.image.GetHeight() / 2 - 40);
-    ring2.sprite.SetImage(ring2.image.Rotate(-tick * 0.035));
-    ring2.sprite.SetX(cx - ring2.image.GetWidth() / 2);
-    ring2.sprite.SetY(cy - ring2.image.GetHeight() / 2 - 40);
-    # Pulse the halo.
-    glow.sprite.SetOpacity(0.55 + 0.30 * Math.Sin(tick / 16));
-
-    if (Plymouth.GetMode() != "boot") {
-        # Shutdown / reboot: no progress, gently breathe the logo.
-        track.sprite.SetOpacity(0);
-        bar.sprite.SetOpacity(0);
-        glowbar.sprite.SetOpacity(0);
-        logo.sprite.SetOpacity(0.7 + 0.3 * Math.Sin(tick / 18));
+GLOW = Math.Int(5.5 * U);
+glow.image = Image("glow.png").Scale(GLOW, GLOW);
+glow.sprite = put(glow.image, CX - Math.Int(GLOW / 2), CY0 - Math.Int(GLOW / 2), 4);
+glow.sprite.SetOpacity(0);
+glow.level = 0;
+glow.mid = 0.55;           # the hold breathes around mid by amp, 88 ticks a breath
+glow.amp = 0.10;
+glow.ph = 0;               # where in the breath the hold starts
+if (HK == 2) { glow.mid = 0.375; glow.amp = 0.075; glow.ph = 1.571; }
+if (HK == 3) { glow.mid = 0.80; glow.amp = 0.05; glow.ph = 1.571; }
+# The glow is only ever set to one of 24 levels, and only when it changes.
+fun glow_set(v) {
+    local.lv = Math.Int(v * 24 + 0.5);
+    if (local.lv != glow.level) {
+        glow.level = local.lv;
+        glow.sprite.SetOpacity(local.lv / 24);
     }
+}
+
+# ==== 4. Logo ====================================================================
+hex.image = img(PRE + "logo_hex.png");
+LOGO = hex.image.GetWidth();
+LX = rnd(CX - LOGO / 2);
+LY = rnd(CY0 - LOGO / 2);
+# Reveal from the top in cached crops: the S in 8, the hexagon in 12 (its
+# two sides run down from the top corner and meet at the bottom).
+lgs.image = img(PRE + "logo_s.png");
+lgs.crop = [];
+for (i = 1; i <= 8; i++) {
+    if (i < 8) lgs.crop[i] = lgs.image.Crop(0, 0, LOGO, Math.Int(LOGO * (0.28 + 0.48 * i / 8)));
+    else lgs.crop[i] = lgs.image;
+}
+hex.crop = [];
+for (i = 1; i <= 12; i++) {
+    if (i < 12) hex.crop[i] = hex.image.Crop(0, 0, LOGO, Math.Int(LOGO * i / 12));
+    else hex.crop[i] = hex.image;
+}
+hex.sprite = Sprite();
+hex.sprite.SetPosition(LX, LY, 20);
+lgs.sprite = Sprite();
+lgs.sprite.SetPosition(LX, LY, 21);
+dot.sprite = put(img(PRE + "logo_dot.png"), LX, LY, 21);
+dot.sprite.SetOpacity(0);
+ghost.c = put(img(PRE + "logo_ghost_c.png"), LX, LY, 19);
+ghost.v = put(img(PRE + "logo_ghost_v.png"), LX, LY, 19);
+ghost.c.SetOpacity(0);
+ghost.v.SetOpacity(0);
+
+# ==== 5. Instrument: plate, bezel, progress ring ==================================
+plate.image = img(PRE + "plate.png");
+plate.sprite = put(plate.image, CX - plate.image.GetWidth() / 2, CY0 - plate.image.GetHeight() / 2, 3);
+plate.sprite.SetOpacity(0);
+
+# Six frames of the tick ring and the dashed ring, each turned a little
+# further; both rings repeat, so the six frames loop. Not on small screens.
+# A frame is mostly empty: the two rings are a thin band around a hole. To
+# swap a frame without redrawing the logo, the glow and the plate inside it
+# (a large area, and four times as large on a scaled screen), each frame is
+# cut once into the pieces that hold the band: ten rows, and in the rows that
+# cross the hole a left and a right piece.
+BEZEL = 0;
+bez.part = [];             # part[frame * 32 + piece]
+bez.sp = [];
+bez.n = 0;                 # pieces per frame
+bez.i = 0;
+bez.step = 2;              # frames per swap (every fourth refresh); 4 = two backwards
+if (HK == 2) bez.step = 4;
+bez.on = 0;
+if (TIER > 0) {
+    BEZEL = 1;
+    bzx = []; bzy = []; bzw = [];
+    im = img(PRE + "bezel0.png");
+    bzsize = im.GetWidth();
+    bzrow = bzsize / 10;
+    for (j = 0; j < 10; j++) {
+        ya = Math.Min(Math.Abs(j * bzrow - bzsize / 2), Math.Abs((j + 1) * bzrow - bzsize / 2));
+        yb = Math.Max(Math.Abs(j * bzrow - bzsize / 2), Math.Abs((j + 1) * bzrow - bzsize / 2));
+        ro = T_bzout[TIER] * XS;
+        ri = T_bzin[TIER] * XS;
+        if (ya >= ro) continue;
+        xo = Math.Min(bzsize / 2, Math.Int(Math.Sqrt(ro * ro - ya * ya)) + 1);
+        if (yb < ri) {
+            xi = Math.Int(Math.Sqrt(ri * ri - yb * yb));
+            bzx[bez.n] = bzsize / 2 - xo; bzy[bez.n] = j * bzrow; bzw[bez.n] = xo - xi; bez.n++;
+            bzx[bez.n] = bzsize / 2 + xi; bzy[bez.n] = j * bzrow; bzw[bez.n] = xo - xi; bez.n++;
+        } else {
+            bzx[bez.n] = bzsize / 2 - xo; bzy[bez.n] = j * bzrow; bzw[bez.n] = 2 * xo; bez.n++;
+        }
+    }
+    for (i = 0; i < 6; i++) {
+        if (i > 0) im = img(PRE + "bezel" + i + ".png");
+        for (j = 0; j < bez.n; j++) bez.part[i * 32 + j] = im.Crop(bzx[j], bzy[j], bzw[j], bzrow);
+    }
+    for (j = 0; j < bez.n; j++) {
+        bez.sp[j] = put(bez.part[j], CX - bzsize / 2 + bzx[j], CY0 - bzsize / 2 + bzy[j], 5);
+        bez.sp[j].SetOpacity(0);
+    }
+}
+fun bez_opacity(v) {
+    local.j = 0;
+    while (local.j < bez.n) { bez.sp[local.j].SetOpacity(v); local.j = local.j + 1; }
+}
+fun bez_turn() {
+    bez.i = (bez.i + bez.step) % 6;
+    local.j = 0;
+    while (local.j < bez.n) { bez.sp[local.j].SetImage(bez.part[bez.i * 32 + local.j]); local.j = local.j + 1; }
+}
+
+# The ring: NSEG tiles cut once from two strips. Tile i is already turned
+# and is put at the whole-pixel position the generator assumed for it.
+strip_dim = img(PRE + "ring_dim.png");
+strip_lit = img(PRE + "ring_lit.png");
+TILE = strip_dim.GetHeight();
+ring.dimg = [];
+ring.limg = [];
+ring.sp = [];
+for (i = 0; i < NSEG; i++) {
+    ring.dimg[i] = strip_dim.Crop(i * TILE, 0, TILE, TILE);
+    ring.limg[i] = strip_lit.Crop(i * TILE, 0, TILE, TILE);
+    a = (-90 + (i + 0.5) * 360 / NSEG) * Math.Pi / 180;
+    ring.sp[i] = put(ring.dimg[i],
+                     CX + XS * Math.Int(T_ringr[TIER] * Math.Cos(a) - T_tile[TIER] / 2 + 0.501),
+                     CY0 + XS * Math.Int(T_ringr[TIER] * Math.Sin(a) - T_tile[TIER] / 2 + 0.501), 7);
+    ring.sp[i].SetOpacity(0);
+}
+ring.shown = 0;            # tiles visible (entrance wipe)
+ring.lit = 0;              # tiles lit by progress
+RC_LEN = 6;                # length of the ring comet in tiles
+if (TIER == 0) RC_LEN = 3;
+rc.on = 0;
+rc.c = 0;
+rc.t0 = 0;
+
+# ==== 6. Network =================================================================
+# Direction k is k * 30 degrees counter-clockwise from east.
+dirx = [];
+diry = [];
+for (k = 0; k < 12; k++) {
+    dirx[k] = Math.Cos(k * Math.Pi / 6);
+    diry[k] = 0 - Math.Sin(k * Math.Pi / 6);
+}
+
+# One image per orientation (0..150 degrees) and state; the line starts G
+# pixels inside its image (see segment() in the generator).
+sname = ["dim", "c", "b", "v"];
+segimg = [];
+for (o = 0; o < 6; o++) {
+    for (st = 0; st < 4; st++) segimg[o * 4 + st] = img(PRE + "seg" + o + "_" + sname[st] + ".png");
+}
+G = segimg[0].GetHeight() / 2;
+
+# Cached partial images: part[(k * 4 + state) * 5 + step], step 1..4, for
+# the 12 directions a segment can be drawn in. A segment "grows" by showing
+# these one after the other; nothing is cropped while the splash runs.
+part = [];
+offx = [];
+offy = [];
+startx = [];
+starty = [];
+for (k = 0; k < 12; k++) {
+    o = k % 6;
+    w = segimg[o * 4].GetWidth();
+    h = segimg[o * 4].GetHeight();
+    if (o <= 3) px = G; else px = w - G;
+    if (o == 0) py = G; else py = h - G;
+    if (k >= 6) { px = px + dirx[o] * U; py = py + diry[o] * U; }
+    startx[k] = px;
+    starty[k] = py;
+    dxk = dirx[k] * U;
+    dyk = diry[k] * U;
+    for (s = 1; s <= 4; s++) {
+        qx = 0; qy = 0; qw = w; qh = h;
+        if (s < 4) {
+            if (Math.Abs(dxk) > 1) {
+                if (dxk > 0) qw = Math.Int(px + s / 4 * dxk);
+                else { qx = Math.Int(px + s / 4 * dxk); qw = w - qx; }
+            } else {
+                if (dyk > 0) qh = Math.Int(py + s / 4 * dyk);
+                else { qy = Math.Int(py + s / 4 * dyk); qh = h - qy; }
+            }
+        }
+        offx[k * 5 + s] = qx;
+        offy[k * 5 + s] = qy;
+        for (st = 0; st < 4; st++) {
+            if (s < 4) part[(k * 4 + st) * 5 + s] = segimg[o * 4 + st].Crop(qx, qy, qw, qh);
+            else part[(k * 4 + st) * 5 + s] = segimg[o * 4 + st];
+        }
+    }
+}
+
+# Segments, nodes and routes. Depth = number of segments between a segment
+# and the hexagon; all segments of one depth are drawn and lit together.
+nseg = 0; nnode = 0; nroute = 0; nterm = 0;
+wx = 0; wy = 0; wdepth = 0; wroute = 0;
+sgx = []; sgy = []; sgk = []; sgd = [];
+dseg = []; dn = [];
+route_seg = []; route_len = []; route_end = []; term = [];
+ndx = []; ndy = []; ndd = []; ndst = [];
+for (i = 0; i < 12; i++) dn[i] = 0;
+
+fun mirk(k, mir) {
+    if (mir > 0) return k;
+    return (18 - k) % 12;
+}
+# Walks n segments from (x, y); leaves the end in wx, wy, wdepth and the
+# route (all segments from the hexagon to that end) in wroute.
+fun walk(x, y, depth, dirs, n, mir, parent) {
+    local.r = nroute;
+    global.nroute = nroute + 1;
+    local.len = 0;
+    if (parent >= 0) {
+        while (local.len < route_len[parent]) {
+            route_seg[local.r * 16 + local.len] = route_seg[parent * 16 + local.len];
+            local.len = local.len + 1;
+        }
+    }
+    local.j = 0;
+    while (local.j < n) {
+        local.k = mirk(dirs[local.j], mir);
+        sgx[nseg] = x; sgy[nseg] = y; sgk[nseg] = local.k; sgd[nseg] = depth;
+        dseg[depth * 12 + dn[depth]] = nseg;
+        dn[depth] = dn[depth] + 1;
+        route_seg[local.r * 16 + local.len] = nseg;
+        local.len = local.len + 1;
+        global.nseg = nseg + 1;
+        x = x + dirx[local.k] * U;
+        y = y + diry[local.k] * U;
+        depth = depth + 1;
+        local.j = local.j + 1;
+    }
+    route_len[local.r] = local.len;
+    route_end[local.r] = 0;
+    global.wx = x; global.wy = y; global.wdepth = depth; global.wroute = local.r;
+}
+fun add_node(x, y, depth) {
+    ndx[nnode] = x; ndy[nnode] = y; ndd[nnode] = depth; ndst[nnode] = 0;
+    global.nnode = nnode + 1;
+}
+# A trunk ends in a junction node, a branch in a terminal node.
+fun branch(dirs, n, mir) {
+    walk(jx, jy, jd, dirs, n, mir, jr);
+    add_node(wx, wy, wdepth);
+    route_end[wroute] = 1;
+}
+
+dA  = [1, 1, 0, 0, 0];
+dA1 = [1, 1, 0, 0, 0];
+dA2 = [0, 0, 11, 0, 0, 0, 0];
+dB  = [11, 11, 0, 0];
+dB1 = [11, 11, 0, 0, 0, 0];
+dB2 = [0, 0, 0, 1, 0, 0, 0];
+dT  = [3, 3];
+dT1 = [1, 1, 0, 0, 0];
+dD  = [9, 9];
+for (side = 0; side < 2; side++) {
+    mir = 1;
+    if (side == 1) mir = -1;
+    walk(CX + mir * R * 0.866, CY0 - R * 0.5, 0, dA, 5, mir, -1);
+    jx = wx; jy = wy; jd = wdepth; jr = wroute;
+    add_node(jx, jy, jd);
+    branch(dA1, 5, mir);
+    branch(dA2, 7, mir);
+    walk(CX + mir * R * 0.866, CY0 + R * 0.5, 0, dB, 4, mir, -1);
+    jx = wx; jy = wy; jd = wdepth; jr = wroute;
+    add_node(jx, jy, jd);
+    branch(dB1, 6, mir);
+    branch(dB2, 7, mir);
+}
+walk(CX, CY0 - R, 0, dT, 2, 1, -1);
+jx = wx; jy = wy; jd = wdepth; jr = wroute;
+add_node(jx, jy, jd);
+branch(dT1, 5, 1);
+branch(dT1, 5, -1);
+walk(CX, CY0 + R, 0, dD, 2, 1, -1);
+PORT = nnode;                             # the node the prompt and messages hang on
+PORT_Y = wy;
+add_node(wx, wy, wdepth);
+for (i = 0; i < nroute; i++) {
+    if (route_end[i] == 1) { term[nterm] = i; nterm++; }
+}
+
+sdim = []; slit = []; lstep = [];
+for (i = 0; i < nseg; i++) {
+    sdim[i] = Sprite();
+    slit[i] = Sprite();
+    lstep[i] = 0;
+}
+nimg = [];
+for (st = 0; st < 4; st++) nimg[st] = img(PRE + "node_" + sname[st] + ".png");
+NH = nimg[0].GetWidth() / 2;
+nspr = [];
+for (i = 0; i < nnode; i++) {
+    nspr[i] = Sprite();
+    nspr[i].SetPosition(rnd(ndx[i] - NH), rnd(ndy[i] - NH), 10);
+}
+
+# Shows step s (1..4) of segment i in state st on sprite spr.
+fun seg_show(spr, i, st, s, z) {
+    local.k = sgk[i];
+    spr.SetImage(part[(local.k * 4 + st) * 5 + s]);
+    spr.SetPosition(rnd(sgx[i] - startx[local.k]) + offx[local.k * 5 + s],
+                    rnd(sgy[i] - starty[local.k]) + offy[local.k * 5 + s], z);
+    spr.SetOpacity(1);
+}
+# Colour by distance from the core: cyan, blue, violet.
+fun colour_of(depth) { return 1 + Math.Int(depth / 4); }
+fun node_set(i, state) {
+    ndst[i] = state;
+    if (state == 2) nspr[i].SetImage(nimg[colour_of(ndd[i] - 1)]);
+    else nspr[i].SetImage(nimg[0]);
+    nspr[i].SetOpacity(1);
+}
+# The whole network at once: every trace drawn, lit up to (not including)
+# depth litdepth.
+fun net_final(litdepth) {
+    local.i = 0;
+    while (local.i < nseg) {
+        seg_show(sdim[local.i], local.i, 0, 4, 8);
+        if (sgd[local.i] < litdepth) {
+            seg_show(slit[local.i], local.i, colour_of(sgd[local.i]), 4, 9);
+            lstep[local.i] = 4;
+        } else {
+            slit[local.i].SetOpacity(0);
+            lstep[local.i] = 0;
+        }
+        local.i = local.i + 1;
+    }
+    local.i = 0;
+    while (local.i < nnode) {
+        if (ndd[local.i] - 1 < litdepth) node_set(local.i, 2);
+        else node_set(local.i, 1);
+        local.i = local.i + 1;
+    }
+}
+
+# Sparks ride on the fronts of the traces while they grow, light or go out.
+NSPK = 12;
+spk.image = img(PRE + "spark.png");
+SPH = spk.image.GetWidth() / 2;
+spk.a = []; spk.b = [];
+for (i = 0; i < NSPK; i++) {
+    spk.a[i] = Sprite(spk.image); spk.a[i].SetZ(12); spk.a[i].SetOpacity(0);
+    spk.b[i] = Sprite(spk.image); spk.b[i].SetZ(12); spk.b[i].SetOpacity(0);
+}
+spk.na = 0;
+spk.nb = 0;
+fun spark_put(sp, i, s) {
+    local.k = sgk[i];
+    sp.SetPosition(rnd(sgx[i] + dirx[local.k] * U * s / 4 - SPH), rnd(sgy[i] + diry[local.k] * U * s / 4 - SPH), 12);
+    sp.SetOpacity(1);
+}
+fun sparks_off() {
+    local.j = 0;
+    while (local.j < NSPK) {
+        spk.a[local.j].SetOpacity(0);
+        spk.b[local.j].SetOpacity(0);
+        local.j = local.j + 1;
+    }
+    spk.na = 0;
+    spk.nb = 0;
+}
+
+# A ring that opens once around a node: when the node lights, and at the
+# port node when a message arrives.
+NPING = 8;
+ping.img = [];
+for (i = 0; i < 4; i++) ping.img[i] = img(PRE + "ping" + i + ".png");
+PGH = ping.img[0].GetWidth() / 2;
+ping.sp = []; ping.age = [];
+ping.frame = [0, 1, 2, 3, 3];
+ping.op = [1, 1, 1, 1, 0.5];
+for (i = 0; i < NPING; i++) {
+    ping.sp[i] = Sprite();
+    ping.sp[i].SetOpacity(0);
+    ping.age[i] = -1;
+}
+fun ping_start(node) {
+    if (calm) return 0;
+    local.j = 0;
+    while (local.j < NPING) {
+        if (ping.age[local.j] < 0) {
+            ping.age[local.j] = 0;
+            ping.sp[local.j].SetPosition(rnd(ndx[node] - PGH), rnd(ndy[node] - PGH), 11);
+            return 1;
+        }
+        local.j = local.j + 1;
+    }
+    return 0;
+}
+fun ping_tick() {
+    local.j = 0;
+    while (local.j < NPING) {
+        if (ping.age[local.j] >= 0) {
+            if (ping.age[local.j] >= 5) {
+                ping.sp[local.j].SetOpacity(0);
+                ping.age[local.j] = -1;
+            } else {
+                ping.sp[local.j].SetImage(ping.img[ping.frame[ping.age[local.j]]]);
+                ping.sp[local.j].SetOpacity(ping.op[ping.age[local.j]]);
+                ping.age[local.j] = ping.age[local.j] + 1;
+            }
+        }
+        local.j = local.j + 1;
+    }
+}
+
+# Draws depth level tb / 4 of the unpowered network (4 ticks per segment).
+fun bloom_tick(tb) {
+    local.d = Math.Int(tb / 4);
+    local.s = tb % 4 + 1;
+    local.j = 0;
+    while (local.j < dn[local.d]) {
+        local.i = dseg[local.d * 12 + local.j];
+        seg_show(sdim[local.i], local.i, 0, local.s, 8);
+        spark_put(spk.a[local.j], local.i, local.s);
+        local.j = local.j + 1;
+    }
+    while (local.j < spk.na) { spk.a[local.j].SetOpacity(0); local.j = local.j + 1; }
+    spk.na = dn[local.d];
+    if (local.s == 4) {
+        local.j = 0;
+        while (local.j < nnode) {
+            if (ndst[local.j] == 0 && ndd[local.j] == local.d + 1) node_set(local.j, 1);
+            local.j = local.j + 1;
+        }
+    }
+}
+# The power wave: the same, with the lit images, six ticks behind.
+fun power_tick(tp) {
+    local.d = Math.Int(tp / 4);
+    local.s = tp % 4 + 1;
+    local.j = 0;
+    while (local.j < dn[local.d]) {
+        local.i = dseg[local.d * 12 + local.j];
+        seg_show(slit[local.i], local.i, colour_of(local.d), local.s, 9);
+        lstep[local.i] = local.s;
+        spark_put(spk.b[local.j], local.i, local.s);
+        local.j = local.j + 1;
+    }
+    while (local.j < spk.nb) { spk.b[local.j].SetOpacity(0); local.j = local.j + 1; }
+    spk.nb = dn[local.d];
+    if (local.s == 4) {
+        local.j = 0;
+        while (local.j < nnode) {
+            if (ndst[local.j] < 2 && ndd[local.j] == local.d + 1) { node_set(local.j, 2); ping_start(local.j); }
+            local.j = local.j + 1;
+        }
+    }
+}
+# Power-down: the lit front goes back towards the core, down to depth keep.
+fun discharge_tick(td, keep) {
+    local.d = 11 - Math.Int(td / 4);
+    local.s = 3 - td % 4;
+    if (local.d < keep) {
+        if (spk.nb > 0) sparks_off();
+        return 0;
+    }
+    local.j = 0;
+    while (local.j < dn[local.d]) {
+        local.i = dseg[local.d * 12 + local.j];
+        if (local.s > 0) seg_show(slit[local.i], local.i, colour_of(local.d), local.s, 9);
+        else slit[local.i].SetOpacity(0);
+        lstep[local.i] = local.s;
+        spark_put(spk.b[local.j], local.i, local.s);
+        local.j = local.j + 1;
+    }
+    while (local.j < spk.nb) { spk.b[local.j].SetOpacity(0); local.j = local.j + 1; }
+    spk.nb = dn[local.d];
+    if (local.s == 3) {
+        local.j = 0;
+        while (local.j < nnode) {
+            if (ndst[local.j] == 2 && ndd[local.j] == local.d + 1) node_set(local.j, 1);
+            local.j = local.j + 1;
+        }
+    }
+    return 1;
+}
+
+# ==== 7. Moving lights: comet, pulses, beam =======================================
+pulse.c = img(PRE + "pulse_c.png");
+pulse.v = img(PRE + "pulse_v.png");
+PH = pulse.c.GetWidth() / 2;
+
+# The comet runs along the hexagon outline: 108 positions per lap, two per
+# tick normally, one while somebody is asked for input.
+cmx = []; cmy = [];
+for (i = 0; i < 108; i++) {
+    e = Math.Int(i / 18);
+    fr = (i - e * 18) / 18;
+    a0 = (-90 + 60 * e) * Math.Pi / 180;
+    a1 = (-30 + 60 * e) * Math.Pi / 180;
+    cmx[i] = rnd(CX + R * (Math.Cos(a0) + (Math.Cos(a1) - Math.Cos(a0)) * fr) - PH);
+    cmy[i] = rnd(CY0 + R * (Math.Sin(a0) + (Math.Sin(a1) - Math.Sin(a0)) * fr) - PH);
+}
+comet.sp = [];
+comet.op = [0.9, 0.6, 0.38, 0.18];
+for (j = 0; j < 4; j++) {
+    comet.sp[j] = Sprite(pulse.c);
+    comet.sp[j].SetZ(22);
+    comet.sp[j].SetOpacity(0);
+}
+comet.on = 0;
+comet.pos = 0;
+fun comet_show(on) {
+    comet.on = on;
+    local.j = 0;
+    while (local.j < 4) {
+        if (on && (local.j == 0 || gv.level < 2)) comet.sp[local.j].SetOpacity(comet.op[local.j]);
+        else comet.sp[local.j].SetOpacity(0);
+        local.j = local.j + 1;
+    }
+}
+fun comet_colour(image) {
+    local.j = 0;
+    while (local.j < 4) { comet.sp[local.j].SetImage(image); local.j = local.j + 1; }
+}
+fun comet_tick() {
+    if (prompting) comet.pos = (comet.pos + 1) % 108;
+    else comet.pos = (comet.pos + 2) % 108;
+    local.j = 0;
+    while (local.j < 4) {
+        local.p = (comet.pos + 108 - local.j * 3) % 108;
+        comet.sp[local.j].SetPosition(cmx[local.p], cmy[local.p], 22);
+        if (gv.level >= 2) return 0;       # reduced: the head alone
+        local.j = local.j + 1;
+    }
+}
+
+# Pulses: one per status the daemon reports, from the core out along the
+# next branch. Six at a time; a status that finds none free gets no pulse.
+NPULSE = 6;
+pact = []; ppos = []; prt = []; pspr = [];
+pulse.op = [1, 0.6, 0.3];
+for (i = 0; i < NPULSE; i++) {
+    pact[i] = 0;
+    for (j = 0; j < 3; j++) {
+        pspr[i * 3 + j] = Sprite(pulse.c);
+        pspr[i * 3 + j].SetZ(13);
+        pspr[i * 3 + j].SetOpacity(0);
+    }
+}
+pulse.next = 0;
+fun pulse_spawn() {
+    local.i = 0;
+    while (local.i < NPULSE) {
+        if (pact[local.i] == 0) {
+            pact[local.i] = 1;
+            ppos[local.i] = 0;
+            prt[local.i] = term[pulse.next];
+            pulse.next = (pulse.next + 3) % nterm;
+            return 1;
+        }
+        local.i = local.i + 1;
+    }
+    return 0;
+}
+fun pulse_tick() {
+    local.i = 0;
+    while (local.i < NPULSE) {
+        if (pact[local.i] == 1) {
+            ppos[local.i] = ppos[local.i] + 0.42;
+            local.n = route_len[prt[local.i]];
+            local.j = 0;
+            while (local.j < 3) {
+                local.at = ppos[local.i] - local.j * 0.32;
+                local.sp = pspr[local.i * 3 + local.j];
+                if (local.at < 0 || local.at >= local.n) {
+                    local.sp.SetOpacity(0);
+                } else {
+                    local.sj = Math.Int(local.at);
+                    local.sg = route_seg[prt[local.i] * 16 + local.sj];
+                    local.fr = (local.at - local.sj) * U;
+                    local.sp.SetPosition(rnd(sgx[local.sg] + dirx[sgk[local.sg]] * local.fr - PH),
+                                         rnd(sgy[local.sg] + diry[sgk[local.sg]] * local.fr - PH), 13);
+                    local.sp.SetOpacity(pulse.op[local.j]);
+                }
+                local.j = local.j + 1;
+            }
+            if (ppos[local.i] - 0.64 >= local.n) pact[local.i] = 0;
+        }
+        local.i = local.i + 1;
+    }
+}
+fun pulses_off() {
+    local.i = 0;
+    while (local.i < NPULSE * 3) { pspr[local.i].SetOpacity(0); local.i = local.i + 1; }
+    local.i = 0;
+    while (local.i < NPULSE) { pact[local.i] = 0; local.i = local.i + 1; }
+}
+
+# The scan beam crosses the picture once, top to port level, in 20 ticks.
+beam.image = Image("scan.png").Scale(WC, 9 * XS);
+beam.y0 = CY0 - R - 3 * U - 16 * XS;
+beam.y1 = PORT_Y;
+beam.sprite = put(beam.image, LEFT, beam.y0, 28);
+beam.sprite.SetOpacity(0);
+beam.step = 99;
+fun beam_start() { if (!calm) beam.step = 0; }
+fun beam_stop() { beam.step = 99; beam.sprite.SetOpacity(0); }
+fun beam_tick() {
+    if (beam.step > 20) return 0;
+    if (beam.step == 20) { beam_stop(); return 0; }
+    beam.sprite.SetPosition(LEFT, rnd(beam.y0 + (beam.y1 - beam.y0) * beam.step / 19), 28);
+    if (beam.step < 15) beam.sprite.SetOpacity(0.9);
+    else beam.sprite.SetOpacity(0.9 * (20 - beam.step) / 6);
+    beam.step = beam.step + 1;
+}
+
+# ==== 8. Brackets ================================================================
+# Four corners that frame the current target: the instrument ("seek", and
+# "lock" once the root file system is mounted) or the entry field.
+bnames = ["tl", "tr", "bl", "br"];
+br.sp = [];
+for (i = 0; i < 4; i++) {
+    br.img = img(PRE + "br_" + bnames[i] + ".png");
+    br.sp[i] = Sprite(br.img);
+    br.sp[i].SetZ(30);
+    br.sp[i].SetOpacity(0);
+}
+ARM = br.img.GetWidth();
+br.frac = [0.3, 0.55, 0.75, 0.9, 0.97, 1];
+br.close = [44, 24, 10, 4, 1, 0];
+br.step = 6;
+br.x0 = 0; br.y0 = 0; br.x1 = 0; br.y1 = 0;
+br.fx0 = 0; br.fy0 = 0; br.fx1 = 0; br.fy1 = 0;
+br.tx0 = 0; br.ty0 = 0; br.tx1 = 0; br.ty1 = 0;
+frx0 = []; fry0 = []; frx1 = []; fry1 = [];     # frames: 0 seek, 1 lock, 2 field
+fun frame_set(n, x0, y0, x1, y1) { frx0[n] = x0; fry0[n] = y0; frx1[n] = x1; fry1[n] = y1; }
+frame_set(0, CX - T_seek[TIER] * XS, CY0 - T_seek[TIER] * XS, CX + T_seek[TIER] * XS, CY0 + T_seek[TIER] * XS);
+frame_set(1, CX - T_lock[TIER] * XS, CY0 - T_lock[TIER] * XS, CX + T_lock[TIER] * XS, CY0 + T_lock[TIER] * XS);
+fun br_place(x0, y0, x1, y1) {
+    br.x0 = x0; br.y0 = y0; br.x1 = x1; br.y1 = y1;
+    br.sp[0].SetPosition(rnd(x0), rnd(y0), 30);
+    br.sp[1].SetPosition(rnd(x1) - ARM, rnd(y0), 30);
+    br.sp[2].SetPosition(rnd(x0), rnd(y1) - ARM, 30);
+    br.sp[3].SetPosition(rnd(x1) - ARM, rnd(y1) - ARM, 30);
+}
+fun br_opacity(v) {
+    local.j = 0;
+    while (local.j < 4) { br.sp[local.j].SetOpacity(v); local.j = local.j + 1; }
+}
+# The frame the brackets rest on when nobody is asked anything.
+fun rest_frame() {
+    if (prompting) return 2;
+    if (HK == 0 && !rooted) return 0;
+    return 1;
+}
+fun br_goto(n) {
+    if (calm) { br_place(frx0[n], fry0[n], frx1[n], fry1[n]); br.step = 6; return 0; }
+    br.fx0 = br.x0; br.fy0 = br.y0; br.fx1 = br.x1; br.fy1 = br.y1;
+    br.tx0 = frx0[n]; br.ty0 = fry0[n]; br.tx1 = frx1[n]; br.ty1 = fry1[n];
+    br.step = 0;
+}
+fun br_tick() {
+    if (br.step >= 6) return 0;
+    local.f = br.frac[br.step];
+    br.step = br.step + 1;
+    br_place(br.fx0 + (br.tx0 - br.fx0) * local.f, br.fy0 + (br.ty0 - br.fy0) * local.f,
+             br.fx1 + (br.tx1 - br.fx1) * local.f, br.fy1 + (br.ty1 - br.fy1) * local.f);
+}
+
+# ==== 9. Text column: wordmark, status / update figure ===========================
+fun clampy(y, height) { return Math.Min(y, BOTTOM - height); }
+
+wm.image = img(PRE + "wordmark.png");
+wm.w = wm.image.GetWidth();
+wm.y = clampy(CY0 + T_wm[TIER] * XS, wm.image.GetHeight());
+wm.crop = [];
+wm.cx = [];
+for (i = 1; i <= 8; i++) {                # revealed from the middle outwards
+    if (i < 8) {
+        wm.cx[i] = Math.Int(wm.w / 2 - wm.w * i / 16);
+        wm.crop[i] = wm.image.Crop(wm.cx[i], 0, Math.Int(wm.w * i / 8), wm.image.GetHeight());
+    } else {
+        wm.cx[i] = 0;
+        wm.crop[i] = wm.image;
+    }
+}
+wm.sprite = Sprite();
+wm.sprite.SetZ(15);
+wm.step = 0;
+fun wm_show(step) {
+    wm.step = step;
+    wm.sprite.SetImage(wm.crop[step]);
+    wm.sprite.SetPosition(CX - Math.Int(wm.w / 2) + wm.cx[step], wm.y, 15);
+    wm.sprite.SetOpacity(1);
+}
+
+# Slot A, the line under the wordmark: the last status string, or the update
+# percentage once a client has sent one. Both are shown as they arrive.
+slot.sprite = Sprite();
+slot.sprite.SetZ(15);
+slot.y = CY0 + T_slot[TIER] * XS;
+slot.vis = 0;
+stat.text = "";
+stat.dirty = 0;
+stat.last = -1000;         # tick of the last status
+stat.drawn = -1000;        # tick the status line was last rendered
+upd.known = 0;             # a client has sent a percentage
+upd.pct = 0;
+fun slot_put(image) {
+    slot.sprite.SetImage(image);
+    slot.sprite.SetPosition(CX - Math.Int(image.GetWidth() / 2), clampy(slot.y, image.GetHeight()), 15);
+    slot.sprite.SetOpacity(1);
+    slot.vis = 1;
+}
+fun slot_hide() { slot.sprite.SetOpacity(0); slot.vis = 0; }
+fun upd_draw() {
+    if (prompting) return 0;
+    slot_put(Image.Text(Math.Int(upd.pct) + " %", 0.89, 0.91, 0.94, 1, F_UPD));
+}
+fun slot_tick() {
+    if (upd.known || prompting) return 0;
+    if (stat.dirty && tick - stat.drawn >= 8) {
+        stat.dirty = 0;
+        stat.drawn = tick;
+        local.im = Image.Text(stat.text, 0.55, 0.64, 0.74, 1, F_STAT);
+        local.max = T_statw[TIER] * XS;
+        if (local.im.GetWidth() > local.max) local.im = local.im.Crop(0, 0, local.max, local.im.GetHeight());
+        slot_put(local.im);
+    }
+    if (slot.vis && tick - stat.last > 90) slot_hide();
+}
+
+# ==== 10. Prompt: passphrase and question ========================================
+# The daemon reads the keys. The script is told the prompt text and the
+# number of typed characters (or, for a question, the typed answer) and
+# draws exactly that. The field is complete in the tick the prompt arrives.
+fld.image = img(PRE + "entry.png");
+FW = fld.image.GetWidth();
+FH = fld.image.GetHeight();
+fld.x = CX - Math.Int(FW / 2);
+fld.y = clampy(CY0 + T_fy[TIER] * XS, FH + 8 * XS);
+fld.sprite = put(fld.image, fld.x, fld.y, 41);
+fld.sprite.SetOpacity(0);
+fld.lit = put(img(PRE + "entry_lit.png"), fld.x, fld.y, 42);
+fld.lit.SetOpacity(0);
+frame_set(2, fld.x - 8 * XS, fld.y - 8 * XS, fld.x + FW + 8 * XS, fld.y + FH + 8 * XS);
+
+pt.sprite = Sprite();      # the prompt text
+pt.sprite.SetZ(42);
+pt.text = "";
+pt.y = fld.y - (T_fy[TIER] - T_pline[TIER]) * XS;
+pt.t0 = 0;                 # tick the prompt appeared
+pt.more = Sprite(img("more.png"));         # shown where a prompt text had to be cut
+pt.more.SetZ(42);
+pt.more.SetOpacity(0);
+MOREW = 14 * XS;
+
+cell.image = img("cell.png");
+cell.hot = img("cell_hot.png");
+CELLS = T_cells[TIER];
+CPITCH = 16 * XS;
+cell.sp = [];
+for (i = 0; i < CELLS; i++) {
+    cell.sp[i] = put(cell.image, fld.x + 16 * XS + i * CPITCH, fld.y + Math.Int((FH - 16 * XS) / 2), 43);
+    cell.sp[i].SetOpacity(0);
+}
+cell.count = 0;            # characters typed, as the daemon reports
+cell.shown = 0;
+cell.inc = -1000;          # tick of the last increase
+cell.hot_i = -1;
+more.sprite = put(img("more.png"), fld.x + 16 * XS + CELLS * CPITCH, fld.y + Math.Int((FH - 16 * XS) / 2), 43);
+more.sprite.SetOpacity(0);
+caret.sprite = put(img("caret.png"), fld.x + 16 * XS, fld.y + Math.Int((FH - 20 * XS) / 2), 43);
+caret.sprite.SetOpacity(0);
+caret.on = 0;
+ans.sprite = Sprite();     # the typed answer of a question
+ans.sprite.SetZ(43);
+
+# Violet connector from the port node down to just above the prompt text.
+conn.crop = [];
+conn.base = Image("conn.png");
+conn.len = 0;
+conn.top = -1;             # the text top the crops were made for
+conn.y = rnd(PORT_Y + NH);
+conn.sprite = Sprite();
+conn.sprite.SetPosition(CX - XS, conn.y, 14);
+conn.step = 4;
+# Made again only when a prompt text needs a different height (two rows).
+fun conn_fit(top) {
+    if (top == conn.top) return 0;
+    conn.top = top;
+    conn.len = top - 8 * XS - conn.y;
+    if (conn.len < 4) { conn.len = 0; conn.sprite.SetOpacity(0); return 0; }
+    conn.crop[4] = conn.base.Scale(2 * XS, conn.len);
+    local.j = 1;
+    while (local.j < 4) {
+        conn.crop[local.j] = conn.crop[4].Crop(0, 0, 2 * XS, Math.Max(1, Math.Int(conn.len * local.j / 4)));
+        local.j = local.j + 1;
+    }
+    if (prompting && conn.step > 0) {
+        conn.sprite.SetImage(conn.crop[Math.Min(conn.step, 4)]);
+        conn.sprite.SetOpacity(1);
+    }
+}
+conn_fit(pt.y);
+
+# A text that is too wide for its place is broken once at a space: at the
+# space nearest to the middle if both halves then fit, otherwise after as
+# many words as fit in the first row. What still does not fit is cut at the
+# right end, and fit.cut tells the caller to put the "more" mark there.
+# (Lengths of strings are bytes, widths are pixels: every candidate is
+# measured by rendering it. This runs once per text, never per refresh.)
+fit.im = 0;
+fit.rows = 1;
+fit.cut = 0;
+fun fit_space(s, from) {
+    local.j = from;
+    while (local.j > 0) {
+        if (s.CharAt(local.j) == " ") return local.j;
+        local.j = local.j - 1;
+    }
+    return -1;
+}
+fun fit_text(text, font, maxw, align) {
+    fit.rows = 1;
+    fit.cut = 0;
+    fit.im = Image.Text(text, 0.89, 0.91, 0.94, 1, font, align);
+    local.w = fit.im.GetWidth();
+    if (local.w <= maxw) return 0;
+    local.s = String(text);
+    local.len = local.s.Length();
+    local.mid = Math.Int(local.len / 2);
+    local.cut = -1;
+    local.d = 0;
+    while (local.d < local.mid && local.cut < 0) {
+        if (local.s.CharAt(local.mid + local.d) == " ") local.cut = local.mid + local.d;
+        else if (local.s.CharAt(local.mid - local.d) == " ") local.cut = local.mid - local.d;
+        local.d = local.d + 1;
+    }
+    if (local.cut > 0) {
+        local.im = Image.Text(local.s.SubString(0, local.cut) + "\n" + local.s.SubString(local.cut + 1, local.len),
+                              0.89, 0.91, 0.94, 1, font, align);
+        if (local.im.GetWidth() <= maxw) { fit.im = local.im; fit.rows = 2; return 0; }
+        # a full first row; the rows start at the same place so that the
+        # cut at the right end takes only the end of the text
+        local.at = Math.Int(local.len * maxw / local.w);
+        local.k = 0;
+        while (local.k < 8) {
+            local.at = fit_space(local.s, local.at);
+            if (local.at <= 0) break;
+            if (Image.Text(local.s.SubString(0, local.at), 1, 1, 1, 1, font).GetWidth() <= maxw) {
+                fit.im = Image.Text(local.s.SubString(0, local.at) + "\n" + local.s.SubString(local.at + 1, local.len),
+                                    0.89, 0.91, 0.94, 1, font, "left");
+                fit.rows = 2;
+                break;
+            }
+            local.at = local.at - 1;
+            local.k = local.k + 1;
+        }
+    }
+    if (fit.im.GetWidth() > maxw) {
+        fit.im = fit.im.Crop(0, 0, maxw - MOREW - 6 * XS, fit.im.GetHeight());
+        fit.cut = 1;
+    }
+}
+
+fun cells_set(count) {
+    if (count > cell.count) cell.inc = tick;
+    cell.count = count;
+    cell.shown = Math.Min(count, CELLS);
+    cell.hot_i = -1;
+    local.j = 0;
+    while (local.j < CELLS) {
+        if (local.j < cell.shown) { cell.sp[local.j].SetImage(cell.image); cell.sp[local.j].SetOpacity(1); }
+        else cell.sp[local.j].SetOpacity(0);
+        local.j = local.j + 1;
+    }
+    local.x = fld.x + 16 * XS + cell.shown * CPITCH;
+    if (count > CELLS) { more.sprite.SetOpacity(1); local.x = local.x + CPITCH; }
+    else more.sprite.SetOpacity(0);
+    caret.sprite.SetX(local.x);
+}
+fun answer_set(text) {
+    local.x = fld.x + 16 * XS;
+    if (!text || text == "") {
+        ans.sprite.SetOpacity(0);
+    } else {
+        local.im = Image.Text(text, 0.89, 0.91, 0.94, 1, F_PRM);
+        local.max = FW - 40 * XS;
+        # too long for the field: keep its end, where the typing happens
+        if (local.im.GetWidth() > local.max)
+            local.im = local.im.Crop(local.im.GetWidth() - local.max, 0, local.max, local.im.GetHeight());
+        ans.sprite.SetImage(local.im);
+        ans.sprite.SetPosition(local.x, fld.y + Math.Int((FH - local.im.GetHeight()) / 2), 43);
+        ans.sprite.SetOpacity(1);
+        local.x = local.x + local.im.GetWidth() + 3 * XS;
+    }
+    caret.sprite.SetX(local.x);
+}
+fun prompt_text(text) {
+    pt.text = text;
+    pt.more.SetOpacity(0);
+    if (text == "") { pt.sprite.SetOpacity(0); conn_fit(pt.y); return 0; }
+    # too wide: one size smaller, then two rows, then cut with the mark
+    local.max = WC - 40 * XS;
+    fit_text(text, F_PRM, local.max, "center");
+    if (fit.rows > 1 || fit.cut) fit_text(text, F_PRM2, local.max, "center");
+    local.rowh = Math.Int(fit.im.GetHeight() / fit.rows);
+    local.w = fit.im.GetWidth();
+    if (fit.cut) local.w = local.w + MOREW + 6 * XS;
+    local.x = CX - Math.Int(local.w / 2);
+    local.y = pt.y - (fit.rows - 1) * local.rowh;      # a second row grows upwards
+    # a text wider than the field reaches over the brackets' corners: keep it
+    # clear of them (on small screens the prompt line is close to the field)
+    local.y = Math.Min(local.y, fry0[2] - 4 * XS - fit.im.GetHeight());
+    pt.sprite.SetImage(fit.im);
+    pt.sprite.SetPosition(local.x, local.y, 42);
+    pt.sprite.SetOpacity(1);
+    if (fit.cut) {
+        pt.more.SetPosition(local.x + fit.im.GetWidth() + 6 * XS,
+                            local.y + (fit.rows - 1) * local.rowh + Math.Int((local.rowh - 16 * XS) / 2) + XS, 42);
+        pt.more.SetOpacity(1);
+    }
+    conn_fit(local.y);
+}
+fun prompt_open(kind, text) {
+    if (!text) text = "";               # a request without a prompt text
+    if (seq != 0) settle();
+    if (prompting != kind) {
+        if (!prompting) {
+            pt.t0 = tick;
+            wm.sprite.SetOpacity(0);
+            slot_hide();
+            fld.sprite.SetOpacity(1);
+            fld.lit.SetOpacity(0);
+            if (calm) fld.lit.SetOpacity(1);
+            caret.sprite.SetOpacity(1);
+            caret.on = 1;
+            beam_stop();
+            comet_colour(pulse.v);
+            conn.step = 0;
+            if (calm && conn.len > 0) { conn.sprite.SetImage(conn.crop[4]); conn.sprite.SetOpacity(1); conn.step = 4; }
+            pt.text = "";
+        }
+        global.prompting = kind;
+        cells_set(0);
+        answer_set("");
+        br_goto(2);
+    }
+    if (text != pt.text) prompt_text(text);
+}
+fun prompt_close() {
+    if (!prompting) return 0;
+    global.prompting = 0;
+    fld.sprite.SetOpacity(0);
+    fld.lit.SetOpacity(0);
+    pt.sprite.SetOpacity(0);
+    pt.more.SetOpacity(0);
+    caret.sprite.SetOpacity(0);
+    ans.sprite.SetOpacity(0);
+    conn.sprite.SetOpacity(0);
+    conn.step = 4;
+    cells_set(0);
+    comet_colour(pulse.c);
+    br_goto(rest_frame());
+    wm_show(8);
+    if (upd.known) upd_draw();
+}
+fun prompt_tick() {
+    local.age = tick - pt.t0;
+    # the cyan outline comes up in three steps, the connector grows in four
+    # (opacity must end at exactly 1: a larger value is drawn as nearly nothing)
+    if (!calm && local.age >= 1 && local.age <= 3) fld.lit.SetOpacity(tab3[local.age - 1]);
+    if (conn.step < 4 && conn.len > 0) {
+        conn.step = conn.step + 1;
+        conn.sprite.SetImage(conn.crop[conn.step]);
+        conn.sprite.SetOpacity(1);
+    }
+    local.on = 0;
+    if (local.age % 30 < 15) local.on = 1;
+    if (local.on != caret.on) { caret.on = local.on; caret.sprite.SetOpacity(local.on); }
+    # the newest cell is bright for four ticks
+    local.hot = -1;
+    if (prompting == 1 && cell.count > 0 && cell.count <= CELLS && tick - cell.inc < 4) local.hot = cell.count - 1;
+    if (local.hot != cell.hot_i) {
+        if (cell.hot_i >= 0 && cell.hot_i < cell.shown) cell.sp[cell.hot_i].SetImage(cell.image);
+        if (local.hot >= 0) cell.sp[local.hot].SetImage(cell.hot);
+        cell.hot_i = local.hot;
+    }
+}
+
+# ==== 11. Messages ===============================================================
+# Up to three lines (MROWS rows) under the field, newest last; hide-message
+# removes the line with the same text. A line that is too wide is broken
+# once at a space, in a smaller size if that is what makes it fit. All lines
+# start at the same x, and the block is centred.
+MROWS = T_mrows[TIER];
+MPITCH = T_mpitch[TIER] * XS;
+MMAXW = Math.Min(WC - 48 * XS, 900 * XS);
+msg.n = 0;
+msg.text = []; msg.img = []; msg.rows = []; msg.cut = [];
+msg.sp = []; msg.mk = []; msg.mo = [];
+msg.mark = img("msg_mark.png");
+MKW = msg.mark.GetWidth();
+for (i = 0; i < 3; i++) {
+    msg.sp[i] = Sprite(); msg.sp[i].SetZ(40);
+    msg.mk[i] = Sprite(msg.mark); msg.mk[i].SetZ(40); msg.mk[i].SetOpacity(0);
+    msg.mo[i] = Sprite(img("more.png")); msg.mo[i].SetZ(40); msg.mo[i].SetOpacity(0);
+}
+msg.crop = [];
+msg.rev = 6;               # reveal step of the newest line (6 = complete)
+
+fun msg_layout() {
+    local.rows = 0;
+    local.wmax = 0;
+    local.j = 0;
+    while (local.j < msg.n) {
+        local.rows = local.rows + msg.rows[local.j];
+        local.w = msg.img[local.j].GetWidth();
+        if (msg.cut[local.j]) local.w = local.w + MOREW + 6 * XS;
+        if (local.w > local.wmax) local.wmax = local.w;
+        local.j = local.j + 1;
+    }
+    local.y = CY0 + T_m0[TIER] * XS;
+    if (local.y + local.rows * MPITCH > BOTTOM) local.y = BOTTOM - local.rows * MPITCH;
+    local.x = CX - Math.Int((local.wmax + MKW + 8 * XS) / 2);
+    local.j = 0;
+    while (local.j < 3) {
+        msg.mo[local.j].SetOpacity(0);
+        if (local.j < msg.n) {
+            local.rowh = Math.Int(msg.img[local.j].GetHeight() / msg.rows[local.j]);
+            msg.mk[local.j].SetPosition(local.x, local.y + Math.Int((local.rowh - MKW) / 2) + XS, 40);
+            msg.mk[local.j].SetOpacity(1);
+            msg.sp[local.j].SetImage(msg.img[local.j]);
+            msg.sp[local.j].SetPosition(local.x + MKW + 8 * XS, local.y, 40);
+            msg.sp[local.j].SetOpacity(1);
+            if (msg.cut[local.j]) {
+                msg.mo[local.j].SetPosition(local.x + MKW + 8 * XS + msg.img[local.j].GetWidth() + 6 * XS,
+                                            local.y + (msg.rows[local.j] - 1) * local.rowh + Math.Int((local.rowh - 16 * XS) / 2) + XS, 40);
+                msg.mo[local.j].SetOpacity(1);
+            }
+            local.y = local.y + msg.rows[local.j] * MPITCH;
+        } else {
+            msg.sp[local.j].SetOpacity(0);
+            msg.mk[local.j].SetOpacity(0);
+        }
+        local.j = local.j + 1;
+    }
+}
+fun msg_drop(n) {
+    local.j = n;
+    while (local.j < msg.n - 1) {
+        msg.text[local.j] = msg.text[local.j + 1];
+        msg.img[local.j] = msg.img[local.j + 1];
+        msg.rows[local.j] = msg.rows[local.j + 1];
+        msg.cut[local.j] = msg.cut[local.j + 1];
+        local.j = local.j + 1;
+    }
+    msg.n = msg.n - 1;
+}
+fun message_cb(text) {
+    if (!text || text == "") return 0;
+    local.j = 0;
+    while (local.j < msg.n) {
+        if (msg.text[local.j] == text) return 0;       # already on screen
+        local.j = local.j + 1;
+    }
+    fit_text(text, F_MSG, MMAXW, "left");
+    if (fit.cut) fit_text(text, F_MSG2, MMAXW, "left");
+    local.im = fit.im;
+    local.rows = fit.rows;
+    msg.rev = 6;
+    local.have = local.rows;
+    local.j = 0;
+    while (local.j < msg.n) { local.have = local.have + msg.rows[local.j]; local.j = local.j + 1; }
+    while (msg.n > 0 && (local.have > MROWS || msg.n >= 3)) {
+        local.have = local.have - msg.rows[0];
+        msg_drop(0);
+    }
+    msg.text[msg.n] = text;
+    msg.img[msg.n] = local.im;
+    msg.rows[msg.n] = local.rows;
+    msg.cut[msg.n] = fit.cut;
+    msg.n = msg.n + 1;
+    msg_layout();
+    if (!calm) {
+        # the new line is uncovered from the left in six steps
+        local.j = 1;
+        while (local.j < 6) {
+            msg.crop[local.j] = local.im.Crop(0, 0, Math.Max(1, Math.Int(local.im.GetWidth() * local.j / 6)), local.im.GetHeight());
+            local.j = local.j + 1;
+        }
+        msg.crop[6] = local.im;
+        msg.rev = 1;
+        msg.sp[msg.n - 1].SetImage(msg.crop[1]);
+        ping_start(PORT);
+    }
+}
+fun hide_message_cb(text) {
+    msg.rev = 6;
+    if (!text || text == "") {
+        msg.n = 0;
+    } else {
+        local.j = 0;
+        while (local.j < msg.n) {
+            if (msg.text[local.j] == text) { msg_drop(local.j); break; }
+            local.j = local.j + 1;
+        }
+    }
+    msg_layout();
+}
+fun msg_tick() {
+    if (msg.rev >= 6) return 0;
+    msg.rev = msg.rev + 1;
+    msg.sp[msg.n - 1].SetImage(msg.crop[msg.rev]);
+}
+
+# ==== 12. Ring: progress, update percentage, comet =================================
+fun ring_all(opacity) {
+    local.j = 0;
+    while (local.j < NSEG) { ring.sp[local.j].SetOpacity(opacity); local.j = local.j + 1; }
+    ring.shown = NSEG;
+}
+head.sprite = Sprite(nimg[1]);            # a small node at the head of the lit part
+head.sprite.SetZ(9);
+head.sprite.SetOpacity(0);
+fun ring_set(n) {
+    if (n > NSEG) n = NSEG;
+    if (n == ring.lit) return 0;
+    while (ring.lit < n) { ring.sp[ring.lit].SetImage(ring.limg[ring.lit]); ring.lit = ring.lit + 1; }
+    while (ring.lit > n) { ring.lit = ring.lit - 1; ring.sp[ring.lit].SetImage(ring.dimg[ring.lit]); }
+    head_put();
+}
+fun head_put() {
+    local.a = (-90 + ring.lit * 360 / NSEG) * Math.Pi / 180;
+    head.sprite.SetPosition(rnd(CX + T_ringr[TIER] * XS * Math.Cos(local.a) - NH),
+                            rnd(CY0 + T_ringr[TIER] * XS * Math.Sin(local.a) - NH), 9);
+}
+# The ring comet (updates, shutdown, restart) is an activity sign, not a
+# meter: a few lit tiles going round. step c, direction by mode.
+fun rc_index(c) {
+    local.c = (c % NSEG + NSEG) % NSEG;
+    if (HK == 2) return (NSEG - local.c) % NSEG;        # shutdown: counter-clockwise
+    return local.c;
+}
+fun rc_step(c) {
+    local.on = rc_index(c);
+    local.off = rc_index(c - RC_LEN);
+    ring.sp[local.on].SetImage(ring.limg[local.on]);
+    if (HK == 2) ring.sp[local.on].SetOpacity(0.6);
+    ring.sp[local.off].SetImage(ring.dimg[local.off]);
+    ring.sp[local.off].SetOpacity(1);
+}
+fun rc_tick() {
+    local.period = 108;
+    if (HK == 3) local.period = 54;
+    local.want = Math.Int((tick - rc.t0) * NSEG / local.period);
+    while (rc.c < local.want) {
+        rc.c = rc.c + 1;
+        rc_step(rc.c);
+        if (HK == 3) rc_step(rc.c + NSEG / 2);          # restart: two, opposite
+    }
+}
+fun rc_stop() {
+    rc.on = 0;
+    local.j = 0;
+    while (local.j < NSEG) {
+        ring.sp[local.j].SetImage(ring.dimg[local.j]);
+        ring.sp[local.j].SetOpacity(1);
+        local.j = local.j + 1;
+    }
+    ring.lit = 0;
+}
+
+# ==== 13. Governor ===============================================================
+# The script cannot see how the screen is scaled, only how often it is
+# called. It counts refreshes between progress callbacks; if fewer than 26
+# a second get through in two windows in a row (one slow window can be a
+# busy disk), it first stops the bezel and then reduces the comet and the
+# glow. It never goes back up.
+gv.level = 0;
+gv.n = 0;                  # refreshes in the current window
+gv.t0 = -1;                # the daemon's seconds at the start of the window
+gv.skip = 1;               # the window saw an entrance or a prompt: not counted
+gv.limit = 26;
+gv.slow = 0;               # slow windows in a row
+if (gov_test) gv.limit = 31;
+fun gov_step() {
+    if (gv.level >= 2) return 0;
+    gv.level = gv.level + 1;
+    if (gv.level == 2) {
+        if (comet.on) comet_show(1);
+        glow_set(glow.mid);
+    }
+    if (gov_test) Image.Text("PROBE gov " + gv.level, 1, 1, 1);
+}
+fun gov_feed(seconds) {
+    if (gv.t0 < 0 || seconds < gv.t0) { gv.t0 = seconds; gv.n = 0; gv.skip = 0; return 0; }
+    if (seconds - gv.t0 < 2.0) return 0;
+    if (!gv.skip && !calm) {
+        if (gv.n / (seconds - gv.t0) < gv.limit) {
+            gv.slow = gv.slow + 1;
+            if (gv.slow >= 2) { gv.slow = 0; gov_step(); }
+        } else gv.slow = 0;
+    }
+    gv.t0 = seconds;
+    gv.n = 0;
+    gv.skip = 0;
+}
+
+# ==== 14. The picture as a whole ==================================================
+# picture() puts every part in its final place for the current mode;
+# fade() sets the opacity of all of it. Used by the short entrances and
+# whenever the long entrance has to end at once (a prompt arrived).
+fun picture(litdepth) {
+    corners_at(0);
+    dot.sprite.SetOpacity(0);
+    lgs.sprite.SetImage(lgs.crop[8]);
+    hex.sprite.SetImage(hex.crop[12]);
+    ghost.c.SetOpacity(0);
+    ghost.v.SetOpacity(0);
+    beam_stop();
+    sparks_off();
+    bez.on = 1;
+    net_final(litdepth);
+    local.n = rest_frame();
+    br_place(frx0[local.n], fry0[local.n], frx1[local.n], fry1[local.n]);
+    br.step = 6;
+    if (!prompting) wm_show(8);
+    if (HK == 0) head_put();
+}
+fun fade(f) {
+    local.j = 0;
+    while (local.j < 4) { corner.sp[local.j].SetOpacity(f); local.j = local.j + 1; }
+    if (FIELD) field.sprite.SetOpacity(f);
+    lgs.sprite.SetOpacity(f);
+    hex.sprite.SetOpacity(f);
+    plate.sprite.SetOpacity(f);
+    bez_opacity(f);
+    ring_all(f);
+    br_opacity(f);
+    local.j = 0;
+    while (local.j < nseg) {
+        sdim[local.j].SetOpacity(f);
+        if (lstep[local.j] > 0) slit[local.j].SetOpacity(f);
+        local.j = local.j + 1;
+    }
+    local.j = 0;
+    while (local.j < nnode) { nspr[local.j].SetOpacity(f); local.j = local.j + 1; }
+    if (!prompting) wm.sprite.SetOpacity(f);
+    if (HK == 0) head.sprite.SetOpacity(f);
+}
+fun final_depth() {
+    if (HK == 0) return 12;               # boot: all powered
+    if (HK == 3) return 2;                # restart: the spokes stay lit
+    return 0;                             # updates, shutdown: unpowered
+}
+fun hold_begin() {
+    global.seq = 0;
+    global.ht0 = tick;
+    gv.skip = 1;
+    if (HK == 0 && rooted && !prompting && br.x0 != frx0[1]) br_goto(1);
+    if (calm) return 0;
+    if (HK == 0 || upd.known) comet_show(1);
+    else { rc.on = 1; rc.c = 0; rc.t0 = tick; }
+}
+fun settle() {
+    picture(final_depth());
+    fade(1);
+    glow_set(glow.mid);
+    hold_begin();
+}
+
+# ---- boot entrance: 84 ticks (2.8 s) ----------------------------------------------
+tab3 = [0.35, 0.7, 1];
+ghost.dx = [6, 3, 1];
+ghost.op = [0.85, 0.55, 0.25];
+fun entrance_boot(t) {
+    local.j = 0;
+    if (t <= 2) {
+        corners_at(corner.slide[t] * XS);
+        while (local.j < 4) { corner.sp[local.j].SetOpacity(1); local.j = local.j + 1; }
+        if (FIELD) field.sprite.SetOpacity(tab3[t]);
+    }
+    # ignite: the cyan node, then the S, then the hexagon
+    if (t >= 3 && t <= 5) dot.sprite.SetOpacity(tab3[t - 3]);
+    if (t >= 4 && t <= 11) lgs.sprite.SetImage(lgs.crop[t - 3]);
+    if (t == 11) dot.sprite.SetOpacity(0);
+    if (t >= 12 && t <= 23) hex.sprite.SetImage(hex.crop[t - 11]);
+    # lock: once, three ticks; two flat copies close in from left and right
+    if (t >= 23 && t <= 25) {
+        ghost.c.SetX(LX - ghost.dx[t - 23] * XS);
+        ghost.v.SetX(LX + ghost.dx[t - 23] * XS);
+        ghost.c.SetOpacity(ghost.op[t - 23]);
+        ghost.v.SetOpacity(ghost.op[t - 23]);
+    }
+    if (t == 26) { ghost.c.SetOpacity(0); ghost.v.SetOpacity(0); }
+    if (t >= 23 && t <= 26) glow_set((t - 22) * 0.125);
+    if (t == 24) beam_start();
+    # the instrument
+    if (t >= 26 && t <= 28) {
+        plate.sprite.SetOpacity(tab3[t - 26]);
+        bez_opacity(tab3[t - 26]);
+        bez.on = 1;
+    }
+    if (t >= 26 && ring.shown < NSEG) {
+        local.j = 0;
+        while (local.j < NSEG / 6) {
+            ring.sp[ring.shown].SetOpacity(1);
+            ring.shown = ring.shown + 1;
+            local.j = local.j + 1;
+        }
+        if (ring.shown >= NSEG) { head_put(); head.sprite.SetOpacity(1); }
+    }
+    if (t >= 29 && t <= 34) {
+        local.d = br.close[t - 29] * XS;
+        br_place(frx0[0] - local.d, fry0[0] - local.d, frx1[0] + local.d, fry1[0] + local.d);
+        if (t == 29) br_opacity(1);
+    }
+    # the network: drawn, then powered six ticks behind
+    if (t >= 30 && t < 78) bloom_tick(t - 30);
+    if (t == 78) {
+        local.j = 0;
+        while (local.j < NSPK) { spk.a[local.j].SetOpacity(0); local.j = local.j + 1; }
+        spk.na = 0;
+    }
+    if (t >= 36 && t < 84) power_tick(t - 36);
+    if (t >= 38 && t <= 45) wm_show(t - 37);
+    if (t >= 84) { sparks_off(); hold_begin(); }
+}
+# ---- short entrance: the finished picture in three steps ---------------------------
+fun entrance_short(t) {
+    if (t == 0) picture(final_depth());
+    if (t <= 2) { fade(tab3[t]); glow_set(glow.mid * tab3[t]); }
+    if (t >= 2) hold_begin();
+}
+# ---- shutdown and restart: powered picture, then the power goes back ---------------
+fun entrance_down(t) {
+    if (t == 0) picture(12);
+    if (t <= 5) {
+        if (t % 2 == 0) { fade(tab3[t / 2]); glow_set(0.85 * tab3[t / 2]); }
+        return 0;
+    }
+    if (t < 54) { discharge_tick(t - 6, final_depth()); return 0; }
+    if (t == 54) sparks_off();
+    if (t <= 56) { glow_set(0.85 + (t - 53) * 0.05); return 0; }
+    if (HK == 3) {
+        if (t <= 59) { glow_set(1.0 - (t - 56) * 0.05); return 0; }
+        hold_begin();
+        return 0;
+    }
+    if (t <= 71) { glow_set(1.0 - (t - 56) * 0.55 / 15); return 0; }
+    hold_begin();
+}
+
+# ==== 15. Refresh: one call = one step of everything ================================
+fun refresh_cb() {
+    global.tick = tick + 1;
+    local.t = tick;
+    gv.n = gv.n + 1;
+    if (seq != 0 || prompting) gv.skip = 1;
+
+    if (seq == 1) entrance_boot(local.t);
+    else if (seq == 2) entrance_short(local.t);
+    else if (seq == 3) entrance_down(local.t);
+    else {
+        # hold: the life signs
+        if (comet.on) comet_tick();
+        if (rc.on) rc_tick();
+        if (gv.level < 2) glow_set(glow.mid + glow.amp * Math.Sin((local.t - ht0) * 0.0714 + glow.ph));
+    }
+    if (BEZEL && bez.on && !calm && !prompting && gv.level < 1 && local.t % 4 == 0) bez_turn();
+
+    # real data
+    if (ring.shown >= NSEG) {
+        if (upd.known) ring_set(Math.Int(upd.pct * NSEG / 100));
+        else if (HK == 0) {
+            if (q < p_real) global.q = Math.Min(p_real, q + 0.012);
+            ring_set(Math.Int(q * NSEG));
+        }
+    }
+    pulse_tick();
+    slot_tick();
+    msg_tick();
+    if (prompting) prompt_tick();
+
+    br_tick();
+    beam_tick();
+    ping_tick();
+    if (tracing && local.t % 15 == 0) Image.Text("PROBE tick=" + local.t, 1, 1, 1);
 }
 Plymouth.SetRefreshFunction(refresh_cb);
 
-# ---- boot messages ------------------------------------------------------------
-message.sprite = Sprite();
-fun show_message(text) {
-    message.image = Image.Text(text, 0.58, 0.64, 0.72, 1, "Sans 10");
-    message.sprite.SetImage(message.image);
-    message.sprite.SetPosition(cx - message.image.GetWidth() / 2, track.y + 150, 10);
+# ==== 16. What the daemon tells us ================================================
+fun progress_cb(seconds, fraction) {
+    if (HK == 0) global.p_real = fraction;
+    gov_feed(seconds);
 }
-fun clear_message() { message.sprite.SetImage(Image.Text("", 0, 0, 0)); }
-Plymouth.SetDisplayMessageFunction(fun (t) { show_message(t); });
-Plymouth.SetHideMessageFunction(fun (t) { clear_message(); });
-Plymouth.SetMessageFunction(fun (t) { show_message(t); });
+Plymouth.SetBootProgressFunction(progress_cb);
 
-# ---- passphrase prompt --------------------------------------------------------
-entry.image = Image("entry.png");
-entry.sprite = Sprite(entry.image);
-entry.x = cx - entry.image.GetWidth() / 2;
-entry.y = track.y + 44;
-entry.sprite.SetPosition(entry.x, entry.y, 20);
-entry.sprite.SetOpacity(0);
-prompt.sprite = Sprite();
-bullet.image = Image("bullet.png");
-bullets = [];
-bullet_count = 0;
-
-fun hide_prompt() {
-    entry.sprite.SetOpacity(0);
-    prompt.sprite.SetOpacity(0);
-    for (i = 0; i < bullet_count; i++) bullets[i].SetOpacity(0);
-}
-
-fun display_password_cb(prompt_text, count) {
-    track.sprite.SetOpacity(0);
-    bar.sprite.SetOpacity(0);
-    glowbar.sprite.SetOpacity(0);
-    entry.sprite.SetOpacity(1);
-    prompt.image = Image.Text(prompt_text, 0.90, 0.91, 0.92, 1, "Sans 11");
-    prompt.sprite.SetImage(prompt.image);
-    prompt.sprite.SetPosition(cx - prompt.image.GetWidth() / 2, entry.y - 30, 20);
-    prompt.sprite.SetOpacity(1);
-    max = Math.Int((entry.image.GetWidth() - 28) / 18);
-    shown = count;
-    if (shown > max) shown = max;
-    for (i = bullet_count; i < shown; i++) {
-        bullets[i] = Sprite(bullet.image);
-        bullets[i].SetPosition(entry.x + 16 + i * 18, entry.y + entry.image.GetHeight() / 2 - 6, 21);
-    }
-    if (shown > bullet_count) bullet_count = shown;
-    for (i = 0; i < bullet_count; i++) {
-        if (i < shown) bullets[i].SetOpacity(1);
-        else bullets[i].SetOpacity(0);
+fun status_cb(text) {
+    # one pulse per reported status, once the network is there to carry it
+    if (HK == 0 && seq == 0 && !calm) pulse_spawn();
+    if (show_status && text) {
+        stat.text = text;
+        stat.dirty = 1;
+        stat.last = tick;
     }
 }
-Plymouth.SetDisplayPasswordFunction(display_password_cb);
+Plymouth.SetUpdateStatusFunction(status_cb);
 
-fun display_normal_cb() {
-    hide_prompt();
-    if (Plymouth.GetMode() == "boot") {
-        track.sprite.SetOpacity(1);
-        bar.sprite.SetOpacity(1);
-        glowbar.sprite.SetOpacity(1);
-    }
+fun root_cb() {
+    global.rooted = 1;
+    if (HK != 0 || seq != 0 || prompting) return 0;
+    br_goto(1);
+    beam_start();
 }
-Plymouth.SetDisplayNormalFunction(display_normal_cb);
+Plymouth.SetRootMountedFunction(root_cb);
 
-Plymouth.SetDisplayQuestionFunction(fun (prompt_text, entry_text) {
-    show_message(prompt_text + " " + entry_text);
-});
-Plymouth.SetQuitFunction(fun () { logo.sprite.SetOpacity(1); });
+# From the first percentage on the ring shows that percentage and nothing
+# else, in every mode, and the figure is written under the wordmark.
+fun update_cb(percent) {
+    if (!upd.known) {
+        upd.known = 1;
+        if (rc.on) rc_stop();
+        if (seq == 0 && !calm) comet_show(1);
+    }
+    upd.pct = Math.Clamp(percent, 0, 100);
+    head_put();
+    head.sprite.SetOpacity(1);
+    upd_draw();
+}
+Plymouth.SetSystemUpdateFunction(update_cb);
+
+fun password_cb(text, bullets) {
+    prompt_open(1, text);
+    cells_set(bullets);
+}
+Plymouth.SetDisplayPasswordFunction(password_cb);
+fun question_cb(text, entry) {
+    prompt_open(2, text);
+    answer_set(entry);
+}
+Plymouth.SetDisplayQuestionFunction(question_cb);
+Plymouth.SetDisplayNormalFunction(prompt_close);
+Plymouth.SetDisplayMessageFunction(message_cb);
+Plymouth.SetHideMessageFunction(hide_message_cb);
+
+# The splash is taken down right after this call: no exit animation is
+# possible, only a last frame.
+fun quit_cb() {
+    comet_show(0);
+    pulses_off();
+    sparks_off();
+    beam_stop();
+    if (seq == 0 && !prompting) br_place(frx0[1], fry0[1], frx1[1], fry1[1]);
+}
+Plymouth.SetQuitFunction(quit_cb);
+
+trace("tier=" + TIER + " xs=" + XS + " mode=" + mode + " nseg=" + nseg + " nnode=" + nnode + " nterm=" + nterm);
+trace("script end");

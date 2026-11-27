@@ -10,7 +10,7 @@ live reference: `shadow-ui-gallery` (`desktop/ui/gallery/`).
 
 | Name | Purpose |
 |---|---|
-| `Theme` | Design tokens (generated). Colours: `bgBase bgSurface bgRaised bgOverlay bgInput bgHover bgPressed borderSubtle border borderStrong textPrimary textSecondary textMuted textDisabled textOnAccent success warning danger accent accentFill accentViolet accentBlue …`. Type: `fontUi fontMono fontSizeCaption/Small/Body/BodyLarge/Title/Heading/Display/Hero weightRegular/Medium/Semibold/Bold`. Layout: `spaceXxs…spaceXxxl radiusXs…radiusPill icon iconSmall iconLarge controlHeight rowHeight headerHeight sidebarWidth`. Motion: `motionFast/Normal/Slow`. Helpers: `alpha(c,a) mix(a,b,t) formatBytes(n) formatRate(n) formatDuration(s) accentByName(name)`. |
+| `Theme` | Design tokens (generated). Colours: `bgBase bgSurface bgRaised bgOverlay bgInput bgHover bgPressed borderSubtle border borderStrong textPrimary textSecondary textMuted textDisabled textOnAccent success warning danger accent accentFill accentViolet accentBlue …`. Type: `fontUi fontMono fontSizeCaption/Small/Body/BodyLarge/Title/Heading/Display/Hero weightRegular/Medium/Semibold/Bold`. Layout: `spaceXxs…spaceXxxl radiusXs…radiusPill icon iconSmall iconLarge controlHeight rowHeight headerHeight sidebarWidth`. Motion (milliseconds; all 0 with "Reduce motion"): `motionInstant/Fast/Normal/Slow/Page` for controls and pages, and for menus and popups `motionReveal` (300), `motionRevealPopup` (220), `motionRevealMenu` (160), `motionExit` (100), `motionExitMenu` (80), `motionSettle` (260), `motionStagger` (16); curves `easingStandard/Decelerate/Accelerate`. Helpers: `alpha(c,a) mix(a,b,t) formatBytes(n) formatRate(n) formatDuration(s) accentByName(name)`. |
 | `Appearance` | Live appearance state shared by all processes: `dark`, `accent`, `reduceMotion`, `transparency`, `fontScale` (read/write). |
 
 ## Components
@@ -44,6 +44,22 @@ live reference: `shadow-ui-gallery` (`desktop/ui/gallery/`).
 
 ## Conventions
 
+* Durations and delays are tokens (`Theme.motion*`), never numbers: a token
+  is 0 with "Reduce motion", a number is not. An animation that loops
+  (`loops: Animation.Infinite`) also needs `running: … && !Appearance.reduceMotion`,
+  because a loop of length 0 never ends. The full list of tokens is printed
+  by `python3 scripts/gen-tokens.py docs tokens.md`.
+* Popups of the style (`Menu`, `ComboBox`, `Popup`, `Dialog`) open with a
+  fade over `motionFast` and a line in the accent colour that grows along
+  the top edge; they close with a fade over `motionInstant`. Menus and
+  drop-down lists also drop 4 px into place, background and rows together.
+  `Popup` and `Dialog` do not move at all: the style cannot move what an
+  application puts into them, and a background that moved alone would no
+  longer frame it. A popup that replaces the style's `background` keeps the
+  fade and loses the drop and the line.
+* `ProgressBar` without a known amount shows a travelling piece; with
+  "Reduce motion" the piece rests in the middle, also when the switch is
+  turned on while it travels.
 * A list/table/page has three explicit states: loading, populated, and
   empty/error (`NxEmptyState`).
 * Layouts: children of `NxPage`/`NxSection` use `Layout.*` properties, not

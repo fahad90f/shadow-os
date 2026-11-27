@@ -13,12 +13,16 @@ T.Popup {
 
     padding: Theme.spaceMd
 
+    // Opening: the popup fades in while a line grows along its top edge;
+    // what the popup contains is in place from the first frame. Nothing
+    // moves: the style cannot move the content a popup is given, and a
+    // background that moved alone would no longer frame it. Closing: a
+    // short fade.
     enter: Transition {
         NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionFast; easing.type: Easing.OutCubic }
-        NumberAnimation { property: "scale"; from: 0.96; to: 1; duration: Theme.motionFast; easing.type: Easing.OutCubic }
     }
     exit: Transition {
-        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.motionFast; easing.type: Easing.InCubic }
+        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.motionInstant }
     }
 
     background: Rectangle {
@@ -26,6 +30,17 @@ T.Popup {
         radius: Theme.radiusMd
         border.width: Theme.borderWidth
         border.color: Theme.border
+
+        // The trace of this popup: a line in the accent colour that grows
+        // along the top edge while it opens.
+        Rectangle {
+            id: trace
+            readonly property real grown: control.opacity
+            x: parent.radius
+            width: (parent.width - parent.radius * 2) * grown
+            height: 1
+            color: Theme.alpha(Theme.accent, 0.7)
+        }
 
         // Presses that nothing in the popup consumes stop here. Without this,
         // a tap on popup content that only uses pointer handlers with a passive

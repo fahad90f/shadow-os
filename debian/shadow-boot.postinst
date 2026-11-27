@@ -11,6 +11,15 @@ refresh() {
     mkdir -p "$STATE_DIR"
     if shadow-grub-install; then
         rm -f "$FAILED_FLAG"
+        # shadow-grub-install only copies the boot menu theme to /boot. The
+        # lines that load the theme's fonts are written into grub.cfg by
+        # update-grub, one per font file, so a theme whose font files changed
+        # shows fallback fonts until grub.cfg is written again. Do that here,
+        # only where a grub.cfg already exists, and never fail the package run
+        # over it.
+        if command -v update-grub >/dev/null 2>&1 && [ -f /boot/grub/grub.cfg ]; then
+            update-grub >/dev/null 2>&1 || echo "shadow-boot: WARNING: update-grub failed" >&2
+        fi
     else
         # Do not fail the package run (that would leave apt half-configured),
         # but leave a durable marker that the Updater and Security Center report.

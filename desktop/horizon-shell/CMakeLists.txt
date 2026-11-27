@@ -17,7 +17,8 @@ pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 # HORIZON_MODULES restricts the build to the named modules ("-" for none), so
 # a module can be developed while others are unfinished. Default: all.
 set(HORIZON_MODULES "" CACHE STRING "Semicolon-separated shell modules to build (default: all; '-' for none)")
-file(GLOB HORIZON_QML CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} qml/*.qml)
+# qml/*.js: script libraries the QML imports by file name (Fx.js).
+file(GLOB HORIZON_QML CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} qml/*.qml qml/*.js)
 file(GLOB _module_dirs CONFIGURE_DEPENDS LIST_DIRECTORIES true modules/*)
 set(HORIZON_MODULE_SOURCES "")
 set(HORIZON_MODULE_DIRS "")

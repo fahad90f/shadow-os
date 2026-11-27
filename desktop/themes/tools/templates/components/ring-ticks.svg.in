@@ -1,0 +1,8 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- @@GENERATED@@ -->
+<!-- The tick ring around the hexagon of the login and lock screens: 60 ticks
+     (radius 71.5 to 75) and 12 longer index marks (radius 70 to 75) in a 152
+     box, the face on which the two time nodes sit. @@VARIANT@@ -->
+<svg xmlns="http://www.w3.org/2000/svg" width="152" height="152" viewBox="0 0 152 152">
+@@TICKS@@
+</svg>

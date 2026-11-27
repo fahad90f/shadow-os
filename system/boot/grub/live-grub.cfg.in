@@ -14,14 +14,35 @@ fi
 
 set gfxmode=1280x800,1280x720,1024x768,auto
 set gfxpayload=keep
-if loadfont $prefix/fonts/unicode.pf2 ; then
+# The menu font. Debian's signed UEFI image carries unicode.pf2 inside itself
+# and finds it by the plain name "unicode"; under Secure Boot that is the only
+# font GRUB accepts (font files from the medium are refused). The BIOS image
+# reads the file from the medium.
+if [ x$feature_default_font_path = xy ] ; then
+    font=unicode
+else
+    font=$prefix/fonts/unicode.pf2
+fi
+if loadfont $font ; then
     insmod gfxterm
     insmod png
     terminal_output gfxterm
 fi
 
 if [ -f $prefix/themes/shadow/theme.txt ]; then
+    # The theme's own fonts. GRUB does not load them by itself, and the names
+    # in theme.txt only work once they are loaded. The monospace one comes
+    # last: the font loaded last is GRUB's fallback. Under Secure Boot
+    # ($lockdown is "y") they would be refused, and all text is drawn with the
+    # built-in font instead.
+    if [ "$lockdown" != "y" ]; then
+        loadfont $prefix/themes/shadow/a-sans-16.pf2
+        loadfont $prefix/themes/shadow/b-monob-28.pf2
+        loadfont $prefix/themes/shadow/z-mono-14.pf2
+    fi
     set theme=$prefix/themes/shadow/theme.txt
+    # Without the export the "Advanced options" submenu shows GRUB's plain menu.
+    export theme
 else
     set menu_color_normal=cyan/black
     set menu_color_highlight=white/blue

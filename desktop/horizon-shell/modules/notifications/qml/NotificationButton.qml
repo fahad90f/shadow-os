@@ -22,4 +22,7 @@ PanelButton {
         : notifications.unreadCount > 0 ? qsTr("Notifications (%n new)", "", notifications.unreadCount)
         : qsTr("Notifications")
     onClicked: shell.trigger("notifications")
+    // The notification centre hangs from the bell (PopupSurface.originButton).
+    Component.onCompleted: shell.registerOverlayButton("notifications", root)
+    Component.onDestruction: shell.unregisterOverlayButton("notifications", root)
 }

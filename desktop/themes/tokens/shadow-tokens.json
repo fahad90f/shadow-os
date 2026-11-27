@@ -140,7 +140,14 @@
     "fast":    140,
     "normal":  220,
     "slow":    340,
-    "page":    460
+    "page":    460,
+    "reveal":      300,
+    "revealPopup": 220,
+    "revealMenu":  160,
+    "exit":        100,
+    "exitMenu":    80,
+    "settle":      260,
+    "stagger":     16
   },
 
   "easing": {

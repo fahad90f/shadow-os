@@ -7,6 +7,11 @@ import org.shadow.ui
 // Authentication prompt of the session's polkit agent. It is shown on the
 // overlay layer with exclusive keyboard focus, so no application window can
 // cover it or read what is typed into it.
+//
+// It is the plainest of the overlays on purpose: the text and the password
+// field are complete, and the field has the keyboard, in the first frame.
+// Only the scrim and the card's background fade in (Theme.motionFast) and
+// four brackets close onto the card. Closing takes no time at all.
 OverlaySurface {
     id: root
 
@@ -14,6 +19,8 @@ OverlaySurface {
     scrimOpacity: 0.72
     modal: true
     open: polkitAgent.active
+    revealDuration: Theme.motionFast
+    animatedExit: false
 
     onOpenChanged: if (open) { secret.text = ""; secret.forceActiveFocus() }
 
@@ -28,14 +35,25 @@ OverlaySurface {
         function onPromptChanged() { secret.text = ""; secret.forceActiveFocus() }
     }
 
-    Rectangle {
+    Item {
         anchors.centerIn: parent
         width: 480
         height: column.implicitHeight + Theme.spaceXl * 2
-        radius: Theme.radiusLg
-        color: Theme.bgOverlay
-        border.width: Theme.borderWidth
-        border.color: Theme.border
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radiusLg
+            color: Theme.bgOverlay
+            border.width: Theme.borderWidth
+            border.color: Theme.border
+            opacity: 0.6 + 0.4 * root.ph(0, 0.6)
+        }
+        FxBrackets {
+            anchors.fill: parent
+            anchors.margins: -Theme.spaceXs
+            spread: 12 * (1 - root.ph(0.3, 1))
+            strength: root.ph(0.3, 1) * (1 - 0.6 * root.settle)
+        }
 
         ColumnLayout {
             id: column

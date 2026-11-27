@@ -4,7 +4,13 @@
 //
 // Every window, minimised ones included, as a live preview card. Minimised
 // windows are dimmed and marked. The selected card lifts and glows in the
-// accent colour; the cards spring in when the switcher opens.
+// accent colour; the cards rise in one after the other when the switcher
+// opens, without overshoot.
+//
+// This file runs inside KWin, where the Shadow theme and settings do not
+// exist. Its durations are multiples of Kirigami.Units.longDuration (200 ms
+// by default), which KWin scales with the AnimationDurationFactor of
+// kdeglobals: shadow-apply-appearance sets that to 0 for "Reduce motion".
 import QtQuick
 import QtQuick.Window
 import org.kde.kwin 3.0 as KWin
@@ -22,6 +28,11 @@ KWin.TabBoxSwitcher {
     readonly property color textPrimary: "#E9EEF8"
     readonly property color textMuted: "#6B7892"
     readonly property string fontUi: "Inter Variable"
+    // The motion of the switcher, in units of the desktop's animation length.
+    readonly property int unit: Kirigami.Units.longDuration
+    readonly property int openDuration: Math.round(unit * 1.3)      // 260 ms
+    readonly property int stateDuration: Math.round(unit * 0.7)     // 140 ms
+    readonly property int staggerStep: Math.round(unit * 0.12)      // 24 ms
 
     Instantiator {
         active: tabBox.visible
@@ -35,10 +46,10 @@ KWin.TabBoxSwitcher {
             height: tabBox.screenGeometry.height
             visible: true
 
-            // Opening: scrim fades, panel scales up with a little overshoot.
+            // Opening: the scrim fades and the panel grows to its size, decelerating.
             property real shown: 0
             Component.onCompleted: shown = 1
-            Behavior on shown { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+            Behavior on shown { NumberAnimation { duration: tabBox.openDuration; easing.type: Easing.OutCubic } }
 
             Rectangle {
                 anchors.fill: parent
@@ -139,7 +150,7 @@ KWin.TabBoxSwitcher {
                     preferredHighlightBegin: width / 2 - panel.cardWidth / 2
                     preferredHighlightEnd: width / 2 + panel.cardWidth / 2
                     highlightRangeMode: contentWidth > width ? ListView.ApplyRange : ListView.NoHighlightRange
-                    highlightMoveDuration: 220
+                    highlightMoveDuration: tabBox.unit
                     onCurrentIndexChanged: tabBox.currentIndex = currentIndex
 
                     delegate: Item {
@@ -160,8 +171,8 @@ KWin.TabBoxSwitcher {
                         Component.onDestruction: if (isMinimized) --cards.minimizedCount
                         SequentialAnimation {
                             id: enterAnim
-                            PauseAnimation { duration: Math.min(card.index, 8) * 35 }
-                            NumberAnimation { target: card; property: "enter"; to: 1; duration: 380; easing.type: Easing.OutBack; easing.overshoot: 1.4 }
+                            PauseAnimation { duration: Math.min(card.index, 8) * tabBox.staggerStep }
+                            NumberAnimation { target: card; property: "enter"; to: 1; duration: tabBox.openDuration; easing.type: Easing.OutCubic }
                         }
                         opacity: enter
                         transform: Translate { y: (1 - card.enter) * 26 }
@@ -179,9 +190,9 @@ KWin.TabBoxSwitcher {
                             width: parent.width
                             height: panel.cardHeight
                             scale: card.isCurrent ? 1.06 : (mouse.containsMouse ? 1.02 : 1.0)
-                            Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 2.2 } }
+                            Behavior on scale { NumberAnimation { duration: tabBox.stateDuration; easing.type: Easing.OutCubic } }
                             y: card.isCurrent ? -6 : 0
-                            Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                            Behavior on y { NumberAnimation { duration: tabBox.stateDuration; easing.type: Easing.OutCubic } }
 
                             // Accent glow under the selected card.
                             Rectangle {
@@ -192,7 +203,7 @@ KWin.TabBoxSwitcher {
                                 border.width: 10
                                 border.color: Qt.rgba(tabBox.accent.r, tabBox.accent.g, tabBox.accent.b, 0.16)
                                 opacity: card.isCurrent ? 1 : 0
-                                Behavior on opacity { NumberAnimation { duration: 200 } }
+                                Behavior on opacity { NumberAnimation { duration: tabBox.stateDuration } }
                             }
 
                             Rectangle {
@@ -202,7 +213,7 @@ KWin.TabBoxSwitcher {
                                 color: tabBox.cardColor
                                 border.width: card.isCurrent ? 2 : 1
                                 border.color: card.isCurrent ? tabBox.accent : tabBox.borderColor
-                                Behavior on border.color { ColorAnimation { duration: 180 } }
+                                Behavior on border.color { ColorAnimation { duration: tabBox.stateDuration } }
                                 clip: true
 
                                 KWin.WindowThumbnail {

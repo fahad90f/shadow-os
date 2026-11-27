@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
+import org.kde.layershell as LayerShell
 import org.shadow.ui
 
 // Root of the Shadow Horizon shell: creates the surfaces of every screen and
@@ -20,8 +21,13 @@ QtObject {
     readonly property string openOverlayName: activeOverlay && activeOverlay.open ? activeOverlay.overlayName : ""
 
     function present(overlay) {
-        if (activeOverlay && activeOverlay !== overlay) activeOverlay.hide()
+        // Without an exit: a closing overlay stays mapped and keeps the
+        // keyboard, and two keyboard overlays must never be mapped together.
+        if (activeOverlay && activeOverlay !== overlay) activeOverlay.closeNow()
         activeOverlay = overlay
+        // A popup under the panel hangs from the button that belongs to it.
+        if (overlay.originButton !== undefined)
+            overlay.originButton = overlayButton(overlay.overlayName, overlay.screen)
         overlay.show()
     }
     function toggle(overlay) {
@@ -37,6 +43,26 @@ QtObject {
         overlayNames = Object.keys(namedOverlays)
     }
     function hasOverlay(name) { return overlayNames.indexOf(name) >= 0 }
+
+    // Panel buttons that open a named overlay, one per panel (screen). A
+    // button is a PanelButton: it tells its screen and its centre.
+    property var overlayButtons: ({})
+    function registerOverlayButton(name, button) {
+        const list = (overlayButtons[name] || []).filter(b => b !== button)
+        list.push(button)
+        overlayButtons[name] = list
+    }
+    function unregisterOverlayButton(name, button) {
+        overlayButtons[name] = (overlayButtons[name] || []).filter(b => b !== button)
+    }
+    function overlayButton(name, screen) {
+        const list = (overlayButtons[name] || []).filter(b => b !== null)
+        // Screens are compared by name: the overlay's screen and the one a
+        // panel window reports are different objects for the same screen.
+        for (let i = 0; i < list.length; i++)
+            if (list[i].hostScreen && screen && list[i].hostScreen.name === screen.name) return list[i]
+        return list.length === 1 ? list[0] : null
+    }
 
     // What a named action (global shortcut, panel button) does. Actions the
     // core does not know open the overlay registered under that name, or are
@@ -114,6 +140,8 @@ QtObject {
         target: Appearance
         function onDarkChanged() { session.run("shadow-apply-appearance") }
         function onAccentChanged() { session.run("shadow-apply-appearance") }
+        // Also carries Reduce motion to the lock screen and to KWin.
+        function onReduceMotionChanged() { session.run("shadow-apply-appearance") }
     }
 
     property Connections panicErrors: Connections {
@@ -180,31 +208,43 @@ QtObject {
     }
 
     // ---- transient messages from the shell itself ------------------------------------
+    // A strip under the panel. It drops 8 px into place while it fades in
+    // and leaves the same way (Theme.motionFast); the surface stays mapped
+    // until it has gone.
     property ShellSurface toast: ShellSurface {
         id: toast
         screen: shell.primaryScreen
         layer: "overlay"
         scope: "shadow-shell-toast"
         anchorTop: true
+        // Under the panel also when the panel reserves no space for itself
+        // (it does only when it never hides).
+        LayerShell.Window.margins.top: panel.exclusiveZone > 0 ? 0 : Theme.panelHeight
         width: Math.min(560, (screen ? screen.width : 1280) - 64)
-        height: toastText.implicitHeight + Theme.spaceMd * 2 + Theme.spaceLg
-        visible: false
+        height: toastText.implicitHeight + Theme.spaceMd * 2 + Theme.spaceSm
+        visible: wanted || shown > 0
+
+        property bool wanted: false
+        property real shown: wanted ? 1 : 0
+        Behavior on shown { NumberAnimation { duration: Theme.motionFast } }
 
         function show(message) {
             toastText.text = message
-            visible = true
+            wanted = true
             toastTimer.restart()
         }
 
-        Timer { id: toastTimer; interval: 6000; onTriggered: toast.visible = false }
+        Timer { id: toastTimer; interval: 6000; onTriggered: toast.wanted = false }
 
         Rectangle {
             anchors.fill: parent
-            anchors.topMargin: Theme.spaceLg
+            anchors.topMargin: Theme.spaceSm
             radius: Theme.radiusMd
             color: Theme.bgOverlay
             border.width: Theme.borderWidth
             border.color: Theme.alpha(Theme.danger, 0.6)
+            opacity: toast.shown
+            transform: Translate { y: -8 * (1 - toast.shown) }
             Text {
                 id: toastText
                 anchors.fill: parent
@@ -215,7 +255,7 @@ QtObject {
                 wrapMode: Text.WordWrap
                 verticalAlignment: Text.AlignVCenter
             }
-            TapHandler { onTapped: toast.visible = false }
+            TapHandler { onTapped: toast.wanted = false }
         }
     }
 }

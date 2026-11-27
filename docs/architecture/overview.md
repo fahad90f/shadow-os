@@ -33,7 +33,7 @@ repository as it is; statements about what has been tested are in
 | Layer | Source in this repository | What SHADOW adds |
 |---|---|---|
 | Base | `distro/base/package-lists/*.list`, `distro/base/hooks/` | package selection, APT sources (one Debian suite, HTTPS), identity files (`shadow-base-files` diverts `os-release`, `issue`, `issue.net`) |
-| Boot | `system/boot/`, `assets/boot/` | `shadow-boot` (boot-loader maintenance), live-media GRUB menu, GRUB theme, Plymouth theme |
+| Boot | `system/boot/`, `assets/boot/` | `shadow-boot` (boot-loader maintenance), live-media GRUB menu, GRUB menu theme, Plymouth splash for boot, passphrase prompt, updates and shutdown ([boot.md](boot.md#the-splash)) |
 | Kernel | `kernel/` | configuration fragments on top of Debian's source and configuration; not in the image ([../kernel/README.md](../kernel/README.md)) |
 | System services | `security/`, `system/live/` | `shadow-hardening` (sysctl, modprobe, kernel command line, nftables ruleset, audit rules, journald, sudo, NetworkManager defaults), live-session configuration. No service of its own is added: SHADOW ships no daemon |
 | Compositor | `desktop/horizon-shell/session/`, `desktop/themes/` | KWin defaults (`/etc/xdg/kwinrc`), screen-locker defaults, SDDM theme and configuration, lock-screen QML |
