@@ -12,6 +12,7 @@ namespace {
 const int kMinWindow = 400;   // closed candles kept at least
 const int kMaxWindow = 3000;  // and at most
 const size_t kMaxArrays = 80;
+const size_t kKeepFinished = 12;
 const int kAtrPeriod = 14;
 
 bool bullishCandle(const Candle &c) { return c.close > c.open; }
@@ -499,9 +500,8 @@ void Engine::trim()
     size_t done = 0;
     for (const Setup &s : m_setups)
         done += finished(s.status) ? 1 : 0;
-    const size_t keep = size_t(std::max(0, m_settings.keepFinished));
-    if (done > keep) {
-        size_t drop = done - keep;
+    if (done > kKeepFinished) {
+        size_t drop = done - kKeepFinished;
         std::vector<Setup> next;
         for (const Setup &s : m_setups) {
             if (drop > 0 && finished(s.status)) {

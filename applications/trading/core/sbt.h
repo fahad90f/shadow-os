@@ -23,8 +23,10 @@
 //     below the zone, the setup is invalid.
 //  6. PD arrays (fair value gaps, order blocks, demand zones; for a bearish
 //     setup supply zones) at or below the zone, unbroken, and reached by the
-//     move into the zone, confirm it (required by default). The candle that
-//     marks the zone does not count as its own confirmation.
+//     move into the zone, are listed with it. They are not part of the
+//     original rules: only with 'requirePdArray' (off by default) must one
+//     confirm the retest. The candle that marks the zone never counts as its
+//     own confirmation.
 //  7. Entry at the OPEN of the next candle; target Level 3; the stop below
 //     the zone and Level 2 by a fraction of the ATR. Entered only when
 //     reward/risk meets the minimum.
@@ -112,12 +114,11 @@ struct Settings
     bool zoneBody = false;        // zone = low..open of the bearish candle instead of its whole range
     double stopBufferAtr = 0.25;  // the stop beyond the zone, in ATRs
     double minRewardRisk = 1.5;
-    bool requirePdArray = true;
+    bool requirePdArray = false;  // an extra filter; the original 7 rules have no PD arrays
     double pdDistanceAtr = 1.5;   // how far beyond the zone a PD array may lie, in ATRs
     double displacementAtr = 1.2; // a candle body this large is a displacement
     double minGapAtr = 0.05;      // smaller gaps are ignored
     int maxArmedCandles = 200;    // a setup waits this long for its retest
-    int keepFinished = 12;        // finished setups kept (the history view keeps many)
 };
 
 struct Event

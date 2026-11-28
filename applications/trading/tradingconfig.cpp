@@ -341,7 +341,7 @@ void TradingConfig::reload()
     m_sbt.swingStrength = int(clampOr(number("sbt/swing_strength", sd.swingStrength), 1, 5, sd.swingStrength));
     m_sbt.zoneBody = ini.value(QStringLiteral("sbt/zone")).toString().trimmed().toLower() == QLatin1String("body");
     m_sbt.stopBufferAtr = clampOr(number("sbt/stop_buffer_atr", sd.stopBufferAtr), 0, 2, sd.stopBufferAtr);
-    m_sbt.requirePdArray = ini.value(QStringLiteral("sbt/require_pd_array"), true).toBool();
+    m_sbt.requirePdArray = ini.value(QStringLiteral("sbt/require_pd_array"), sd.requirePdArray).toBool();
     m_sbt.pdDistanceAtr = clampOr(number("sbt/pd_distance_atr", sd.pdDistanceAtr), 0.2, 5, sd.pdDistanceAtr);
     m_sbt.maxArmedCandles = int(clampOr(number("sbt/max_wait_candles", sd.maxArmedCandles), 10, 1000, sd.maxArmedCandles));
     m_sbtAiConfirm = ini.value(QStringLiteral("sbt/ai_confirm"), true).toBool();

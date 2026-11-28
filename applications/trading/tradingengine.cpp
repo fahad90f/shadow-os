@@ -559,7 +559,6 @@ void TradingEngine::onCandles(const QString &symbol, const QString &interval, co
         }
         ++m_chartRevision;
         Q_EMIT chartChanged();
-        updateSbtHistory(); // the strategy reads the older candles too
         return;
     }
     if (purpose == QLatin1String("higher")) {
@@ -892,8 +891,6 @@ void TradingEngine::recordClosed(const std::vector<Trade> &closed)
 
 void TradingEngine::afterAccountChange(bool tradeClosed)
 {
-    // The trades drawn on the chart.
-    QMetaObject::invokeMethod(this, &TradingEngine::updateSbtHistory, Qt::QueuedConnection);
     const qint64 now = nowMs();
     m_account.mark(now);
     const AccountView view = accountView(m_config->symbol(), now);
@@ -948,8 +945,8 @@ const QList<TradingEngine::Seat> &TradingEngine::teamSeats()
                         "the ATR and the Bollinger bands, and whether the reward/risk is realistic.")},
         {QStringLiteral("structure"), tr("Structure"),
          QStringLiteral("the 1-2-3 itself: whether Level 1, 2 and 3 are real swing points, the Level 2 zone is the "
-                        "right candle, and the PD arrays (gaps, order blocks, demand/supply) are where the rules "
-                        "want them.")},
+                        "right candle (the lowest bearish candle at 2; bearish: the highest bullish one) and the "
+                        "test did not close through it.")},
         {QStringLiteral("volume"), tr("Volume and candles"),
          QStringLiteral("the candles: the candle that marks the zone, the move away from it, the retest and its "
                         "close, and whether volume confirms them.")},
@@ -1061,10 +1058,12 @@ QString TradingEngine::systemPrompt(const QString &role, double minRewardRisk, c
         "5) The testing candle must not close below the zone (bearish: above it).\n"
         "6) Entry at the next candle's open.\n"
         "7) Target: Level 3.\n"
-        "PD arrays (fair value gaps, order blocks, demand or supply zones) at or beyond Level 2 add confirmation.\n\n"
+        "These 7 rules are the whole strategy. PD arrays (fair value gaps, order blocks, demand or supply zones) "
+        "are not part of it: when the setup lists some they are extra context, and a setup without any is not "
+        "weaker for it.\n\n"
         "- The setup's numbers were computed from the candles by these rules. Check that they agree with the "
-        "snapshot and that the structure is clean: real swings, a decisive break, a meaningful pullback, PD arrays "
-        "that matter. Weigh what argues against it. Use only the snapshot and the setup; assume no news or prices "
+        "snapshot and that the structure is clean: real swings, a decisive break, a meaningful pullback, a "
+        "test of the zone that held. Weigh what argues against it. Use only the snapshot and the setup; assume no news or prices "
         "that are not in them.\n"
         "- Confirm by answering with the setup's direction: buy for a bullish setup, sell for a bearish one. Reject "
         "with hold. Answer the opposite direction only when the snapshot clearly shows the other side is stronger.\n"
@@ -2349,6 +2348,5 @@ QJsonObject TradingEngine::dumpMarket() const
             {QStringLiteral("watchlist"), QJsonArray::fromVariantList(watchlist())},
             {QStringLiteral("quote"), QJsonObject::fromVariantMap(quote())},
             {QStringLiteral("sbt"), QJsonObject::fromVariantMap(sbt())},
-            {QStringLiteral("sbtHistory"), QJsonObject::fromVariantMap(sbtHistory())},
             {QStringLiteral("readings"), QJsonObject::fromVariantMap(readings())}};
 }

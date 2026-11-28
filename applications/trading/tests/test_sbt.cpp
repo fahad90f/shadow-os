@@ -392,6 +392,7 @@ static void testRewardRiskAndPdRequirement()
         Settings s;
         s.displacementAtr = 50; // no order blocks or zones
         s.minGapAtr = 50;       // no gaps
+        s.requirePdArray = true; // the extra filter, off by default
         Run r(s);
         r.closeAll(bullish(), 35);
         const Event *e = r.find("skipped");
@@ -556,8 +557,120 @@ static void testLongRun()
     CHECK(entered > 0);
 }
 
+// The owner's own SBT Model 1 chart (bullish), candle by candle: a rise to
+// Level 1 (candle 6, high 128), a pull-back of bearish candles whose lowest
+// is candle 10 (Level 2 and the zone, 78..91), a rally that closes above
+// Level 1 at candle 14 (the BOS) and runs to Level 3 at candle 17 (182), a
+// fall back into the zone: candle 24 tests it (low 85) and closes inside it
+// (88), so the BUY is the open of candle 25 (88) and the target Level 3. No
+// fair value gap, order block or demand zone is needed: the original rules
+// have none.
+static std::vector<Candle> ownerBullish()
+{
+    std::vector<Candle> v;
+    v.push_back(bar(0, 50, 57, 49, 56));
+    v.push_back(bar(1, 56, 63, 55, 62));
+    v.push_back(bar(2, 62, 71, 61, 70));
+    v.push_back(bar(3, 70, 86, 69, 85));
+    v.push_back(bar(4, 85, 101, 70, 100));    // overlapping wicks: no gaps under the zone
+    v.push_back(bar(5, 100, 112, 85, 110));
+    v.push_back(bar(6, 110, 128, 109, 122));  // 1
+    v.push_back(bar(7, 122, 127, 110, 112));
+    v.push_back(bar(8, 112, 113, 98, 100));
+    v.push_back(bar(9, 100, 101, 88, 90));
+    v.push_back(bar(10, 90, 91, 78, 82));     // 2: the lowest bearish candle
+    v.push_back(bar(11, 82, 94, 79, 92));
+    v.push_back(bar(12, 92, 106, 91, 104));
+    v.push_back(bar(13, 104, 118, 103, 116));
+    v.push_back(bar(14, 116, 135, 115, 133)); // BOS: closes above 128
+    v.push_back(bar(15, 133, 152, 132, 150));
+    v.push_back(bar(16, 150, 167, 149, 165));
+    v.push_back(bar(17, 165, 182, 164, 178)); // 3
+    v.push_back(bar(18, 178, 181, 168, 172));
+    v.push_back(bar(19, 172, 173, 156, 158));
+    v.push_back(bar(20, 158, 159, 141, 143));
+    v.push_back(bar(21, 143, 144, 126, 128));
+    v.push_back(bar(22, 128, 129, 110, 112));
+    v.push_back(bar(23, 112, 113, 95, 97));
+    v.push_back(bar(24, 97, 98, 85, 88));     // the test: into the zone, closes inside it
+    v.push_back(bar(25, 88, 100, 87, 98));    // BUY at its open
+    v.push_back(bar(26, 98, 130, 97, 128));
+    v.push_back(bar(27, 128, 160, 127, 158));
+    v.push_back(bar(28, 158, 185, 157, 183)); // Level 3 reached
+    return v;
+}
+
+static void testTheOwnersChart(const std::vector<Candle> &v, bool bull)
+{
+    const double top = bull ? 91 : 200 - 78, bottom = bull ? 78 : 200 - 91;
+    Run r; // the default rules, nothing switched off
+    r.closeAll(v, 25);
+    const Event *armed = r.find("armed");
+    CHECK(armed != nullptr);
+    if (armed) {
+        const Setup &s = armed->setup;
+        CHECK(s.direction == (bull ? Direction::Bullish : Direction::Bearish));
+        NEAR(s.level1.price, bull ? 128 : 72, 1e-9);
+        CHECK(s.level1.time == v[6].openTime);
+        NEAR(s.level2.price, bull ? 78 : 122, 1e-9);
+        CHECK(s.level2.time == v[10].openTime);
+        CHECK(s.bos.time == v[14].openTime);
+        CHECK(s.zoneTime == v[10].openTime);
+        NEAR(s.zoneTop, top, 1e-9);
+        NEAR(s.zoneBottom, bottom, 1e-9);
+    }
+    CHECK(r.find("skipped") == nullptr);
+    CHECK(r.find("invalidated") == nullptr);
+    const Event *trig = r.find("triggered");
+    CHECK(trig != nullptr);
+    if (trig) {
+        CHECK(trig->setup.retest.time == v[24].openTime);
+        NEAR(trig->setup.level3.price, bull ? 182 : 18, 1e-9);
+        CHECK(trig->setup.level3.time == v[17].openTime);
+        NEAR(trig->setup.target, bull ? 182 : 18, 1e-9);
+        CHECK(bull ? trig->setup.stop < 78 : trig->setup.stop > 122); // beyond the zone
+    }
+    CHECK(r.find("entered") == nullptr); // only when the next candle opens
+    Candle forming = v[25];
+    forming.closed = false;
+    forming.high = forming.low = forming.close = forming.open;
+    r.form(forming);
+    const Event *in = r.find("entered");
+    CHECK(in != nullptr);
+    if (in) {
+        NEAR(in->setup.entry, bull ? 88 : 112, 1e-9);
+        CHECK(in->setup.entryTime == v[25].openTime);
+    }
+    r.closeAll(v, v.size());
+    CHECK(r.count("entered") == 1);
+    const Event *hit = r.find("target");
+    CHECK(hit != nullptr);
+    if (hit)
+        CHECK(hit->setup.outcomeTime == v[28].openTime);
+    CHECK(r.find("stopped") == nullptr);
+
+    // Rule 5: the testing candle must not close beyond the zone.
+    std::vector<Candle> broken = v;
+    broken[24] = bull ? bar(24, 97, 98, 74, 76) : mirror({bar(24, 97, 98, 74, 76)})[0];
+    broken[24].openTime = v[24].openTime;
+    Run b;
+    b.closeAll(broken, broken.size());
+    const Event *bad = b.find("invalidated");
+    CHECK(bad != nullptr);
+    if (bad)
+        CHECK(bad->setup.note.find(bull ? "closed below" : "closed above") != std::string::npos);
+    CHECK(b.find("entered") == nullptr);
+}
+
+static void testOwnersCharts()
+{
+    testTheOwnersChart(ownerBullish(), true);
+    testTheOwnersChart(mirror(ownerBullish()), false); // the bearish chart is the same picture upside down
+}
+
 int main()
 {
+    testOwnersCharts();
     testBullish();
     testBearish();
     testCloseThroughTheZoneInvalidates();

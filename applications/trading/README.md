@@ -51,17 +51,25 @@ real ones.
       zone without a new high; it follows a new high until then;
    5. the **retest**: a closed candle reaches the zone; if it (or any candle
       before it) closes **below** the zone, the setup is invalid;
-   6. **PD arrays** (a dedicated detector in the same engine): fair value
-      gaps, order blocks (the last opposite candle before a displacement)
-      and demand zones (a small-bodied base before a displacement); for a
-      bearish setup supply. Valid only if on the setup's side, at or below
-      Level 2 (bearish: at or above), within 1.5 ATR, unbroken (no close
-      through it), a gap not yet filled, and reached by the move into the
-      zone. The candle that marks the zone does not confirm itself. At least
-      one must confirm the retest (*PD array required*);
-   7. **entry at the next candle's open**, target **Level 3**, the stop past
+   6. **entry at the next candle's open**, target **Level 3**, the stop past
       the zone and Level 2 by a quarter ATR (*Stop beyond the zone*); entered
       only when reward/risk meets the minimum of the risk rules.
+
+   These follow the strategy's own 7 rules (a proper 1-2-3, a BOS, the
+   lowest bearish candle at 2 marked, wait for the test, the testing candle
+   must not close beyond the zone, enter at the next candle's open, target
+   Level 3); `tests/test_sbt.cpp` replays the strategy's own bullish and
+   bearish charts candle by candle with the default settings.
+
+   **PD arrays** are an optional extra, off by default (*Also require a PD
+   array*): fair value gaps, order blocks (the last opposite candle before a
+   displacement) and demand zones (a small-bodied base before a
+   displacement); for a bearish setup supply. Valid only if on the setup's
+   side, at or below Level 2 (bearish: at or above), within 1.5 ATR,
+   unbroken (no close through it), a gap not yet filled, and reached by the
+   move into the zone; the candle that marks the zone does not confirm
+   itself. They are listed with a setup when present; only with the filter
+   on must one confirm the retest.
 
    Only closed candles decide; the forming candle gives the entry's open
    and an "in the zone now" note that is shown, never acted on. Nothing is
@@ -148,19 +156,11 @@ trades the account made.
 direction (green for bullish, red for bearish), the status (armed and waiting
 for the retest, price in the zone now, retest confirmed, entered, Level 3
 reached, stopped, invalidated with the reason), Levels 1, 2 and 3, the zone,
-the PD arrays that confirmed it and the team's review. The AI chart draws the
-Level 2 zone, the lines of Levels 1, 2 and 3 (3 dashed while it forms), the
-BOS and retest marks, and the PD arrays in play (FVG blue, order blocks
-violet, demand green, supply red, dashed). With *SBT history* (on the chart's header, on by default) the AI chart
-also shows the strategy run over every candle it has loaded, and again over
-older ones as the chart is moved into the past: where each past setup
-entered (BUY or SELL), how it ended (TP at Level 3 with its R, or SL at
-−1R, joined by a dashed line; open ones with their target and stop), the
-paper account's own trades on the market (entry and exit, with the profit),
-and a line with the totals (entries, targets, stops, win rate, R). This is a
-record of the rules on past candles, computed from closed candles in order
-as they would have been seen, never traded, and not a forecast. The AI Desk
-gets the totals as context. The strategy's settings are under
+any PD arrays found with it and the team's review. The AI chart draws the
+current setup only: the Level 2 zone, the lines of Levels 1, 2 and 3 (3
+dashed while it forms), the BOS and retest marks and the entry; past setups
+are not drawn. The PD arrays in play (FVG blue, order blocks violet, demand
+green, supply red, dashed) are drawn only with the PD filter on. The strategy's settings are under
 *Settings → Strategy: SBT Model 1* (`[sbt]` in the file: `ai_confirm`,
 `require_pd_array`, `zone=wick|body`, `swing_strength`, `stop_buffer_atr`,
 `pd_distance_atr`, `max_wait_candles`).
@@ -427,7 +427,7 @@ prints the conversation, the analysis, the status and a timed event log).
 |---|---|---|
 | `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3276 checks) | build command in the file's header; plain `g++`, sanitizers |
 | `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account, markets priced in another currency (346 checks) | as above |
-| `tests/test_sbt.cpp` | SBT Model 1: a hand-drawn bullish chart and the same chart upside down for bearish; Level 1/2/3, the BOS, the zone, the retest, a close through the zone, a wick through it, no retest before Level 3, Level 3 following a new high, no BOS without a close, reward/risk and the PD requirement, history not traded, expiry, no bearish candle at 2, FVG/order block/supply detection, old candles ignored, a 6000-candle random run (bounded memory, no entry twice) (12126 checks) | `tests/run-unit.sh sbt` |
+| `tests/test_sbt.cpp` | SBT Model 1: a hand-drawn bullish chart and the same chart upside down for bearish; Level 1/2/3, the BOS, the zone, the retest, a close through the zone, a wick through it, no retest before Level 3, Level 3 following a new high, no BOS without a close, the strategy's own bullish and bearish charts with the default settings (and a testing candle that closes through the zone), reward/risk and the optional PD filter, history not traded, expiry, no bearish candle at 2, FVG/order block/supply detection, old candles ignored, a 6000-candle random run (bounded memory, no entry twice) (14949 checks) | `tests/run-unit.sh sbt` |
 | `tests/test_desk.cpp` | the desk's reading of messages (markets, levels and the numbers that are not levels, observations, intent, Roman Urdu questions) and its analysis state (books per market, merging, plan and reward/risk, levels against the live price) (134 checks) | `tests/run-unit.sh desk` |
 | `tests/test_app.py` | the real binary against `tests/fake_services.py` (62 tests): the watchlist and markets the data service does not list, adding and removing markets, the forex markets (the other service's requests and stream, what is offered, a dollar-base pair counted in dollars, switching kinds, recorded answers and messages of the real service), an open position staying on show after a hold, models that are slow or fail once (asked again, left out after two tries, only so many at a time), the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files; and the AI Desk (9 tests): messages accepted at once and built on (the answer sees the earlier messages, the model reads each message once), messages taken while a slow answer is written (two answers under way, a double send is one message, the chart following the conversation), live facts and no key, level alerts from the live price, the team started for a trade question and its call forming, a model's reading adding what the quick reading missed, stopping an answer, the conversation surviving a restart, gold found where it is listed | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
 

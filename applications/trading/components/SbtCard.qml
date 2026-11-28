@@ -120,7 +120,7 @@ GlowCard {
             Layout.fillWidth: true
             visible: root.has && root.s.confirmations.length > 0
             spacing: 4
-            Label { text: qsTr("PD arrays:"); color: Theme.textMuted; font.pixelSize: Theme.fontSizeCaption; height: 20; verticalAlignment: Text.AlignVCenter }
+            Label { text: qsTr("PD arrays (extra):"); color: Theme.textMuted; font.pixelSize: Theme.fontSizeCaption; height: 20; verticalAlignment: Text.AlignVCenter }
             Repeater {
                 model: root.has ? root.s.confirmations : []
                 NxBadge {

@@ -1429,29 +1429,6 @@ class AppTest(unittest.TestCase):
         self.assertTrue(all(e.get("system") for e in asked))
         self.assertEqual(sorted({e["seat"] for e in asked if e["seat"]}), sorted(SEATS))
 
-    def test_sbt_history_shows_where_the_strategy_entered_and_the_paper_trades(self):
-        plan = {"*": BUY, "market": self.BULL}
-        out = self.act("wait:9", plan, AUTO + "[sbt]\nai_confirm=false\n",
-                       moves=[(1, dict(plan, market=dict(self.BULL, move_pct=6.0)))])
-        history = out["market"]["sbtHistory"]
-        self.assertGreaterEqual(history["candles"], 290)
-        entries = [h for h in history["setups"] if h["direction"] == "bullish"]
-        self.assertTrue(entries, history)
-        h = entries[-1]
-        self.assertAlmostEqual(h["entry"], 101.6 * self.SCALE, delta=0.01)
-        self.assertEqual(h["result"], "target")   # Level 3 was reached after the move
-        self.assertAlmostEqual(h["exit"], 106.5 * self.SCALE, delta=0.01)
-        self.assertGreater(h["r"], 1.5)
-        self.assertIn("order_block", h["confirmations"])
-        stats = history["stats"]
-        self.assertEqual(stats["targets"], len([x for x in history["setups"] if x["result"] == "target"]))
-        self.assertGreaterEqual(stats["entries"], 1)
-        # The paper account's own trade on this market is there too, opened and closed.
-        trades = history["trades"]
-        self.assertEqual(len(trades), 1)
-        self.assertEqual((trades[0]["side"], trades[0]["open"], trades[0]["reason"]), ("buy", False, "take_profit"))
-        self.assertAlmostEqual(trades[0]["entryTime"], out["account"]["trades"][0]["openedAt"], delta=1)
-
     def test_sbt_bearish_setup_is_sold(self):
         self.serve({"*": SELL, "market": self.BEAR})
         self.key = TEST_KEY

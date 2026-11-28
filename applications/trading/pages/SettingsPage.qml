@@ -43,12 +43,12 @@ NxPage {
         }
         NxRow {
             icon: "layers"
-            title: qsTr("PD array required")
-            subtitle: qsTr("A fair value gap, order block or demand zone at or below Level 2 (bearish: supply above it), still unbroken and reached by the move into the zone, must confirm the retest.")
+            title: qsTr("Also require a PD array")
+            subtitle: qsTr("An extra filter, not one of the 7 rules (off by default): a fair value gap, order block or demand zone at or below Level 2 (bearish: supply above it), still unbroken and reached by the move into the zone, must also confirm the retest.")
             Switch {
                 checked: trading.sbtSettings.require_pd_array
                 onToggled: page.setSbt("require_pd_array", checked)
-                Accessible.name: qsTr("PD array required")
+                Accessible.name: qsTr("Also require a PD array")
             }
         }
         NxRow {

@@ -734,8 +734,8 @@ QString DeskEngine::answerSystem() const
         "wrong (invalidation), and when a trade is discussed: entry, stop, target and reward/risk. Promise nothing.\n"
         "- The desk trades only by the trader's own strategy, SBT Model 1: a proper 1-2-3, a break of structure "
         "(a close beyond Level 1), the Level 2 zone (the lowest bearish candle at 2; bearish: the highest bullish "
-        "one), a retest that does not close through the zone, entry at the next candle's open, target Level 3, with "
-        "PD arrays (FVG, order block, demand/supply) as confirmation. Neither you nor the other models trade on "
+        "one), a retest that does not close through the zone, entry at the next candle's open, target Level 3. PD "
+        "arrays are not part of these rules. Neither you nor the other models trade on "
         "your own view. Judge trade ideas in the strategy's terms, and say what it shows now (\"strategy\" in the "
         "context): a setup in play, its status, its levels, or that there is none.\n"
         "- Be concise: at most 170 words, short paragraphs or bullets. Answer in the language the trader writes in "
@@ -841,13 +841,6 @@ void DeskEngine::startAnswer(qint64 question, bool deep, const QString &market, 
         else
             strategy.insert(QStringLiteral("setup"), QJsonObject::fromVariantMap(current));
         strategy.insert(QStringLiteral("watching"), QJsonObject::fromVariantMap(sbt.value(QStringLiteral("watching")).toMap()));
-        // How the strategy's past entries on the loaded candles ended (by its rules, not traded).
-        const QVariantMap history = m_engine->sbtHistory();
-        QJsonObject past = QJsonObject::fromVariantMap(history.value(QStringLiteral("stats")).toMap());
-        past.insert(QStringLiteral("candles"), history.value(QStringLiteral("candles")).toInt());
-        past.insert(QStringLiteral("note"), QStringLiteral("the strategy's rules applied to the candles loaded; "
-                                                           "a record of the past, not a forecast"));
-        strategy.insert(QStringLiteral("history"), past);
         context.insert(QStringLiteral("strategy"), strategy);
     } else if (!market.isEmpty()) {
         context.insert(QStringLiteral("strategy"),
