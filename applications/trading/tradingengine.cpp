@@ -1032,8 +1032,9 @@ const QList<TradingEngine::Seat> &TradingEngine::teamSeats()
         {QStringLiteral("structure"), tr("Structure"),
          QStringLiteral("the 1-2-3 itself: whether Level 1, 2 and 3 are external swing points (not swings inside a "
                         "leg), the Level 2 zone is the "
-                        "right candle (the lowest bearish candle at 2; bearish: the highest bullish one) and the "
-                        "test did not close through it.")},
+                        "right candle (the lowest bearish candle at 2, open to wick; bearish: the highest bullish one), "
+                        "that candle is both the order block and the demand (supply) zone, and the test did not "
+                        "close through it.")},
         {QStringLiteral("volume"), tr("Volume and candles"),
          QStringLiteral("the candles: the candle that marks the zone, the move away from it, the retest and its "
                         "close, and whether volume confirms them.")},
@@ -1141,11 +1142,15 @@ QString TradingEngine::systemPrompt(const QString &role, double minRewardRisk, c
         "leg, confirmed by a real pullback), Level 2 the low of the pullback after it, Level 3 the top of the leg "
         "after the break. Swings inside a leg are internal structure and do not count.\n"
         "2) There must be a break of structure (BOS): a candle closed beyond Level 1.\n"
-        "3) The lowest bearish candle at Level 2 marks the zone (bearish setup: the highest bullish candle).\n"
+        "3) At the valid swing low (Level 2) the lowest bearish candle marks the zone, from its opening price to its "
+        "lowest wick (bearish setup: at the swing high the highest bullish candle, from its open to its highest "
+        "wick). That same candle must be both the order block and the demand zone (bearish: the supply zone).\n"
         "4) Price comes back to test that zone.\n"
         "5) The testing candle must not close below the zone (bearish: above it).\n"
         "6) Entry at the next candle's open.\n"
         "7) Target: Level 3.\n"
+        "Gap filter: after the market opens with a gap up or down, nothing is analysed or traded until the gap is "
+        "filled or the pause after it has passed.\n"
         "These 7 rules are the whole strategy. PD arrays (fair value gaps, order blocks, demand or supply zones) "
         "are not part of it: when the setup lists some they are extra context, and a setup without any is not "
         "weaker for it.\n\n"

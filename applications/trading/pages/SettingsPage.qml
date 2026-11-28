@@ -86,7 +86,7 @@ NxPage {
         NxRow {
             icon: "target"
             title: qsTr("SBT Model 1 decides the trades")
-            subtitle: qsTr("Bullish and bearish, on the external structure only (swings inside a leg are ignored): a proper 1-2-3, a break of structure (a close beyond Level 1), the Level 2 zone (the lowest bearish candle, or the highest bullish one), a retest that does not close through it, entry at the next candle's open, target Level 3. The AI models do not trade on their own view; they review the setups this strategy finds.")
+            subtitle: qsTr("Bullish and bearish, on the external structure only (swings inside a leg are ignored): a proper 1-2-3, a break of structure (a close beyond Level 1), the Level 2 zone (at the swing low the lowest bearish candle, from its open to its lowest wick; at the swing high the highest bullish candle, from its open to its highest wick), and that same candle must be both the order block and the demand (supply) zone; a retest that does not close through it, entry at the next candle's open, target Level 3. After a gap up or down nothing is analysed or traded until the market trades normally again. The AI models do not trade on their own view; they review the setups this strategy finds.")
             NxBadge { text: qsTr("In use"); kind: "success" }
         }
         NxRow {
@@ -109,17 +109,26 @@ NxPage {
                 Accessible.name: qsTr("Also require a PD array")
             }
         }
-        NxRow {
+        SettingNumber {
             icon: "candles"
-            title: qsTr("Level 2 zone")
-            subtitle: qsTr("The marked candle's whole range, or from its low (bearish: high) to its body only.")
-            NxSegmented {
-                readonly property var values: ["wick", "body"]
-                Accessible.name: qsTr("Level 2 zone")
-                model: [qsTr("Whole candle"), qsTr("Body")]
-                currentIndex: Math.max(0, values.indexOf(trading.sbtSettings.zone))
-                onActivated: (index) => page.setSbt("zone", values[index])
-            }
+            title: qsTr("Demand / supply: move away")
+            subtitle: qsTr("How far the move away from the zone candle must go (the best close of the next three candles beyond its open) for it to count as a demand or supply zone, in average true ranges.")
+            value: trading.sbtSettings.zone_move_atr; from: 0.2; to: 5; step: 0.1; decimals: 1; unit: qsTr("ATR")
+            onEdited: (v) => page.setSbt("zone_move_atr", v)
+        }
+        SettingNumber {
+            icon: "alert-triangle"
+            title: qsTr("Gap: size")
+            subtitle: qsTr("A candle that opens beyond the previous candle's range and at least this far from its close is a gap up or down, in average true ranges.")
+            value: trading.sbtSettings.gap_atr; from: 0.1; to: 5; step: 0.1; decimals: 1; unit: qsTr("ATR")
+            onEdited: (v) => page.setSbt("gap_atr", v)
+        }
+        SettingNumber {
+            icon: "clock"
+            title: qsTr("Gap: pause")
+            subtitle: qsTr("After a gap, no setups and no entries until the gap is filled or this many more candles have closed. Open trades keep their stop and target.")
+            value: trading.sbtSettings.gap_pause_candles; from: 0; to: 100; step: 1
+            onEdited: (v) => page.setSbt("gap_pause_candles", v)
         }
         SettingNumber {
             icon: "shield"

@@ -159,8 +159,9 @@ static void testBullish()
         NEAR(s.bos.price, 104.4, 1e-9);
         CHECK(s.bos.time == v[28].openTime);
         NEAR(s.zoneBottom, 100.0, 1e-9);
-        NEAR(s.zoneTop, 101.4, 1e-9);
+        NEAR(s.zoneTop, 101.2, 1e-9);           // from the zone candle's open to its low
         CHECK(s.zoneTime == v[25].openTime);
+        CHECK(s.orderBlock && s.demand);        // the same candle is the order block and the demand zone
         CHECK(s.id == "bullish:" + std::to_string(v[22].openTime));
     }
     const Event *trig = r.find("triggered");
@@ -229,8 +230,9 @@ static void testBearish()
         CHECK(s.direction == Direction::Bearish);
         NEAR(s.level1.price, 200 - 103.5, 1e-9);
         NEAR(s.level2.price, 200 - 100.0, 1e-9);
-        NEAR(s.zoneTop, 100.0, 1e-9);           // the highest bullish candle: 98.6..100.0
-        NEAR(s.zoneBottom, 200 - 101.4, 1e-9);
+        NEAR(s.zoneTop, 100.0, 1e-9);           // the highest bullish candle, from its open to its high: 98.8..100.0
+        NEAR(s.zoneBottom, 200 - 101.2, 1e-9);
+        CHECK(s.orderBlock && s.demand);        // order block and supply zone
         CHECK(s.id == "bearish:" + std::to_string(v[22].openTime));
     }
     const Event *in = r.find("entered");
@@ -282,7 +284,7 @@ static void testAnEarlyRetestCounts()
     // high: the BOS candle's high is Level 3, and this is the retest.
     std::vector<Candle> v = bullish();
     v.resize(29);
-    v.push_back(bar(29, 104.4, 104.5, 101.3, 101.8));
+    v.push_back(bar(29, 104.4, 104.5, 101.1, 101.8));
     Run r;
     r.closeAll(v, 30);
     const Event *t = r.find("triggered");
@@ -295,7 +297,7 @@ static void testAnEarlyRetestCounts()
     // A candle that makes a new high AND reaches the zone is no retest: Level 3 moves.
     std::vector<Candle> w = bullish();
     w.resize(29);
-    w.push_back(bar(29, 104.4, 105.5, 101.3, 101.8));
+    w.push_back(bar(29, 104.4, 105.5, 101.1, 101.8));
     Run q;
     q.closeAll(w, 30);
     CHECK(q.find("triggered") == nullptr);
@@ -602,7 +604,7 @@ static std::vector<Candle> ownerBullish()
 
 static void testTheOwnersChart(const std::vector<Candle> &v, bool bull)
 {
-    const double top = bull ? 91 : 200 - 78, bottom = bull ? 78 : 200 - 91;
+    const double top = bull ? 90 : 200 - 78, bottom = bull ? 78 : 200 - 90; // open to wick
     Run r; // the default rules, nothing switched off
     r.closeAll(v, 25);
     const Event *armed = r.find("armed");
@@ -774,8 +776,130 @@ static void testExternalStructure()
     testExternalNotInternal(mirror(internalSwings()), false);
 }
 
+// Rules 3/4: the zone candle must be both the order block and the demand
+// (bearish: supply) zone, or the setup is skipped.
+// The setup of the BOS at candle 14 (Level 1 at candle 6) is skipped for 'why',
+// never armed or entered.
+static void expectSkipped(const std::vector<Candle> &v, const Settings &settings, const std::string &why)
+{
+    Run r(settings);
+    r.closeAll(v, v.size());
+    const Event *skipped = nullptr;
+    for (const Event &e : r.events) {
+        if (e.setup.level1.time != v[6].openTime)
+            continue;
+        CHECK(e.kind != "armed" && e.kind != "entered");
+        if (e.kind == "skipped" && !skipped)
+            skipped = &e;
+    }
+    CHECK(skipped != nullptr);
+    if (skipped && skipped->setup.note.find(why) == std::string::npos) {
+        CHECK(skipped->setup.note.find(why) != std::string::npos);
+        std::printf("  note: %s\n", skipped->setup.note.c_str());
+    }
+}
+
+static void testZoneIsDemandAndOrderBlock(bool bull)
+{
+    const auto chart = [bull](std::vector<Candle> v) { return bull ? v : mirror(v); };
+    const auto keep = [](std::vector<Candle> v, int i, const Candle &c) { Candle x = c; x.openTime = v[size_t(i)].openTime; v[size_t(i)] = x; return v; };
+    // The candle after the zone candle goes down too: the zone candle is not the
+    // last bearish candle before the move, so not the order block.
+    {
+        std::vector<Candle> v = keep(ownerBullish(), 11, bar(11, 82, 84, 79, 80));
+        v = keep(v, 12, bar(12, 80, 106, 79.5, 104)); // opens where 11 closed: no gap
+        expectSkipped(chart(v), Settings(), "no order block");
+    }
+    // No close above the zone candle's high (91) within three candles.
+    {
+        std::vector<Candle> v = ownerBullish();
+        v = keep(v, 11, bar(11, 82, 88, 79, 86));
+        v = keep(v, 12, bar(12, 86, 90, 84, 88));
+        v = keep(v, 13, bar(13, 88, 91, 85, 89));
+        v = keep(v, 14, bar(14, 89, 135, 88, 133));
+        expectSkipped(chart(v), Settings(), "no order block");
+    }
+    // Price comes back into the zone (its open, 90) before the BOS: not fresh.
+    expectSkipped(chart(keep(ownerBullish(), 12, bar(12, 92, 106, 89, 104))), Settings(),
+                  bull ? "not a fresh demand zone" : "not a fresh supply zone");
+    // A move away that is too small for a demand (supply) zone.
+    Settings strict;
+    strict.zoneMoveAtr = 50;
+    expectSkipped(chart(ownerBullish()), strict, bull ? "not a demand zone" : "not a supply zone");
+    // And the owner's chart as it is passes: both found on the zone candle.
+    Run r;
+    r.closeAll(chart(ownerBullish()), 25);
+    const Event *a = r.find("armed");
+    CHECK(a && a->setup.orderBlock && a->setup.demand);
+}
+
+// Rule 5: after a gap up or down nothing is set up or entered until the gap
+// is filled or the pause has run out.
+static void testGapFilter(bool bull)
+{
+    const auto chart = [bull](std::vector<Candle> v) { return bull ? v : mirror(v); };
+    const auto keep = [](std::vector<Candle> v, int i, const Candle &c) { Candle x = c; x.openTime = v[size_t(i)].openTime; v[size_t(i)] = x; return v; };
+    // Candle 13 opens at 115, above candle 12's high (106) and 11 from its close:
+    // a gap up. The BOS at 14 comes inside the pause: skipped.
+    {
+        const std::vector<Candle> v = chart(keep(ownerBullish(), 13, bar(13, 115, 118, 114, 116)));
+        Run r;
+        r.closeAll(v, 14);
+        CHECK(r.engine.gap().active);
+        CHECK(r.engine.gap().time == v[13].openTime);
+        CHECK(r.engine.gap().up == bull);
+        NEAR(r.engine.gap().fill, bull ? 104 : 96, 1e-9);
+        expectSkipped(v, Settings(), "gap");
+        // The pause runs out after six more candles.
+        Run q;
+        q.closeAll(v, 19);
+        CHECK(q.engine.gap().active);
+        q.closeAll(v, 20);
+        CHECK(!q.engine.gap().active);
+    }
+    // The same gap, filled inside its own candle (back down to 104): trading
+    // goes on, and the BOS at 14 is a setup.
+    {
+        Run r;
+        r.closeAll(chart(keep(ownerBullish(), 13, bar(13, 115, 118, 103.5, 116))), 15);
+        CHECK(!r.engine.gap().active);
+        CHECK(r.find("armed") != nullptr);
+    }
+    // The entry candle opens with a gap (75, under the retest candle's low 85): no entry.
+    {
+        const std::vector<Candle> v = chart(ownerBullish());
+        Run r;
+        r.closeAll(v, 25);
+        CHECK(r.find("triggered") != nullptr);
+        Candle forming = v[25];
+        forming.open = bull ? 75 : 125;
+        forming.high = forming.low = forming.close = forming.open;
+        forming.closed = false;
+        r.form(forming);
+        CHECK(r.find("entered") == nullptr);
+        const Event *e = r.find("skipped");
+        CHECK(e && e->setup.note.find("gap") != std::string::npos);
+    }
+    // No gap: a normal open is no gap.
+    {
+        Run r;
+        r.closeAll(chart(ownerBullish()), ownerBullish().size());
+        CHECK(!r.engine.gap().active);
+        CHECK(r.count("entered") == 1);
+    }
+}
+
+static void testOwnersRules()
+{
+    testZoneIsDemandAndOrderBlock(true);
+    testZoneIsDemandAndOrderBlock(false);
+    testGapFilter(true);
+    testGapFilter(false);
+}
+
 int main()
 {
+    testOwnersRules();
     testExternalStructure();
     testOwnersCharts();
     testBullish();

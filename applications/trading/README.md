@@ -48,9 +48,18 @@ real ones.
       the pullback are internal structure and are never Level 1, 2 or 3;
       a close above an internal lower high is no setup;
    2. a **break of structure** (BOS): a candle **closes** above Level 1;
-   3. the **Level 2 zone**: the lowest **bearish** candle between Level 1
-      and the BOS, its whole range (or low to body, *Level 2 zone*); no
-      bearish candle there, no setup;
+   3. the **Level 2 zone**: at the valid swing low, the lowest **bearish**
+      candle between Level 1 and the BOS, **from its opening price to its
+      lowest wick** (bearish: at the swing high, the highest bullish candle,
+      from its open to its highest wick); no such candle there, no setup.
+      **That same candle must be both the order block and the demand zone**
+      (bearish: the supply zone), or the setup is skipped with the reason:
+      *order block*: the next candle goes the other way (bullish) and,
+      within three candles, one closes above the zone candle's high, so it
+      is the last bearish candle before the move; *demand*: the best close
+      of those three candles is at least one ATR beyond its open
+      (*Demand / supply: move away*) and no candle comes back into the zone
+      before the BOS (fresh);
    4. **Level 3**: the top of the leg after the BOS, confirmed by a valid
       pullback (a close below the low of the candle that made it) or by a
       candle that comes back to the zone without a new high; it follows a
@@ -76,6 +85,15 @@ real ones.
    move into the zone; the candle that marks the zone does not confirm
    itself. They are listed with a setup when present; only with the filter
    on must one confirm the retest.
+
+   **Gap filter.** A candle that opens beyond the previous candle's range
+   and at least half an ATR from its close (*Gap: size*) is a gap up or
+   down. From that candle on, nothing is analysed or traded: a BOS then is
+   skipped (and the AI team is not asked), a retest then is skipped, and an
+   entry candle that opens with a gap is skipped, until the gap is filled
+   (price trades back to the close before it) or six more candles have
+   closed (*Gap: pause*). Open trades keep their stop and target. The
+   strategy card says when a pause is on.
 
    External structure, as the engine follows it: a bullish BOS makes Level 2
    the external (protected) low and starts the leg up; the leg's top becomes
@@ -176,7 +194,7 @@ dashed while it forms), the BOS and retest marks and the entry; past setups
 are not drawn. The PD arrays in play (FVG blue, order blocks violet, demand
 green, supply red, dashed) are drawn only with the PD filter on. The strategy's settings are under
 *Settings → Strategy: SBT Model 1* (`[sbt]` in the file: `ai_confirm`,
-`require_pd_array`, `zone=wick|body`, `stop_buffer_atr`,
+`require_pd_array`, `zone_move_atr`, `gap_atr`, `gap_pause_candles`, `stop_buffer_atr`,
 `pd_distance_atr`, `max_wait_candles`).
 
 ## The AI Desk

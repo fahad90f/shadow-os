@@ -16,8 +16,17 @@
 //     low of the pullback after it. Swings inside a leg (internal structure)
 //     are never Level 1, 2 or 3.
 //  2. A break of structure (BOS): a candle CLOSES above Level 1.
-//  3. The lowest BEARISH candle between Level 1 and the BOS marks the Level 2
-//     zone (its range: low to high, or low to open with zone = body).
+//  3. The lowest BEARISH candle at the swing low (between Level 1 and the
+//     BOS) marks the Level 2 zone, measured from its OPEN to its lowest wick
+//     (bearish: the highest bullish candle, from its open to its highest
+//     wick). That same candle must be both the ORDER BLOCK and the DEMAND
+//     zone (bearish: supply zone), or the setup is skipped:
+//       order block: the next candle moves the other way (bullish) and,
+//         within three candles, one closes beyond the zone candle's far end
+//         (above its high): it is the last bearish candle before the move;
+//       demand: the move away is strong (the best close of those three
+//         candles at least 'zoneMoveAtr' ATRs beyond its open) and the zone
+//         stays fresh: no candle comes back into it before the BOS.
 //  4. Level 3 is the high of the leg after the BOS; it is confirmed by a
 //     valid pullback (a candle closing below the low of the candle that made
 //     it) without a new high first.
@@ -34,6 +43,14 @@
 //  7. Entry at the OPEN of the next candle; target Level 3; the stop below
 //     the zone and Level 2 by a fraction of the ATR. Entered only when
 //     reward/risk meets the minimum.
+//
+// Gaps (rule 5): a candle that opens beyond the previous candle's range, and
+// at least 'gapAtr' ATRs from its close, is a gap up or down. From that
+// candle on nothing is set up or entered (a BOS then is skipped, a retest
+// then is skipped, an entry candle that opens with a gap is skipped) until
+// the gap is filled (price trades back to the close before it) or
+// 'gapPauseCandles' more candles have closed. Open trades keep their stops
+// and targets.
 //
 // Only closed candles decide. The forming candle is used for two things: the
 // open of the entry candle, and an "intrabar" note that price is in the zone
@@ -118,6 +135,8 @@ struct Setup
     double rewardRisk = 0;    // at the entry (before it: estimated from the retest close)
     bool historical = false;  // entered while the history was replayed: never traded
     std::vector<PdArray> confirmations; // the PD arrays that confirmed it
+    bool orderBlock = false;  // the zone candle is the order block (rule 3/4)
+    bool demand = false;      // ... and the demand (bearish: supply) zone
     long long updated = 0;    // time of the candle that last changed it
     long long outcomeTime = 0;
 };
@@ -125,7 +144,9 @@ struct Setup
 struct Settings
 {
     int swingStrength = 2;        // candles on each side of a recorded (internal) swing point: context only
-    bool zoneBody = false;        // zone = low..open of the bearish candle instead of its whole range
+    double zoneMoveAtr = 1.0;     // demand/supply: how far the move away from the zone goes, in ATRs
+    double gapAtr = 0.5;          // a gap: the open this far from the previous close (and outside its range)
+    int gapPauseCandles = 6;      // after a gap, candles without trading unless it is filled sooner
     double stopBufferAtr = 0.25;  // the stop beyond the zone, in ATRs
     double minRewardRisk = 1.5;
     bool requirePdArray = false;  // an extra filter; the original 7 rules have no PD arrays
@@ -141,6 +162,18 @@ struct Event
     std::string kind;         // "armed" | "triggered" | "entered" | "target" | "stopped" | "invalidated" | "skipped" | "expired"
     Setup setup;              // as it is after the event
     bool live = false;        // false while the history is replayed
+};
+
+// The market opened with a gap: no setups or entries until it is filled or
+// the pause has run out.
+struct Gap
+{
+    bool active = false;
+    bool up = false;          // gap up (bearish: down)
+    double fill = 0;          // the close before the gap: trading back to it fills it
+    long long time = 0;       // the candle that opened with the gap
+    int index = -1;
+    int left = 0;             // candles of the pause still to come
 };
 
 struct Swing
@@ -179,6 +212,10 @@ public:
     // as the new external point; index -1 when there is none.
     Point leg(Direction d) const { return d == Direction::Bullish ? m_legHigh : m_legLow; }
     double atr() const { return m_atr; }
+    // The gap pause; active while nothing may be set up or entered.
+    const Gap &gap() const { return m_gap; }
+    // Whether 'c' opens with a gap after 'prev' (by the settings, at 'atr').
+    bool opensWithGap(const Candle &prev, const Candle &c, double atr) const;
     int closedCount() const { return m_count; }
     long long lastTime() const { return m_window.empty() ? 0 : m_window.back().openTime; }
     const Settings &settings() const { return m_settings; }
@@ -196,6 +233,9 @@ private:
     void enter(Setup &s, const Candle &entryCandle, std::vector<Event> *events);
     void outcome(Setup &s, const Candle &c, bool closed, std::vector<Event> *events);
     std::vector<PdArray> confirmationsFor(const Setup &s, const Candle &retest) const;
+    // Rules 3/4: "" when the zone candle 'z' is both the order block and the
+    // demand (supply) zone of the move to the BOS at 'n', else why not.
+    std::string zoneCheck(Setup &s, int z, int n) const;
     void emit(const std::string &kind, const Setup &s, std::vector<Event> *events) const;
     void trim();
 
@@ -217,6 +257,7 @@ private:
     std::vector<Setup> m_setups;
     std::vector<PdArray> m_arrays;
     long long m_formingTime = 0;    // the forming candle last seen
+    Gap m_gap;
     bool m_live = false;
     std::string m_prefix;
 };

@@ -239,7 +239,7 @@ class AppTest(unittest.TestCase):
         self.assertTrue(all(c["auth"] == "ok" for c in self.requests("chat", review=None)))
 
     def test_the_assistants_nvidia_key_is_shared(self):
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})   # a setup in play for the team to review
         os.makedirs(self.conf_dir, exist_ok=True)
         assistant = os.path.join(self.conf_dir, "assistant.key")
         with open(assistant, "w", encoding="utf-8") as f:
@@ -1141,7 +1141,7 @@ class AppTest(unittest.TestCase):
         self.assertNotEqual(panel[team[0]]["state"], "error")
 
     def test_the_team_review_can_be_switched_off(self):
-        self.serve({"*": BUY})
+        self.serve({"*": BUY, "market": self.BULL})
         self.key = TEST_KEY
         self.settings("[engine]\nteam_review=false\n")
         self.assertFalse(self.dump("config")["teamReview"])
@@ -1319,7 +1319,7 @@ class AppTest(unittest.TestCase):
     def test_answers_in_a_code_fence_or_after_thinking_are_read(self):
         models = PANEL_MODELS
         self.serve({"*": HOLD, models[0]: dict(BUY, fenced=True), models[1]: dict(BUY, think=True),
-                    models[2]: dict(SELL, fenced=True, think=True)})
+                    models[2]: dict(SELL, fenced=True, think=True), "market": self.BULL})
         self.key = TEST_KEY
         verdicts = self.verdicts(self.dump("signal")["signal"])
         self.assertEqual((verdicts[models[0]]["ok"], verdicts[models[0]]["action"]), (True, "buy"))
@@ -1553,7 +1553,8 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(sbt["bos"]["price"], 104.4 * self.SCALE, delta=0.01)
         self.assertAlmostEqual(sbt["level3"]["price"], 106.5 * self.SCALE, delta=0.01)
         self.assertAlmostEqual(sbt["zone"]["bottom"], 100.0 * self.SCALE, delta=0.01)
-        self.assertAlmostEqual(sbt["zone"]["top"], 101.4 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["zone"]["top"], 101.2 * self.SCALE, delta=0.01)   # the zone candle's open
+        self.assertTrue(sbt["zone"]["orderBlock"] and sbt["zone"]["demand"])
         self.assertAlmostEqual(sbt["entry"], 101.6 * self.SCALE, delta=0.01)  # the open of the next candle
         self.assertIn("order_block", [c["kind"] for c in sbt["confirmations"]])
         self.assertTrue(sbt["review"]["done"] and sbt["review"]["confirmed"])
@@ -1604,6 +1605,19 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(saved["take_profit"], t["target"], delta=0.01)
         self.assertAlmostEqual(saved["stop"], t["stop"], delta=0.01)
 
+    def test_a_setup_made_while_the_market_gapped_is_not_traded(self):
+        # The BOS candle opens with a gap up: nothing is set up from it, nothing is traded.
+        self.serve({"*": BUY, "market": dict(self.BULL, stage="gap")})
+        self.key = TEST_KEY
+        self.settings(AUTO)
+        out = self.dump("signal")
+        sbt = out["signal"]["sbt"]
+        self.assertEqual(sbt["status"], "skipped", sbt)
+        self.assertIn("gap", sbt["note"])
+        self.assertEqual(out["account"]["positions"], [])
+        self.assertEqual(out["account"]["trades"], [])
+        self.assertEqual(self.requests("chat"), [])          # and the AI team was not asked about it
+
     def test_sbt_bearish_setup_is_sold(self):
         self.serve({"*": SELL, "market": self.BEAR})
         self.key = TEST_KEY
@@ -1614,6 +1628,8 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(sbt["level1"]["price"], (200 - 103.5) * self.SCALE, delta=0.01)
         self.assertAlmostEqual(sbt["level3"]["price"], (200 - 106.5) * self.SCALE, delta=0.01)
         self.assertAlmostEqual(sbt["zone"]["top"], 100.0 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(sbt["zone"]["bottom"], (200 - 101.2) * self.SCALE, delta=0.01)   # open to high
+        self.assertTrue(sbt["zone"]["orderBlock"] and sbt["zone"]["demand"])                    # order block + supply zone
         p = out["account"]["positions"][0]
         self.assertEqual(p["side"], "sell")
         self.assertAlmostEqual(p["takeProfit"], (200 - 106.5) * self.SCALE, delta=0.01)

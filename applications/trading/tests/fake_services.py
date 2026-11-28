@@ -193,6 +193,8 @@ def sbt_template(k, last):
         bar = SBT_BULL[min(t, 35) - SBT_START]
         if stage == "invalid" and t == 34:
             bar = (102.2, 102.3, 99.5, 99.8)              # closes through the zone
+        if stage == "gap" and t == 28:
+            bar = (103.8, 104.6, 103.7, 104.4)            # the BOS candle opens with a gap up
     if pattern == "sbt-bear":
         o, h, l, c = bar
         bar = (200 - o, 200 - l, 200 - h, 200 - c)

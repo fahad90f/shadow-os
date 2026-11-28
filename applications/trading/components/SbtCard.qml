@@ -82,6 +82,19 @@ GlowCard {
                 font.pixelSize: Theme.fontSizeSmall
             }
         }
+        // Rule 5: after a gap, nothing is set up or entered for a while.
+        Label {
+            Layout.fillWidth: true
+            visible: root.sbt.gap !== undefined && root.sbt.gap.active === true
+            text: root.sbt.gap && root.sbt.gap.active
+                ? qsTr("Gap %1: no new setups or entries until it fills back to %2 or %n more candle(s) have closed.", "", root.sbt.gap.left)
+                      .arg(root.sbt.gap.up ? qsTr("up") : qsTr("down")).arg(Format.price(root.sbt.gap.fill))
+                : ""
+            color: Theme.warning
+            font.pixelSize: Theme.fontSizeSmall
+            font.weight: Theme.weightSemibold
+            wrapMode: Text.Wrap
+        }
         Label {
             Layout.fillWidth: true
             text: root.has ? root.statusText(root.s)
@@ -115,6 +128,15 @@ GlowCard {
             Cell { label: qsTr("Zone"); value: root.has ? Format.price(root.s.zone.bottom) + "–" + Format.price(root.s.zone.top) : "" }
             Cell { label: root.has && root.s.level3Confirmed ? qsTr("Level 3 · target") : qsTr("Level 3 (forming)")
                    value: root.has ? Format.price(root.s.target) : ""; valueColor: root.sideTone }
+        }
+        // Rules 3/4: the zone candle as the order block and the demand (supply) zone.
+        Label {
+            Layout.fillWidth: true
+            visible: root.has && root.s.zone.orderBlock === true && root.s.zone.demand === true
+            text: root.bull ? qsTr("Zone candle (open to low): order block + demand zone")
+                            : qsTr("Zone candle (open to high): order block + supply zone")
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontSizeCaption
         }
         Flow {
             Layout.fillWidth: true

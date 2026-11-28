@@ -365,7 +365,9 @@ void TradingConfig::reload()
     const Trading::Sbt::Settings sd;
     m_sbt = sd;
     m_sbt.swingStrength = int(clampOr(number("sbt/swing_strength", sd.swingStrength), 1, 5, sd.swingStrength));
-    m_sbt.zoneBody = ini.value(QStringLiteral("sbt/zone")).toString().trimmed().toLower() == QLatin1String("body");
+    m_sbt.zoneMoveAtr = clampOr(number("sbt/zone_move_atr", sd.zoneMoveAtr), 0.2, 5, sd.zoneMoveAtr);
+    m_sbt.gapAtr = clampOr(number("sbt/gap_atr", sd.gapAtr), 0.1, 5, sd.gapAtr);
+    m_sbt.gapPauseCandles = int(clampOr(number("sbt/gap_pause_candles", sd.gapPauseCandles), 0, 100, sd.gapPauseCandles));
     m_sbt.stopBufferAtr = clampOr(number("sbt/stop_buffer_atr", sd.stopBufferAtr), 0, 2, sd.stopBufferAtr);
     m_sbt.requirePdArray = ini.value(QStringLiteral("sbt/require_pd_array"), sd.requirePdArray).toBool();
     m_sbt.pdDistanceAtr = clampOr(number("sbt/pd_distance_atr", sd.pdDistanceAtr), 0.2, 5, sd.pdDistanceAtr);
@@ -808,15 +810,12 @@ bool TradingConfig::setSbt(const QString &name, const QVariant &value)
 {
     if (name == QLatin1String("ai_confirm") || name == QLatin1String("require_pd_array")) {
         store(QStringLiteral("sbt/") + name, value.toBool());
-    } else if (name == QLatin1String("zone")) {
-        const QString zone = value.toString();
-        if (zone != QLatin1String("wick") && zone != QLatin1String("body"))
-            return false;
-        store(QStringLiteral("sbt/zone"), zone);
     } else {
         struct Range { const char *name; double low; double high; };
         static const Range ranges[] = {{"swing_strength", 1, 5}, {"stop_buffer_atr", 0, 2},
-                                       {"pd_distance_atr", 0.2, 5}, {"max_wait_candles", 10, 1000}};
+                                       {"pd_distance_atr", 0.2, 5}, {"max_wait_candles", 10, 1000},
+                                       {"zone_move_atr", 0.2, 5}, {"gap_atr", 0.1, 5},
+                                       {"gap_pause_candles", 0, 100}};
         bool known = false;
         for (const Range &r : ranges) {
             if (name != QLatin1String(r.name))

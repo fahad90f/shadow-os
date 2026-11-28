@@ -114,9 +114,15 @@ std::vector<Event> Engine::close(const Candle &input)
     Candle c = input;
     c.closed = true;
     const int n = m_count;
+    const double atrBefore = m_atr;
     m_window.push_back(c);
     ++m_count;
     updateAtr(c);
+    // Rule 5: a candle that opens with a gap starts a pause.
+    if (n > 0 && opensWithGap(m_window[m_window.size() - 2], c, atrBefore)) {
+        const Candle &prev = m_window[m_window.size() - 2];
+        m_gap = {true, c.open > prev.close, prev.close, c.openTime, n, std::max(0, m_settings.gapPauseCandles)};
+    }
 
     for (Setup &s : m_setups) {
         if (s.status == Status::Triggered)
@@ -138,6 +144,12 @@ std::vector<Event> Engine::close(const Candle &input)
     updateLegs(c);
     checkBos(c, &events);
     confirmSwing(&events);
+    // The pause ends once the gap is filled or its candles have passed.
+    if (m_gap.active) {
+        const bool filled = m_gap.up ? c.low <= m_gap.fill : c.high >= m_gap.fill;
+        if (filled || (n > m_gap.index && --m_gap.left <= 0) || (n == m_gap.index && m_gap.left == 0))
+            m_gap.active = false;
+    }
     for (Setup &s : m_setups) {
         if (s.status == Status::Armed)
             s.intrabar = false;
@@ -154,7 +166,7 @@ std::vector<Event> Engine::forming(const Candle &c)
     m_formingTime = c.openTime;
     for (Setup &s : m_setups) {
         if (s.status == Status::Triggered) {
-            enter(s, c, &events);
+            enter(s, c, &events); // a gap at its open (or a pause) skips it there
         } else if (s.status == Status::Entered && c.openTime >= s.entryTime) {
             outcome(s, c, false, &events);
         } else if (s.status == Status::Armed) {
@@ -166,6 +178,55 @@ std::vector<Event> Engine::forming(const Candle &c)
         }
     }
     return events;
+}
+
+bool Engine::opensWithGap(const Candle &prev, const Candle &c, double atr) const
+{
+    if (!(atr > 0) || !(m_settings.gapAtr > 0))
+        return false;
+    const bool outside = c.open > prev.high || c.open < prev.low;
+    return outside && std::fabs(c.open - prev.close) >= m_settings.gapAtr * atr;
+}
+
+std::string Engine::zoneCheck(Setup &s, int z, int n) const
+{
+    const bool bull = s.direction == Direction::Bullish;
+    const Candle &zc = at(z);
+    if (z + 1 >= n + 1 || !inWindow(z + 1))
+        return bull ? "no order block: no candle after the lowest bearish candle"
+                    : "no order block: no candle after the highest bullish candle";
+    // Order block: the last opposite candle before the move: the next candle
+    // goes the other way, and within three candles one closes beyond it.
+    const Candle &next = at(z + 1);
+    if (bull ? !bullishCandle(next) : !bearishCandle(next))
+        return bull ? "no order block: the candle after the zone candle is not bullish"
+                    : "no order block: the candle after the zone candle is not bearish";
+    const int last = std::min(z + 3, n);
+    int broke = -1;
+    double best = bull ? next.close : next.close;
+    for (int i = z + 1; i <= last; ++i) {
+        const Candle &x = at(i);
+        best = bull ? std::max(best, x.close) : std::min(best, x.close);
+        if (broke < 0 && (bull ? x.close > zc.high : x.close < zc.low))
+            broke = i;
+    }
+    if (broke < 0)
+        return bull ? "no order block: no close above the zone candle's high within three candles"
+                    : "no order block: no close below the zone candle's low within three candles";
+    s.orderBlock = true;
+    // Demand (supply): a strong move away, and fresh until the BOS.
+    const double move = bull ? best - zc.open : zc.open - best;
+    if (!(move >= m_settings.zoneMoveAtr * m_atr))
+        return bull ? "not a demand zone: the move away from it is too weak"
+                    : "not a supply zone: the move away from it is too weak";
+    for (int i = broke + 1; i < n; ++i) {
+        const Candle &x = at(i);
+        if (bull ? x.low <= s.zoneTop : x.high >= s.zoneBottom)
+            return bull ? "not a fresh demand zone: price came back into it before the BOS"
+                        : "not a fresh supply zone: price came back into it before the BOS";
+    }
+    s.demand = true;
+    return {};
 }
 
 // A swing point 'k' candles back, now that 'k' candles have closed after it.
@@ -283,12 +344,29 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
         }
         const Candle &zc = at(z);
         s.zoneTime = zc.openTime;
+        // From the candle's open to its wick (rule 1/2).
         if (bull) {
             s.zoneBottom = zc.low;
-            s.zoneTop = m_settings.zoneBody ? std::max(zc.open, zc.close) : zc.high;
+            s.zoneTop = zc.open;
         } else {
             s.zoneTop = zc.high;
-            s.zoneBottom = m_settings.zoneBody ? std::min(zc.open, zc.close) : zc.low;
+            s.zoneBottom = zc.open;
+        }
+        // Rule 5: nothing is set up while the market has gapped.
+        // Rules 3/4: the zone candle must be the order block and the demand
+        // (supply) zone.
+        std::string why;
+        if (m_gap.active)
+            why = "the market opened with a gap: no setups until it trades normally again";
+        else
+            why = zoneCheck(s, z, n);
+        if (!why.empty()) {
+            s.status = Status::Skipped;
+            s.note = why;
+            s.outcomeTime = c.openTime;
+            m_setups.push_back(s);
+            emit("skipped", s, events);
+            continue;
         }
         s.status = Status::Armed;
         m_setups.push_back(s);
@@ -321,6 +399,14 @@ void Engine::advance(Setup &s, const Candle &c, std::vector<Event> *events)
         s.note = bull ? "a candle closed below the Level 2 zone" : "a candle closed above the Level 2 zone";
         s.outcomeTime = c.openTime;
         emit("invalidated", s, events);
+        return;
+    }
+    if (s.level3Confirmed && reached && !newExtreme && m_gap.active) {
+        s.retest = {c.openTime, c.close, n};
+        s.status = Status::Skipped;
+        s.note = "the retest came while the market had gapped: no trades until it trades normally again";
+        s.outcomeTime = c.openTime;
+        emit("skipped", s, events);
         return;
     }
     if (s.level3Confirmed && reached && !newExtreme) {
@@ -363,7 +449,11 @@ void Engine::enter(Setup &s, const Candle &e, std::vector<Event> *events)
     const double reward = bull ? s.target - s.entry : s.entry - s.target;
     s.rewardRisk = risk > 0 && reward > 0 ? reward / risk : 0;
     std::string why;
-    if (reward <= 0)
+    const Candle *before = m_window.empty() ? nullptr
+        : (e.closed && m_window.size() >= 2 ? &m_window[m_window.size() - 2] : &m_window.back());
+    if (m_gap.active || (before && opensWithGap(*before, e, m_atr)))
+        why = "the entry candle opened with a gap (or the market had gapped): no trades until it trades normally again";
+    else if (reward <= 0)
         why = "the entry candle opened at or beyond Level 3";
     else if (risk <= 0)
         why = "the entry candle opened beyond the stop";

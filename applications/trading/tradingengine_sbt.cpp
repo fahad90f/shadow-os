@@ -153,9 +153,12 @@ void TradingEngine::feedSbt()
 QString TradingEngine::sbtSignature() const
 {
     const Sbt::Setup *s = currentSetup();
+    // The gap pause shows whether or not there is a setup.
+    const QString gap = m_sbt.gap().active ? QStringLiteral("gap:%1:%2|").arg(double(m_sbt.gap().time), 0, 'f', 0).arg(m_sbt.gap().left)
+                                           : QString();
     if (!s)
-        return {};
-    return QStringLiteral("%1|%2|%3|%4|%5|%6|%7").arg(QString::fromStdString(s->id))
+        return gap;
+    return gap + QStringLiteral("%1|%2|%3|%4|%5|%6|%7").arg(QString::fromStdString(s->id))
         .arg(QLatin1String(Sbt::statusName(s->status))).arg(s->level3.price, 0, 'g', 12)
         .arg(s->level3Confirmed).arg(s->intrabar).arg(double(s->updated), 0, 'f', 0).arg(m_sbt.pdArrays().size());
 }
@@ -163,7 +166,8 @@ QString TradingEngine::sbtSignature() const
 bool TradingEngine::sbtSettingsDiffer() const
 {
     const Sbt::Settings a = m_sbt.settings(), b = m_config->sbt();
-    return a.swingStrength != b.swingStrength || a.zoneBody != b.zoneBody || a.stopBufferAtr != b.stopBufferAtr
+    return a.swingStrength != b.swingStrength || a.zoneMoveAtr != b.zoneMoveAtr || a.gapAtr != b.gapAtr
+        || a.gapPauseCandles != b.gapPauseCandles || a.stopBufferAtr != b.stopBufferAtr
         || a.minRewardRisk != b.minRewardRisk || a.requirePdArray != b.requirePdArray
         || a.pdDistanceAtr != b.pdDistanceAtr || a.maxArmedCandles != b.maxArmedCandles;
 }
@@ -409,7 +413,10 @@ QVariantMap TradingEngine::setupMap(const Sbt::Setup &s) const
         {QStringLiteral("level3"), point(s.level3)},
         {QStringLiteral("level3Confirmed"), s.level3Confirmed},
         {QStringLiteral("zone"), QVariantMap{{QStringLiteral("top"), s.zoneTop}, {QStringLiteral("bottom"), s.zoneBottom},
-                                             {QStringLiteral("time"), double(s.zoneTime)}}},
+                                             {QStringLiteral("time"), double(s.zoneTime)},
+                                             // Rules 3/4: the zone candle is the order block and the demand (supply) zone.
+                                             {QStringLiteral("orderBlock"), s.orderBlock},
+                                             {QStringLiteral("demand"), s.demand}}},
         {QStringLiteral("retest"), point(s.retest)},
         {QStringLiteral("intrabar"), s.intrabar},
         {QStringLiteral("entry"), s.entry},
@@ -476,6 +483,12 @@ QVariantMap TradingEngine::sbt() const
                                                  {QStringLiteral("bearish"), candidate(Sbt::Direction::Bearish)}}},
         {QStringLiteral("aiConfirm"), m_config->sbtAiConfirm()},
         {QStringLiteral("aiAvailable"), aiAvailable()},
+        // Rule 5: a gap pauses the strategy.
+        {QStringLiteral("gap"), QVariantMap{{QStringLiteral("active"), m_sbt.gap().active},
+                                            {QStringLiteral("up"), m_sbt.gap().up},
+                                            {QStringLiteral("time"), double(m_sbt.gap().time)},
+                                            {QStringLiteral("fill"), m_sbt.gap().fill},
+                                            {QStringLiteral("left"), m_sbt.gap().left}}},
     };
 }
 
@@ -484,7 +497,9 @@ QVariantMap TradingEngine::sbtSettings() const
     const Sbt::Settings s = m_config->sbt();
     return {{QStringLiteral("ai_confirm"), m_config->sbtAiConfirm()},
             {QStringLiteral("require_pd_array"), s.requirePdArray},
-            {QStringLiteral("zone"), s.zoneBody ? QStringLiteral("body") : QStringLiteral("wick")},
+            {QStringLiteral("zone_move_atr"), s.zoneMoveAtr},
+            {QStringLiteral("gap_atr"), s.gapAtr},
+            {QStringLiteral("gap_pause_candles"), s.gapPauseCandles},
             {QStringLiteral("swing_strength"), s.swingStrength},
             {QStringLiteral("stop_buffer_atr"), s.stopBufferAtr},
             {QStringLiteral("pd_distance_atr"), s.pdDistanceAtr},
@@ -561,7 +576,9 @@ void TradingEngine::updateSbtHistory()
     // takes a few milliseconds; otherwise only the new ones are read.
     const bool rebuild = key != m_sbtHistoryKey || first != m_sbtHistoryFirst
         || m_sbtHistory.settings().swingStrength != m_config->sbt().swingStrength
-        || m_sbtHistory.settings().zoneBody != m_config->sbt().zoneBody
+        || m_sbtHistory.settings().zoneMoveAtr != m_config->sbt().zoneMoveAtr
+        || m_sbtHistory.settings().gapAtr != m_config->sbt().gapAtr
+        || m_sbtHistory.settings().gapPauseCandles != m_config->sbt().gapPauseCandles
         || m_sbtHistory.settings().requirePdArray != m_config->sbt().requirePdArray
         || m_sbtHistory.settings().stopBufferAtr != m_config->sbt().stopBufferAtr
         || m_sbtHistory.settings().minRewardRisk != m_config->sbt().minRewardRisk
