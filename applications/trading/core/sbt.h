@@ -3,6 +3,7 @@
 
 #include "../skills/candle.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -124,10 +125,14 @@ struct Setup
     Direction direction = Direction::Bullish;
     Point level1;
     Point level2;
+    std::string level1Label;  // Level 1 among the highs before it: "HH" or "LH" (bearish: "LL" or "HL"); "" when it is the first
     Point previous;           // the previous low: Level 2 is the Higher Low above it (bearish: the previous high, Level 2 the Lower High below it)
     Point bos;                // the candle that closed beyond Level 1 (its close)
     Point level3;
     bool level3Confirmed = false;
+    double level3Pull = 0;    // how far price has pulled back from Level 3 so far
+    Point pullEnd;            // the furthest point of that pullback
+    double bounce = 0;        // how far price has come back from it since
     double zoneTop = 0;
     double zoneBottom = 0;
     long long zoneTime = 0;   // the candle that marks the zone
@@ -150,6 +155,27 @@ struct Setup
 
 struct Settings
 {
+    // A proper leg: price has to move this many ATRs, over at least
+    // 'minPullbackCandles' candles, for a high or low to count as one of the
+    // structure. It sizes the leg into 1, the pullback from 1 to 2 and the
+    // pullback that confirms 3.
+    double legAtr = 2.5;
+    int minPullbackCandles = 2;
+    // A setup ends when a newer structure forms before its zone was tested
+    // (a close beyond its confirmed Level 3).
+    bool supersede = true;
+    // The test has to come in the first pullback from 3: once price has
+    // bounced by a proper leg without reaching the zone, the setup is over.
+    bool firstReturn = true;
+    // A proper 3: at least this many ATRs beyond Level 1 (a BOS that goes
+    // nowhere is no 1-2-3).
+    double extensionAtr = 1.0;
+    // The entry is at the zone: the testing candle may close at most this
+    // many ATRs beyond the zone's near edge.
+    double entryZoneAtr = 0.5;
+    // Target the near edge of the "area of 3" (the body of the Level 3
+    // candle) rather than the end of its wick.
+    bool targetBody = true;
     double zoneMoveAtr = 1.0;     // demand/supply: how far the move away from the zone goes, in ATRs
     double gapAtr = 0.5;          // a gap: the open this far from the previous close (and outside its range)
     int gapPauseCandles = 6;      // after a gap, candles without trading unless it is filled sooner
@@ -162,6 +188,10 @@ struct Settings
     int maxArmedCandles = 200;    // a setup waits this long for its retest
     int keepFinished = 12;        // finished setups kept (the history view keeps many)
 };
+
+// Whether two sets of rules find the same setups (everything except how
+// many finished ones are kept).
+bool sameRules(const Settings &a, const Settings &b);
 
 struct Event
 {
@@ -216,13 +246,15 @@ public:
     const std::vector<PdArray> &pdArrays() const { return m_arrays; }
     // The confirmed highs and lows, oldest first (the newest 200).
     const std::vector<StructurePoint> &structure() const { return m_structure; }
-    // The structure being watched for a BOS: the external high (bullish) or
-    // low (bearish); index -1 while a leg is still running (no pullback yet).
-    Point candidate(Direction d) const { return d == Direction::Bullish ? m_extHigh : m_extLow; }
-    // The leg after the last break, until a valid pullback confirms its end
-    // as the new external point; index -1 when there is none.
-    Point leg(Direction d) const { return d == Direction::Bullish ? m_legHigh : m_legLow; }
+    // The structure being watched for a BOS: the last confirmed high
+    // (bullish) or low (bearish) no candle has closed beyond yet; index -1
+    // when there is none.
+    Point candidate(Direction d) const { return d == Direction::Bullish ? m_pivotHigh : m_pivotLow; }
     double atr() const { return m_atr; }
+    // What a proper leg has to cover now: 'legAtr' times the ATR, where the
+    // ATR is never taken smaller than its long average (a quiet stretch does
+    // not turn small moves into structure).
+    double legNeed() const { return m_settings.legAtr * std::max(m_atr, m_atrSlow); }
     // The gap pause; active while nothing may be set up or entered.
     const Gap &gap() const { return m_gap; }
     // Whether 'c' opens with a gap after 'prev' (by the settings, at 'atr').
@@ -257,16 +289,15 @@ private:
     int m_first = 0;                // engine index of m_window[0]
     int m_count = 0;                // closed candles seen
     double m_atr = 0;
+    double m_atrSlow = 0;           // the same over 100 candles
     int m_atrCount = 0;
     std::vector<StructurePoint> m_structure;
-    Point m_extHigh;                // external high not yet broken
-    Point m_extLow;                 // external low not yet broken
-    Point m_legHigh;                // the leg up after a bullish break, until its pullback
-    Point m_legLow;                 // the leg down after a bearish break
-    // False for the first candle's range the structure starts from: a break
-    // of it starts the structure but is not a setup.
-    bool m_extHighReal = false;
-    bool m_extLowReal = false;
+    int m_legDir = 0;               // +1: an up-leg is running; -1: a down-leg; 0: not known yet
+    Point m_ext;                    // the running leg's extreme
+    Point m_counter;                // the furthest point of the move against it since
+    Point m_startHigh, m_startLow;  // before the first leg: the highest high and the lowest low so far
+    Point m_pivotHigh;              // the last confirmed high no candle has closed above
+    Point m_pivotLow;               // the last confirmed low no candle has closed below
     std::vector<Setup> m_setups;
     std::vector<PdArray> m_arrays;
     long long m_formingTime = 0;    // the forming candle last seen

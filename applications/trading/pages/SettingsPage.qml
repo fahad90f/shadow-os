@@ -122,6 +122,43 @@ NxPage {
             heading: qsTr("Filters: setups that do not meet them are ignored")
             body: qsTr("1. Bullish Structure: At a valid Higher Low (HL), identify the lowest bearish candle, measuring from its opening price to its lowest wick.\n2. Bearish Structure: At a valid Lower High (LH), identify the highest bullish candle, measuring from its opening price to its highest wick.\n3. Bullish Setup: The same candle must serve as both the Demand Zone and the Order Block.\n4. Bearish Setup: The same candle must serve as both the Supply Zone and the Order Block.\n5. Gap Filter: If the market opens with a Gap Up or Gap Down, do not analyze or execute any trades. Skip trading until normal market conditions resume.")
         }
+        RuleList {
+            heading: qsTr("What counts as a proper 123 (read from the two charts)")
+            body: qsTr("• Proper legs: 1, 2 and 3 are highs and lows of real legs (the size below, over at least two candles). Small moves inside a leg are not structure.\n• A proper 3: the high after the BOS goes clearly beyond 1. A break that goes nowhere before price falls back is no 123.\n• The first return: the test is the first pullback from 3 into the zone. Once price has bounced by a proper leg, or closed beyond 3, the structure has moved on and the old zone is no trade.\n• Entry at the zone: the testing candle closes in the zone or right at it. A candle that only touches the zone and closes far away leaves no entry.\n• Target: the area of 3 (the body of the candle that made 3).")
+        }
+        SettingNumber {
+            icon: "activity"
+            title: qsTr("Proper leg: size")
+            subtitle: qsTr("How far price has to move for a high or low to count as 1, 2 or 3, in average true ranges. Larger: fewer, bigger structures.")
+            value: trading.sbtSettings.leg_atr; from: 1; to: 8; step: 0.5; decimals: 1; unit: qsTr("ATR")
+            onEdited: (v) => page.setSbt("leg_atr", v)
+        }
+        SettingNumber {
+            icon: "arrow-up"
+            title: qsTr("Proper 3: beyond 1 by")
+            subtitle: qsTr("How far the high (bearish: low) after the BOS must go beyond Level 1, in average true ranges. 0: any break counts.")
+            value: trading.sbtSettings.extension_atr; from: 0; to: 5; step: 0.25; decimals: 2; unit: qsTr("ATR")
+            onEdited: (v) => page.setSbt("extension_atr", v)
+        }
+        SettingNumber {
+            icon: "target"
+            title: qsTr("Entry at the zone: within")
+            subtitle: qsTr("How far beyond the zone's edge the testing candle may close for the entry at the next open to count, in average true ranges.")
+            value: trading.sbtSettings.entry_zone_atr; from: 0; to: 5; step: 0.25; decimals: 2; unit: qsTr("ATR")
+            onEdited: (v) => page.setSbt("entry_zone_atr", v)
+        }
+        NxRow {
+            icon: "flag"
+            title: qsTr("Target")
+            subtitle: qsTr("Area of 3: the body of the candle that made 3 (where the area begins). Exact: the very end of its wick.")
+            NxSegmented {
+                readonly property var values: ["body", "wick"]
+                Accessible.name: qsTr("Target")
+                model: [qsTr("Area of 3"), qsTr("Exact high / low")]
+                currentIndex: Math.max(0, values.indexOf(trading.sbtSettings.target))
+                onActivated: (index) => page.setSbt("target", values[index])
+            }
+        }
         NxRow {
             icon: "users"
             title: qsTr("AI team confirms each setup")

@@ -41,17 +41,18 @@ real ones.
 3. **SBT Model 1** (`core/sbt.cpp`, plain C++17, unit-tested in
    `tests/test_sbt.cpp`): the trader's strategy, and the only source of
    trades. One engine for both directions; bearish mirrors bullish:
-   1. a proper **1-2-3**: Level 1 the high to break (the top of the last
-      leg, confirmed by a valid pullback: a candle closing below the low of
-      the candle that made it). **Level 2 is a valid Higher Low (HL)**: the
-      lowest low of the pullback after Level 1, above the previous low (the
-      protected low, or the low of a leg down still running). Bearish:
-      **Level 2 is a valid Lower High (LH)**, below the previous high. Every
-      confirmed high and low is labelled HH, LH, HL or LL against the one
-      before it; a Level 2 labelled LL (bearish: HH) means no setup (shown as
-      skipped with the reason). Highs and lows inside a leg or inside the
-      pullback are never Level 1, 2 or 3; a close above a lower high inside
-      the pullback is no setup;
+   1. a proper **1-2-3**, made of **proper legs**: a high or low counts as
+      structure only once price has moved against it by 2.5 ATR over at
+      least two candles (*Proper leg: size*; the ATR is never taken smaller
+      than its 100-candle average, so a quiet stretch does not turn small
+      moves into structure). Level 1 is the last such high no candle has
+      closed above. **Level 2 is a valid Higher Low (HL)**: the lowest low
+      of the pullback after Level 1, above the previous low (the last
+      confirmed low before Level 1). Bearish: **Level 2 is a valid Lower
+      High (LH)**, below the previous high. Every confirmed high and low is
+      labelled HH, LH, HL or LL against the one before it; a Level 2
+      labelled LL (bearish: HH) means no setup (shown as skipped with the
+      reason). Small moves inside a leg are never Level 1, 2 or 3;
    2. a **break of structure** (BOS): a candle **closes** above Level 1;
    3. the **Level 2 zone**: at the valid Higher Low, the lowest **bearish**
       candle between Level 1 and the BOS, **from its opening price to its
@@ -65,15 +66,24 @@ real ones.
       of those three candles is at least one ATR beyond its open
       (*Demand / supply: move away*) and no candle comes back into the zone
       before the BOS (fresh);
-   4. **Level 3**: the top of the leg after the BOS, confirmed by a valid
-      pullback (a close below the low of the candle that made it) or by a
-      candle that comes back to the zone without a new high; it follows a
-      new high until then, also through pauses inside the leg;
-   5. the **retest**: a closed candle reaches the zone; if it (or any candle
-      before it) closes **below** the zone, the setup is invalid;
-   6. **entry at the next candle's open**, target **Level 3**, the stop past
-      the zone and Level 2 by a quarter ATR (*Stop beyond the zone*); entered
-      only when reward/risk meets the minimum of the risk rules.
+   4. **a proper 3**: the top of the leg after the BOS, confirmed by a
+      proper pullback (the same leg size) or by a candle that comes back to
+      the zone without a new high. It must go at least one ATR beyond
+      Level 1 (*Proper 3: beyond 1 by*): a break that goes nowhere before
+      price falls back is skipped;
+   5. the **test**, in the **first return**: a closed candle reaches the
+      zone in the first pullback from 3. Once price has bounced by a proper
+      leg without reaching the zone, or closed beyond a confirmed 3 (the BOS
+      of a newer structure), the setup is over. A candle that closes
+      **below** the zone ends it too;
+   6. **entry at the zone**, at the next candle's open: the testing candle
+      has to close in the zone or within half an ATR of its edge (*Entry at
+      the zone: within*); one that only touches the zone and closes far
+      away leaves no entry and the setup is skipped. Target **the area of
+      3**: the body of the candle that made 3 (*Target*; or the very end of
+      its wick). The stop past the zone and Level 2 by a quarter ATR (*Stop
+      beyond the zone*); entered only when reward/risk meets the minimum of
+      the risk rules.
 
    The filters, as the trader wrote them (shown under *Settings → Strategy*,
    ticked on the strategy card for each setup):
@@ -114,13 +124,19 @@ real ones.
    closed (*Gap: pause*). Open trades keep their stop and target. The
    strategy card says when a pause is on.
 
-   External structure, as the engine follows it: a bullish BOS makes Level 2
-   the external (protected) low and starts the leg up; the leg's top becomes
-   the external high at its valid pullback. The next close above that high
-   is the next bullish setup; a close below the external low is a bearish
-   one (Level 1 that low, Level 2 the highest point between). The structure
-   starts from the first candle's range; a break of that start range only
-   starts the structure and is never a setup.
+   **What the rules do on real candles** (`tests/run-backtest.sh`, on 625
+   days of 15-minute candles of a gold token and of EUR against a dollar
+   token from a public exchange feed, 80,000 5-minute and 30,000 1-hour
+   candles of each; not FOREX.com's prices): the setups taken look like the
+   strategy's charts, there are few of them (about one a week on 15-minute
+   gold), their reward:risk averages 4 to 5, and they reach the target about
+   one time in five: as often as a trade of that reward:risk does in a
+   market that drifts nowhere (the tool prints that "coin flip" rate beside
+   the win rate). Nothing tried moved that (structure size, trend filters,
+   time of day, the shape of the testing candle, how fast price returns):
+   the win rate follows the distance of stop and target, not the pattern.
+   The rules alone do not reproduce a discretionary trader's results; what
+   a person leaves out by eye is not in them.
 
    Only closed candles decide; the forming candle gives the entry's open
    and an "in the zone now" note that is shown, never acted on. Nothing is
@@ -213,7 +229,8 @@ dashed while it forms), the BOS and retest marks and the entry; past setups
 are not drawn. The PD arrays in play (FVG blue, order blocks violet, demand
 green, supply red, dashed) are drawn only with the PD filter on. The strategy's settings are under
 *Settings → Strategy: SBT Model 1* (`[sbt]` in the file: `ai_confirm`,
-`require_pd_array`, `zone_move_atr`, `gap_atr`, `gap_pause_candles`, `stop_buffer_atr`,
+`require_pd_array`, `leg_atr`, `min_pullback_candles`, `extension_atr`, `entry_zone_atr`,
+`first_return`, `supersede`, `target=body|wick`, `zone_move_atr`, `gap_atr`, `gap_pause_candles`, `stop_buffer_atr`,
 `pd_distance_atr`, `max_wait_candles`).
 
 ## The AI Desk
@@ -524,7 +541,8 @@ prints the conversation, the analysis, the status and a timed event log).
 |---|---|---|
 | `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3276 checks) | build command in the file's header; plain `g++`, sanitizers |
 | `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account, markets priced in another currency (346 checks) | as above |
-| `tests/test_sbt.cpp` | SBT Model 1: a hand-drawn bullish chart and the same chart upside down for bearish; Level 1/2/3, the BOS, the zone, the retest, a close through the zone, a wick through it, no retest before Level 3, Level 3 following a new high, no BOS without a close, the strategy's own bullish and bearish charts with the default settings (and a testing candle that closes through the zone), external structure only (an internal lower high and a pause inside the leg are never Level 1 or 3), reward/risk and the optional PD filter, history not traded, expiry, no bearish candle at 2, FVG/order block/supply detection, old candles ignored, a 6000-candle random run (bounded memory, no entry twice) (13160 checks) | `tests/run-unit.sh sbt` |
+| `tests/test_sbt.cpp` | SBT Model 1: a hand-drawn bullish chart and the same chart upside down for bearish; the strategy's own two charts with the default settings; Level 1/2/3, the BOS, the zone (open to wick, order block and demand/supply), Higher Low / Lower High, proper legs (small moves and a quiet stretch make no structure), a break that goes nowhere (no proper 3), only the first return is a test, a newer structure replaces a setup, the entry at the zone, the target as the area of 3, a close through the zone, a wick through it, the gap filter, reward/risk and the optional PD filter, history not traded, expiry, old candles ignored, a 6000-candle random run (bounded memory, no entry twice) (12331 checks) | `tests/run-unit.sh sbt` |
+| `tests/tools/sbt_backtest.cpp` | not a test: the strategy over a file of real candles, candle by candle (structures, entries, wins, losses, the coin-flip rate at the same reward:risk, what was left out and why); `tests/tools/fetch_klines.py` fetches such a file from a public exchange feed | `tests/run-backtest.sh FILE.csv [name=value …]` |
 | `tests/test_desk.cpp` | the desk's reading of messages (markets, levels and the numbers that are not levels, observations, intent, Roman Urdu questions) and its analysis state (books per market, merging, plan and reward/risk, levels against the live price) (134 checks) | `tests/run-unit.sh desk` |
 | `tests/test_app.py` | the real binary against `tests/fake_services.py` (62 tests): the watchlist and markets the data service does not list, adding and removing markets, the forex markets (the other service's requests and stream, what is offered, a dollar-base pair counted in dollars, switching kinds, recorded answers and messages of the real service), an open position staying on show after a hold, models that are slow or fail once (asked again, left out after two tries, only so many at a time), the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files; and the AI Desk (9 tests): messages accepted at once and built on (the answer sees the earlier messages, the model reads each message once), messages taken while a slow answer is written (two answers under way, a double send is one message, the chart following the conversation), live facts and no key, level alerts from the live price, the team started for a trade question and its call forming, a model's reading adding what the quick reading missed, stopping an answer, the conversation surviving a restart, gold found where it is listed | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
 

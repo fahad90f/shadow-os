@@ -364,6 +364,13 @@ void TradingConfig::reload()
     // SBT Model 1, the strategy trades come from.
     const Trading::Sbt::Settings sd;
     m_sbt = sd;
+    m_sbt.legAtr = clampOr(number("sbt/leg_atr", sd.legAtr), 1, 8, sd.legAtr);
+    m_sbt.minPullbackCandles = int(clampOr(number("sbt/min_pullback_candles", sd.minPullbackCandles), 1, 10, sd.minPullbackCandles));
+    m_sbt.extensionAtr = clampOr(number("sbt/extension_atr", sd.extensionAtr), 0, 5, sd.extensionAtr);
+    m_sbt.entryZoneAtr = clampOr(number("sbt/entry_zone_atr", sd.entryZoneAtr), 0, 5, sd.entryZoneAtr);
+    m_sbt.firstReturn = ini.value(QStringLiteral("sbt/first_return"), sd.firstReturn).toBool();
+    m_sbt.supersede = ini.value(QStringLiteral("sbt/supersede"), sd.supersede).toBool();
+    m_sbt.targetBody = ini.value(QStringLiteral("sbt/target")).toString().trimmed().toLower() != QLatin1String("wick");
     m_sbt.zoneMoveAtr = clampOr(number("sbt/zone_move_atr", sd.zoneMoveAtr), 0.2, 5, sd.zoneMoveAtr);
     m_sbt.gapAtr = clampOr(number("sbt/gap_atr", sd.gapAtr), 0.1, 5, sd.gapAtr);
     m_sbt.gapPauseCandles = int(clampOr(number("sbt/gap_pause_candles", sd.gapPauseCandles), 0, 100, sd.gapPauseCandles));
@@ -807,11 +814,18 @@ Trading::Sbt::Settings TradingConfig::sbt() const
 
 bool TradingConfig::setSbt(const QString &name, const QVariant &value)
 {
-    if (name == QLatin1String("ai_confirm") || name == QLatin1String("require_pd_array")) {
+    if (name == QLatin1String("ai_confirm") || name == QLatin1String("require_pd_array")
+        || name == QLatin1String("first_return") || name == QLatin1String("supersede")) {
         store(QStringLiteral("sbt/") + name, value.toBool());
+    } else if (name == QLatin1String("target")) {
+        const QString target = value.toString();
+        if (target != QLatin1String("body") && target != QLatin1String("wick"))
+            return false;
+        store(QStringLiteral("sbt/target"), target);
     } else {
         struct Range { const char *name; double low; double high; };
-        static const Range ranges[] = {{"stop_buffer_atr", 0, 2},
+        static const Range ranges[] = {{"leg_atr", 1, 8}, {"min_pullback_candles", 1, 10}, {"extension_atr", 0, 5},
+                                       {"entry_zone_atr", 0, 5}, {"stop_buffer_atr", 0, 2},
                                        {"pd_distance_atr", 0.2, 5}, {"max_wait_candles", 10, 1000},
                                        {"zone_move_atr", 0.2, 5}, {"gap_atr", 0.1, 5},
                                        {"gap_pause_candles", 0, 100}};

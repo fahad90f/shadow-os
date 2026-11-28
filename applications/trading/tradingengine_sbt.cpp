@@ -165,11 +165,7 @@ QString TradingEngine::sbtSignature() const
 
 bool TradingEngine::sbtSettingsDiffer() const
 {
-    const Sbt::Settings a = m_sbt.settings(), b = m_config->sbt();
-    return a.zoneMoveAtr != b.zoneMoveAtr || a.gapAtr != b.gapAtr
-        || a.gapPauseCandles != b.gapPauseCandles || a.stopBufferAtr != b.stopBufferAtr
-        || a.minRewardRisk != b.minRewardRisk || a.requirePdArray != b.requirePdArray
-        || a.pdDistanceAtr != b.pdDistanceAtr || a.maxArmedCandles != b.maxArmedCandles;
+    return !Sbt::sameRules(m_sbt.settings(), m_config->sbt());
 }
 
 void TradingEngine::handleSbt(const std::vector<Sbt::Event> &events)
@@ -489,12 +485,12 @@ QVariantMap TradingEngine::sbt() const
         // The confirmed highs and lows, newest last, labelled HH, LH, HL or LL.
         {QStringLiteral("structure"), [this] {
              QVariantList points;
-             const std::vector<Sbt::StructurePoint> &all = m_sbt.structure();
-             for (size_t i = all.size() > 12 ? all.size() - 12 : 0; i < all.size(); ++i)
-                 points.append(QVariantMap{{QStringLiteral("price"), all[i].point.price},
-                                           {QStringLiteral("time"), double(all[i].point.time)},
-                                           {QStringLiteral("high"), all[i].high},
-                                           {QStringLiteral("label"), QString::fromStdString(all[i].label)}});
+             const std::vector<Sbt::StructurePoint> &known = m_sbt.structure();
+             for (size_t i = known.size() > 12 ? known.size() - 12 : 0; i < known.size(); ++i)
+                 points.append(QVariantMap{{QStringLiteral("price"), known[i].point.price},
+                                           {QStringLiteral("time"), double(known[i].point.time)},
+                                           {QStringLiteral("high"), known[i].high},
+                                           {QStringLiteral("label"), QString::fromStdString(known[i].label)}});
              return points;
          }()},
         // Rule 5: a gap pauses the strategy.
@@ -511,6 +507,13 @@ QVariantMap TradingEngine::sbtSettings() const
     const Sbt::Settings s = m_config->sbt();
     return {{QStringLiteral("ai_confirm"), m_config->sbtAiConfirm()},
             {QStringLiteral("require_pd_array"), s.requirePdArray},
+            {QStringLiteral("leg_atr"), s.legAtr},
+            {QStringLiteral("min_pullback_candles"), s.minPullbackCandles},
+            {QStringLiteral("extension_atr"), s.extensionAtr},
+            {QStringLiteral("entry_zone_atr"), s.entryZoneAtr},
+            {QStringLiteral("first_return"), s.firstReturn},
+            {QStringLiteral("supersede"), s.supersede},
+            {QStringLiteral("target"), s.targetBody ? QStringLiteral("body") : QStringLiteral("wick")},
             {QStringLiteral("zone_move_atr"), s.zoneMoveAtr},
             {QStringLiteral("gap_atr"), s.gapAtr},
             {QStringLiteral("gap_pause_candles"), s.gapPauseCandles},
@@ -588,13 +591,7 @@ void TradingEngine::updateSbtHistory()
     // market or other rules: read everything again. Reading 20,000 candles
     // takes a few milliseconds; otherwise only the new ones are read.
     const bool rebuild = key != m_sbtHistoryKey || first != m_sbtHistoryFirst
-        || m_sbtHistory.settings().zoneMoveAtr != m_config->sbt().zoneMoveAtr
-        || m_sbtHistory.settings().gapAtr != m_config->sbt().gapAtr
-        || m_sbtHistory.settings().gapPauseCandles != m_config->sbt().gapPauseCandles
-        || m_sbtHistory.settings().requirePdArray != m_config->sbt().requirePdArray
-        || m_sbtHistory.settings().stopBufferAtr != m_config->sbt().stopBufferAtr
-        || m_sbtHistory.settings().minRewardRisk != m_config->sbt().minRewardRisk
-        || m_sbtHistory.settings().pdDistanceAtr != m_config->sbt().pdDistanceAtr;
+        || !Sbt::sameRules(m_sbtHistory.settings(), m_config->sbt());
     if (rebuild) {
         Sbt::Settings settings = m_config->sbt();
         settings.keepFinished = 5000;

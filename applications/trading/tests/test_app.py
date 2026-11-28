@@ -561,7 +561,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual((signal["action"], signal["confidence"]), ("buy", 100))
         # The levels are the strategy's: the stop below the zone, Level 3 the target.
         self.assertAlmostEqual(signal["stop"], signal["sbt"]["stop"], places=6)
-        self.assertAlmostEqual(signal["takeProfit"], 106.5 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(signal["takeProfit"], 105.8 * self.SCALE, delta=0.01)
         self.assertTrue(signal["risk"]["allowed"], signal["risk"]["reason"])
         self.assertTrue(signal["placeable"])        # auto trade is off: it waits to be placed by hand
         self.assertEqual(self.requests("chat"), [])
@@ -596,7 +596,7 @@ class AppTest(unittest.TestCase):
         self.assertTrue(sbt["review"]["confirmed"])
         # Levels: the strategy's, not what the models proposed (1 % and 2.5 % from the price).
         self.assertAlmostEqual(signal["stop"], sbt["stop"], places=6)
-        self.assertAlmostEqual(signal["takeProfit"], 106.5 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(signal["takeProfit"], 105.8 * self.SCALE, delta=0.01)
         proposed = [v["stop"] for v in signal["verdicts"] if v["ok"] and v["stop"] > 0]
         self.assertTrue(proposed)
         self.assertNotAlmostEqual(signal["stop"], statistics.median(proposed), delta=100)
@@ -679,7 +679,7 @@ class AppTest(unittest.TestCase):
         position = out["account"]["positions"][0]
         self.assertEqual(position["side"], "sell")
         self.assertGreater(position["stop"], position["entry"])
-        self.assertAlmostEqual(position["takeProfit"], (200 - 106.5) * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(position["takeProfit"], (200 - 105.8) * self.SCALE, delta=0.01)
 
     def test_an_open_position_stays_on_show_when_the_next_analysis_says_hold(self):
         # The trade is placed; then the team is asked about the setup again
@@ -885,9 +885,11 @@ class AppTest(unittest.TestCase):
         self.assertEqual(subscribed["ticker"]["symbols"],
                          ["EUR/USD", "GBP/USD", "AUD/USD", "USD/CAD", "USD/CHF", "PAXG/USD"])
         # The jump two seconds in can only have come through the stream.
-        self.assertGreater(market["quote"]["close"], 1.0982 * 1.012)
+        # (the stand-in's prices wave by up to 0.85 % with the time of day: with the 2 % jump at
+        # least +1.1 %, without it at most +0.9 %)
+        self.assertGreater(market["quote"]["close"], 1.0982 * 1.010)
         listed = {m["symbol"]: m for m in market["watchlist"]}
-        self.assertGreater(listed["USDCHF"]["price"], 0.8311 * 1.012)
+        self.assertGreater(listed["USDCHF"]["price"], 0.8311 * 1.010)
         self.assertEqual(len(self.market_requests("/0/public/Ticker")), 1)   # the first look, then the stream
 
     def test_recorded_messages_of_the_real_forex_stream_are_understood(self):
@@ -998,7 +1000,7 @@ class AppTest(unittest.TestCase):
         expected = (position["price"] - position["entry"]) * position["quantity"] / position["price"]
         self.assertAlmostEqual(position["pnl"], expected, places=6)
         self.assertGreater(position["pnl"], 0)
-        # And at the target, Level 3, about 4.8 % above the entry.
+        # And at the target, the area of 3, about 4.1 % above the entry.
         out = self.act("wait:1", plan, settings, moves=[(1, dict(plan, market=dict(self.BULL, move_pct=6.0)))],
                        seconds=8)
         self.assertEqual(out["account"]["positions"], [])
@@ -1329,7 +1331,7 @@ class AppTest(unittest.TestCase):
     # ---- the account over time ---------------------------------------------------------
     # The bullish setup's long is placed at the start (the forming candle is
     # its entry candle, at 101.6 scaled); its stop is about 1.9 % below the
-    # entry, Level 3 about 4.8 % above it.
+    # entry, the area of 3 about 4.1 % above it.
     def test_the_stop_closes_the_trade_when_the_price_falls(self):
         plan = {"*": BUY, "market": self.BULL}
         out = self.act("analyze", plan, AUTO, moves=[(4, dict(plan, market=dict(self.BULL, move_pct=-3.0)))],
@@ -1361,8 +1363,8 @@ class AppTest(unittest.TestCase):
         trade = out["account"]["trades"][0]
         self.assertEqual(trade["reason"], "take_profit")
         self.assertAlmostEqual(trade["exit"], out["signal"]["takeProfit"], places=6)  # a limit order fills at its price
-        self.assertAlmostEqual(trade["exit"], 106.5 * self.SCALE, delta=0.01)           # Level 3
-        self.assertGreater(trade["pnl"], 140)  # 4.8 % of a third of the account, less fees
+        self.assertAlmostEqual(trade["exit"], 105.8 * self.SCALE, delta=0.01)           # the area of 3
+        self.assertGreater(trade["pnl"], 120)  # 4.1 % of a third of the account, less fees
         self.assertEqual(out["account"]["account"]["wins"], 1)
         self.assertAlmostEqual(out["account"]["account"]["winRatePct"], 100)
 
@@ -1431,7 +1433,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(results[:2], ["", ""])   # reviewed, placed
         self.assertNotEqual(results[2], "")       # not twice
         self.assertEqual(len(out["account"]["positions"]), 1)
-        self.assertAlmostEqual(out["account"]["positions"][0]["takeProfit"], 106.5 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(out["account"]["positions"][0]["takeProfit"], 105.8 * self.SCALE, delta=0.01)
         self.assertTrue(out["signal"]["traded"])
         self.assertFalse(out["signal"]["placeable"])
 
@@ -1527,7 +1529,7 @@ class AppTest(unittest.TestCase):
         short = [p for p in out["account"]["positions"] if p["symbol"] == "BTCUSDT"]
         self.assertEqual([p["side"] for p in short], ["sell"])
         self.assertGreater(short[0]["stop"], short[0]["entry"])
-        self.assertAlmostEqual(short[0]["takeProfit"], (200 - 106.5) * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(short[0]["takeProfit"], (200 - 105.8) * self.SCALE, delta=0.01)
         self.assertTrue(any("signal reversed" in a["text"] for a in out["account"]["activity"]))
 
     # ---- SBT Model 1: where every trade comes from -------------------------------
@@ -1565,7 +1567,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(len(positions), 1)
         p = positions[0]
         self.assertEqual(p["side"], "buy")
-        self.assertAlmostEqual(p["takeProfit"], 106.5 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(p["takeProfit"], 105.8 * self.SCALE, delta=0.01)
         self.assertAlmostEqual(p["stop"], sbt["stop"], delta=0.01)
         self.assertLess(p["stop"], 100.0 * self.SCALE)
         # Every model was asked about this setup, not for trades of its own.
@@ -1589,7 +1591,7 @@ class AppTest(unittest.TestCase):
         h = entries[-1]
         self.assertAlmostEqual(h["entry"], 101.6 * self.SCALE, delta=0.01)
         self.assertEqual(h["result"], "target")   # Level 3 was reached after the move
-        self.assertAlmostEqual(h["target"], 106.5 * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(h["target"], 105.8 * self.SCALE, delta=0.01)
         self.assertLess(h["stop"], 100.0 * self.SCALE)   # beyond the Level 2 zone
         self.assertGreaterEqual(h["exitTime"], h["entryTime"])   # Level 3 can be reached in the entry candle itself
         # The paper account's own trade on this market: entry, stop, target and how it ended.
@@ -1634,7 +1636,7 @@ class AppTest(unittest.TestCase):
         self.assertGreater(sbt["previous"]["price"], sbt["level2"]["price"])               # Level 2 is the Lower High
         p = out["account"]["positions"][0]
         self.assertEqual(p["side"], "sell")
-        self.assertAlmostEqual(p["takeProfit"], (200 - 106.5) * self.SCALE, delta=0.01)
+        self.assertAlmostEqual(p["takeProfit"], (200 - 105.8) * self.SCALE, delta=0.01)
         self.assertGreater(p["stop"], 100.0 * self.SCALE)
 
     def test_sbt_setup_the_team_rejects_is_not_traded(self):

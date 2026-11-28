@@ -172,7 +172,7 @@ static void testBullish()
         NEAR(s.level3.price, 106.5, 1e-9);
         CHECK(s.level3.time == v[30].openTime);
         CHECK(s.level3Confirmed);
-        NEAR(s.target, 106.5, 1e-9);
+        NEAR(s.target, 105.8, 1e-9);           // the area of 3: the body of the candle that made the high
         CHECK(s.stop < 100.0 && s.stop > 99.0); // below the zone by a quarter ATR
         CHECK(!s.confirmations.empty());
         CHECK(hasKind(s, PdKind::OrderBlock)); // the last bearish candle before the displacement at 20
@@ -195,7 +195,7 @@ static void testBullish()
         NEAR(in->setup.entry, 101.6, 1e-9);
         CHECK(in->setup.entryTime == v[35].openTime);
         CHECK(in->setup.rewardRisk > 1.5);
-        NEAR(in->setup.rewardRisk, (106.5 - 101.6) / (101.6 - in->setup.stop), 1e-9);
+        NEAR(in->setup.rewardRisk, (105.8 - 101.6) / (101.6 - in->setup.stop), 1e-9);
         CHECK(!in->setup.historical);
         CHECK(in->live);
     }
@@ -239,7 +239,7 @@ static void testBearish()
     CHECK(in != nullptr);
     if (in) {
         NEAR(in->setup.entry, 200 - 101.6, 1e-9);
-        NEAR(in->setup.target, 200 - 106.5, 1e-9);
+        NEAR(in->setup.target, 200 - 105.8, 1e-9);
         CHECK(in->setup.stop > 100.0 && in->setup.stop < 101.0);
         CHECK(hasKind(in->setup, PdKind::OrderBlock));
     }
@@ -278,22 +278,28 @@ static void testWickBelowButCloseInsideIsARetest()
     CHECK(r.find("invalidated") == nullptr);
 }
 
-static void testAnEarlyRetestCounts()
+static void testABreakThatGoesNowhereIsNoProperThree()
 {
-    // Straight back into the zone one candle after the BOS, without a new
-    // high: the BOS candle's high is Level 3, and this is the retest.
+    // Straight back into the zone one candle after the BOS: the high after
+    // the break (104.6) is hardly beyond Level 1 (103.5). No proper 3, no trade.
     std::vector<Candle> v = bullish();
     v.resize(29);
-    v.push_back(bar(29, 104.4, 104.5, 101.1, 101.8));
+    v.push_back(bar(29, 104.4, 104.5, 101.1, 101.3));
     Run r;
     r.closeAll(v, 30);
-    const Event *t = r.find("triggered");
+    CHECK(r.find("triggered") == nullptr);
+    const Event *t = r.find("skipped");
     CHECK(t != nullptr);
     if (t) {
-        CHECK(t->setup.level3Confirmed);
+        CHECK(t->setup.note.find("no proper 3") == 0);
         NEAR(t->setup.level3.price, 104.6, 1e-9);
-        CHECK(t->setup.level3.time == v[28].openTime);
     }
+    // With the rule off it is taken as before.
+    Settings loose;
+    loose.extensionAtr = 0;
+    Run l(loose);
+    l.closeAll(v, 30);
+    CHECK(l.find("triggered") != nullptr);
     // A candle that makes a new high AND reaches the zone is no retest: Level 3 moves.
     std::vector<Candle> w = bullish();
     w.resize(29);
@@ -629,7 +635,7 @@ static void testTheOwnersChart(const std::vector<Candle> &v, bool bull)
         CHECK(trig->setup.retest.time == v[24].openTime);
         NEAR(trig->setup.level3.price, bull ? 182 : 18, 1e-9);
         CHECK(trig->setup.level3.time == v[17].openTime);
-        NEAR(trig->setup.target, bull ? 182 : 18, 1e-9);
+        NEAR(trig->setup.target, bull ? 178 : 22, 1e-9);   // the area of 3: the body of its candle
         CHECK(bull ? trig->setup.stop < 78 : trig->setup.stop > 122); // beyond the zone
     }
     CHECK(r.find("entered") == nullptr); // only when the next candle opens
@@ -752,7 +758,7 @@ static void testExternalNotInternal(const std::vector<Candle> &v, bool bull)
     if (trig) {
         CHECK(trig->setup.retest.time == v[31].openTime);
         CHECK(trig->setup.level3.time == v[24].openTime); // the leg's top, not the internal 150
-        NEAR(trig->setup.target, bull ? 182 : 18, 1e-9);
+        NEAR(trig->setup.target, bull ? 178 : 22, 1e-9);
     }
     // The external points now: Level 3 is the external high (bearish: low),
     // Level 2 the external low (high).
@@ -955,8 +961,188 @@ static void testLevel2IsAHigherLow(bool bull)
     }
 }
 
+// ---- a proper 1-2-3, as drawn ------------------------------------------------------
+
+static Candle at(const std::vector<Candle> &v, int i, double o, double h, double l, double c)
+{
+    Candle x = bar(i, o, h, l, c);
+    x.openTime = v[size_t(i)].openTime;
+    return x;
+}
+
+static const Event *lastOf(const Run &r, const std::string &kind, long long level1Time)
+{
+    const Event *found = nullptr;
+    for (const Event &e : r.events)
+        found = e.kind == kind && e.setup.level1.time == level1Time ? &e : found;
+    return found;
+}
+
+// The test has to come in the first pullback from 3. Here price falls from 3
+// to 126, bounces to 174 (a proper leg up, but no new high) and only then
+// drops into the zone: the structure has moved on, and the old zone is no trade.
+static void testOnlyTheFirstReturnIsATest(bool bull)
+{
+    std::vector<Candle> v = ownerBullish();
+    v.resize(22);                                   // ... 21: low 126, close 128
+    v.push_back(bar(22, 128, 152, 127, 150));       // the bounce
+    v.push_back(bar(23, 150, 174, 149, 172));
+    v.push_back(bar(24, 172, 173, 138, 140));
+    v.push_back(bar(25, 140, 141, 108, 110));
+    v.push_back(bar(26, 110, 111, 85, 88));         // into the zone at last
+    v.push_back(bar(27, 88, 100, 87, 98));
+    if (!bull)
+        v = mirror(v);
+    Run r;
+    r.closeAll(v, v.size());
+    const Event *gone = lastOf(r, "expired", v[6].openTime);
+    CHECK(gone != nullptr);
+    if (gone) {
+        CHECK(gone->setup.note.find("the pullback from 3 ended before the zone") == 0);
+        CHECK(gone->setup.outcomeTime == v[23].openTime);
+    }
+    CHECK(lastOf(r, "triggered", v[6].openTime) == nullptr);
+    CHECK(lastOf(r, "entered", v[6].openTime) == nullptr);
+    Settings any;
+    any.firstReturn = false;
+    Run a(any);
+    a.closeAll(v, v.size());
+    const Event *t = lastOf(a, "triggered", v[6].openTime);
+    CHECK(t && t->setup.retest.time == v[26].openTime);
+}
+
+// A close beyond a confirmed 3 before the zone was tested is the BOS of a
+// newer structure: the old setup is left behind.
+static void testANewerStructureReplacesTheSetup(bool bull)
+{
+    std::vector<Candle> v = ownerBullish();
+    v.resize(22);
+    v.push_back(bar(22, 128, 162, 127, 160));
+    v.push_back(bar(23, 160, 188, 159, 186));       // closes above 3 (182)
+    if (!bull)
+        v = mirror(v);
+    Settings s;
+    s.firstReturn = false;                          // so that this rule is the one that ends it
+    Run r(s);
+    r.closeAll(v, v.size());
+    const Event *gone = lastOf(r, "expired", v[6].openTime);
+    CHECK(gone != nullptr);
+    if (gone)
+        CHECK(gone->setup.note.find("a newer structure formed") == 0);
+    s.supersede = false;
+    Run keep(s);
+    keep.closeAll(v, v.size());
+    CHECK(lastOf(keep, "expired", v[6].openTime) == nullptr);
+    CHECK(lastOf(keep, "armed", v[6].openTime) != nullptr);
+}
+
+// The entry is at the zone. A candle that only touches the zone and closes
+// far away from it leaves no entry there.
+static void testTheEntryIsAtTheZone(bool bull)
+{
+    std::vector<Candle> v = ownerBullish();
+    v[24] = at(v, 24, 97, 122, 85, 120);            // wicks into the zone (78..90), closes 30 above it
+    v[25] = at(v, 25, 120, 131, 119, 130);
+    if (!bull)
+        v = mirror(v);
+    Run r;
+    r.closeAll(v, 26);
+    const Event *e = lastOf(r, "skipped", v[6].openTime);
+    CHECK(e != nullptr);
+    if (e)
+        CHECK(e->setup.note.find("the test left the zone at once") == 0);
+    CHECK(lastOf(r, "triggered", v[6].openTime) == nullptr);
+    Settings far;
+    far.entryZoneAtr = 10;
+    Run f(far);
+    f.closeAll(v, 26);
+    CHECK(lastOf(f, "triggered", v[6].openTime) != nullptr);
+}
+
+// The target is the area of 3: by default its near edge (the body of the
+// Level 3 candle), with the setting off the end of its wick.
+static void testTheTargetIsTheAreaOfThree()
+{
+    const std::vector<Candle> v = ownerBullish();   // the Level 3 candle: open 165, high 182, close 178
+    Run body;
+    body.closeAll(v, 25);
+    const Event *b = body.find("triggered");
+    CHECK(b != nullptr);
+    if (b)
+        NEAR(b->setup.target, 178, 1e-9);
+    Settings s;
+    s.targetBody = false;
+    Run wick(s);
+    wick.closeAll(v, 25);
+    const Event *w = wick.find("triggered");
+    CHECK(w != nullptr);
+    if (w)
+        NEAR(w->setup.target, 182, 1e-9);
+}
+
+// Structure is made of proper legs. With a tiny leg size the small high
+// inside the pull-back of internalSwings() becomes "structure" and more
+// setups appear; at the default size there is exactly the one drawn.
+static void testSmallMovesAreNoStructure()
+{
+    const std::vector<Candle> v = internalSwings();
+    Run proper;
+    proper.closeAll(v, 32);
+    int made = 0;
+    for (const Event &e : proper.events)
+        made += e.kind == "armed" || (e.kind == "skipped" && e.setup.retest.index < 0);
+    CHECK(made == 1);
+    Settings tiny;
+    tiny.legAtr = 0.4;
+    tiny.minPullbackCandles = 1;
+    Run noisy(tiny);
+    noisy.closeAll(v, 32);
+    int noise = 0;
+    for (const Event &e : noisy.events)
+        noise += e.kind == "armed" || (e.kind == "skipped" && e.setup.retest.index < 0);
+    CHECK(noise > 1);
+    CHECK(noisy.engine.structure().size() > proper.engine.structure().size());
+}
+
+// A quiet stretch does not turn small moves into structure: the leg size
+// never falls below what the long average range asks for.
+static void testAQuietStretchMakesNoStructure()
+{
+    Engine e;
+    int i = 0;
+    double p = 1000;
+    for (int leg = 0; leg < 20; ++leg) {            // legs of 60 in candles of about 12
+        const double d = leg % 2 ? -10 : 10;
+        for (int k = 0; k < 6; ++k, p += d)
+            e.close(bar(i++, p, std::max(p, p + d) + 1, std::min(p, p + d) - 1, p + d));
+    }
+    const size_t before = e.structure().size();
+    CHECK(before >= 10);
+    for (int leg = 0; leg < 12; ++leg) {            // then legs of 4 in candles of about 1.4
+        const double d = leg % 2 ? -1 : 1;
+        for (int k = 0; k < 4; ++k, p += d)
+            e.close(bar(i++, p, std::max(p, p + d) + 0.2, std::min(p, p + d) - 0.2, p + d));
+    }
+    CHECK(e.atr() < 3);                             // the short average has collapsed
+    CHECK(e.legNeed() > 10);                        // the leg size has not
+    CHECK(e.structure().size() == before);
+}
+
+static void testProperStructure()
+{
+    for (bool bull : {true, false}) {
+        testOnlyTheFirstReturnIsATest(bull);
+        testANewerStructureReplacesTheSetup(bull);
+        testTheEntryIsAtTheZone(bull);
+    }
+    testTheTargetIsTheAreaOfThree();
+    testSmallMovesAreNoStructure();
+    testAQuietStretchMakesNoStructure();
+}
+
 int main()
 {
+    testProperStructure();
     testLevel2IsAHigherLow(true);
     testLevel2IsAHigherLow(false);
     testOwnersRules();
@@ -966,7 +1152,7 @@ int main()
     testBearish();
     testCloseThroughTheZoneInvalidates();
     testWickBelowButCloseInsideIsARetest();
-    testAnEarlyRetestCounts();
+    testABreakThatGoesNowhereIsNoProperThree();
     testStopIsBeyondLevel2();
     testIdsCarryThePrefix();
     testOutcomeNeverFromBeforeTheEntry();

@@ -13,6 +13,7 @@ const int kMinWindow = 400;   // closed candles kept at least
 const int kMaxWindow = 3000;  // and at most
 const size_t kMaxArrays = 80;
 const int kAtrPeriod = 14;
+const int kAtrSlowPeriod = 100;
 
 bool bullishCandle(const Candle &c) { return c.close > c.open; }
 bool bearishCandle(const Candle &c) { return c.close < c.open; }
@@ -63,6 +64,17 @@ const char *pdName(PdKind kind, bool bullish)
     return "fvg";
 }
 
+bool sameRules(const Settings &a, const Settings &b)
+{
+    return a.legAtr == b.legAtr && a.minPullbackCandles == b.minPullbackCandles && a.supersede == b.supersede
+        && a.firstReturn == b.firstReturn && a.extensionAtr == b.extensionAtr && a.entryZoneAtr == b.entryZoneAtr
+        && a.targetBody == b.targetBody && a.zoneMoveAtr == b.zoneMoveAtr && a.gapAtr == b.gapAtr
+        && a.gapPauseCandles == b.gapPauseCandles && a.stopBufferAtr == b.stopBufferAtr
+        && a.minRewardRisk == b.minRewardRisk && a.requirePdArray == b.requirePdArray
+        && a.pdDistanceAtr == b.pdDistanceAtr && a.displacementAtr == b.displacementAtr && a.minGapAtr == b.minGapAtr
+        && a.maxArmedCandles == b.maxArmedCandles;
+}
+
 Engine::Engine(const Settings &settings)
     : m_settings(settings)
 {
@@ -94,6 +106,10 @@ void Engine::updateAtr(const Candle &c)
         tr = std::max({tr, std::fabs(c.high - prev.close), std::fabs(c.low - prev.close)});
     }
     ++m_atrCount;
+    if (m_atrCount <= kAtrSlowPeriod)
+        m_atrSlow += (tr - m_atrSlow) / m_atrCount;
+    else
+        m_atrSlow = (m_atrSlow * (kAtrSlowPeriod - 1) + tr) / kAtrSlowPeriod;
     if (m_atrCount <= kAtrPeriod)
         m_atr += (tr - m_atr) / m_atrCount; // the plain average while there are fewer than 14
     else
@@ -133,13 +149,6 @@ std::vector<Event> Engine::close(const Candle &input)
     }
     updateArrays(c);
     detectArrays();
-    if (n == 0) {
-        // The structure starts from the first candle's range; the first
-        // break and the first valid pullbacks put the external points in place.
-        m_extHigh = {c.openTime, c.high, 0};
-        m_extLow = {c.openTime, c.low, 0};
-        m_extHighReal = m_extLowReal = false;
-    }
     updateLegs(c);
     checkBos(c, &events);
     // The pause ends once the gap is filled or its candles have passed.
@@ -246,31 +255,53 @@ void Engine::recordPoint(const Point &p, bool high, const std::string &label)
         m_structure.erase(m_structure.begin(), m_structure.begin() + long(m_structure.size() - 200));
 }
 
-// The leg after a break follows new extremes; a valid pullback (a close
-// beyond the far side of the candle that made the extreme) ends it, and its
-// extreme becomes the external point.
+// The structure in proper legs. A leg ends, and its extreme becomes a
+// confirmed high or low, once price has moved against it by 'legAtr' ATRs
+// over at least 'minPullbackCandles' candles. Small moves inside a leg never
+// make a high or low of the structure.
 void Engine::updateLegs(const Candle &c)
 {
     const int n = m_count - 1;
-    if (m_legHigh.index >= 0) {
-        if (c.high > m_legHigh.price) {
-            m_legHigh = {c.openTime, c.high, n};
-        } else if (inWindow(m_legHigh.index) && c.close < at(m_legHigh.index).low) {
-            m_extHigh = m_legHigh;
-            m_extHighReal = true;
-            recordPoint(m_legHigh, true);
-            m_legHigh = Point();
-        }
+    const double need = legNeed();
+    if (m_legDir == 0) {
+        if (m_startHigh.index < 0 || c.high > m_startHigh.price)
+            m_startHigh = {c.openTime, c.high, n};
+        if (m_startLow.index < 0 || c.low < m_startLow.price)
+            m_startLow = {c.openTime, c.low, n};
+        if (!(need > 0) || m_startHigh.index == m_startLow.index || m_startHigh.price - m_startLow.price < need)
+            return;
+        // The first leg runs from the earlier of the two to the later.
+        const bool up = m_startHigh.index > m_startLow.index;
+        m_legDir = up ? 1 : -1;
+        m_ext = up ? m_startHigh : m_startLow;
+        m_counter = Point();
+        recordPoint(up ? m_startLow : m_startHigh, !up);
+        (up ? m_pivotLow : m_pivotHigh) = up ? m_startLow : m_startHigh;
+        m_startHigh = m_startLow = Point();
+        return;
     }
-    if (m_legLow.index >= 0) {
-        if (c.low < m_legLow.price) {
-            m_legLow = {c.openTime, c.low, n};
-        } else if (inWindow(m_legLow.index) && c.close > at(m_legLow.index).high) {
-            m_extLow = m_legLow;
-            m_extLowReal = true;
-            recordPoint(m_legLow, false);
-            m_legLow = Point();
-        }
+    const bool up = m_legDir > 0;
+    if (up ? c.high > m_ext.price : c.low < m_ext.price) {
+        m_ext = {c.openTime, up ? c.high : c.low, n};
+        m_counter = Point();
+        return;
+    }
+    if (m_counter.index < 0 || (up ? c.low < m_counter.price : c.high > m_counter.price))
+        m_counter = {c.openTime, up ? c.low : c.high, n};
+    const double moved = up ? m_ext.price - m_counter.price : m_counter.price - m_ext.price;
+    if (!(need > 0) || moved < need || m_counter.index - m_ext.index < m_settings.minPullbackCandles)
+        return;
+    // The leg is over: its extreme is a confirmed high (low), and the move
+    // against it is the new leg.
+    recordPoint(m_ext, up);
+    (up ? m_pivotHigh : m_pivotLow) = m_ext;
+    m_legDir = -m_legDir;
+    m_ext = m_counter;
+    m_counter = Point();
+    for (int i = std::max(m_first, m_ext.index + 1); i <= n; ++i) {
+        const Candle &x = at(i);
+        if (m_counter.index < 0 || (up ? x.high > m_counter.price : x.low < m_counter.price))
+            m_counter = {x.openTime, up ? x.high : x.low, i};
     }
 }
 
@@ -279,47 +310,62 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
     const int n = m_count - 1;
     for (Direction d : {Direction::Bullish, Direction::Bearish}) {
         const bool bull = d == Direction::Bullish;
-        Point &level1 = bull ? m_extHigh : m_extLow;
+        Point &level1 = bull ? m_pivotHigh : m_pivotLow;
         if (level1.index < 0)
             continue;
-        const bool broken = bull ? c.close > level1.price : c.close < level1.price;
-        if (!broken)
+        if (!(bull ? c.close > level1.price : c.close < level1.price))
             continue;
         const Point one = level1;
-        const bool real = bull ? m_extHighReal : m_extLowReal;
         level1 = Point(); // broken once
-        // The previous low before this break (bullish: the external low, or
-        // the low of a leg still running): Level 2 must be a Higher Low above
-        // it (bearish: the previous high, and Level 2 a Lower High below it).
-        const Point &otherExt = bull ? m_extLow : m_extHigh;
-        const Point &otherLeg = bull ? m_legLow : m_legHigh;
-        const bool otherReal = bull ? m_extLowReal : m_extHighReal;
-        const Point previous = otherLeg.index >= 0 ? otherLeg : otherReal ? otherExt : Point();
-        // Level 2: the extreme between Level 1 and the BOS. It is the new
-        // external point on the other side; the leg after the break is
-        // followed until its pullback. (Level 1 on the candle just before:
-        // that candle's other end.)
+        // Level 2: the extreme between Level 1 and the BOS.
         int l2 = -1;
-        const int from = std::max(m_first, std::min(one.index + 1, n - 1));
-        for (int i = from; i < n; ++i) {
-            const Candle &x = at(i);
-            if (l2 < 0 || (bull ? x.low < at(l2).low : x.high > at(l2).high))
-                l2 = i;
+        if (inWindow(one.index)) {
+            for (int i = one.index + 1; i < n; ++i) {
+                const Candle &x = at(i);
+                if (l2 < 0 || (bull ? x.low < at(l2).low : x.high > at(l2).high))
+                    l2 = i;
+            }
         }
-        // Level 2 against the previous low (bearish: high): a Higher Low (HL)
-        // or not (LL); a Lower High (LH) or not (HH).
+        // The previous low: the last confirmed low before Level 1 (bearish:
+        // the last confirmed high). Level 2 must be a Higher Low above it
+        // (a Lower High below it).
+        Point previous;
+        for (auto it = m_structure.rbegin(); it != m_structure.rend(); ++it) {
+            if (it->high != bull && it->point.index < one.index) {
+                previous = it->point;
+                break;
+            }
+        }
         std::string label;
+        Point three{c.openTime, bull ? c.high : c.low, n};
         if (l2 >= 0) {
             const Point two{at(l2).openTime, bull ? at(l2).low : at(l2).high, l2};
             if (previous.index >= 0)
                 label = bull ? (two.price > previous.price ? "HL" : "LL") : (two.price < previous.price ? "LH" : "HH");
-            (bull ? m_extLow : m_extHigh) = two;
-            (bull ? m_extLowReal : m_extHighReal) = true;
-            recordPoint(two, !bull, label);
+            // Level 2 is a confirmed low (high) now, whatever the legs had made of it so far.
+            bool recorded = false;
+            for (auto it = m_structure.rbegin(); it != m_structure.rend() && it->point.index >= two.index; ++it)
+                recorded = recorded || (it->high != bull && it->point.index == two.index);
+            if (!recorded)
+                recordPoint(two, !bull, label);
+            (bull ? m_pivotLow : m_pivotHigh) = two;
+            // Level 3 starts at the furthest point since Level 2.
+            for (int i = l2 + 1; i < n; ++i) {
+                const Candle &x = at(i);
+                if (bull ? x.high > three.price : x.low < three.price)
+                    three = {x.openTime, bull ? x.high : x.low, i};
+            }
         }
-        (bull ? m_legHigh : m_legLow) = Point{c.openTime, bull ? c.high : c.low, n};
-        (bull ? m_legLow : m_legHigh) = Point(); // a leg of the other side ends here
-        if (!real || l2 < 0 || n - one.index < 2 || !inWindow(one.index) || l2 <= one.index)
+        // The leg after the break runs from Level 2.
+        m_legDir = bull ? 1 : -1;
+        m_ext = three;
+        m_counter = Point();
+        for (int i = three.index + 1; i <= n; ++i) {
+            const Candle &x = at(i);
+            if (m_counter.index < 0 || (bull ? x.low < m_counter.price : x.high > m_counter.price))
+                m_counter = {x.openTime, bull ? x.low : x.high, i};
+        }
+        if (l2 < 0)
             continue;
         Setup s;
         s.direction = d;
@@ -330,6 +376,12 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
         if (known)
             continue;
         s.level1 = one;
+        for (auto it = m_structure.rbegin(); it != m_structure.rend(); ++it) {
+            if (it->high == bull && it->point.index == one.index) {
+                s.level1Label = it->label;
+                break;
+            }
+        }
         s.bos = {c.openTime, c.close, n};
         s.updated = c.openTime;
         s.level2 = {at(l2).openTime, bull ? at(l2).low : at(l2).high, l2};
@@ -344,7 +396,7 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
             if (z < 0 || (bull ? x.low < at(z).low : x.high > at(z).high))
                 z = i;
         }
-        s.level3 = {c.openTime, bull ? c.high : c.low, n};
+        s.level3 = three;
         if (z < 0) {
             s.status = Status::Invalidated;
             s.note = bull ? "no bearish candle at Level 2" : "no bullish candle at Level 2";
@@ -396,19 +448,41 @@ void Engine::advance(Setup &s, const Candle &c, std::vector<Event> *events)
 {
     const int n = m_count - 1;
     const bool bull = s.direction == Direction::Bullish;
-    // Level 3 follows the leg after the BOS until a valid pullback confirms
-    // it (a close beyond the far side of the candle that made it), the
-    // external way. A candle that reaches the zone without a new extreme
-    // confirms it too: the turn is plain.
+    // Level 3 follows the leg after the BOS until a proper pullback confirms
+    // it ('legAtr' ATRs over 'minPullbackCandles' candles, as for every high
+    // and low of the structure). A candle that reaches the zone without a
+    // new extreme confirms it too: the turn is plain.
     const bool newExtreme = bull ? c.high > s.level3.price : c.low < s.level3.price;
     const bool reached = bull ? c.low <= s.zoneTop : c.high >= s.zoneBottom;
-    const bool pullback = inWindow(s.level3.index)
-        && (bull ? c.close < at(s.level3.index).low : c.close > at(s.level3.index).high);
     if (newExtreme) {
+        // A close beyond a confirmed Level 3 is the BOS of a newer structure:
+        // this one's zone was never tested, and it is left behind.
+        if (s.level3Confirmed && m_settings.supersede && (bull ? c.close > s.level3.price : c.close < s.level3.price)) {
+            s.status = Status::Expired;
+            s.note = "a newer structure formed before the zone was tested (a close beyond Level 3)";
+            s.outcomeTime = c.openTime;
+            s.updated = c.openTime;
+            emit("expired", s, events);
+            return;
+        }
         s.level3 = {c.openTime, bull ? c.high : c.low, n};
         s.level3Confirmed = false;
-    } else if (!s.level3Confirmed && (pullback || reached)) {
-        s.level3Confirmed = true;
+        s.level3Pull = 0;
+        s.pullEnd = Point();
+        s.bounce = 0;
+    } else {
+        s.level3Pull = std::max(s.level3Pull, bull ? s.level3.price - c.low : c.high - s.level3.price);
+        const bool pulled = s.level3Pull >= legNeed() && n - s.level3.index >= m_settings.minPullbackCandles;
+        if (!s.level3Confirmed && (pulled || reached))
+            s.level3Confirmed = true;
+        // The pullback's furthest point, and how far price has bounced from it.
+        const double far = bull ? c.low : c.high;
+        if (s.pullEnd.index < 0 || (bull ? far < s.pullEnd.price : far > s.pullEnd.price)) {
+            s.pullEnd = {c.openTime, far, n};
+            s.bounce = 0;
+        } else {
+            s.bounce = std::max(s.bounce, bull ? c.high - s.pullEnd.price : s.pullEnd.price - c.low);
+        }
     }
     s.updated = c.openTime;
     // A close through the zone ends it, retest or not.
@@ -429,8 +503,34 @@ void Engine::advance(Setup &s, const Candle &c, std::vector<Event> *events)
     }
     if (s.level3Confirmed && reached && !newExtreme) {
         s.retest = {c.openTime, c.close, n};
+        // A proper 3 is a new high well beyond 1; a break that went nowhere
+        // before price fell back is no 1-2-3.
+        const double extension = bull ? s.level3.price - s.level1.price : s.level1.price - s.level3.price;
+        // The entry is at the zone: a candle that only touched it and closed
+        // far away leaves no entry there.
+        const double away = bull ? c.close - s.zoneTop : s.zoneBottom - c.close;
+        std::string why;
+        if (extension < m_settings.extensionAtr * m_atr)
+            why = std::string(bull ? "no proper 3: the high after the BOS is only " : "no proper 3: the low after the BOS is only ")
+                + fixed(m_atr > 0 ? extension / m_atr : 0, 1) + " ATR beyond Level 1";
+        else if (away > m_settings.entryZoneAtr * m_atr)
+            why = "the test left the zone at once: the entry would be " + fixed(m_atr > 0 ? away / m_atr : 0, 1)
+                + " ATR away from it";
+        if (!why.empty()) {
+            s.status = Status::Skipped;
+            s.note = why;
+            s.outcomeTime = c.openTime;
+            emit("skipped", s, events);
+            return;
+        }
         s.confirmations = confirmationsFor(s, c);
+        // The target: the area of 3. Its near edge is the body of the Level 3
+        // candle; its far edge the end of the wick.
         s.target = s.level3.price;
+        if (m_settings.targetBody && inWindow(s.level3.index)) {
+            const Candle &three = at(s.level3.index);
+            s.target = bull ? std::max(three.open, three.close) : std::min(three.open, three.close);
+        }
         // Past the zone and Level 2 (a wick below the zone candle is part of the structure).
         const double buffer = m_settings.stopBufferAtr * m_atr;
         s.stop = bull ? std::min(s.zoneBottom, s.level2.price) - buffer : std::max(s.zoneTop, s.level2.price) + buffer;
@@ -446,6 +546,16 @@ void Engine::advance(Setup &s, const Candle &c, std::vector<Event> *events)
         }
         s.status = Status::Triggered;
         emit("triggered", s, events);
+        return;
+    }
+    // The first pullback from 3 ended above the zone: what follows is a new
+    // leg and a new structure, not this one's test.
+    if (m_settings.firstReturn && s.level3Confirmed && s.pullEnd.index >= 0 && s.bounce >= legNeed()
+        && n - s.pullEnd.index >= m_settings.minPullbackCandles) {
+        s.status = Status::Expired;
+        s.note = "the pullback from 3 ended before the zone: a new leg began, so the zone was not tested in the first return";
+        s.outcomeTime = c.openTime;
+        emit("expired", s, events);
         return;
     }
     if (n - s.bos.index > m_settings.maxArmedCandles) {
@@ -666,7 +776,7 @@ void Engine::trim()
     // Candles: back to the oldest external point or leg still watched, and
     // the Level 3 candle of every open setup, within limits.
     int need = n - kMinWindow;
-    for (const Point *p : {&m_extHigh, &m_extLow, &m_legHigh, &m_legLow}) {
+    for (const Point *p : {&m_pivotHigh, &m_pivotLow, &m_ext, &m_counter, &m_startHigh, &m_startLow}) {
         if (p->index >= 0)
             need = std::min(need, p->index - 3);
     }
