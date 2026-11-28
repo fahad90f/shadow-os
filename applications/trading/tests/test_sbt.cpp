@@ -738,11 +738,15 @@ static void testExternalNotInternal(const std::vector<Candle> &v, bool bull)
         NEAR(s.level2.price, bull ? 78 : 122, 1e-9);
         CHECK(s.zoneTime == v[14].openTime);
     }
-    // Internal swing points were seen, and none became Level 1.
-    bool sawInternal = false;
-    for (const Swing &w : r.engine.swings())
-        sawInternal = sawInternal || w.point.time == v[10].openTime || w.point.time == v[20].openTime;
-    CHECK(sawInternal);
+    // The structure: Level 2 is kept as a Higher Low (bearish: Lower High);
+    // the internal high at 10 and the pause at 20 are no points of it.
+    bool hl = false, internal = false;
+    for (const StructurePoint &p : r.engine.structure()) {
+        hl = hl || (p.point.time == v[14].openTime && p.high == !bull && p.label == (bull ? "HL" : "LH"));
+        internal = internal || p.point.time == v[10].openTime || p.point.time == v[20].openTime;
+    }
+    CHECK(hl);
+    CHECK(!internal);
     const Event *trig = r.find("triggered");
     CHECK(trig != nullptr);
     if (trig) {
@@ -916,13 +920,13 @@ static void testLevel2IsAHigherLow(bool bull)
         if (second) {
             CHECK(second->status == Status::Armed);
             NEAR(second->level2.price, bull ? 85 : 115, 1e-9);
-            NEAR(second->previousSwing.price, bull ? 78 : 122, 1e-9);   // higher low (lower high)
+            NEAR(second->previous.price, bull ? 78 : 122, 1e-9);   // higher low (lower high)
         }
         const Event *first = r.find("armed");
         CHECK(first && first->setup.level1.time == v[6].openTime);
-        CHECK(first && first->setup.previousSwing.index >= 0
-              && (bull ? first->setup.level2.price > first->setup.previousSwing.price
-                       : first->setup.level2.price < first->setup.previousSwing.price));
+        CHECK(first && first->setup.previous.index >= 0
+              && (bull ? first->setup.level2.price > first->setup.previous.price
+                       : first->setup.level2.price < first->setup.previous.price));
     }
     {
         std::vector<Candle> v = ownerBullish();
@@ -944,7 +948,7 @@ static void testLevel2IsAHigherLow(bool bull)
             skipped = e.kind == "skipped" && e.setup.level1.time == v[17].openTime ? &e : skipped;
         CHECK(skipped != nullptr);
         if (skipped) {
-            const std::string why = bull ? "no valid swing low: Level 2 is not a higher low" : "no valid swing high: Level 2 is not a lower high";
+            const std::string why = bull ? "no valid Higher Low (HL)" : "no valid Lower High (LH)";
             CHECK(skipped->setup.note.find(why) != std::string::npos);
             NEAR(skipped->setup.level2.price, bull ? 76 : 124, 1e-9);
         }

@@ -129,22 +129,21 @@ GlowCard {
             Cell { label: root.has && root.s.level3Confirmed ? qsTr("Level 3 · target") : qsTr("Level 3 (forming)")
                    value: root.has ? Format.price(root.s.target) : ""; valueColor: root.sideTone }
         }
-        // The valid swing: Level 2 is the Higher Low (bearish: the Lower High).
+        // The filters this setup met, numbered as the trader wrote them.
         Label {
             Layout.fillWidth: true
-            visible: root.has && root.s.previousSwing !== undefined && root.s.previousSwing.price !== undefined
+            visible: root.has && root.s.previous !== undefined && root.s.previous.price !== undefined
             text: !visible ? ""
-                : root.bull ? qsTr("Level 2 is the Higher Low (above the swing low at %1)").arg(Format.price(root.s.previousSwing.price))
-                            : qsTr("Level 2 is the Lower High (below the swing high at %1)").arg(Format.price(root.s.previousSwing.price))
+                : root.bull ? qsTr("✓ 1. Higher Low (HL) at %1, above the previous low %2").arg(Format.price(root.s.level2.price)).arg(Format.price(root.s.previous.price))
+                            : qsTr("✓ 2. Lower High (LH) at %1, below the previous high %2").arg(Format.price(root.s.level2.price)).arg(Format.price(root.s.previous.price))
             color: Theme.textSecondary
             font.pixelSize: Theme.fontSizeCaption
         }
-        // Rules 3/4: the zone candle as the order block and the demand (supply) zone.
         Label {
             Layout.fillWidth: true
             visible: root.has && root.s.zone.orderBlock === true && root.s.zone.demand === true
-            text: root.bull ? qsTr("Zone candle (open to low): order block + demand zone")
-                            : qsTr("Zone candle (open to high): order block + supply zone")
+            text: root.bull ? qsTr("✓ 3. Lowest bearish candle (open to low) is the Demand Zone and the Order Block")
+                            : qsTr("✓ 4. Highest bullish candle (open to high) is the Supply Zone and the Order Block")
             color: Theme.textSecondary
             font.pixelSize: Theme.fontSizeCaption
         }

@@ -1554,7 +1554,7 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(sbt["level3"]["price"], 106.5 * self.SCALE, delta=0.01)
         self.assertAlmostEqual(sbt["zone"]["bottom"], 100.0 * self.SCALE, delta=0.01)
         self.assertAlmostEqual(sbt["zone"]["top"], 101.2 * self.SCALE, delta=0.01)   # the zone candle's open
-        self.assertLess(sbt["previousSwing"]["price"], sbt["level2"]["price"])          # Level 2 is the Higher Low
+        self.assertLess(sbt["previous"]["price"], sbt["level2"]["price"])          # Level 2 is the Higher Low
         self.assertTrue(sbt["zone"]["orderBlock"] and sbt["zone"]["demand"])
         self.assertAlmostEqual(sbt["entry"], 101.6 * self.SCALE, delta=0.01)  # the open of the next candle
         self.assertIn("order_block", [c["kind"] for c in sbt["confirmations"]])
@@ -1631,7 +1631,7 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(sbt["zone"]["top"], 100.0 * self.SCALE, delta=0.01)
         self.assertAlmostEqual(sbt["zone"]["bottom"], (200 - 101.2) * self.SCALE, delta=0.01)   # open to high
         self.assertTrue(sbt["zone"]["orderBlock"] and sbt["zone"]["demand"])                    # order block + supply zone
-        self.assertGreater(sbt["previousSwing"]["price"], sbt["level2"]["price"])               # Level 2 is the Lower High
+        self.assertGreater(sbt["previous"]["price"], sbt["level2"]["price"])               # Level 2 is the Lower High
         p = out["account"]["positions"][0]
         self.assertEqual(p["side"], "sell")
         self.assertAlmostEqual(p["takeProfit"], (200 - 106.5) * self.SCALE, delta=0.01)

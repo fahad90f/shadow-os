@@ -86,8 +86,41 @@ NxPage {
         NxRow {
             icon: "target"
             title: qsTr("SBT Model 1 decides the trades")
-            subtitle: qsTr("Bullish and bearish, on the external structure only (swings inside a leg are ignored): a proper 1-2-3, a break of structure (a close beyond Level 1), the valid swing low is the Higher Low (HL) and the valid swing high the Lower High (LH); the Level 2 zone (at the HL the lowest bearish candle, from its open to its lowest wick; at the LH the highest bullish candle, from its open to its highest wick), and that same candle must be both the order block and the demand (supply) zone; a retest that does not close through it, entry at the next candle's open, target Level 3. After a gap up or down nothing is analysed or traded until the market trades normally again. The AI models do not trade on their own view; they review the setups this strategy finds.")
+            subtitle: qsTr("Bullish and bearish, by the rules below. The AI models do not trade on their own view; they review the setups this strategy finds.")
             NxBadge { text: qsTr("In use"); kind: "success" }
+        }
+        // The rules, as the trader wrote them, in full.
+        component RuleList: ColumnLayout {
+            property string heading
+            property string body
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spaceMd + 2
+            Layout.rightMargin: Theme.spaceMd
+            Layout.topMargin: Theme.spaceSm
+            Layout.bottomMargin: Theme.spaceSm
+            spacing: 4
+            Label {
+                text: parent.heading
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontSizeBody
+                font.weight: Theme.weightMedium
+            }
+            Label {
+                Layout.fillWidth: true
+                text: parent.body
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontSizeSmall
+                wrapMode: Text.Wrap
+                lineHeight: 1.15
+            }
+        }
+        RuleList {
+            heading: qsTr("SBT Model 1 (bullish; bearish mirrors it)")
+            body: qsTr("1. There must be a proper 123.\n2. We should have a BOS.\n3. We will mark the lowest candle on 2 (bearish candle); bearish structure: the highest candle on 2 (bullish candle).\n4. Wait for the market to test this area.\n5. Testing candle should not close below the zone (bearish: above it).\n6. Enter on next candle opening.\n7. Target area of 3.")
+        }
+        RuleList {
+            heading: qsTr("Filters: setups that do not meet them are ignored")
+            body: qsTr("1. Bullish Structure: At a valid Higher Low (HL), identify the lowest bearish candle, measuring from its opening price to its lowest wick.\n2. Bearish Structure: At a valid Lower High (LH), identify the highest bullish candle, measuring from its opening price to its highest wick.\n3. Bullish Setup: The same candle must serve as both the Demand Zone and the Order Block.\n4. Bearish Setup: The same candle must serve as both the Supply Zone and the Order Block.\n5. Gap Filter: If the market opens with a Gap Up or Gap Down, do not analyze or execute any trades. Skip trading until normal market conditions resume.")
         }
         NxRow {
             icon: "users"

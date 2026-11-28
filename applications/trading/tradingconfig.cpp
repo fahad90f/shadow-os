@@ -364,7 +364,6 @@ void TradingConfig::reload()
     // SBT Model 1, the strategy trades come from.
     const Trading::Sbt::Settings sd;
     m_sbt = sd;
-    m_sbt.swingStrength = int(clampOr(number("sbt/swing_strength", sd.swingStrength), 1, 5, sd.swingStrength));
     m_sbt.zoneMoveAtr = clampOr(number("sbt/zone_move_atr", sd.zoneMoveAtr), 0.2, 5, sd.zoneMoveAtr);
     m_sbt.gapAtr = clampOr(number("sbt/gap_atr", sd.gapAtr), 0.1, 5, sd.gapAtr);
     m_sbt.gapPauseCandles = int(clampOr(number("sbt/gap_pause_candles", sd.gapPauseCandles), 0, 100, sd.gapPauseCandles));
@@ -812,7 +811,7 @@ bool TradingConfig::setSbt(const QString &name, const QVariant &value)
         store(QStringLiteral("sbt/") + name, value.toBool());
     } else {
         struct Range { const char *name; double low; double high; };
-        static const Range ranges[] = {{"swing_strength", 1, 5}, {"stop_buffer_atr", 0, 2},
+        static const Range ranges[] = {{"stop_buffer_atr", 0, 2},
                                        {"pd_distance_atr", 0.2, 5}, {"max_wait_candles", 10, 1000},
                                        {"zone_move_atr", 0.2, 5}, {"gap_atr", 0.1, 5},
                                        {"gap_pause_candles", 0, 100}};

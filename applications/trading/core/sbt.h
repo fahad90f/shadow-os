@@ -12,17 +12,15 @@
 //
 // Bullish (bearish mirrors it):
 //  1. A proper 1-2-3 of the EXTERNAL structure: Level 1 is the external high
-//     (the top of the last leg, confirmed by a real pullback). The valid
-//     swing low, Level 2, is the HIGHER LOW (HL): the low of the pullback
-//     after Level 1, above the swing low before it (the external low, or the
-//     low of the leg down still running). Bearish: the valid swing high is
-//     the LOWER HIGH (LH), below the swing high before it. A low that is not
-//     a higher low (a high that is not a lower high) is no valid swing: no
-//     setup. Swings inside a leg (internal structure) are never Level 1, 2
-//     or 3.
+//     (the top of the last leg, confirmed by a real pullback). Level 2 is a
+//     valid HIGHER LOW (HL): the low of the pullback after Level 1, above the
+//     previous low (the external low, or the low of the leg down still
+//     running). Bearish: Level 2 is a valid LOWER HIGH (LH), below the
+//     previous high. Without a valid HL (LH) there is no setup. Highs and
+//     lows inside a leg (internal structure) are never Level 1, 2 or 3.
 //  2. A break of structure (BOS): a candle CLOSES above Level 1.
-//  3. The lowest BEARISH candle at the higher low (between Level 1 and the
-//     BOS) marks the Level 2 zone, measured from its OPEN to its lowest wick
+//  3. At the valid Higher Low (HL), the lowest BEARISH candle (between
+//     Level 1 and the BOS) marks the Level 2 zone, from its OPEN to its lowest wick
 //     (bearish: the highest bullish candle, from its open to its highest
 //     wick). That same candle must be both the ORDER BLOCK and the DEMAND
 //     zone (bearish: supply zone), or the setup is skipped:
@@ -62,15 +60,18 @@
 // (shown, never acted on). Nothing is ever recomputed from later candles: a
 // setup that entered stays entered, with its levels as they were.
 //
-// External structure. After a bullish BOS, Level 2 becomes the external
-// (protected) low and the leg up is followed; its top becomes the external
-// high only when a candle closes below the low of the candle that made it (a
-// valid pullback). Small swings inside the leg or inside the pullback do not
-// move either point. A close above the external high is the next bullish BOS
-// (Level 1 = that high); a close below the external low is a bearish one
-// (Level 1 = that low, Level 2 = the highest point between). The structure
+// Structure, in Higher Lows and Lower Highs. After a bullish BOS, Level 2
+// becomes the protected low (an HL when it is above the previous low) and
+// the leg up is followed; its top becomes the high to break only when a
+// candle closes below the low of the candle that made it (a valid
+// pullback). Highs and lows inside the leg or inside the pullback do not
+// move either point. A close above that high is the next bullish BOS (Level
+// 1 = that high, Level 2 = the lowest low between, which must be an HL); a
+// close below the protected low is a bearish one (Level 1 = that low, Level
+// 2 = the highest high between, which must be an LH). Every confirmed high
+// and low is kept, labelled HH, LH, HL or LL (structure()). The structure
 // starts from the first candle's range; the first breaks and valid
-// pullbacks put the external points in place.
+// pullbacks put its points in place.
 //
 // Work per closed candle is constant (a few candles back, the setups and PD
 // arrays still in play), never a rescan of the history.
@@ -123,7 +124,7 @@ struct Setup
     Direction direction = Direction::Bullish;
     Point level1;
     Point level2;
-    Point previousSwing;      // the swing low before Level 2: Level 2 is the higher low above it (bearish: lower high below it)
+    Point previous;           // the previous low: Level 2 is the Higher Low above it (bearish: the previous high, Level 2 the Lower High below it)
     Point bos;                // the candle that closed beyond Level 1 (its close)
     Point level3;
     bool level3Confirmed = false;
@@ -149,7 +150,6 @@ struct Setup
 
 struct Settings
 {
-    int swingStrength = 2;        // candles on each side of a recorded (internal) swing point: context only
     double zoneMoveAtr = 1.0;     // demand/supply: how far the move away from the zone goes, in ATRs
     double gapAtr = 0.5;          // a gap: the open this far from the previous close (and outside its range)
     int gapPauseCandles = 6;      // after a gap, candles without trading unless it is filled sooner
@@ -182,10 +182,14 @@ struct Gap
     int left = 0;             // candles of the pause still to come
 };
 
-struct Swing
+// A confirmed high or low of the structure, labelled against the one
+// before it of the same kind: "HH" or "LH" for a high, "HL" or "LL" for a
+// low. A bullish setup needs its Level 2 to be an HL; a bearish one an LH.
+struct StructurePoint
 {
     Point point;
     bool high = false;
+    std::string label;        // "HH" | "LH" | "HL" | "LL" ("" for the first of its kind)
 };
 
 class Engine
@@ -210,7 +214,8 @@ public:
 
     const std::vector<Setup> &setups() const { return m_setups; }   // oldest first
     const std::vector<PdArray> &pdArrays() const { return m_arrays; }
-    const std::vector<Swing> &swings() const { return m_swings; }
+    // The confirmed highs and lows, oldest first (the newest 200).
+    const std::vector<StructurePoint> &structure() const { return m_structure; }
     // The structure being watched for a BOS: the external high (bullish) or
     // low (bearish); index -1 while a leg is still running (no pullback yet).
     Point candidate(Direction d) const { return d == Direction::Bullish ? m_extHigh : m_extLow; }
@@ -230,8 +235,10 @@ private:
     const Candle &at(int index) const;   // by engine index; must be in the window
     bool inWindow(int index) const;
     void updateAtr(const Candle &c);
-    void confirmSwing(std::vector<Event> *events);
     void updateLegs(const Candle &c);
+    // A confirmed high or low: labelled against the previous one of its kind
+    // (or with 'label' when given) and kept in m_structure.
+    void recordPoint(const Point &p, bool high, const std::string &label = std::string());
     void detectArrays();
     void updateArrays(const Candle &c);
     void checkBos(const Candle &c, std::vector<Event> *events);
@@ -251,7 +258,7 @@ private:
     int m_count = 0;                // closed candles seen
     double m_atr = 0;
     int m_atrCount = 0;
-    std::vector<Swing> m_swings;
+    std::vector<StructurePoint> m_structure;
     Point m_extHigh;                // external high not yet broken
     Point m_extLow;                 // external low not yet broken
     Point m_legHigh;                // the leg up after a bullish break, until its pullback

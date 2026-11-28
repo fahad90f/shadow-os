@@ -41,21 +41,21 @@ real ones.
 3. **SBT Model 1** (`core/sbt.cpp`, plain C++17, unit-tested in
    `tests/test_sbt.cpp`): the trader's strategy, and the only source of
    trades. One engine for both directions; bearish mirrors bullish:
-   1. a proper **1-2-3** of the **external** structure: Level 1 the
-      external high (the top of the last leg, confirmed by a valid pullback:
-      a candle closing below the low of the candle that made it). **The
-      valid swing low (Level 2) is the Higher Low (HL)**: the lowest low of
-      the pullback after Level 1, above the swing low before it (the external
-      low, or the low of a leg down still running). Bearish: **the valid
-      swing high is the Lower High (LH)**, below the swing high before it. A
-      low that is not a higher low (a high that is not a lower high) is no
-      valid swing, so no setup (shown as skipped with the reason). Swings
-      inside a leg or inside the pullback are internal structure and are
-      never Level 1, 2 or 3; a close above an internal lower high is no setup;
+   1. a proper **1-2-3**: Level 1 the high to break (the top of the last
+      leg, confirmed by a valid pullback: a candle closing below the low of
+      the candle that made it). **Level 2 is a valid Higher Low (HL)**: the
+      lowest low of the pullback after Level 1, above the previous low (the
+      protected low, or the low of a leg down still running). Bearish:
+      **Level 2 is a valid Lower High (LH)**, below the previous high. Every
+      confirmed high and low is labelled HH, LH, HL or LL against the one
+      before it; a Level 2 labelled LL (bearish: HH) means no setup (shown as
+      skipped with the reason). Highs and lows inside a leg or inside the
+      pullback are never Level 1, 2 or 3; a close above a lower high inside
+      the pullback is no setup;
    2. a **break of structure** (BOS): a candle **closes** above Level 1;
-   3. the **Level 2 zone**: at the Higher Low, the lowest **bearish**
+   3. the **Level 2 zone**: at the valid Higher Low, the lowest **bearish**
       candle between Level 1 and the BOS, **from its opening price to its
-      lowest wick** (bearish: at the Lower High, the highest bullish candle,
+      lowest wick** (bearish: at the valid Lower High, the highest bullish candle,
       from its open to its highest wick); no such candle there, no setup.
       **That same candle must be both the order block and the demand zone**
       (bearish: the supply zone), or the setup is skipped with the reason:
@@ -74,6 +74,20 @@ real ones.
    6. **entry at the next candle's open**, target **Level 3**, the stop past
       the zone and Level 2 by a quarter ATR (*Stop beyond the zone*); entered
       only when reward/risk meets the minimum of the risk rules.
+
+   The filters, as the trader wrote them (shown under *Settings → Strategy*,
+   ticked on the strategy card for each setup):
+   1. Bullish Structure: At a valid Higher Low (HL), identify the lowest
+      bearish candle, measuring from its opening price to its lowest wick.
+   2. Bearish Structure: At a valid Lower High (LH), identify the highest
+      bullish candle, measuring from its opening price to its highest wick.
+   3. Bullish Setup: The same candle must serve as both the Demand Zone and
+      the Order Block.
+   4. Bearish Setup: The same candle must serve as both the Supply Zone and
+      the Order Block.
+   5. Gap Filter: If the market opens with a Gap Up or Gap Down, do not
+      analyze or execute any trades. Skip trading until normal market
+      conditions resume.
 
    These follow the strategy's own 7 rules (a proper 1-2-3, a BOS, the
    lowest bearish candle at 2 marked, wait for the test, the testing candle
@@ -115,7 +129,7 @@ real ones.
    again or the application restarts (the handled setups are kept with the
    paper account), and is placed by hand at most once. Candles missing after
    a gap (the computer slept) are read as history, not traded. Work per candle is constant: the engine
-   keeps its own state (swings, setups, PD arrays, a bounded window of
+   keeps its own state (highs and lows, setups, PD arrays, a bounded window of
    candles) and never rescans the history. When a market or interval is
    opened, its history is read once as **history**: setups found there are
    shown but never traded, except an entry whose candle is the one forming

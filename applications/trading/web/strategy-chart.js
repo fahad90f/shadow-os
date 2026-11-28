@@ -188,7 +188,8 @@
                 var l1 = bar(s.level1.time), l2 = bar(s.level2.time), bos = bar(s.bos.time);
                 var end = s.entryTime > 0 ? bar(s.entryTime) : last;
                 mark({ time: l1, position: bullish ? 'aboveBar' : 'belowBar', color: muted, shape: 'circle', text: '1' });
-                mark({ time: l2, position: bullish ? 'belowBar' : 'aboveBar', color: muted, shape: 'circle', text: '2' });
+                mark({ time: l2, position: bullish ? 'belowBar' : 'aboveBar', color: muted, shape: 'circle',
+                       text: bullish ? '2 · HL' : '2 · LH' });
                 mark({ time: bos, position: bullish ? 'aboveBar' : 'belowBar', color: theme.accent || '#8b5cf6',
                        shape: 'square', text: 'BOS' });
                 segment(Math.max(l1, first), Math.min(bos, last), s.level1.price, muted, true);

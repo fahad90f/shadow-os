@@ -149,7 +149,7 @@ public:
     // The AI team must confirm a setup before it is traded (when there is a key).
     bool sbtAiConfirm() const { return m_sbtAiConfirm; }
     // name: ai_confirm, require_pd_array (bool), zone ("wick" | "body"),
-    // swing_strength, stop_buffer_atr, pd_distance_atr, max_wait_candles.
+    // stop_buffer_atr, pd_distance_atr, max_wait_candles.
     bool setSbt(const QString &name, const QVariant &value);
 
     Trading::RiskSettings risk() const { return m_risk; }

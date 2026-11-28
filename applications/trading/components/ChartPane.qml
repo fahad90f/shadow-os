@@ -92,7 +92,7 @@ GlowCard {
         shapes.push({ kind: "line", price: s.level1.price, from: s.level1.time, to: s.bos.time, color: Theme.textSecondary,
                       label: "1", dashed: true })
         shapes.push({ kind: "line", price: s.level2.price, from: s.level2.time, to: end, color: Theme.textSecondary,
-                      label: "2", dashed: true })
+                      label: s.direction === "bullish" ? "2 · HL" : "2 · LH", dashed: true })
         if (s.level3 && s.level3.price)
             shapes.push({ kind: "line", price: s.target, from: s.level3.time, to: 0, color: tone,
                           label: s.level3Confirmed ? qsTr("3 · target") : qsTr("3 (forming)"), dashed: !s.level3Confirmed })

@@ -166,7 +166,7 @@ QString TradingEngine::sbtSignature() const
 bool TradingEngine::sbtSettingsDiffer() const
 {
     const Sbt::Settings a = m_sbt.settings(), b = m_config->sbt();
-    return a.swingStrength != b.swingStrength || a.zoneMoveAtr != b.zoneMoveAtr || a.gapAtr != b.gapAtr
+    return a.zoneMoveAtr != b.zoneMoveAtr || a.gapAtr != b.gapAtr
         || a.gapPauseCandles != b.gapPauseCandles || a.stopBufferAtr != b.stopBufferAtr
         || a.minRewardRisk != b.minRewardRisk || a.requirePdArray != b.requirePdArray
         || a.pdDistanceAtr != b.pdDistanceAtr || a.maxArmedCandles != b.maxArmedCandles;
@@ -412,9 +412,9 @@ QVariantMap TradingEngine::setupMap(const Sbt::Setup &s) const
         {QStringLiteral("bos"), point(s.bos)},
         {QStringLiteral("level3"), point(s.level3)},
         {QStringLiteral("level3Confirmed"), s.level3Confirmed},
-        // The swing Level 2 is the higher low above (bearish: the lower high below).
-        {QStringLiteral("previousSwing"), s.previousSwing.index < 0 ? QVariantMap()
-             : QVariantMap{{QStringLiteral("price"), s.previousSwing.price}, {QStringLiteral("time"), double(s.previousSwing.time)}}},
+        // The previous low Level 2 is the Higher Low above (bearish: the previous high, Level 2 the Lower High below).
+        {QStringLiteral("previous"), s.previous.index < 0 ? QVariantMap()
+             : QVariantMap{{QStringLiteral("price"), s.previous.price}, {QStringLiteral("time"), double(s.previous.time)}}},
         {QStringLiteral("zone"), QVariantMap{{QStringLiteral("top"), s.zoneTop}, {QStringLiteral("bottom"), s.zoneBottom},
                                              {QStringLiteral("time"), double(s.zoneTime)},
                                              // Rules 3/4: the zone candle is the order block and the demand (supply) zone.
@@ -486,6 +486,17 @@ QVariantMap TradingEngine::sbt() const
                                                  {QStringLiteral("bearish"), candidate(Sbt::Direction::Bearish)}}},
         {QStringLiteral("aiConfirm"), m_config->sbtAiConfirm()},
         {QStringLiteral("aiAvailable"), aiAvailable()},
+        // The confirmed highs and lows, newest last, labelled HH, LH, HL or LL.
+        {QStringLiteral("structure"), [this] {
+             QVariantList points;
+             const std::vector<Sbt::StructurePoint> &all = m_sbt.structure();
+             for (size_t i = all.size() > 12 ? all.size() - 12 : 0; i < all.size(); ++i)
+                 points.append(QVariantMap{{QStringLiteral("price"), all[i].point.price},
+                                           {QStringLiteral("time"), double(all[i].point.time)},
+                                           {QStringLiteral("high"), all[i].high},
+                                           {QStringLiteral("label"), QString::fromStdString(all[i].label)}});
+             return points;
+         }()},
         // Rule 5: a gap pauses the strategy.
         {QStringLiteral("gap"), QVariantMap{{QStringLiteral("active"), m_sbt.gap().active},
                                             {QStringLiteral("up"), m_sbt.gap().up},
@@ -503,7 +514,6 @@ QVariantMap TradingEngine::sbtSettings() const
             {QStringLiteral("zone_move_atr"), s.zoneMoveAtr},
             {QStringLiteral("gap_atr"), s.gapAtr},
             {QStringLiteral("gap_pause_candles"), s.gapPauseCandles},
-            {QStringLiteral("swing_strength"), s.swingStrength},
             {QStringLiteral("stop_buffer_atr"), s.stopBufferAtr},
             {QStringLiteral("pd_distance_atr"), s.pdDistanceAtr},
             {QStringLiteral("max_wait_candles"), s.maxArmedCandles}};
@@ -578,7 +588,6 @@ void TradingEngine::updateSbtHistory()
     // market or other rules: read everything again. Reading 20,000 candles
     // takes a few milliseconds; otherwise only the new ones are read.
     const bool rebuild = key != m_sbtHistoryKey || first != m_sbtHistoryFirst
-        || m_sbtHistory.settings().swingStrength != m_config->sbt().swingStrength
         || m_sbtHistory.settings().zoneMoveAtr != m_config->sbt().zoneMoveAtr
         || m_sbtHistory.settings().gapAtr != m_config->sbt().gapAtr
         || m_sbtHistory.settings().gapPauseCandles != m_config->sbt().gapPauseCandles

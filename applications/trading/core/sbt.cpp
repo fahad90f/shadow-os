@@ -66,7 +66,6 @@ const char *pdName(PdKind kind, bool bullish)
 Engine::Engine(const Settings &settings)
     : m_settings(settings)
 {
-    m_settings.swingStrength = std::clamp(m_settings.swingStrength, 1, 10);
 }
 
 void Engine::reset()
@@ -143,7 +142,6 @@ std::vector<Event> Engine::close(const Candle &input)
     }
     updateLegs(c);
     checkBos(c, &events);
-    confirmSwing(&events);
     // The pause ends once the gap is filled or its candles have passed.
     if (m_gap.active) {
         const bool filled = m_gap.up ? c.low <= m_gap.fill : c.high >= m_gap.fill;
@@ -229,28 +227,23 @@ std::string Engine::zoneCheck(Setup &s, int z, int n) const
     return {};
 }
 
-// A swing point 'k' candles back, now that 'k' candles have closed after it.
-// Recorded as context only: swing points of this size are internal
-// structure and never Level 1, 2 or 3.
-void Engine::confirmSwing(std::vector<Event> *events)
+void Engine::recordPoint(const Point &p, bool high, const std::string &label)
 {
-    (void)events;
-    const int k = m_settings.swingStrength;
-    const int p = m_count - 1 - k;
-    if (p - k < m_first || p < 0)
-        return;
-    const Candle &mid = at(p);
-    bool high = true, low = true;
-    for (int i = 1; i <= k; ++i) {
-        high = high && mid.high > at(p - i).high && mid.high >= at(p + i).high;
-        low = low && mid.low < at(p - i).low && mid.low <= at(p + i).low;
+    StructurePoint sp;
+    sp.point = p;
+    sp.high = high;
+    sp.label = label;
+    if (sp.label.empty()) {
+        for (auto it = m_structure.rbegin(); it != m_structure.rend(); ++it) {
+            if (it->high != high)
+                continue;
+            sp.label = high ? (p.price > it->point.price ? "HH" : "LH") : (p.price > it->point.price ? "HL" : "LL");
+            break;
+        }
     }
-    if (high)
-        m_swings.push_back({{mid.openTime, mid.high, p}, true});
-    if (low)
-        m_swings.push_back({{mid.openTime, mid.low, p}, false});
-    if (m_swings.size() > 60)
-        m_swings.erase(m_swings.begin(), m_swings.begin() + long(m_swings.size() - 60));
+    m_structure.push_back(sp);
+    if (m_structure.size() > 200)
+        m_structure.erase(m_structure.begin(), m_structure.begin() + long(m_structure.size() - 200));
 }
 
 // The leg after a break follows new extremes; a valid pullback (a close
@@ -265,6 +258,7 @@ void Engine::updateLegs(const Candle &c)
         } else if (inWindow(m_legHigh.index) && c.close < at(m_legHigh.index).low) {
             m_extHigh = m_legHigh;
             m_extHighReal = true;
+            recordPoint(m_legHigh, true);
             m_legHigh = Point();
         }
     }
@@ -274,6 +268,7 @@ void Engine::updateLegs(const Candle &c)
         } else if (inWindow(m_legLow.index) && c.close > at(m_legLow.index).high) {
             m_extLow = m_legLow;
             m_extLowReal = true;
+            recordPoint(m_legLow, false);
             m_legLow = Point();
         }
     }
@@ -293,9 +288,9 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
         const Point one = level1;
         const bool real = bull ? m_extHighReal : m_extLowReal;
         level1 = Point(); // broken once
-        // The swing on the other side before this break (bullish: the
-        // external low, or the low of a leg still running): Level 2 must be
-        // a higher low than it (bearish: a lower high).
+        // The previous low before this break (bullish: the external low, or
+        // the low of a leg still running): Level 2 must be a Higher Low above
+        // it (bearish: the previous high, and Level 2 a Lower High below it).
         const Point &otherExt = bull ? m_extLow : m_extHigh;
         const Point &otherLeg = bull ? m_legLow : m_legHigh;
         const bool otherReal = bull ? m_extLowReal : m_extHighReal;
@@ -311,9 +306,16 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
             if (l2 < 0 || (bull ? x.low < at(l2).low : x.high > at(l2).high))
                 l2 = i;
         }
+        // Level 2 against the previous low (bearish: high): a Higher Low (HL)
+        // or not (LL); a Lower High (LH) or not (HH).
+        std::string label;
         if (l2 >= 0) {
-            (bull ? m_extLow : m_extHigh) = Point{at(l2).openTime, bull ? at(l2).low : at(l2).high, l2};
+            const Point two{at(l2).openTime, bull ? at(l2).low : at(l2).high, l2};
+            if (previous.index >= 0)
+                label = bull ? (two.price > previous.price ? "HL" : "LL") : (two.price < previous.price ? "LH" : "HH");
+            (bull ? m_extLow : m_extHigh) = two;
             (bull ? m_extLowReal : m_extHighReal) = true;
+            recordPoint(two, !bull, label);
         }
         (bull ? m_legHigh : m_legLow) = Point{c.openTime, bull ? c.high : c.low, n};
         (bull ? m_legLow : m_legHigh) = Point(); // a leg of the other side ends here
@@ -331,7 +333,7 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
         s.bos = {c.openTime, c.close, n};
         s.updated = c.openTime;
         s.level2 = {at(l2).openTime, bull ? at(l2).low : at(l2).high, l2};
-        s.previousSwing = previous;
+        s.previous = previous;
         // The zone: the lowest bearish candle (bullish setup) or the highest
         // bullish candle (bearish setup) between Level 1 and the BOS.
         int z = -1;
@@ -367,11 +369,13 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
         if (m_gap.active)
             why = "the market opened with a gap: no setups until it trades normally again";
         else if (previous.index < 0)
-            why = bull ? "no valid swing low: no earlier swing low to make this one a higher low"
-                       : "no valid swing high: no earlier swing high to make this one a lower high";
-        else if (bull ? !(s.level2.price > previous.price) : !(s.level2.price < previous.price))
-            why = bull ? "no valid swing low: Level 2 is not a higher low (not above the previous swing low " + fixed(previous.price, 5) + ")"
-                       : "no valid swing high: Level 2 is not a lower high (not below the previous swing high " + fixed(previous.price, 5) + ")";
+            why = bull ? "no valid Higher Low (HL): there is no previous low to compare Level 2 with"
+                       : "no valid Lower High (LH): there is no previous high to compare Level 2 with";
+        else if (label != (bull ? "HL" : "LH"))
+            why = bull ? "no valid Higher Low (HL): Level 2 is a lower low (LL), not above the previous low ("
+                             + fixed(previous.price, 5) + ")"
+                       : "no valid Lower High (LH): Level 2 is a higher high (HH), not below the previous high ("
+                             + fixed(previous.price, 5) + ")";
         else
             why = zoneCheck(s, z, n);
         if (!why.empty()) {
@@ -664,7 +668,7 @@ void Engine::trim()
     int need = n - kMinWindow;
     for (const Point *p : {&m_extHigh, &m_extLow, &m_legHigh, &m_legLow}) {
         if (p->index >= 0)
-            need = std::min(need, p->index - m_settings.swingStrength - 1);
+            need = std::min(need, p->index - 3);
     }
     for (const Setup &s : m_setups) {
         if (!finished(s.status) && s.level3.index >= 0)
