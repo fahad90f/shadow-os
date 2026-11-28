@@ -94,8 +94,11 @@ GlowCard {
         shapes.push({ kind: "line", price: s.level2.price, from: s.level2.time, to: end, color: Theme.textSecondary,
                       label: s.direction === "bullish" ? "2 · HL" : "2 · LH", dashed: true })
         if (s.level3 && s.level3.price)
-            shapes.push({ kind: "line", price: s.target, from: s.level3.time, to: 0, color: tone,
-                          label: s.level3Confirmed ? qsTr("3 · target") : qsTr("3 (forming)"), dashed: !s.level3Confirmed })
+            shapes.push({ kind: "line", price: trading.sbtSettings.exit_mode === "points" ? s.level3.price : s.target,
+                          from: s.level3.time, to: 0, color: tone,
+                          label: !s.level3Confirmed ? qsTr("3 (forming)")
+                               : trading.sbtSettings.exit_mode === "points" ? "3" : qsTr("3 · target"),
+                          dashed: !s.level3Confirmed })
         shapes.push({ kind: "mark", price: s.level1.price, from: s.bos.time, color: Theme.accent, label: qsTr("BOS") })
         // The retest candle's close; the entry is the position's own line once it is open.
         if (s.retest && s.retest.time)
@@ -117,6 +120,9 @@ GlowCard {
     // The built-in chart: without the web view.
     readonly property bool builtIn: !trading.webViewAvailable
     readonly property var quote: trading.quote
+    function tradesText(n) { return n === 1 ? qsTr("1 trade") : qsTr("%1 trades").arg(n) }
+    // The totals of the strategy's past trades on the candles loaded.
+    readonly property var history: trading.sbtHistory.stats || ({})
     readonly property var signalData: trading.signal
     readonly property bool showLevels: (signalData.state || "") === "ready" && signalData.action !== "hold"
         && signalData.symbol === trading.symbol
@@ -350,6 +356,37 @@ GlowCard {
             }
         }
 
+        // Total win and total loss of the strategy's past trades on the candles
+        // loaded (by its rules, not traded), in points of this market.
+        RowLayout {
+            Layout.fillWidth: true
+            visible: root.history.wins !== undefined && (root.history.wins + root.history.losses) > 0
+            spacing: Theme.spaceMd
+            Label {
+                text: qsTr("SBT past trades (%1 candles):").arg(trading.sbtHistory.candles || 0)
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSizeSmall
+            }
+            Label {
+                text: qsTr("Total win:  %1  ·  +%2 points").arg(root.tradesText(root.history.wins || 0)).arg(Format.number(root.history.wonPoints || 0, 0))
+                color: Theme.success
+                font.pixelSize: Theme.fontSizeSmall
+                font.weight: Theme.weightSemibold
+            }
+            Label {
+                text: qsTr("Total loss:  %1  ·  %2 points").arg(root.tradesText(root.history.losses || 0))
+                          .arg(((root.history.lostPoints || 0) > 0 ? "−" : "") + Format.number(root.history.lostPoints || 0, 0))
+                color: Theme.danger
+                font.pixelSize: Theme.fontSizeSmall
+                font.weight: Theme.weightSemibold
+            }
+            Label {
+                text: qsTr("Net:  %1 points").arg((root.history.netPoints >= 0 ? "+" : "−") + Format.number(Math.abs(root.history.netPoints || 0), 0))
+                color: (root.history.netPoints || 0) >= 0 ? Theme.success : Theme.danger
+                font.pixelSize: Theme.fontSizeSmall
+            }
+            Item { Layout.fillWidth: true }
+        }
         Label {
             Layout.fillWidth: true
             visible: true

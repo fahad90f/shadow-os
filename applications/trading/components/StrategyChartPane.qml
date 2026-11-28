@@ -45,6 +45,7 @@ WebEngineView {
         var data = {
             intervalMs: trading.intervalMs,
             sbt: trading.sbt,
+            targetAtThree: trading.sbtSettings.exit_mode !== "points",
             history: trading.sbtHistory,
             position: trading.position.symbol === trading.symbol ? trading.position : {}
         }

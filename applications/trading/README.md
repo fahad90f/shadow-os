@@ -85,6 +85,21 @@ real ones.
       beyond the zone*); entered only when reward/risk meets the minimum of
       the risk rules.
 
+   **Take profit and stop loss in points** (*Settings → Strategy → Take
+   profit and stop loss: Fixed points*, the default on the forex markets).
+   Instead of the area of 3 and the stop beyond the zone, a trade gets the
+   trader's own distances from its entry: **take profit 1,210 points, stop
+   loss 610 points** unless changed. A point is the last digit of the price
+   as TradingView shows it, the unit its measuring tool counts in: 0.01 on
+   gold (1,210 points = 12.10), 0.001 on silver and the yen pairs, 0.00001
+   on the other currency pairs (1,210 points = 121 pips). Every market has
+   its own distances: the two numbers in Settings are those of the market on
+   the chart, and a market never changed uses the general ones. Level 3 is
+   then structure only (its line stays on the chart, the take profit is
+   where the points put it), and reward/risk is the two numbers' ratio
+   (1,210 / 610 = 1.98), which must still meet the minimum of the risk
+   rules. *Model levels* brings the model's own exits back.
+
    The filters, as the trader wrote them (shown under *Settings → Strategy*,
    ticked on the strategy card for each setup):
    1. Bullish Structure: At a valid Higher Low (HL), identify the lowest
@@ -136,7 +151,13 @@ real ones.
    time of day, the shape of the testing candle, how fast price returns):
    the win rate follows the distance of stop and target, not the pattern.
    The rules alone do not reproduce a discretionary trader's results; what
-   a person leaves out by eye is not in them.
+   a person leaves out by eye is not in them. With the fixed exits of 1,210
+   and 610 points (`tp=12.10 sl=6.10`) the same gold-token candles give 70
+   entries on 15 minutes with 36 % reaching the take profit, 107 on 5
+   minutes with 42 %, 15 on 1 hour with 40 %; a coin flip at that
+   reward:risk is 34 %. A small plus per unit risked on those candles
+   (+0.07 R a trade on 15 minutes), before the spread and on few trades;
+   not a promise of anything.
 
    Only closed candles decide; the forming candle gives the entry's open
    and an "in the zone now" note that is shown, never acted on. Nothing is
@@ -208,7 +229,11 @@ real ones.
    one trade.
 6. **Execution Engine** (`core/paper.cpp`). With *Auto trade* on, an SBT
    entry that passes the rules is placed on the paper account: a market order
-   with fee and slippage, long or short, its stop and Level 3 as its levels. The stop and target are checked on every
+   with fee and slippage, long or short, with the setup's stop and take
+   profit (the trader's points, or the zone and Level 3). On the forex
+   markets the costs default to a broker's: no fee and 0.005 % slippage a
+   side for the spread (about 20 points on gold); an exchange's 0.1 % a side
+   would cost more than a 610-point stop. The stop and target are checked on every
    price update; a stop fills at the stop or, if price has gone past it, at
    the worse price; a target fills at its price; when one update covers both,
    the stop is assumed first. An SBT entry the other way closes the open
@@ -229,7 +254,8 @@ dashed while it forms), the BOS and retest marks and the entry; past setups
 are not drawn. The PD arrays in play (FVG blue, order blocks violet, demand
 green, supply red, dashed) are drawn only with the PD filter on. The strategy's settings are under
 *Settings → Strategy: SBT Model 1* (`[sbt]` in the file: `ai_confirm`,
-`require_pd_array`, `leg_atr`, `min_pullback_candles`, `extension_atr`, `entry_zone_atr`,
+`exit_mode=points|model`, `tp_points`, `sl_points` (and a market's own, such as
+`tp_points_XAGUSD`), `require_pd_array`, `leg_atr`, `min_pullback_candles`, `extension_atr`, `entry_zone_atr`,
 `first_return`, `supersede`, `target=body|wick`, `zone_move_atr`, `gap_atr`, `gap_pause_candles`, `stop_buffer_atr`,
 `pd_distance_atr`, `max_wait_candles`).
 
@@ -362,7 +388,10 @@ two nor changed).
     loaded, worked out in order as they would have been seen, and the paper
     account's own trades on the market (with the stop and target they had).
     An open position adds its Entry, SL and TP lines. Moving the chart to
-    its left edge loads older candles. The chart carries TradingView's
+    its left edge loads older candles. Under the chart, **Total win** and
+    **Total loss** add those past trades up: how many reached the take
+    profit and how many the stop loss, and what they came to in points of
+    the market's price, with the net of the two. The chart carries TradingView's
     attribution link, as the library's licence asks.
 
   Both need the web view (`qml6-module-qtwebengine`). Without it the
@@ -390,7 +419,9 @@ two nor changed).
   Desk* above. Live Trading has a button with the desk's state that opens it.
 - **AI Analysis**: every analyst's verdict, the risk rules one by one, the
   current readings, the activity log.
-- **Trade History**, **Portfolio** (account value over time, open positions,
+- **Trade History** (the paper account's trades; its tiles include **Total
+  win** and **Total loss**: the money the winning trades made and the losing
+  trades lost, with their counts), **Portfolio** (account value over time, open positions,
   reset), **Risk Manager** (all limits), **Model Panel** (the key, the models
   of each role, connection tests), **Settings**, **About**.
 
@@ -477,6 +508,7 @@ cooldown_minutes=30
 
 [paper]
 starting_balance=10000
+; Per side. Unset on the forex markets: 0 and 0.005 (a broker's spread).
 fee_pct=0.1
 slippage_pct=0.02
 
@@ -541,10 +573,10 @@ prints the conversation, the analysis, the status and a timed event log).
 |---|---|---|
 | `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3276 checks) | build command in the file's header; plain `g++`, sanitizers |
 | `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account, markets priced in another currency (346 checks) | as above |
-| `tests/test_sbt.cpp` | SBT Model 1: a hand-drawn bullish chart and the same chart upside down for bearish; the strategy's own two charts with the default settings; Level 1/2/3, the BOS, the zone (open to wick, order block and demand/supply), Higher Low / Lower High, proper legs (small moves and a quiet stretch make no structure), a break that goes nowhere (no proper 3), only the first return is a test, a newer structure replaces a setup, the entry at the zone, the target as the area of 3, a close through the zone, a wick through it, the gap filter, reward/risk and the optional PD filter, history not traded, expiry, old candles ignored, a 6000-candle random run (bounded memory, no entry twice) (12331 checks) | `tests/run-unit.sh sbt` |
-| `tests/tools/sbt_backtest.cpp` | not a test: the strategy over a file of real candles, candle by candle (structures, entries, wins, losses, the coin-flip rate at the same reward:risk, what was left out and why); `tests/tools/fetch_klines.py` fetches such a file from a public exchange feed | `tests/run-backtest.sh FILE.csv [name=value …]` |
+| `tests/test_sbt.cpp` | SBT Model 1: a hand-drawn bullish chart and the same chart upside down for bearish; the strategy's own two charts with the default settings; Level 1/2/3, the BOS, the zone (open to wick, order block and demand/supply), Higher Low / Lower High, proper legs (small moves and a quiet stretch make no structure), a break that goes nowhere (no proper 3), only the first return is a test, a newer structure replaces a setup, the entry at the zone, the target as the area of 3, the trader's own take profit and stop loss as fixed distances, a close through the zone, a wick through it, the gap filter, reward/risk and the optional PD filter, history not traded, expiry, old candles ignored, a 6000-candle random run (bounded memory, no entry twice) (12355 checks) | `tests/run-unit.sh sbt` |
+| `tests/tools/sbt_backtest.cpp` | not a test: the strategy over a file of real candles, candle by candle (structures, entries, wins, losses, the coin-flip rate at the same reward:risk, what was left out and why; `tp=12.10 sl=6.10` gives every trade those distances); `tests/tools/fetch_klines.py` fetches such a file from a public exchange feed | `tests/run-backtest.sh FILE.csv [name=value …]` |
 | `tests/test_desk.cpp` | the desk's reading of messages (markets, levels and the numbers that are not levels, observations, intent, Roman Urdu questions) and its analysis state (books per market, merging, plan and reward/risk, levels against the live price) (134 checks) | `tests/run-unit.sh desk` |
-| `tests/test_app.py` | the real binary against `tests/fake_services.py` (62 tests): the watchlist and markets the data service does not list, adding and removing markets, the forex markets (the other service's requests and stream, what is offered, a dollar-base pair counted in dollars, switching kinds, recorded answers and messages of the real service), an open position staying on show after a hold, models that are slow or fail once (asked again, left out after two tries, only so many at a time), the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files; and the AI Desk (9 tests): messages accepted at once and built on (the answer sees the earlier messages, the model reads each message once), messages taken while a slow answer is written (two answers under way, a double send is one message, the chart following the conversation), live facts and no key, level alerts from the live price, the team started for a trade question and its call forming, a model's reading adding what the quick reading missed, stopping an answer, the conversation surviving a restart, gold found where it is listed | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
+| `tests/test_app.py` | the real binary against `tests/fake_services.py` (102 tests): the take profit and stop loss in points on a forex market (a take profit reached, a stop loss reached, each market's own distances, the model's levels instead), the totals of wins and losses, the watchlist and markets the data service does not list, adding and removing markets, the forex markets (the other service's requests and stream, what is offered, a dollar-base pair counted in dollars, switching kinds, recorded answers and messages of the real service), an open position staying on show after a hold, models that are slow or fail once (asked again, left out after two tries, only so many at a time), the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files; and the AI Desk: messages accepted at once and built on (the answer sees the earlier messages, the model reads each message once), messages taken while a slow answer is written (two answers under way, a double send is one message, the chart following the conversation), live facts and no key, level alerts from the live price, the team started for a trade question and its call forming, a model's reading adding what the quick reading missed, stopping an answer, the conversation surviving a restart, gold found where it is listed | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
 
 `tests/fake_services.py` stands in for the exchange and for NVIDIA's model
 service on one local port, checks each request (the key, the model, the shape

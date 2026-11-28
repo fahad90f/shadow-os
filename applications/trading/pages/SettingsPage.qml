@@ -4,11 +4,14 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import org.shadow.ui
 import org.shadow.trading
+import "../components/Format.js" as Format
 
 NxPage {
     id: page
 
     readonly property var paper: trading.paperSettings
+    // Decimals of one point of the market on the chart (0.01 -> 2).
+    readonly property int pointDecimals: Math.max(0, Math.round(-Math.log(trading.sbtSettings.point || 0.01) / Math.LN10))
 
     title: qsTr("Settings")
 
@@ -121,6 +124,40 @@ NxPage {
         RuleList {
             heading: qsTr("Filters: setups that do not meet them are ignored")
             body: qsTr("1. Bullish Structure: At a valid Higher Low (HL), identify the lowest bearish candle, measuring from its opening price to its lowest wick.\n2. Bearish Structure: At a valid Lower High (LH), identify the highest bullish candle, measuring from its opening price to its highest wick.\n3. Bullish Setup: The same candle must serve as both the Demand Zone and the Order Block.\n4. Bearish Setup: The same candle must serve as both the Supply Zone and the Order Block.\n5. Gap Filter: If the market opens with a Gap Up or Gap Down, do not analyze or execute any trades. Skip trading until normal market conditions resume.")
+        }
+        // The exits of a trade: the trader's own distances, or the model's levels.
+        NxRow {
+            icon: "flag"
+            title: qsTr("Take profit and stop loss")
+            subtitle: trading.sbtSettings.exit_mode === "points"
+                ? qsTr("Your own distances from the entry, in points of the market's price (the last digit TradingView shows; its measuring tool counts in the same points). On %1: take profit %2, stop loss %3 away from the entry.")
+                      .arg(trading.symbolName).arg(Format.number(trading.sbtSettings.tp_price, page.pointDecimals)).arg(Format.number(trading.sbtSettings.sl_price, page.pointDecimals))
+                : qsTr("The model's levels: take profit at the area of 3, stop loss beyond the Level 2 zone.")
+            NxSegmented {
+                readonly property var values: ["points", "model"]
+                Accessible.name: qsTr("Take profit and stop loss")
+                model: [qsTr("Fixed points"), qsTr("Model levels")]
+                currentIndex: Math.max(0, values.indexOf(trading.sbtSettings.exit_mode))
+                onActivated: (index) => page.setSbt("exit_mode", values[index])
+            }
+        }
+        SettingNumber {
+            visible: trading.sbtSettings.exit_mode === "points"
+            icon: "arrow-up"
+            title: qsTr("Take profit · %1").arg(trading.symbolName)
+            subtitle: trading.sbtSettings.own_points
+                ? qsTr("Points from the entry to the take profit. Set for %1 only.").arg(trading.symbolName)
+                : qsTr("Points from the entry to the take profit. Changing it here sets it for %1 only; every market has its own.").arg(trading.symbolName)
+            value: trading.sbtSettings.tp_points; from: 1; to: 1000000; step: 10; unit: qsTr("points")
+            onEdited: (v) => page.setSbt("tp_points", v)
+        }
+        SettingNumber {
+            visible: trading.sbtSettings.exit_mode === "points"
+            icon: "shield"
+            title: qsTr("Stop loss · %1").arg(trading.symbolName)
+            subtitle: qsTr("Points from the entry to the stop loss. The risk rules still ask for their minimum reward to risk: a take profit smaller than that many stop losses is not traded.")
+            value: trading.sbtSettings.sl_points; from: 1; to: 1000000; step: 10; unit: qsTr("points")
+            onEdited: (v) => page.setSbt("sl_points", v)
         }
         RuleList {
             heading: qsTr("What counts as a proper 123 (read from the two charts)")
@@ -269,15 +306,15 @@ NxPage {
         SettingNumber {
             icon: "hash"
             title: qsTr("Fee per side")
-            subtitle: qsTr("Share of the order value charged when a position opens and again when it closes.")
+            subtitle: qsTr("Share of the order value charged when a position opens and again when it closes. On the forex markets the cost is the spread, so the fee starts at 0 and the slippage below stands in for the spread.")
             value: page.paper.fee_pct; from: 0; to: 1; step: 0.01; decimals: 2; unit: "%"
             onEdited: (v) => page.setPaper("fee_pct", v)
         }
         SettingNumber {
             icon: "sliders"
             title: qsTr("Slippage")
-            subtitle: qsTr("How much worse than the quoted price a market or stop order fills.")
-            value: page.paper.slippage_pct; from: 0; to: 1; step: 0.01; decimals: 2; unit: "%"
+            subtitle: qsTr("How much worse than the quoted price an order fills, per side. 0.005 % is about 18 points on gold and about half a pip on EUR/USD.")
+            value: page.paper.slippage_pct; from: 0; to: 1; step: 0.005; decimals: 3; unit: "%"
             onEdited: (v) => page.setPaper("slippage_pct", v)
         }
     }

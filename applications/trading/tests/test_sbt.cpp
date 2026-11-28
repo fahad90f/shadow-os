@@ -1128,6 +1128,57 @@ static void testAQuietStretchMakesNoStructure()
     CHECK(e.structure().size() == before);
 }
 
+// The trader's own exits: fixed distances from the entry instead of the area
+// of 3 and the stop beyond the zone.
+static void testFixedExits(bool bull)
+{
+    Settings s;
+    s.fixedTarget = 20;
+    s.fixedStop = 10;
+    {
+        const std::vector<Candle> v = bull ? ownerBullish() : mirror(ownerBullish());
+        Run r(s);
+        r.closeAll(v, 25);
+        const Event *t = r.find("triggered");
+        CHECK(t != nullptr);
+        Candle forming = v[25];                      // opens at 88 (bearish chart: 112)
+        forming.closed = false;
+        forming.high = forming.low = forming.close = forming.open;
+        r.form(forming);
+        const Event *in = r.find("entered");
+        CHECK(in != nullptr);
+        if (in) {
+            NEAR(in->setup.entry, bull ? 88 : 112, 1e-9);
+            NEAR(in->setup.target, bull ? 108 : 92, 1e-9);
+            NEAR(in->setup.stop, bull ? 78 : 122, 1e-9);
+            NEAR(in->setup.rewardRisk, 2.0, 1e-9);
+        }
+        r.closeAll(v, v.size());
+        const Event *hit = r.find("target");          // candle 26 reaches 130 (70): 20 away is passed there
+        CHECK(hit && hit->setup.outcomeTime == v[26].openTime);
+        CHECK(r.find("stopped") == nullptr);
+    }
+    {
+        std::vector<Candle> v = ownerBullish();
+        v[25] = at(v, 25, 88, 90, 77, 80);            // 10 below the entry is passed first
+        if (!bull)
+            v = mirror(v);
+        Run r(s);
+        r.closeAll(v, 26);
+        const Event *out = r.find("stopped");
+        CHECK(out && out->setup.outcomeTime == v[25].openTime);
+        CHECK(r.find("target") == nullptr);
+    }
+    // A take profit too small for the stop is not traded (the minimum reward to risk).
+    Settings poor = s;
+    poor.fixedTarget = 5;
+    Run p(poor);
+    p.closeAll(bull ? ownerBullish() : mirror(ownerBullish()), 26);
+    CHECK(p.find("entered") == nullptr);
+    const Event *skipped = p.find("skipped");
+    CHECK(skipped && skipped->setup.note.find("reward/risk") == 0);
+}
+
 static void testProperStructure()
 {
     for (bool bull : {true, false}) {
@@ -1136,6 +1187,8 @@ static void testProperStructure()
         testTheEntryIsAtTheZone(bull);
     }
     testTheTargetIsTheAreaOfThree();
+    testFixedExits(true);
+    testFixedExits(false);
     testSmallMovesAreNoStructure();
     testAQuietStretchMakesNoStructure();
 }

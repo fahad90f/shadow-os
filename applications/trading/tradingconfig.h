@@ -5,6 +5,7 @@
 #include "core/risk.h"
 #include "core/sbt.h"
 
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QString>
@@ -148,7 +149,19 @@ public:
     Trading::Sbt::Settings sbt() const;
     // The AI team must confirm a setup before it is traded (when there is a key).
     bool sbtAiConfirm() const { return m_sbtAiConfirm; }
-    // name: ai_confirm, require_pd_array (bool), zone ("wick" | "body"),
+    // The exits of a trade: "points" (the trader's own take profit and stop
+    // loss, as points of the market's price from the entry; the default on
+    // the forex markets) or "model" (the area of 3 and the stop beyond the
+    // zone). A point is the last digit of the price as TradingView shows it:
+    // 0.01 on gold, 0.00001 on EUR/USD. Each market can have its own
+    // distances (tp_points_XAGUSD, set from the window with that market on
+    // the chart); one without uses the general ones (tp_points, sl_points).
+    QString sbtExitMode() const { return m_sbtExitMode; }
+    double sbtTpPoints(const QString &market = QString()) const;
+    double sbtSlPoints(const QString &market = QString()) const;
+    // Whether the market has distances of its own.
+    bool sbtOwnPoints(const QString &market) const;
+    // name: exit_mode ("points" | "model"), tp_points, sl_points (for the market on the chart), ai_confirm, require_pd_array (bool), zone ("wick" | "body"),
     // stop_buffer_atr, pd_distance_atr, max_wait_candles.
     bool setSbt(const QString &name, const QVariant &value);
 
@@ -190,6 +203,11 @@ private:
     int m_modelParallel = 6;
     Trading::Sbt::Settings m_sbt;
     bool m_sbtAiConfirm = true;
+    QString m_sbtExitMode = QStringLiteral("points");
+    double m_sbtTpPoints = 1210;
+    double m_sbtSlPoints = 610;
+    QHash<QString, double> m_sbtTpOf; // by market, where it has its own
+    QHash<QString, double> m_sbtSlOf;
     QString m_deskFast;
     QString m_deskDeep;
     bool m_deskFollow = true;

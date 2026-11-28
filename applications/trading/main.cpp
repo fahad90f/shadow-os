@@ -163,6 +163,12 @@ int main(int argc, char **argv)
                 } else if (action.startsWith(QLatin1String("select:"))) {
                     engine.setSymbol(action.mid(7));
                     app.waitFor(&engine, SIGNAL(marketReady()), 20000);
+                } else if (action.startsWith(QLatin1String("sbt:"))) {
+                    // A setting of the strategy: sbt:tp_points=900
+                    const QString pair = action.mid(4);
+                    const qsizetype eq = pair.indexOf(QLatin1Char('='));
+                    result = eq > 0 && engine.setSbtSetting(pair.left(eq), pair.mid(eq + 1))
+                        ? QString() : QStringLiteral("not set");
                 } else if (action.startsWith(QLatin1String("oanda-token:"))) {
                     result = engine.saveOandaToken(action.mid(12));
                     if (result.isEmpty())

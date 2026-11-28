@@ -176,6 +176,10 @@ struct Settings
     // Target the near edge of the "area of 3" (the body of the Level 3
     // candle) rather than the end of its wick.
     bool targetBody = true;
+    // The trader's own exits, as price distances from the entry (0: the
+    // model's, i.e. the area of 3 and the stop beyond the zone).
+    double fixedTarget = 0;
+    double fixedStop = 0;
     double zoneMoveAtr = 1.0;     // demand/supply: how far the move away from the zone goes, in ATRs
     double gapAtr = 0.5;          // a gap: the open this far from the previous close (and outside its range)
     int gapPauseCandles = 6;      // after a gap, candles without trading unless it is filled sooner

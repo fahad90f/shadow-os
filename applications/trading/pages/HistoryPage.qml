@@ -51,6 +51,22 @@ Item {
             }
             NxStatTile {
                 Layout.fillWidth: true
+                label: qsTr("Total win")
+                value: ((page.account.grossProfit || 0) > 0 ? "+" : "") + Format.money(page.account.grossProfit || 0)
+                detail: qsTr("%1 winning trades, %2").arg(page.account.wins).arg(trading.accountCurrency)
+                tone: (page.account.grossProfit || 0) > 0 ? "success" : "neutral"
+                icon: "arrow-up"
+            }
+            NxStatTile {
+                Layout.fillWidth: true
+                label: qsTr("Total loss")
+                value: ((page.account.grossLoss || 0) > 0 ? "−" : "") + Format.money(page.account.grossLoss || 0)
+                detail: qsTr("%1 losing trades, %2").arg(page.account.losses).arg(trading.accountCurrency)
+                tone: (page.account.grossLoss || 0) > 0 ? "danger" : "neutral"
+                icon: "arrow-down"
+            }
+            NxStatTile {
+                Layout.fillWidth: true
                 label: qsTr("Realized profit")
                 value: Format.signedMoney(page.account.realizedPnl)
                 detail: qsTr("%1, after fees").arg(trading.accountCurrency)

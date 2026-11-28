@@ -108,7 +108,7 @@ void TradingEngine::feedSbt()
         // Another market or interval (or a gap): its history is read once, as
         // history. Setup ids carry the market, and what was traded or
         // reviewed is kept, so reading a market again never enters a setup twice.
-        m_sbt = Sbt::Engine(m_config->sbt());
+        m_sbt = Sbt::Engine(sbtRules());
         m_sbt.setIdPrefix((key + QLatin1Char(':')).toStdString());
         m_sbt.setLive(false);
         m_sbtKey = key;
@@ -165,7 +165,7 @@ QString TradingEngine::sbtSignature() const
 
 bool TradingEngine::sbtSettingsDiffer() const
 {
-    return !Sbt::sameRules(m_sbt.settings(), m_config->sbt());
+    return !Sbt::sameRules(m_sbt.settings(), sbtRules());
 }
 
 void TradingEngine::handleSbt(const std::vector<Sbt::Event> &events)
@@ -252,11 +252,16 @@ Signal TradingEngine::signalFor(const Sbt::Setup &s, bool rulesOnly) const
     sig.leaning = actionOf(s);
     // Before the retest the levels are the plan: entry at the zone, the stop
     // beyond it, the target at Level 3 as it stands.
-    const double buffer = m_config->sbt().stopBufferAtr * m_sbt.atr();
-    sig.stop = s.stop > 0 ? s.stop
-                          : (bull ? std::min(s.zoneBottom, s.level2.price) - buffer : std::max(s.zoneTop, s.level2.price) + buffer);
-    sig.takeProfit = s.target > 0 ? s.target : s.level3.price;
+    const Sbt::Settings rules = sbtRules();
+    const double buffer = rules.stopBufferAtr * m_sbt.atr();
     sig.entry = s.entry > 0 ? s.entry : s.retest.index >= 0 ? s.retest.price : (bull ? s.zoneTop : s.zoneBottom);
+    // With the trader's own exits the plan is those distances from the entry.
+    const double planStop = rules.fixedStop > 0 ? (bull ? sig.entry - rules.fixedStop : sig.entry + rules.fixedStop)
+        : (bull ? std::min(s.zoneBottom, s.level2.price) - buffer : std::max(s.zoneTop, s.level2.price) + buffer);
+    const double planTarget = rules.fixedTarget > 0 ? (bull ? sig.entry + rules.fixedTarget : sig.entry - rules.fixedTarget)
+        : s.level3.price;
+    sig.stop = s.stop > 0 ? s.stop : planStop;
+    sig.takeProfit = s.target > 0 ? s.target : planTarget;
     sig.rewardRisk = rewardRisk(actionOf(s), sig.entry, sig.stop, sig.takeProfit);
     if (r.done) {
         // Counted against the setup's direction, whatever side the team's consensus took.
@@ -502,10 +507,45 @@ QVariantMap TradingEngine::sbt() const
     };
 }
 
+double TradingEngine::pointSize(const QString &symbol)
+{
+    if (symbol.startsWith(QLatin1String("XAU")) || symbol.startsWith(QLatin1String("PAXG"))
+        || symbol.startsWith(QLatin1String("XAUT")))
+        return 0.01;
+    if (symbol.startsWith(QLatin1String("XAG")) || symbol.endsWith(QLatin1String("JPY")))
+        return 0.001;
+    // The currency pairs: the fifth decimal. Anything else (the crypto
+    // markets of the test suite): the cent.
+    static const QStringList fiat{QStringLiteral("USD"), QStringLiteral("EUR"), QStringLiteral("GBP"),
+                                  QStringLiteral("CHF"), QStringLiteral("CAD"), QStringLiteral("AUD"),
+                                  QStringLiteral("NZD")};
+    return symbol.size() == 6 && fiat.contains(symbol.left(3)) && fiat.contains(symbol.mid(3)) ? 0.00001 : 0.01;
+}
+
+Sbt::Settings TradingEngine::sbtRules() const
+{
+    Sbt::Settings s = m_config->sbt();
+    if (m_config->sbtExitMode() == QLatin1String("points")) {
+        const double point = pointSize(m_config->symbol());
+        s.fixedTarget = m_config->sbtTpPoints() * point;
+        s.fixedStop = m_config->sbtSlPoints() * point;
+    }
+    return s;
+}
+
 QVariantMap TradingEngine::sbtSettings() const
 {
     const Sbt::Settings s = m_config->sbt();
+    const double point = pointSize(m_config->symbol());
     return {{QStringLiteral("ai_confirm"), m_config->sbtAiConfirm()},
+            // The exits: the trader's own distances in points, or the model's levels.
+            {QStringLiteral("exit_mode"), m_config->sbtExitMode()},
+            {QStringLiteral("tp_points"), m_config->sbtTpPoints()},
+            {QStringLiteral("sl_points"), m_config->sbtSlPoints()},
+            {QStringLiteral("own_points"), m_config->sbtOwnPoints(m_config->symbol())},
+            {QStringLiteral("point"), point},
+            {QStringLiteral("tp_price"), m_config->sbtTpPoints() * point},
+            {QStringLiteral("sl_price"), m_config->sbtSlPoints() * point},
             {QStringLiteral("require_pd_array"), s.requirePdArray},
             {QStringLiteral("leg_atr"), s.legAtr},
             {QStringLiteral("min_pullback_candles"), s.minPullbackCandles},
@@ -591,9 +631,9 @@ void TradingEngine::updateSbtHistory()
     // market or other rules: read everything again. Reading 20,000 candles
     // takes a few milliseconds; otherwise only the new ones are read.
     const bool rebuild = key != m_sbtHistoryKey || first != m_sbtHistoryFirst
-        || !Sbt::sameRules(m_sbtHistory.settings(), m_config->sbt());
+        || !Sbt::sameRules(m_sbtHistory.settings(), sbtRules());
     if (rebuild) {
-        Sbt::Settings settings = m_config->sbt();
+        Sbt::Settings settings = sbtRules();
         settings.keepFinished = 5000;
         m_sbtHistory = Sbt::Engine(settings);
         m_sbtHistory.setIdPrefix((QStringLiteral("history:") + key + QLatin1Char(':')).toStdString());
@@ -640,6 +680,9 @@ QVariantMap TradingEngine::buildSbtHistory() const
     QVariantList setups;
     int targets = 0, stops = 0, open = 0, missed = 0;
     double totalR = 0;
+    // What the wins and the losses add up to, in points of this market's price.
+    const double point = pointSize(m_config->symbol());
+    double wonPoints = 0, lostPoints = 0;
     const double price = m_candles.empty() ? 0 : m_candles.back().close;
     for (const Sbt::Setup &s : m_sbtHistory.setups()) {
         if (s.entryTime <= 0) {
@@ -656,11 +699,13 @@ QVariantMap TradingEngine::buildSbtHistory() const
             r = s.rewardRisk;
             result = QStringLiteral("target");
             ++targets;
+            wonPoints += std::fabs(s.target - s.entry) / point;
         } else if (s.status == Sbt::Status::Stopped) {
             exit = s.stop;
             r = -1;
             result = QStringLiteral("stop");
             ++stops;
+            lostPoints += std::fabs(s.entry - s.stop) / point;
         } else {
             // Still open: where it stands at the price now.
             r = risk > 0 && price > 0 ? (bull ? price - s.entry : s.entry - price) / risk : 0;
@@ -714,6 +759,10 @@ QVariantMap TradingEngine::buildSbtHistory() const
         {QStringLiteral("setups"), setups},
         {QStringLiteral("trades"), trades},
         {QStringLiteral("stats"), QVariantMap{
+            // Total win and total loss: how many, and how many points.
+            {QStringLiteral("wins"), targets}, {QStringLiteral("losses"), stops},
+            {QStringLiteral("wonPoints"), wonPoints}, {QStringLiteral("lostPoints"), lostPoints},
+            {QStringLiteral("netPoints"), wonPoints - lostPoints},
             {QStringLiteral("entries"), int(setups.size())}, {QStringLiteral("targets"), targets},
             {QStringLiteral("stops"), stops}, {QStringLiteral("open"), open}, {QStringLiteral("missed"), missed},
             {QStringLiteral("winRate"), closed > 0 ? double(targets) / closed * 100.0 : 0.0},

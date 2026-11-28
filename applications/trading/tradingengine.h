@@ -216,6 +216,9 @@ public:
     Q_INVOKABLE bool analyzeNow();
     QVariantMap sbt() const;
     QVariantMap sbtSettings() const;
+    // One point of a market's price: the last digit TradingView shows for it
+    // (0.01 on gold, 0.001 on silver and the yen pairs, 0.00001 on the others).
+    static double pointSize(const QString &symbol);
     QVariantMap sbtHistory() const;
     Q_INVOKABLE bool setSbtSetting(const QString &name, const QVariant &value);
     // Place the trade of the current signal on the paper account, through the
@@ -352,6 +355,9 @@ private:
     Trading::Signal signalFor(const Trading::Sbt::Setup &setup, bool rulesOnly = false) const;
     QString sbtSignature() const;
     bool sbtSettingsDiffer() const;
+    // The strategy's rules for the market on the chart: the settings, with
+    // the trader's take profit and stop loss turned from points into price.
+    Trading::Sbt::Settings sbtRules() const;
     QVariantMap setupMap(const Trading::Sbt::Setup &setup) const;
     QJsonObject setupJson(const Trading::Sbt::Setup &setup) const;
     void refreshSignal();

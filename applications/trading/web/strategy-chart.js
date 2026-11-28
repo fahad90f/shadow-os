@@ -201,7 +201,9 @@
                 if (s.level3 && s.level3.price) {
                     var l3 = bar(s.level3.time);
                     mark({ time: l3, position: bullish ? 'aboveBar' : 'belowBar', color: tone, shape: 'circle', text: '3' });
-                    segment(Math.max(l3, first), last, s.target || s.level3.price, tone, !s.level3Confirmed);
+                    // The line of 3; with the trader's own exits the take profit is not at 3.
+                    segment(Math.max(l3, first), last, o.targetAtThree === false ? s.level3.price : (s.target || s.level3.price),
+                            tone, !s.level3Confirmed);
                 }
                 if (s.entryTime > 0)
                     mark({ time: bar(s.entryTime), position: bullish ? 'belowBar' : 'aboveBar', color: tone,

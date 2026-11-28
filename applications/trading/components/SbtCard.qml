@@ -18,6 +18,9 @@ GlowCard {
     readonly property bool bull: s.direction === "bullish"
     readonly property color sideTone: !has ? Theme.accent : bull ? Theme.success : Theme.danger
 
+    // The trader's own take profit and stop loss in points are in use.
+    readonly property bool points: trading.sbtSettings.exit_mode === "points"
+
     function statusText(x) {
         switch (x.status) {
         case "armed": return x.intrabar ? qsTr("ARMED · price in the zone now (counts when the candle closes)")
@@ -26,8 +29,8 @@ GlowCard {
         case "triggered": return qsTr("RETEST CONFIRMED at %1 · entry at the next candle's open").arg(Format.clock(x.retest.time))
         case "entered": return x.pending ? qsTr("ENTRY · waiting for the AI team's review")
                                          : x.traded ? qsTr("ENTERED · on the paper account") : qsTr("ENTRY SIGNAL")
-        case "target": return qsTr("LEVEL 3 REACHED")
-        case "stopped": return qsTr("STOPPED")
+        case "target": return root.points ? qsTr("TAKE PROFIT REACHED") : qsTr("LEVEL 3 REACHED")
+        case "stopped": return root.points ? qsTr("STOP LOSS REACHED") : qsTr("STOPPED")
         case "invalidated": return qsTr("INVALIDATED · %1").arg(x.note)
         case "skipped": return qsTr("NOT TAKEN · %1").arg(x.note)
         case "expired": return qsTr("EXPIRED · %1").arg(x.note)
@@ -126,8 +129,21 @@ GlowCard {
             Cell { label: qsTr("Level 1 · BOS"); value: root.has ? Format.price(root.s.level1.price) : "" }
             Cell { label: qsTr("Level 2"); value: root.has ? Format.price(root.s.level2.price) : "" }
             Cell { label: qsTr("Zone"); value: root.has ? Format.price(root.s.zone.bottom) + "–" + Format.price(root.s.zone.top) : "" }
-            Cell { label: root.has && root.s.level3Confirmed ? qsTr("Level 3 · target") : qsTr("Level 3 (forming)")
-                   value: root.has ? Format.price(root.s.target) : ""; valueColor: root.sideTone }
+            // With the trader's own exits Level 3 is structure only; the take profit is on the card above.
+            Cell { label: !root.has || !root.s.level3Confirmed ? qsTr("Level 3 (forming)")
+                       : root.points ? qsTr("Level 3") : qsTr("Level 3 · target")
+                   value: !root.has ? "" : Format.price(root.points ? root.s.level3.price : root.s.target)
+                   valueColor: root.sideTone }
+        }
+        // The exits in use: the trader's own distances, or the model's levels.
+        Label {
+            Layout.fillWidth: true
+            visible: root.has
+            text: trading.sbtSettings.exit_mode === "points"
+                ? qsTr("Exits: TP %1 points · SL %2 points from the entry").arg(Format.number(trading.sbtSettings.tp_points, 0)).arg(Format.number(trading.sbtSettings.sl_points, 0))
+                : qsTr("Exits: TP at the area of 3 · SL beyond the zone")
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontSizeCaption
         }
         // The filters this setup met, numbered as the trader wrote them.
         Label {

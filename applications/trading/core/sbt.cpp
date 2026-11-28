@@ -68,7 +68,8 @@ bool sameRules(const Settings &a, const Settings &b)
 {
     return a.legAtr == b.legAtr && a.minPullbackCandles == b.minPullbackCandles && a.supersede == b.supersede
         && a.firstReturn == b.firstReturn && a.extensionAtr == b.extensionAtr && a.entryZoneAtr == b.entryZoneAtr
-        && a.targetBody == b.targetBody && a.zoneMoveAtr == b.zoneMoveAtr && a.gapAtr == b.gapAtr
+        && a.targetBody == b.targetBody && a.fixedTarget == b.fixedTarget && a.fixedStop == b.fixedStop
+        && a.zoneMoveAtr == b.zoneMoveAtr && a.gapAtr == b.gapAtr
         && a.gapPauseCandles == b.gapPauseCandles && a.stopBufferAtr == b.stopBufferAtr
         && a.minRewardRisk == b.minRewardRisk && a.requirePdArray == b.requirePdArray
         && a.pdDistanceAtr == b.pdDistanceAtr && a.displacementAtr == b.displacementAtr && a.minGapAtr == b.minGapAtr
@@ -534,6 +535,12 @@ void Engine::advance(Setup &s, const Candle &c, std::vector<Event> *events)
         // Past the zone and Level 2 (a wick below the zone candle is part of the structure).
         const double buffer = m_settings.stopBufferAtr * m_atr;
         s.stop = bull ? std::min(s.zoneBottom, s.level2.price) - buffer : std::max(s.zoneTop, s.level2.price) + buffer;
+        // The trader's own distances, from where the entry will be (the next
+        // open; here, for now, this close).
+        if (m_settings.fixedTarget > 0)
+            s.target = bull ? c.close + m_settings.fixedTarget : c.close - m_settings.fixedTarget;
+        if (m_settings.fixedStop > 0)
+            s.stop = bull ? c.close - m_settings.fixedStop : c.close + m_settings.fixedStop;
         const double risk = bull ? c.close - s.stop : s.stop - c.close;
         s.rewardRisk = risk > 0 ? (bull ? s.target - c.close : c.close - s.target) / risk : 0;
         if (m_settings.requirePdArray && s.confirmations.empty()) {
@@ -573,6 +580,10 @@ void Engine::enter(Setup &s, const Candle &e, std::vector<Event> *events)
     s.entryTime = e.openTime;
     s.updated = e.openTime;
     s.intrabar = false;
+    if (m_settings.fixedTarget > 0)
+        s.target = bull ? s.entry + m_settings.fixedTarget : s.entry - m_settings.fixedTarget;
+    if (m_settings.fixedStop > 0)
+        s.stop = bull ? s.entry - m_settings.fixedStop : s.entry + m_settings.fixedStop;
     const double risk = bull ? s.entry - s.stop : s.stop - s.entry;
     const double reward = bull ? s.target - s.entry : s.entry - s.target;
     s.rewardRisk = risk > 0 && reward > 0 ? reward / risk : 0;

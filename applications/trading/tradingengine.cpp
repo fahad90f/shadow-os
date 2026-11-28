@@ -1170,7 +1170,8 @@ QString TradingEngine::systemPrompt(const QString &role, double minRewardRisk, c
         "with hold. Answer the opposite direction only when the snapshot clearly shows the other side is stronger.\n"
         "- confidence is 0 to 100: how clearly the setup follows the rules and the snapshot supports it. It is not a "
         "probability of profit. Use 0 for hold.\n"
-        "- stop_loss and take_profit: the setup's stop and target (Level 3); you do not move them. The strategy "
+        "- stop_loss and take_profit: the setup's stop and target as given (the trader's own fixed distances from "
+        "the entry, or the zone and the area of 3); you do not move them. The strategy "
         "needs a reward/risk of at least %1.\n"
         "- reasoning: at most 60 words of plain language naming the rules and readings that decided it.\n\n"
         "Your focus: %2\n\n"
@@ -2174,6 +2175,8 @@ QVariantMap TradingEngine::account() const
         {QStringLiteral("todayPnlPct"), dayStart > 0 ? (equity - dayStart) / dayStart * 100.0 : 0.0},
         {QStringLiteral("trades"), s.trades}, {QStringLiteral("wins"), s.wins}, {QStringLiteral("losses"), s.losses},
         {QStringLiteral("winRatePct"), s.winRatePct}, {QStringLiteral("profitFactor"), s.profitFactor},
+        // Total win and total loss of the closed trades (both positive numbers).
+        {QStringLiteral("grossProfit"), s.grossProfit}, {QStringLiteral("grossLoss"), s.grossLoss},
         {QStringLiteral("bestTrade"), s.bestTrade}, {QStringLiteral("worstTrade"), s.worstTrade},
         {QStringLiteral("averageWin"), s.averageWin}, {QStringLiteral("averageLoss"), s.averageLoss},
         {QStringLiteral("drawdownPct"), drawdownPct(equity, m_account.peakEquity())},
@@ -2242,6 +2245,8 @@ QVariantList TradingEngine::trades() const
             {QStringLiteral("side"), t.isLong ? QStringLiteral("buy") : QStringLiteral("sell")},
             {QStringLiteral("quantity"), t.quantity}, {QStringLiteral("entry"), t.entry},
             {QStringLiteral("exit"), t.exit}, {QStringLiteral("openedAt"), double(t.openedAt)},
+            // The stop loss and take profit it had when it closed.
+            {QStringLiteral("stop"), t.stop}, {QStringLiteral("takeProfit"), t.takeProfit},
             {QStringLiteral("closedAt"), double(t.closedAt)}, {QStringLiteral("fees"), t.fees},
             {QStringLiteral("pnl"), t.pnl}, {QStringLiteral("pnlPct"), t.pnlPct},
             {QStringLiteral("reason"), qs(t.reason)}, {QStringLiteral("confidence"), t.confidence},
@@ -2502,6 +2507,7 @@ QJsonObject TradingEngine::dumpConfig() const
             {QStringLiteral("modelTimeout"), modelTimeout()}, {QStringLiteral("modelParallel"), m_config->modelParallel()},
             {QStringLiteral("risk"), QJsonObject::fromVariantMap(riskSettings())},
             {QStringLiteral("paper"), QJsonObject::fromVariantMap(paperSettings())},
+            {QStringLiteral("sbt"), QJsonObject::fromVariantMap(sbtSettings())},
             {QStringLiteral("panel"), panel},
             {QStringLiteral("priceSource"), QJsonObject::fromVariantMap(priceSource())},
             {QStringLiteral("tradingViewSymbol"), tradingViewSymbol()},

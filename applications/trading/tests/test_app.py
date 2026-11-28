@@ -778,6 +778,82 @@ class AppTest(unittest.TestCase):
         self.assertFalse(widget["hide_side_toolbar"])     # the drawing tools
         self.assertEqual(widget["studies"], [])           # no RSI, EMA or other indicator lines
 
+    def test_forex_trades_exit_at_the_traders_own_points(self):
+        # Take profit 1,210 points and stop loss 610 points from the entry: 12.10 and 6.10 on gold.
+        self.market_kind = None
+        self.oanda = OANDA_TOKEN
+        scale = 4050.0 / 100                                    # the drawn chart at gold's price
+        plan = {"*": BUY, "market": self.BULL}
+        settings = AUTO + "[sbt]\nai_confirm=false\n"
+        out = self.act("wait:3", plan, settings)
+        rules = self.dump("config")
+        self.assertEqual(out["market"]["sbt"]["current"]["status"], "entered")
+        p = out["account"]["positions"][0]
+        entry = 101.6 * scale
+        self.assertAlmostEqual(p["takeProfit"], entry + 12.10, delta=0.01)
+        self.assertAlmostEqual(p["stop"], entry - 6.10, delta=0.01)
+        self.assertAlmostEqual(out["signal"]["rewardRisk"], 1210 / 610, delta=0.01)
+        # A broker's costs: no fee, a small spread.
+        self.assertEqual((rules["paper"]["fee_pct"], rules["paper"]["slippage_pct"]), (0, 0.005))
+        # The price rises half a per cent (about 20.5): the take profit, 12.10 above the entry, closes it.
+        out = self.act("wait:6", plan, settings, moves=[(1, dict(plan, market=dict(self.BULL, move_pct=0.5)))])
+        trade = out["account"]["trades"][0]
+        self.assertEqual(trade["reason"], "take_profit")
+        self.assertAlmostEqual(trade["exit"], entry + 12.10, delta=0.01)
+        self.assertGreater(trade["pnl"], 0)
+        # Total win and total loss: of the strategy's past trades, in points, and of the account, in money.
+        stats = out["market"]["sbtHistory"]["stats"]
+        self.assertEqual((stats["wins"], stats["losses"]), (1, 0))
+        self.assertAlmostEqual(stats["wonPoints"], 1210, delta=0.5)
+        self.assertEqual(stats["lostPoints"], 0)
+        account = out["account"]["account"]
+        self.assertAlmostEqual(account["grossProfit"], trade["pnl"], places=6)
+        self.assertEqual(account["grossLoss"], 0)
+
+    def test_a_stop_loss_in_points_and_its_total(self):
+        self.market_kind = None
+        self.oanda = OANDA_TOKEN
+        plan = {"*": BUY, "market": self.BULL}
+        settings = AUTO + "[sbt]\nai_confirm=false\ntp_points=2000\nsl_points=500\n"
+        out = self.act("wait:6", plan, settings, moves=[(1, dict(plan, market=dict(self.BULL, move_pct=-0.3)))])
+        trade = out["account"]["trades"][0]
+        entry = 101.6 * 40.5
+        self.assertEqual(trade["reason"], "stop_loss")
+        self.assertAlmostEqual(trade["stop"], entry - 5.00, delta=0.01)          # 500 points
+        self.assertAlmostEqual(trade["takeProfit"], entry + 20.00, delta=0.01)   # 2,000 points
+        stats = out["market"]["sbtHistory"]["stats"]
+        self.assertEqual((stats["wins"], stats["losses"]), (0, 1))
+        self.assertAlmostEqual(stats["lostPoints"], 500, delta=0.5)
+        account = out["account"]["account"]
+        self.assertEqual(account["grossProfit"], 0)
+        self.assertAlmostEqual(account["grossLoss"], -trade["pnl"], places=6)
+
+    def test_each_market_has_its_own_points(self):
+        # Gold's distances are not silver's: a change made with silver on the chart is silver's alone.
+        self.market_kind = None
+        self.oanda = OANDA_TOKEN
+        out = self.act("select:XAGUSD,sbt:tp_points=300,sbt:sl_points=150,sbt:tp_points=0", {})
+        self.assertEqual([a["result"] for a in out["actions"]], ["", "", "", "not set"])
+        silver = self.dump("config")["sbt"]
+        self.assertEqual((silver["tp_points"], silver["sl_points"], silver["own_points"]), (300, 150, True))
+        self.assertAlmostEqual(silver["tp_price"], 0.300, places=6)             # a point of silver is 0.001
+        self.act("select:XAUUSD", {})
+        gold = self.dump("config")["sbt"]
+        self.assertEqual((gold["tp_points"], gold["sl_points"], gold["own_points"]), (1210, 610, False))
+        self.assertAlmostEqual(gold["tp_price"], 12.10, places=6)
+        self.act("select:EURUSD", {})
+        euro = self.dump("config")["sbt"]
+        self.assertEqual((euro["tp_points"], euro["own_points"]), (1210, False))
+        self.assertAlmostEqual(euro["tp_price"], 0.01210, places=8)             # 121 pips
+
+    def test_the_model_levels_can_be_chosen_instead_of_points(self):
+        self.market_kind = None
+        self.oanda = OANDA_TOKEN
+        out = self.act("wait:3", {"*": BUY, "market": self.BULL}, AUTO + "[sbt]\nai_confirm=false\nexit_mode=model\n")
+        p = out["account"]["positions"][0]
+        self.assertAlmostEqual(p["takeProfit"], 105.8 * 40.5, delta=0.01)        # the area of 3
+        self.assertLess(p["stop"], 100.0 * 40.5)                                 # beyond the zone
+
     def test_without_an_oanda_token_the_application_says_where_to_add_one(self):
         self.serve()
         self.market_kind = None

@@ -8,7 +8,9 @@
 // Prints what it set up, what it entered and how the entries ended. The
 // rules are the engine's defaults unless given as name=value: leg_atr,
 // min_pullback_candles, extension_atr, entry_zone_atr, first_return,
-// supersede, target (body|wick), zone_move_atr, gap_atr, gap_pause_candles,
+// supersede, target (body|wick), tp and sl (the trader's own take profit and
+// stop loss as price distances from the entry: tp=12.10 sl=6.10 is 1,210 and
+// 610 points on gold), zone_move_atr, gap_atr, gap_pause_candles,
 // stop_buffer_atr, min_reward_risk, max_wait_candles.
 //
 // This measures the rules on the past. It says nothing about the future,
@@ -50,6 +52,8 @@ int main(int argc, char **argv)
         else if (name == "first_return") s.firstReturn = number != 0;
         else if (name == "supersede") s.supersede = number != 0;
         else if (name == "target") s.targetBody = value != "wick";
+        else if (name == "tp") s.fixedTarget = number;   // the trader's own exits, as price distances
+        else if (name == "sl") s.fixedStop = number;     // (1,210 points on gold: tp=12.10)
         else if (name == "zone_move_atr") s.zoneMoveAtr = number;
         else if (name == "gap_atr") s.gapAtr = number;
         else if (name == "gap_pause_candles") s.gapPauseCandles = int(number);
@@ -112,7 +116,7 @@ int main(int argc, char **argv)
     const int closed = won + lost;
     std::printf("%lld candles, %.0f days\n", candles, double(last - first) / 86400000.0);
     std::printf("structures (a close beyond a confirmed high or low): %zu\n", engine.setups().size());
-    std::printf("entries: %d   won (target, the area of 3): %d   lost (stop): %d   still open: %d\n", closed, won, lost, open);
+    std::printf("entries: %d   won (take profit): %d   lost (stop loss): %d   still open: %d\n", closed, won, lost, open);
     if (closed > 0) {
         std::printf("win rate: %.1f %%   coin flip at these reward:risk ratios: %.1f %%\n", 100.0 * won / closed,
                     100.0 * coin / closed);

@@ -379,6 +379,25 @@ void TradingConfig::reload()
     m_sbt.pdDistanceAtr = clampOr(number("sbt/pd_distance_atr", sd.pdDistanceAtr), 0.2, 5, sd.pdDistanceAtr);
     m_sbt.maxArmedCandles = int(clampOr(number("sbt/max_wait_candles", sd.maxArmedCandles), 10, 1000, sd.maxArmedCandles));
     m_sbtAiConfirm = ini.value(QStringLiteral("sbt/ai_confirm"), true).toBool();
+    // The trader's own exits in points: the default on the forex markets.
+    const QString exitMode = ini.value(QStringLiteral("sbt/exit_mode")).toString().trimmed().toLower();
+    m_sbtExitMode = exitMode == QLatin1String("model") || exitMode == QLatin1String("points")
+        ? exitMode : (m_forex ? QStringLiteral("points") : QStringLiteral("model"));
+    m_sbtTpPoints = clampOr(number("sbt/tp_points", 1210), 1, 1000000, 1210);
+    m_sbtSlPoints = clampOr(number("sbt/sl_points", 610), 1, 1000000, 610);
+    // A market's own distances: tp_points_XAGUSD, sl_points_XAGUSD.
+    m_sbtTpOf.clear();
+    m_sbtSlOf.clear();
+    const QStringList allKeys = ini.allKeys();
+    for (const QString &key : allKeys) {
+        const bool tp = key.startsWith(QLatin1String("sbt/tp_points_"));
+        if (!tp && !key.startsWith(QLatin1String("sbt/sl_points_")))
+            continue;
+        bool ok = false;
+        const double v = ini.value(key).toString().toDouble(&ok);
+        if (ok && std::isfinite(v) && v >= 1 && v <= 1000000)
+            (tp ? m_sbtTpOf : m_sbtSlOf).insert(key.mid(14).toUpper(), v);
+    }
     m_risk = d;
     m_risk.riskPerTradePct = clampOr(number("risk/risk_per_trade_pct", d.riskPerTradePct), 0.1, 5, d.riskPerTradePct);
     m_risk.maxDailyLossPct = clampOr(number("risk/max_daily_loss_pct", d.maxDailyLossPct), 0.5, 20, d.maxDailyLossPct);
@@ -395,8 +414,15 @@ void TradingConfig::reload()
     m_paper = pd;
     m_paper.startingBalance = clampOr(number("paper/starting_balance", pd.startingBalance), 100, 1e7,
                                       pd.startingBalance);
-    m_paper.feePct = clampOr(number("paper/fee_pct", pd.feePct), 0, 1, pd.feePct);
-    m_paper.slippagePct = clampOr(number("paper/slippage_pct", pd.slippagePct), 0, 1, pd.slippagePct);
+    // What an order costs, unless the settings say otherwise. At a forex
+    // broker the cost is the spread, not a share of the order: no fee, and a
+    // slippage of 0.005 % a side to stand in for the spread (about 35 points
+    // there and back on gold, about a pip on EUR/USD). On an exchange: its
+    // fee of a tenth of a per cent a side.
+    const double feeDefault = oanda ? 0.0 : pd.feePct;
+    const double slippageDefault = oanda ? 0.005 : pd.slippagePct;
+    m_paper.feePct = clampOr(number("paper/fee_pct", feeDefault), 0, 1, feeDefault);
+    m_paper.slippagePct = clampOr(number("paper/slippage_pct", slippageDefault), 0, 1, slippageDefault);
 }
 
 void TradingConfig::store(const QString &key, const QVariant &value)
@@ -812,11 +838,43 @@ Trading::Sbt::Settings TradingConfig::sbt() const
     return s;
 }
 
+// A market's name as part of a key of the settings file.
+static QString pointsKey(const QString &market)
+{
+    QString key;
+    for (const QChar c : market.toUpper()) {
+        if (c.isLetterOrNumber())
+            key.append(c);
+    }
+    return key;
+}
+
+double TradingConfig::sbtTpPoints(const QString &market) const
+{
+    return m_sbtTpOf.value(pointsKey(market.isEmpty() ? symbol() : market), m_sbtTpPoints);
+}
+
+double TradingConfig::sbtSlPoints(const QString &market) const
+{
+    return m_sbtSlOf.value(pointsKey(market.isEmpty() ? symbol() : market), m_sbtSlPoints);
+}
+
+bool TradingConfig::sbtOwnPoints(const QString &market) const
+{
+    const QString key = pointsKey(market.isEmpty() ? symbol() : market);
+    return m_sbtTpOf.contains(key) || m_sbtSlOf.contains(key);
+}
+
 bool TradingConfig::setSbt(const QString &name, const QVariant &value)
 {
     if (name == QLatin1String("ai_confirm") || name == QLatin1String("require_pd_array")
         || name == QLatin1String("first_return") || name == QLatin1String("supersede")) {
         store(QStringLiteral("sbt/") + name, value.toBool());
+    } else if (name == QLatin1String("exit_mode")) {
+        const QString mode = value.toString();
+        if (mode != QLatin1String("points") && mode != QLatin1String("model"))
+            return false;
+        store(QStringLiteral("sbt/exit_mode"), mode);
     } else if (name == QLatin1String("target")) {
         const QString target = value.toString();
         if (target != QLatin1String("body") && target != QLatin1String("wick"))
@@ -824,7 +882,7 @@ bool TradingConfig::setSbt(const QString &name, const QVariant &value)
         store(QStringLiteral("sbt/target"), target);
     } else {
         struct Range { const char *name; double low; double high; };
-        static const Range ranges[] = {{"leg_atr", 1, 8}, {"min_pullback_candles", 1, 10}, {"extension_atr", 0, 5},
+        static const Range ranges[] = {{"tp_points", 1, 1000000}, {"sl_points", 1, 1000000}, {"leg_atr", 1, 8}, {"min_pullback_candles", 1, 10}, {"extension_atr", 0, 5},
                                        {"entry_zone_atr", 0, 5}, {"stop_buffer_atr", 0, 2},
                                        {"pd_distance_atr", 0.2, 5}, {"max_wait_candles", 10, 1000},
                                        {"zone_move_atr", 0.2, 5}, {"gap_atr", 0.1, 5},
@@ -836,7 +894,9 @@ bool TradingConfig::setSbt(const QString &name, const QVariant &value)
             const double v = value.toDouble();
             if (!std::isfinite(v) || v < r.low || v > r.high)
                 return false;
-            store(QStringLiteral("sbt/") + name, v);
+            // The points are the market's on the chart: gold's are not silver's.
+            const bool points = name == QLatin1String("tp_points") || name == QLatin1String("sl_points");
+            store(QStringLiteral("sbt/") + name + (points ? QLatin1Char('_') + pointsKey(symbol()) : QString()), v);
             known = true;
         }
         if (!known)
