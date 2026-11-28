@@ -61,6 +61,7 @@ class TradingEngine : public QObject
     Q_PROPERTY(QString symbol READ symbol WRITE setSymbol NOTIFY selectionChanged)
     Q_PROPERTY(QString symbolName READ symbolName NOTIFY selectionChanged)
     Q_PROPERTY(QString interval READ interval WRITE setInterval NOTIFY selectionChanged)
+    Q_PROPERTY(double intervalMs READ intervalMs NOTIFY selectionChanged)
     Q_PROPERTY(QStringList intervals READ intervals CONSTANT)
 
     // Bumped whenever the candles of the selected market change.
@@ -79,10 +80,18 @@ class TradingEngine : public QObject
     // SBT Model 1 on the selected market: setups, PD arrays, the structure watched.
     Q_PROPERTY(QVariantMap sbt READ sbt NOTIFY signalChanged)
     Q_PROPERTY(QVariantMap sbtSettings READ sbtSettings NOTIFY settingsChanged)
+    // SBT Model 1 run over every candle the chart has loaded: where its
+    // setups entered and how they ended, by the rules (never traded), plus the
+    // paper account's own trades on this market.
+    Q_PROPERTY(QVariantMap sbtHistory READ sbtHistory NOTIFY sbtHistoryChanged)
     Q_PROPERTY(QVariantMap signal READ signal NOTIFY signalChanged)
     Q_PROPERTY(QVariantList analysts READ analysts NOTIFY analystsChanged)
     // The NVIDIA key: {hasKey, hint, source}. Never the key itself.
     Q_PROPERTY(QVariantMap key READ key NOTIFY analystsChanged)
+    // Where the prices come from: {service, host, needsToken, hasToken,
+    // tokenSource, hint, account, markets}. Never the token itself.
+    Q_PROPERTY(QVariantMap priceSource READ priceSource NOTIFY priceSourceChanged)
+    Q_PROPERTY(QString tradingViewSymbol READ tradingViewSymbol NOTIFY selectionChanged)
     // Models NVIDIA offers that are not on the panel yet (after refreshCatalog()).
     Q_PROPERTY(QStringList catalog READ catalog NOTIFY catalogChanged)
     Q_PROPERTY(QString catalogError READ catalogError NOTIFY catalogChanged)
@@ -207,6 +216,7 @@ public:
     Q_INVOKABLE bool analyzeNow();
     QVariantMap sbt() const;
     QVariantMap sbtSettings() const;
+    QVariantMap sbtHistory() const;
     Q_INVOKABLE bool setSbtSetting(const QString &name, const QVariant &value);
     // Place the trade of the current signal on the paper account, through the
     // risk rules. "" on success, else why not.
@@ -223,6 +233,9 @@ public:
     Q_INVOKABLE QString addModel(const QString &model, const QString &role);
     Q_INVOKABLE void removeModel(const QString &model);
     Q_INVOKABLE void resetPanel();
+    Q_INVOKABLE QString saveOandaToken(const QString &token);
+    Q_INVOKABLE void removeOandaToken();
+    Q_INVOKABLE void setOandaAccount(const QString &account);
     Q_INVOKABLE QString saveKey(const QString &key);
     Q_INVOKABLE void removeKey();
     // Send one tiny question to a model to check the key and the model;
@@ -236,6 +249,17 @@ public:
     // chart for the selected market.
     // 'offlineText' is shown in the page when TradingView cannot be reached.
     Q_INVOKABLE QString tradingViewPage(bool dark, const QString &offlineText) const;
+    QString tradingViewSymbol() const;
+    double intervalMs() const;
+    // The strategy chart's page: TradingView's Lightweight Charts library and
+    // the page's script, both compiled in (no network). 'theme' is a JSON
+    // object of colours and the font.
+    Q_INVOKABLE QString strategyChartPage(const QString &theme) const;
+    // The chart's candles for that page, as JSON: all of them when the page
+    // has another market ('key') or another first candle ('first', seconds),
+    // else those from its last one ('last') on. "" while there are none.
+    Q_INVOKABLE QString chartJson(const QString &key, double first, double last) const;
+    QVariantMap priceSource() const;
 
     static QString displayName(const QString &symbol);  // "BTCUSDT" -> "BTC/USDT"
     QJsonObject snapshot(const Trading::Indicators::Summary &ta, const Trading::Indicators::Summary *higher,
@@ -265,7 +289,9 @@ public:
     QJsonObject dumpMarket() const;
 
 Q_SIGNALS:
+    void priceSourceChanged();
     void marketChanged();
+    void sbtHistoryChanged();
     void selectionChanged();
     void chartChanged();
     // Another market or interval is on the chart: its view starts over.
@@ -304,6 +330,8 @@ private:
     void collect(const Trading::Verdict &verdict);
     void startTeamReview();
     void applySource();
+    void restartPrices();
+    bool forexMarket(const QString &symbol) const; // offered by the forex source in use
     void applyReview(const Trading::Verdict &final);
     void finishAnalysis();
     void publishProvisional();
@@ -325,6 +353,8 @@ private:
     QVariantMap setupMap(const Trading::Sbt::Setup &setup) const;
     QJsonObject setupJson(const Trading::Sbt::Setup &setup) const;
     void refreshSignal();
+    void updateSbtHistory();
+    QVariantMap buildSbtHistory() const;
     QString execute(const Trading::Signal &signal, const Trading::RiskDecision &decision);
     Trading::AccountView accountView(const QString &symbol, qint64 nowMs) const;
     void afterAccountChange(bool tradeClosed);
@@ -407,6 +437,13 @@ private:
     QString m_lastDecisionFor;        // the setup m_lastSignal / m_lastDecision are about
     qint64 m_lastSignalAt = 0;
     QString m_sbtShown;               // what the window last got of the current setup
+    // The same strategy over the chart's whole history (shown, never traded).
+    Trading::Sbt::Engine m_sbtHistory;
+    QString m_sbtHistoryKey;
+    long long m_sbtHistoryFirst = 0;  // the chart's first candle when it was read
+    QString m_sbtHistoryShown;
+    mutable QVariantMap m_sbtHistoryCache;
+    mutable bool m_sbtHistoryDirty = true;
 
     // account
     Trading::PaperAccount m_account;

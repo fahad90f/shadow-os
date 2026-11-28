@@ -254,16 +254,28 @@ void TradingConfig::reload()
             m.enabled = m.enabled && raw.trimmed() != m.model;
     }
 
-    // Which markets: crypto (Binance's public data) or forex (the currency
-    // pairs and gold of Kraken's public data). Each has its own source, its
-    // own list of markets and its own selection.
-    m_forex = ini.value(QStringLiteral("market/kind")).toString().trimmed().toLower() == QLatin1String("forex");
+    // Which markets: forex (OANDA's prices of gold, silver and the dollar
+    // pairs; or Kraken's public data) or, only where the settings ask for it,
+    // crypto (Binance's public data). Each has its own source, its own list of
+    // markets and its own selection.
+    QString kind = ini.value(QStringLiteral("market/kind")).toString().trimmed().toLower();
+    if (kind.isEmpty())
+        kind = QString::fromUtf8(qgetenv("SHADOW_TRADING_MARKET_KIND")).trimmed().toLower();
+    m_forex = kind != QLatin1String("crypto");
+    m_forexSource = ini.value(QStringLiteral("market/forex_source")).toString().trimmed().toLower() == QLatin1String("kraken")
+        ? QStringLiteral("kraken") : QStringLiteral("oanda");
+    m_oandaAccount = ini.value(QStringLiteral("market/oanda_account")).toString().trimmed().toLower() == QLatin1String("live")
+        ? QStringLiteral("live") : QStringLiteral("practice");
+    const bool oanda = m_forex && m_forexSource == QLatin1String("oanda");
     const QString dataKey = marketKey(QStringLiteral("data_url"));
     m_dataUrl = ini.value(dataKey).toString().trimmed();
     const QByteArray dataEnv = qgetenv("SHADOW_TRADING_DATA_URL");
     if (!dataEnv.isEmpty())
         m_dataUrl = QString::fromUtf8(dataEnv).trimmed();
-    if (m_dataUrl.isEmpty()) // public market data, no key
+    if (m_dataUrl.isEmpty() && oanda)
+        m_dataUrl = m_oandaAccount == QLatin1String("live") ? QStringLiteral("https://api-fxtrade.oanda.com")
+                                                            : QStringLiteral("https://api-fxpractice.oanda.com");
+    else if (m_dataUrl.isEmpty()) // public market data, no key
         m_dataUrl = m_forex ? QStringLiteral("https://api.kraken.com") : QStringLiteral("https://data-api.binance.vision");
     while (m_dataUrl.endsWith(QLatin1Char('/')))
         m_dataUrl.chop(1);
@@ -276,7 +288,9 @@ void TradingConfig::reload()
     const QByteArray streamEnv = qgetenv("SHADOW_TRADING_STREAM_URL");
     if (!streamEnv.isEmpty())
         m_streamUrl = QString::fromUtf8(streamEnv).trimmed();
-    if (m_streamUrl.isEmpty() && builtinData) // public market data, no key
+    if (oanda)
+        m_streamUrl.clear(); // OANDA's prices are asked for every few seconds
+    else if (m_streamUrl.isEmpty() && builtinData) // public market data, no key
         m_streamUrl = m_forex ? QStringLiteral("wss://ws.kraken.com") : QStringLiteral("wss://data-stream.binance.vision");
     if (m_streamUrl.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0
         || !(m_streamUrl.startsWith(QLatin1String("wss://")) || m_streamUrl.startsWith(QLatin1String("ws://"))))
@@ -293,7 +307,10 @@ void TradingConfig::reload()
         if (validSymbol(symbol) && !m_watchlist.contains(symbol) && m_watchlist.size() < 12)
             m_watchlist.append(symbol);
     }
-    if (m_watchlist.isEmpty() && m_forex) {
+    if (m_watchlist.isEmpty() && oanda) {
+        // Gold, silver and the euro, as FOREX.com's charts on TradingView show them.
+        m_watchlist = {QStringLiteral("XAUUSD"), QStringLiteral("XAGUSD"), QStringLiteral("EURUSD")};
+    } else if (m_watchlist.isEmpty() && m_forex) {
         // The pairs with the dollar that trade often enough there to chart,
         // and gold (the PAX Gold token against the dollar).
         m_watchlist = {QStringLiteral("EURUSD"), QStringLiteral("GBPUSD"), QStringLiteral("AUDUSD"),
@@ -536,7 +553,21 @@ QString TradingConfig::saveKey(const QString &key)
     if (!owner.isEmpty())
         return tr("That is a key for %1, not for NVIDIA. NVIDIA keys start with nvapi-.").arg(owner);
 
-    const QString path = keyFilePath();
+    const QString error = writeSecret(keyFilePath(), k);
+    if (!error.isEmpty())
+        return error;
+    Q_EMIT keysChanged();
+    return {};
+}
+
+void TradingConfig::removeKey()
+{
+    QFile::remove(keyFilePath());
+    Q_EMIT keysChanged();
+}
+
+QString TradingConfig::writeSecret(const QString &path, const QString &value)
+{
     const QString dir = QFileInfo(path).absolutePath();
     if (!QDir().mkpath(dir))
         return tr("Could not create %1.").arg(dir);
@@ -549,7 +580,7 @@ QString TradingConfig::saveKey(const QString &key)
     const int fd = ::open(tmp.constData(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
     if (fd < 0)
         return tr("Could not write %1: %2").arg(path, QString::fromLocal8Bit(std::strerror(errno)));
-    const QByteArray data = k.toUtf8() + '\n';
+    const QByteArray data = value.toUtf8() + '\n';
     int problem = 0;
     qsizetype written = 0;
     while (problem == 0 && written < data.size()) {
@@ -571,14 +602,66 @@ QString TradingConfig::saveKey(const QString &key)
         ::unlink(tmp.constData());
         return tr("Could not write %1: %2").arg(path, QString::fromLocal8Bit(std::strerror(problem)));
     }
+    return {};
+}
+
+QString TradingConfig::oandaTokenPath() const
+{
+    return configBase() + QStringLiteral("/trading/oanda.token");
+}
+
+QString TradingConfig::oandaToken() const
+{
+    const QString fromEnv = QString::fromUtf8(qgetenv("SHADOW_TRADING_OANDA_TOKEN")).trimmed();
+    return fromEnv.isEmpty() ? readKeyFile(oandaTokenPath()) : fromEnv;
+}
+
+QString TradingConfig::oandaTokenSource() const
+{
+    if (!QString::fromUtf8(qgetenv("SHADOW_TRADING_OANDA_TOKEN")).trimmed().isEmpty())
+        return QStringLiteral("environment");
+    return readKeyFile(oandaTokenPath()).isEmpty() ? QString() : QStringLiteral("saved");
+}
+
+QString TradingConfig::oandaTokenHint() const
+{
+    const QString token = oandaToken();
+    return token.size() >= 12 ? token.right(4) : QString();
+}
+
+QString TradingConfig::saveOandaToken(const QString &token)
+{
+    const QString t = token.trimmed();
+    if (t.isEmpty())
+        return tr("Paste the token first.");
+    if (t.startsWith(QLatin1String("nvapi-")))
+        return tr("That is an NVIDIA key, not an OANDA token.");
+    // OANDA's personal access tokens: two runs of hex digits joined by "-".
+    static const QRegularExpression shape(QStringLiteral("^[0-9a-fA-F]{16,64}-[0-9a-fA-F]{16,64}$"));
+    if (!shape.match(t).hasMatch())
+        return tr("That does not look like an OANDA token (two groups of letters a-f and digits, joined by a "
+                  "dash; under My Services → Manage API Access on OANDA's site).");
+    const QString error = writeSecret(oandaTokenPath(), t);
+    if (!error.isEmpty())
+        return error;
     Q_EMIT keysChanged();
     return {};
 }
 
-void TradingConfig::removeKey()
+void TradingConfig::removeOandaToken()
 {
-    QFile::remove(keyFilePath());
+    QFile::remove(oandaTokenPath());
     Q_EMIT keysChanged();
+}
+
+void TradingConfig::setOandaAccount(const QString &account)
+{
+    const QString a = account == QLatin1String("live") ? QStringLiteral("live") : QStringLiteral("practice");
+    if (a == m_oandaAccount)
+        return;
+    store(QStringLiteral("market/oanda_account"), a);
+    reload(); // the other address
+    Q_EMIT changed();
 }
 
 QString TradingConfig::marketKey(const QString &name) const

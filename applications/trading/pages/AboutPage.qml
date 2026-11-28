@@ -62,7 +62,7 @@ NxPage {
         NxRow {
             icon: "external-link"
             title: qsTr("TradingView")
-            subtitle: qsTr("The TradingView tab shows TradingView's own embeddable chart, loaded from tradingview.com. Shadow Trading is not affiliated with TradingView, NVIDIA or the makers of the models.")
+            subtitle: qsTr("The strategy chart uses TradingView Lightweight Charts™ 5.2.1, © TradingView, Inc. (https://www.tradingview.com/), under the Apache License 2.0, shipped with the application. The FOREX.com tab shows TradingView's own embeddable chart of FOREX.com's prices, loaded from tradingview.com. Prices for the strategy come from OANDA. Shadow Trading is not affiliated with TradingView, FOREX.com, OANDA, NVIDIA or the makers of the models.")
         }
     }
 }

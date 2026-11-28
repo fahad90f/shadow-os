@@ -163,6 +163,12 @@ int main(int argc, char **argv)
                 } else if (action.startsWith(QLatin1String("select:"))) {
                     engine.setSymbol(action.mid(7));
                     app.waitFor(&engine, SIGNAL(marketReady()), 20000);
+                } else if (action.startsWith(QLatin1String("oanda-token:"))) {
+                    result = engine.saveOandaToken(action.mid(12));
+                    if (result.isEmpty())
+                        app.waitFor(&engine, SIGNAL(marketReady()), 20000);
+                } else if (action == QLatin1String("oanda-forget")) {
+                    engine.removeOandaToken();
                 } else if (action.startsWith(QLatin1String("kind:"))) {
                     // The other kind of market: crypto or forex.
                     result = engine.setMarketKind(action.mid(5));

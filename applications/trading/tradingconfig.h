@@ -14,6 +14,7 @@
 //
 //   ~/.config/shadow/trading.conf        settings (INI)
 //   ~/.config/shadow/trading/nvidia.key  the NVIDIA API key, mode 600
+//   ~/.config/shadow/trading/oanda.token the OANDA token (forex prices), mode 600
 //   ~/.local/share/shadow/trading/       the paper account and its history
 //
 // Every model on the panel is one of NVIDIA's hosted models, reached through
@@ -69,9 +70,29 @@ public:
     void removeKey();
     QString keyFilePath() const;
 
+    // ---- forex prices: OANDA ----------------------------------------------
+    // The token in effect ("" = none): SHADOW_TRADING_OANDA_TOKEN, else the
+    // saved file. C++ only: never handed to QML, sent only to OANDA.
+    QString oandaToken() const;
+    QString oandaTokenSource() const; // "environment" | "saved" | ""
+    QString oandaTokenHint() const;   // the last four characters
+    QString saveOandaToken(const QString &token);
+    void removeOandaToken();
+    QString oandaTokenPath() const;
+    // "practice" (api-fxpractice.oanda.com) or "live" (api-fxtrade.oanda.com):
+    // which of OANDA's two services the token belongs to.
+    QString oandaAccount() const { return m_oandaAccount; }
+    void setOandaAccount(const QString &account);
+    // Where the forex prices come from: "oanda" (gold, silver and the dollar
+    // pairs; needs the token) or "kraken" (no key; no silver, gold as a token).
+    QString forexSource() const { return m_forexSource; }
+
     // ---- market ------------------------------------------------------------
-    // Crypto (false) or forex (true): which data service, which list of
-    // markets and which selection the rest of this section is about.
+    // Forex (true, what the application offers) or crypto (false: only
+    // market/kind=crypto in the settings file, or SHADOW_TRADING_MARKET_KIND
+    // where the file says nothing; the test suite's stand-in exchange speaks
+    // the crypto service's API): which data service, which list of markets and
+    // which selection the rest of this section is about.
     bool forex() const { return m_forex; }
     void setForex(bool forex);
     QString dataUrl() const { return m_dataUrl; }
@@ -148,11 +169,14 @@ private:
     void store(const QString &key, const QVariant &value);
     void storePanel(const QList<Member> &panel);
     QString savedKey() const;
+    static QString writeSecret(const QString &path, const QString &value); // "" on success
     QString assistantKey() const;
 
     QList<Member> m_panel;
     QString m_baseUrl;
-    bool m_forex = false;
+    bool m_forex = true;
+    QString m_forexSource = QStringLiteral("oanda");
+    QString m_oandaAccount = QStringLiteral("practice");
     QString marketKey(const QString &name) const; // "market/<name>" or "market/forex_<name>"
     QString m_dataUrl;
     QString m_streamUrl;

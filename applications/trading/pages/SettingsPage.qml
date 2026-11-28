@@ -22,13 +22,71 @@ NxPage {
             ApplicationWindow.window.toaster.show(qsTr("That value is outside the allowed range."), "warning")
     }
 
+    // ---- where the strategy's prices come from ----------------------------------
+    NxSection {
+        visible: trading.priceSource.needsToken === true
+        title: qsTr("Prices: OANDA")
+        description: qsTr("The strategy reads its candles of gold (XAUUSD), silver (XAGUSD) and the dollar pairs from OANDA's price service, with your own OANDA token. A free practice account is enough (oanda.com → open a demo account → My Services → Manage API Access → Generate). FOREX.com, whose charts TradingView shows, has no public price service; OANDA's prices of the same markets differ from FOREX.com's by a few cents (gold) or a fraction of a pip (pairs). The token is saved in a file only you can read, sent only to OANDA, and never shown again.")
+        headerActions: NxBadge {
+            text: trading.priceSource.hasToken ? qsTr("Connected") : qsTr("No token")
+            kind: trading.priceSource.hasToken ? "success" : "warning"
+        }
+        NxRow {
+            icon: "key"
+            title: trading.priceSource.hasToken ? qsTr("Token ending in %1").arg(trading.priceSource.hint || "····") : qsTr("No token yet")
+            subtitle: trading.priceSource.hasToken
+                ? (trading.priceSource.tokenSource === "environment" ? qsTr("In use, from the environment (SHADOW_TRADING_OANDA_TOKEN).") : qsTr("In use, saved."))
+                : qsTr("Without a token there are no prices: no chart of the strategy, no setups, no trades.")
+            NxPasswordField {
+                id: oandaField
+                Layout.preferredWidth: 280
+                placeholderText: qsTr("Paste your OANDA token")
+                Accessible.name: qsTr("OANDA token")
+                onAccepted: oandaSave.clicked()
+            }
+            NxButton {
+                id: oandaSave
+                kind: "primary"
+                text: qsTr("Save")
+                enabled: oandaField.text.trim() !== ""
+                onClicked: {
+                    var error = trading.saveOandaToken(oandaField.text)
+                    if (error === "") {
+                        oandaField.text = ""
+                        ApplicationWindow.window.toaster.show(qsTr("Token saved."), "success")
+                    } else {
+                        ApplicationWindow.window.toaster.show(error, "danger")
+                    }
+                }
+            }
+            NxButton {
+                visible: trading.priceSource.tokenSource === "saved"
+                text: qsTr("Remove")
+                onClicked: trading.removeOandaToken()
+                Accessible.name: qsTr("Remove the saved OANDA token")
+            }
+        }
+        NxRow {
+            icon: "user"
+            title: qsTr("OANDA account")
+            subtitle: qsTr("The kind of account the token belongs to. Practice: api-fxpractice.oanda.com; live: api-fxtrade.oanda.com. Only prices are read; nothing is ever ordered at OANDA.")
+            NxSegmented {
+                readonly property var accounts: ["practice", "live"]
+                Accessible.name: qsTr("OANDA account")
+                model: [qsTr("Practice"), qsTr("Live")]
+                currentIndex: Math.max(0, accounts.indexOf(trading.priceSource.account))
+                onActivated: (index) => trading.setOandaAccount(accounts[index])
+            }
+        }
+    }
+
     // The strategy every trade comes from.
     NxSection {
         title: qsTr("Strategy: SBT Model 1")
         NxRow {
             icon: "target"
             title: qsTr("SBT Model 1 decides the trades")
-            subtitle: qsTr("Bullish and bearish: a proper 1-2-3, a break of structure (a close beyond Level 1), the Level 2 zone (the lowest bearish candle, or the highest bullish one), a retest that does not close through it, entry at the next candle's open, target Level 3. The AI models do not trade on their own view; they review the setups this strategy finds.")
+            subtitle: qsTr("Bullish and bearish, on the external structure only (swings inside a leg are ignored): a proper 1-2-3, a break of structure (a close beyond Level 1), the Level 2 zone (the lowest bearish candle, or the highest bullish one), a retest that does not close through it, entry at the next candle's open, target Level 3. The AI models do not trade on their own view; they review the setups this strategy finds.")
             NxBadge { text: qsTr("In use"); kind: "success" }
         }
         NxRow {
@@ -69,13 +127,6 @@ NxPage {
             subtitle: qsTr("How far past the Level 2 zone the stop sits, in units of the average true range.")
             value: trading.sbtSettings.stop_buffer_atr; from: 0; to: 2; step: 0.05; decimals: 2; unit: qsTr("ATR")
             onEdited: (v) => page.setSbt("stop_buffer_atr", v)
-        }
-        SettingNumber {
-            icon: "activity"
-            title: qsTr("Swing strength")
-            subtitle: qsTr("Candles on each side of a swing point (Level 1, 2 and 3). More: fewer, larger structures.")
-            value: trading.sbtSettings.swing_strength; from: 1; to: 5; step: 1
-            onEdited: (v) => page.setSbt("swing_strength", v)
         }
         SettingNumber {
             icon: "clock"
@@ -155,29 +206,13 @@ NxPage {
     NxSection {
         title: qsTr("Market data")
         NxRow {
-            icon: "layers"
-            title: qsTr("Markets")
-            subtitle: qsTr("Crypto: coins against USDT. Forex: the US dollar against the euro, the pound and other currencies, and gold. Each has its own list of markets. The paper account is one and the same; switch with no position open.")
-            NxSegmented {
-                readonly property var kinds: ["crypto", "forex"]
-                Accessible.name: qsTr("Markets")
-                model: [qsTr("Crypto"), qsTr("Forex")]
-                currentIndex: Math.max(0, kinds.indexOf(trading.marketKind))
-                onActivated: (index) => {
-                    var error = trading.setMarketKind(kinds[index])
-                    if (error !== "") {
-                        ApplicationWindow.window.toaster.show(error, "warning")
-                        currentIndex = Qt.binding(() => Math.max(0, kinds.indexOf(trading.marketKind)))
-                    }
-                }
-            }
-        }
-        NxRow {
             icon: "globe"
             title: qsTr("Source")
-            subtitle: trading.marketKind === "forex"
+            subtitle: trading.priceSource.service === "oanda"
+                ? qsTr("The forex markets: gold, silver and the currency pairs with the US dollar, from OANDA, asked for every %1 seconds. The forex market is closed at weekends.").arg(trading.pollSeconds)
+                : trading.marketKind === "forex"
                 ? qsTr("Public prices and candles of the currency pairs and gold that trade on Kraken, in real time. No account or key is used. These are that exchange's own prices: close to the interbank rates for the pairs that trade often there, and it trades at weekends too.")
-                : qsTr("Public prices and candles, in real time. No account or key is used. Gold and the euro are shown as they trade on this exchange (PAXG and EUR against USDT); the currency pairs themselves are the forex markets.")
+                : qsTr("Public prices and candles, in real time. No account or key is used.")
             value: trading.dataSource
             monoValue: true
         }
@@ -191,7 +226,7 @@ NxPage {
             icon: "monitor"
             title: qsTr("TradingView chart")
             subtitle: trading.webViewAvailable
-                ? qsTr("Available. The chart is loaded from tradingview.com and needs an internet connection.")
+                ? qsTr("Available. FOREX.com's own chart of the market (FOREXCOM:XAUUSD and so on), loaded from tradingview.com; it needs an internet connection. The strategy chart beside it is TradingView's open-source chart library, shipped with the application, drawing the strategy's own candles with its setups and past trades.")
                 : qsTr("Needs the package qml6-module-qtwebengine. Without it the AI chart is shown.")
             NxBadge {
                 text: trading.webViewAvailable ? qsTr("Available") : qsTr("Not installed")

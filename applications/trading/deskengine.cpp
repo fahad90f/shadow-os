@@ -380,7 +380,8 @@ void DeskEngine::readMessage(qint64 id)
             m_focusMessage = id;
         if (!market.listed && !m_warnedUnlisted.contains(market.symbol)) {
             m_warnedUnlisted.insert(market.symbol);
-            const bool forexLike = market.base == QLatin1String("XAU") || market.base == QLatin1String("EUR")
+            const bool forexLike = market.base == QLatin1String("XAU") || market.base == QLatin1String("XAG")
+                || market.base == QLatin1String("EUR")
                 || market.base == QLatin1String("GBP") || market.base == QLatin1String("AUD")
                 || market.base == QLatin1String("NZD") || market.base == QLatin1String("USD");
             note(QStringLiteral("warning"),
@@ -732,7 +733,7 @@ QString DeskEngine::answerSystem() const
         "team concluded (\"team\"). When a claim of the trader disagrees with the live readings, say so plainly.\n"
         "- This is a paper-trading desk. Give a clear view: the bias, the case for and against, where the idea is "
         "wrong (invalidation), and when a trade is discussed: entry, stop, target and reward/risk. Promise nothing.\n"
-        "- The desk trades only by the trader's own strategy, SBT Model 1: a proper 1-2-3, a break of structure "
+        "- The desk trades only by the trader's own strategy, SBT Model 1: a proper 1-2-3 of the external structure, a break of structure "
         "(a close beyond Level 1), the Level 2 zone (the lowest bearish candle at 2; bearish: the highest bullish "
         "one), a retest that does not close through the zone, entry at the next candle's open, target Level 3. PD "
         "arrays are not part of these rules. Neither you nor the other models trade on "

@@ -14,14 +14,21 @@
 
 class QNetworkAccessManager;
 class QNetworkReply;
+class QNetworkRequest;
+class QUrl;
 
-// Public market data over REST: candles and 24-hour tickers. No account and
-// no key are involved; nothing here can place an order. Two services are
-// understood, and the settings say which one is used and where it is:
+// Market data over REST: candles and 24-hour tickers. Nothing here can place
+// an order. Three services are understood, and the settings say which one is
+// used and where it is:
+//  - OANDA's v20 REST API (the forex markets: currency pairs, gold XAU/USD and
+//    silver XAG/USD), read with the trader's own OANDA token (a free practice
+//    account is enough). The token is sent only to OANDA's address and never
+//    logged;
+//  - Kraken's public market data, for the currency pairs and the gold token
+//    it lists (no silver), quoted in dollars; no key;
 //  - Binance's public market data (crypto, quoted in USDT), and any service
-//    that speaks the same API;
-//  - Kraken's public market data, for the currency pairs and gold it lists
-//    (EUR/USD, GBP/USD, USD/CHF, ...), quoted in dollars.
+//    that speaks the same API; no key. Not offered by the application any
+//    more: its test suite still drives it.
 class MarketData : public QObject
 {
     Q_OBJECT
@@ -38,8 +45,11 @@ public:
 
     MarketData(QNetworkAccessManager *net, QObject *parent = nullptr);
 
-    enum class Service { Binance, Kraken };
+    enum class Service { Binance, Kraken, Oanda };
     void setService(Service service);
+    // OANDA's personal access token ("" = none: every request then fails
+    // with a message that says where to add one).
+    void setToken(const QString &token) { m_token = token; }
     Service service() const { return m_service; }
     void setBaseUrl(const QString &url);
     QString baseUrl() const { return m_baseUrl; }
@@ -80,6 +90,20 @@ public:
     struct KrakenTicker { Ticker ticker; int trades24h = 0; };
     static QList<KrakenTicker> parseKrakenTickers(const QByteArray &json, QString *error, bool *unknown = nullptr);
     static QList<Ticker> krakenTickers(const QByteArray &json, QString *error, bool *unknown = nullptr);
+    // ---- OANDA ----
+    // "XAUUSD" -> "XAU_USD"; empty when the name is not a pair of the list.
+    static QString oandaInstrument(const QString &symbol);
+    // "15m" -> "M15", "1h" -> "H1", "1d" -> "D"; empty when there is none.
+    static QString oandaGranularity(const QString &interval);
+    // A pair OANDA's list offers here: a currency, gold or silver against the
+    // dollar (crosses need a second rate for their profit, so they are left out).
+    static bool oandaForex(const QString &symbol);
+    // What can be added to the watchlist, in order.
+    static QStringList oandaMarkets();
+    // {"candles":[{"complete":true,"volume":12,"time":"1700000000.000000000",
+    //  "mid":{"o":"…","h":"…","l":"…","c":"…"}}]} (time as UNIX seconds).
+    static Trading::Candles parseOandaCandles(const QByteArray &json, QString *error);
+
     // A currency pair or gold against the dollar: what the forex list offers.
     // Crosses (EUR/GBP) are left out: their profit would need a second rate.
     static bool krakenForex(const QString &symbol);
@@ -103,9 +127,18 @@ private:
     QString unlistedText(const QString &symbol) const;
     void markUnlisted(const QString &symbol);
     void fetchTicker(const QString &symbol); // one market, after a list was refused
+    QNetworkRequest oandaRequest(const QUrl &url) const;
+    QString oandaError(QNetworkReply *reply, const QByteArray &body) const;
+    void fetchOandaCandles(const QString &symbol, const QString &interval, int limit, const QString &purpose,
+                           qint64 beforeMs);
+    // The day's ticker of one market (today's and yesterday's daily candle).
+    void fetchOandaTicker(const QString &symbol, bool forCatalog);
 
     QNetworkAccessManager *m_net;
     Service m_service = Service::Binance;
+    QString m_token;
+    QList<QPair<QString, double>> m_catalog; // OANDA: the list of markets being put together
+    int m_catalogWaiting = 0;
     QString m_baseUrl;
     QHash<QString, QPointer<QNetworkReply>> m_inFlight;
     QSet<QString> m_unlisted;

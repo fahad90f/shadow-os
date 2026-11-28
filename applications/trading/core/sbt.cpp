@@ -12,7 +12,6 @@ namespace {
 const int kMinWindow = 400;   // closed candles kept at least
 const int kMaxWindow = 3000;  // and at most
 const size_t kMaxArrays = 80;
-const size_t kKeepFinished = 12;
 const int kAtrPeriod = 14;
 
 bool bullishCandle(const Candle &c) { return c.close > c.open; }
@@ -129,6 +128,14 @@ std::vector<Event> Engine::close(const Candle &input)
     }
     updateArrays(c);
     detectArrays();
+    if (n == 0) {
+        // The structure starts from the first candle's range; the first
+        // break and the first valid pullbacks put the external points in place.
+        m_extHigh = {c.openTime, c.high, 0};
+        m_extLow = {c.openTime, c.low, 0};
+        m_extHighReal = m_extLowReal = false;
+    }
+    updateLegs(c);
     checkBos(c, &events);
     confirmSwing(&events);
     for (Setup &s : m_setups) {
@@ -162,6 +169,8 @@ std::vector<Event> Engine::forming(const Candle &c)
 }
 
 // A swing point 'k' candles back, now that 'k' candles have closed after it.
+// Recorded as context only: swing points of this size are internal
+// structure and never Level 1, 2 or 3.
 void Engine::confirmSwing(std::vector<Event> *events)
 {
     (void)events;
@@ -175,16 +184,38 @@ void Engine::confirmSwing(std::vector<Event> *events)
         high = high && mid.high > at(p - i).high && mid.high >= at(p + i).high;
         low = low && mid.low < at(p - i).low && mid.low <= at(p + i).low;
     }
-    if (high) {
+    if (high)
         m_swings.push_back({{mid.openTime, mid.high, p}, true});
-        m_bullCandidate = {mid.openTime, mid.high, p}; // the newest swing high is Level 1 of the next bullish 1-2-3
-    }
-    if (low) {
+    if (low)
         m_swings.push_back({{mid.openTime, mid.low, p}, false});
-        m_bearCandidate = {mid.openTime, mid.low, p};
-    }
     if (m_swings.size() > 60)
         m_swings.erase(m_swings.begin(), m_swings.begin() + long(m_swings.size() - 60));
+}
+
+// The leg after a break follows new extremes; a valid pullback (a close
+// beyond the far side of the candle that made the extreme) ends it, and its
+// extreme becomes the external point.
+void Engine::updateLegs(const Candle &c)
+{
+    const int n = m_count - 1;
+    if (m_legHigh.index >= 0) {
+        if (c.high > m_legHigh.price) {
+            m_legHigh = {c.openTime, c.high, n};
+        } else if (inWindow(m_legHigh.index) && c.close < at(m_legHigh.index).low) {
+            m_extHigh = m_legHigh;
+            m_extHighReal = true;
+            m_legHigh = Point();
+        }
+    }
+    if (m_legLow.index >= 0) {
+        if (c.low < m_legLow.price) {
+            m_legLow = {c.openTime, c.low, n};
+        } else if (inWindow(m_legLow.index) && c.close > at(m_legLow.index).high) {
+            m_extLow = m_legLow;
+            m_extLowReal = true;
+            m_legLow = Point();
+        }
+    }
 }
 
 void Engine::checkBos(const Candle &c, std::vector<Event> *events)
@@ -192,15 +223,33 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
     const int n = m_count - 1;
     for (Direction d : {Direction::Bullish, Direction::Bearish}) {
         const bool bull = d == Direction::Bullish;
-        Point &level1 = bull ? m_bullCandidate : m_bearCandidate;
+        Point &level1 = bull ? m_extHigh : m_extLow;
         if (level1.index < 0)
             continue;
         const bool broken = bull ? c.close > level1.price : c.close < level1.price;
         if (!broken)
             continue;
         const Point one = level1;
+        const bool real = bull ? m_extHighReal : m_extLowReal;
         level1 = Point(); // broken once
-        if (!inWindow(one.index) || n - one.index < 2)
+        // Level 2: the extreme between Level 1 and the BOS. It is the new
+        // external point on the other side; the leg after the break is
+        // followed until its pullback. (Level 1 on the candle just before:
+        // that candle's other end.)
+        int l2 = -1;
+        const int from = std::max(m_first, std::min(one.index + 1, n - 1));
+        for (int i = from; i < n; ++i) {
+            const Candle &x = at(i);
+            if (l2 < 0 || (bull ? x.low < at(l2).low : x.high > at(l2).high))
+                l2 = i;
+        }
+        if (l2 >= 0) {
+            (bull ? m_extLow : m_extHigh) = Point{at(l2).openTime, bull ? at(l2).low : at(l2).high, l2};
+            (bull ? m_extLowReal : m_extHighReal) = true;
+        }
+        (bull ? m_legHigh : m_legLow) = Point{c.openTime, bull ? c.high : c.low, n};
+        (bull ? m_legLow : m_legHigh) = Point(); // a leg of the other side ends here
+        if (!real || l2 < 0 || n - one.index < 2 || !inWindow(one.index) || l2 <= one.index)
             continue;
         Setup s;
         s.direction = d;
@@ -213,15 +262,6 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
         s.level1 = one;
         s.bos = {c.openTime, c.close, n};
         s.updated = c.openTime;
-        // Level 2: the extreme between Level 1 and the BOS.
-        int l2 = -1;
-        for (int i = one.index + 1; i < n; ++i) {
-            const Candle &x = at(i);
-            if (l2 < 0 || (bull ? x.low < at(l2).low : x.high > at(l2).high))
-                l2 = i;
-        }
-        if (l2 < 0)
-            continue;
         s.level2 = {at(l2).openTime, bull ? at(l2).low : at(l2).high, l2};
         // The zone: the lowest bearish candle (bullish setup) or the highest
         // bullish candle (bearish setup) between Level 1 and the BOS.
@@ -260,16 +300,18 @@ void Engine::advance(Setup &s, const Candle &c, std::vector<Event> *events)
 {
     const int n = m_count - 1;
     const bool bull = s.direction == Direction::Bullish;
-    const int k = m_settings.swingStrength;
-    // Level 3 follows the move after the BOS until it is confirmed and price
-    // comes back. A candle that reaches the zone without a new extreme
+    // Level 3 follows the leg after the BOS until a valid pullback confirms
+    // it (a close beyond the far side of the candle that made it), the
+    // external way. A candle that reaches the zone without a new extreme
     // confirms it too: the turn is plain.
     const bool newExtreme = bull ? c.high > s.level3.price : c.low < s.level3.price;
     const bool reached = bull ? c.low <= s.zoneTop : c.high >= s.zoneBottom;
+    const bool pullback = inWindow(s.level3.index)
+        && (bull ? c.close < at(s.level3.index).low : c.close > at(s.level3.index).high);
     if (newExtreme) {
         s.level3 = {c.openTime, bull ? c.high : c.low, n};
         s.level3Confirmed = false;
-    } else if (!s.level3Confirmed && (n - s.level3.index >= k || reached)) {
+    } else if (!s.level3Confirmed && (pullback || reached)) {
         s.level3Confirmed = true;
     }
     s.updated = c.openTime;
@@ -500,8 +542,9 @@ void Engine::trim()
     size_t done = 0;
     for (const Setup &s : m_setups)
         done += finished(s.status) ? 1 : 0;
-    if (done > kKeepFinished) {
-        size_t drop = done - kKeepFinished;
+    const size_t keep = size_t(std::max(0, m_settings.keepFinished));
+    if (done > keep) {
+        size_t drop = done - keep;
         std::vector<Setup> next;
         for (const Setup &s : m_setups) {
             if (drop > 0 && finished(s.status)) {
@@ -512,21 +555,24 @@ void Engine::trim()
         }
         m_setups = next;
     }
-    // Candles: back to the oldest Level 1 still watched, within limits.
+    // Candles: back to the oldest external point or leg still watched, and
+    // the Level 3 candle of every open setup, within limits.
     int need = n - kMinWindow;
-    for (const Point *p : {&m_bullCandidate, &m_bearCandidate}) {
+    for (const Point *p : {&m_extHigh, &m_extLow, &m_legHigh, &m_legLow}) {
         if (p->index >= 0)
             need = std::min(need, p->index - m_settings.swingStrength - 1);
+    }
+    for (const Setup &s : m_setups) {
+        if (!finished(s.status) && s.level3.index >= 0)
+            need = std::min(need, s.level3.index);
     }
     need = std::max(need, n - kMaxWindow);
     if (need > m_first) {
         m_window.erase(m_window.begin(), m_window.begin() + (need - m_first));
         m_first = need;
     }
-    for (Point *p : {&m_bullCandidate, &m_bearCandidate}) {
-        if (p->index >= 0 && p->index < m_first)
-            *p = Point(); // too old to be Level 1 of anything
-    }
+    // An external point older than the window stays the structure; only a
+    // setup cannot be drawn from it.
 }
 
 } // namespace Trading::Sbt

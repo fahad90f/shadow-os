@@ -45,6 +45,237 @@ MarketData::MarketData(QNetworkAccessManager *net, QObject *parent)
 {
 }
 
+// ---- OANDA --------------------------------------------------------------------------
+
+QStringList MarketData::oandaMarkets()
+{
+    static const QStringList list{QStringLiteral("XAUUSD"), QStringLiteral("XAGUSD"), QStringLiteral("EURUSD"),
+                                  QStringLiteral("GBPUSD"), QStringLiteral("AUDUSD"), QStringLiteral("NZDUSD"),
+                                  QStringLiteral("USDJPY"), QStringLiteral("USDCHF"), QStringLiteral("USDCAD")};
+    return list;
+}
+
+bool MarketData::oandaForex(const QString &symbol)
+{
+    return oandaMarkets().contains(symbol);
+}
+
+QString MarketData::oandaInstrument(const QString &symbol)
+{
+    if (!oandaForex(symbol))
+        return {};
+    return symbol.left(3) + QLatin1Char('_') + symbol.mid(3);
+}
+
+QString MarketData::oandaGranularity(const QString &interval)
+{
+    static const QHash<QString, QString> table{{QStringLiteral("1m"), QStringLiteral("M1")},
+                                               {QStringLiteral("5m"), QStringLiteral("M5")},
+                                               {QStringLiteral("15m"), QStringLiteral("M15")},
+                                               {QStringLiteral("30m"), QStringLiteral("M30")},
+                                               {QStringLiteral("1h"), QStringLiteral("H1")},
+                                               {QStringLiteral("4h"), QStringLiteral("H4")},
+                                               {QStringLiteral("1d"), QStringLiteral("D")}};
+    return table.value(interval);
+}
+
+Trading::Candles MarketData::parseOandaCandles(const QByteArray &json, QString *error)
+{
+    Trading::Candles series;
+    QJsonParseError parse;
+    const QJsonDocument doc = QJsonDocument::fromJson(json, &parse);
+    const QJsonObject root = doc.object();
+    if (!doc.isObject() || !root.value(QLatin1String("candles")).isArray()) {
+        if (error) {
+            *error = root.value(QLatin1String("errorMessage")).toString();
+            if (error->isEmpty())
+                *error = doc.isObject() ? QStringLiteral("unexpected answer") : parse.errorString();
+        }
+        return series;
+    }
+    const QJsonArray rows = root.value(QLatin1String("candles")).toArray();
+    series.reserve(size_t(rows.size()));
+    for (const QJsonValue &value : rows) {
+        const QJsonObject o = value.toObject();
+        const QJsonObject mid = o.value(QLatin1String("mid")).toObject();
+        Trading::Candle c;
+        double seconds = 0;
+        if (!number(o.value(QLatin1String("time")), &seconds) || !number(mid.value(QLatin1String("o")), &c.open)
+            || !number(mid.value(QLatin1String("h")), &c.high) || !number(mid.value(QLatin1String("l")), &c.low)
+            || !number(mid.value(QLatin1String("c")), &c.close)) {
+            continue; // a malformed row is left out rather than guessed at
+        }
+        number(o.value(QLatin1String("volume")), &c.volume); // ticks, not lots
+        if (!(c.low > 0) || c.high < c.low || c.open < c.low || c.open > c.high || c.close < c.low
+            || c.close > c.high || c.volume < 0) {
+            continue;
+        }
+        c.openTime = static_cast<long long>(std::llround(seconds * 1000.0));
+        c.closed = o.value(QLatin1String("complete")).toBool();
+        if (!series.empty() && c.openTime <= series.back().openTime)
+            continue;
+        series.push_back(c);
+    }
+    if (series.empty() && error && rows.isEmpty())
+        *error = QString();
+    else if (series.empty() && error)
+        *error = QStringLiteral("no candles in the answer");
+    return series;
+}
+
+QNetworkRequest MarketData::oandaRequest(const QUrl &url) const
+{
+    QNetworkRequest req(url);
+    req.setTransferTimeout(15000);
+    req.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
+    req.setRawHeader("Accept-Datetime-Format", "UNIX");
+    return req;
+}
+
+QString MarketData::oandaError(QNetworkReply *reply, const QByteArray &body) const
+{
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (status == 401 || status == 403)
+        return tr("OANDA did not accept the token (error %1). Check it under Settings → Prices, and that it "
+                  "belongs to the account type chosen there (practice or live).").arg(status);
+    const QString said = QJsonDocument::fromJson(body).object().value(QLatin1String("errorMessage")).toString();
+    if (status >= 400 && !said.isEmpty())
+        return tr("OANDA answered with error %1: %2").arg(status).arg(said.left(160));
+    return describe(reply);
+}
+
+void MarketData::fetchOandaCandles(const QString &symbol, const QString &interval, int limit, const QString &purpose,
+                                   qint64 beforeMs)
+{
+    const bool essential = purpose == QLatin1String("chart");
+    if (m_token.isEmpty()) {
+        if (essential)
+            Q_EMIT failed(QStringLiteral("candles"),
+                          tr("Prices come from OANDA: add your OANDA token under Settings → Prices "
+                             "(a free practice account is enough)."));
+        else if (purpose == QLatin1String("older"))
+            Q_EMIT failed(QStringLiteral("older"), tr("No OANDA token."));
+        return;
+    }
+    const QString instrument = oandaInstrument(symbol);
+    const QString granularity = oandaGranularity(interval);
+    if (instrument.isEmpty() || granularity.isEmpty()) {
+        markUnlisted(symbol);
+        if (essential)
+            Q_EMIT failed(QStringLiteral("candles"), unlistedText(symbol));
+        return;
+    }
+    const QString slot = QStringLiteral("k:") + symbol + QLatin1Char(':') + interval + QLatin1Char(':') + purpose;
+    if (m_inFlight.value(slot))
+        return;
+    QUrl url(m_baseUrl + QStringLiteral("/v3/instruments/") + instrument + QStringLiteral("/candles"));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("granularity"), granularity);
+    query.addQueryItem(QStringLiteral("price"), QStringLiteral("M"));
+    query.addQueryItem(QStringLiteral("count"), QString::number(qBound(1, limit, 5000)));
+    if (beforeMs > 0)
+        query.addQueryItem(QStringLiteral("to"), QString::number(beforeMs / 1000));
+    url.setQuery(query);
+    QNetworkReply *reply = m_net->get(oandaRequest(url));
+    m_inFlight.insert(slot, reply);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, slot, symbol, interval, purpose, essential] {
+        reply->deleteLater();
+        m_inFlight.remove(slot);
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+        if (status != 200) {
+            const QString said = QJsonDocument::fromJson(body).object().value(QLatin1String("errorMessage")).toString();
+            if ((status == 400 || status == 404) && said.contains(QLatin1String("instrument"), Qt::CaseInsensitive)) {
+                markUnlisted(symbol);
+                if (essential)
+                    Q_EMIT failed(QStringLiteral("candles"), unlistedText(symbol));
+            } else if (essential) {
+                Q_EMIT failed(QStringLiteral("candles"), oandaError(reply, body));
+            } else if (purpose == QLatin1String("older")) {
+                Q_EMIT failed(QStringLiteral("older"), oandaError(reply, body));
+            }
+            return;
+        }
+        QString error;
+        const Trading::Candles series = parseOandaCandles(body, &error);
+        if (series.empty() && (purpose == QLatin1String("older") || error.isEmpty())) {
+            // None before that time: the beginning of the history it keeps.
+            if (purpose == QLatin1String("older"))
+                Q_EMIT candles(symbol, interval, series, purpose);
+            else if (essential)
+                Q_EMIT failed(QStringLiteral("candles"), tr("OANDA has no candles of %1 yet.").arg(symbol));
+            return;
+        }
+        if (series.empty()) {
+            if (essential)
+                Q_EMIT failed(QStringLiteral("candles"),
+                              tr("The market data for %1 could not be read: %2").arg(symbol, error));
+            return;
+        }
+        Q_EMIT candles(symbol, interval, series, purpose);
+    });
+}
+
+void MarketData::fetchOandaTicker(const QString &symbol, bool forCatalog)
+{
+    const QString slot = (forCatalog ? QStringLiteral("c:") : QStringLiteral("t:")) + symbol;
+    if (m_inFlight.value(slot))
+        return;
+    QUrl url(m_baseUrl + QStringLiteral("/v3/instruments/") + oandaInstrument(symbol) + QStringLiteral("/candles"));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("granularity"), QStringLiteral("D"));
+    query.addQueryItem(QStringLiteral("price"), QStringLiteral("M"));
+    query.addQueryItem(QStringLiteral("count"), QStringLiteral("2"));
+    url.setQuery(query);
+    QNetworkReply *reply = m_net->get(oandaRequest(url));
+    m_inFlight.insert(slot, reply);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, slot, symbol, forCatalog] {
+        reply->deleteLater();
+        m_inFlight.remove(slot);
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+        Trading::Candles days = status == 200 ? parseOandaCandles(body, nullptr) : Trading::Candles();
+        Ticker t;
+        if (!days.empty()) {
+            const Trading::Candle &today = days.back();
+            t.symbol = symbol;
+            t.price = today.close;
+            t.high = today.high;
+            t.low = today.low;
+            // Against yesterday's close (the day starts at 17:00 New York, as
+            // the forex market's day does).
+            const double before = days.size() > 1 ? days[days.size() - 2].close : today.open;
+            t.changePct = before > 0 ? (today.close - before) / before * 100.0 : 0;
+        }
+        if (forCatalog) {
+            if (t.price > 0)
+                m_catalog.append({symbol, t.price});
+            if (--m_catalogWaiting == 0) {
+                QList<QPair<QString, double>> list;
+                for (const QString &listed : oandaMarkets()) {
+                    for (const auto &row : std::as_const(m_catalog)) {
+                        if (row.first == listed)
+                            list.append(row);
+                    }
+                }
+                m_catalog.clear();
+                if (list.isEmpty())
+                    Q_EMIT allPricesFailed(status == 200 ? tr("The list of markets could not be read.")
+                                                         : oandaError(reply, body));
+                else
+                    Q_EMIT allPrices(list);
+            }
+            return;
+        }
+        if (status != 200) {
+            Q_EMIT failed(QStringLiteral("tickers"), oandaError(reply, body));
+            return;
+        }
+        if (t.price > 0)
+            Q_EMIT tickers({t});
+    });
+}
+
 void MarketData::setService(Service service)
 {
     if (service != m_service)
@@ -348,6 +579,10 @@ void MarketData::fetchCandles(const QString &symbol, const QString &interval, in
             Q_EMIT failed(QStringLiteral("candles"), unlistedText(symbol));
         return;
     }
+    if (m_service == Service::Oanda) {
+        fetchOandaCandles(symbol, interval, limit, purpose, beforeMs);
+        return;
+    }
     const QString slot = QStringLiteral("k:") + symbol + QLatin1Char(':') + interval + QLatin1Char(':') + purpose;
     if (m_inFlight.value(slot))
         return;
@@ -447,6 +682,19 @@ QList<QPair<QString, double>> MarketData::parseAllPrices(const QByteArray &json)
 
 void MarketData::fetchAllPrices()
 {
+    if (m_service == Service::Oanda) {
+        if (m_catalogWaiting > 0)
+            return;
+        if (m_token.isEmpty()) {
+            Q_EMIT allPricesFailed(tr("Add your OANDA token under Settings → Prices first."));
+            return;
+        }
+        m_catalog.clear();
+        m_catalogWaiting = int(oandaMarkets().size());
+        for (const QString &symbol : oandaMarkets())
+            fetchOandaTicker(symbol, true);
+        return;
+    }
     if (m_inFlight.value(QStringLiteral("all")))
         return;
     const bool kraken = m_service == Service::Kraken;
@@ -530,6 +778,17 @@ void MarketData::fetchTickers(const QStringList &listed)
     for (const QString &symbol : listed) {
         if (!m_unlisted.contains(symbol))
             symbols.append(symbol);
+    }
+    if (m_service == Service::Oanda) {
+        if (m_token.isEmpty()) {
+            Q_EMIT failed(QStringLiteral("tickers"),
+                          tr("Prices come from OANDA: add your OANDA token under Settings → Prices "
+                             "(a free practice account is enough)."));
+            return;
+        }
+        for (const QString &symbol : std::as_const(symbols))
+            fetchOandaTicker(symbol, false);
+        return;
     }
     // While single lookups are sorting out a refused list, the list would
     // only be refused again.

@@ -7,8 +7,13 @@ import org.shadow.trading
 import "Format.js" as Format
 
 // The left side of the live page: the chart of the selected market. Two
-// views: TradingView's own chart (where the web view is installed) and the
-// AI chart, drawn from the candles the analysts read, with the trade levels.
+// views, both TradingView's (where the web view is installed):
+//  - the strategy chart: TradingView's Lightweight Charts library drawing the
+//    candles the strategy reads, the SBT setup in play and the past trades
+//    (entry, take profit, stop loss);
+//  - FOREX.com's own chart of the market on TradingView (FOREXCOM:XAUUSD …).
+// Without the web view, the built-in chart draws the same candles, setup and
+// past trades.
 GlowCard {
     id: root
 
@@ -18,6 +23,53 @@ GlowCard {
     // chart: 1, 2 with its zone, the BOS, 3 and the entry. Past setups are
     // not drawn. PD arrays only when the extra PD filter is switched on (they
     // are not one of the 7 rules).
+    // The past trades: where each entered (BUY or SELL), its take profit and
+    // stop loss (a short line from the entry), and which of the two was reached.
+    function historyShapes(history) {
+        var shapes = []
+        var span = 12 * trading.intervalMs
+        var stubEnd = function (start, end) { return end > 0 ? Math.min(end, start + span) : start + span }
+        var list = (history.setups || []).slice(-60)
+        var entries = {}
+        for (var i = 0; i < list.length; i++) {
+            var h = list[i]
+            var bull = h.direction === "bullish"
+            var end = stubEnd(h.entryTime, h.result === "open" ? 0 : h.exitTime)
+            entries[h.entryTime] = true
+            shapes.push({ kind: "mark", price: h.entry, from: h.entryTime, color: bull ? Theme.success : Theme.danger,
+                          label: bull ? qsTr("BUY") : qsTr("SELL"), below: !bull })
+            shapes.push({ kind: "line", price: h.target, from: h.entryTime, to: end, color: Theme.alpha(Theme.success, 0.75), dashed: true, label: "" })
+            shapes.push({ kind: "line", price: h.stop, from: h.entryTime, to: end, color: Theme.alpha(Theme.danger, 0.75), dashed: true, label: "" })
+            if (h.result === "target")
+                shapes.push({ kind: "mark", price: h.target, from: h.exitTime, color: Theme.success, label: qsTr("TP") })
+            else if (h.result === "stop")
+                shapes.push({ kind: "mark", price: h.stop, from: h.exitTime, color: Theme.danger, label: qsTr("SL"), below: true })
+        }
+        // The paper account's own trades the strategy's list does not have.
+        var step = trading.intervalMs
+        var trades = (history.trades || []).slice(-60)
+        for (var j = 0; j < trades.length; j++) {
+            var t = trades[j]
+            var at = t.entryTime - (t.entryTime % step)
+            if (entries[at] || entries[at - step] || entries[at + step])
+                continue
+            var buy = t.side === "buy"
+            var stop = stubEnd(t.entryTime, t.open ? 0 : t.exitTime)
+            shapes.push({ kind: "mark", price: t.entry, from: t.entryTime, color: Theme.accent,
+                          label: buy ? qsTr("BUY") : qsTr("SELL"), below: !buy })
+            if (t.target > 0)
+                shapes.push({ kind: "line", price: t.target, from: t.entryTime, to: stop, color: Theme.alpha(Theme.success, 0.75), dashed: true, label: "" })
+            if (t.stop > 0)
+                shapes.push({ kind: "line", price: t.stop, from: t.entryTime, to: stop, color: Theme.alpha(Theme.danger, 0.75), dashed: true, label: "" })
+            if (!t.open)
+                shapes.push({ kind: "mark", price: t.exit, from: t.exitTime,
+                              color: t.reason === "take_profit" ? Theme.success : t.reason === "stop_loss" ? Theme.danger : Theme.textSecondary,
+                              label: t.reason === "take_profit" ? qsTr("TP") : t.reason === "stop_loss" ? qsTr("SL") : qsTr("Exit"),
+                              below: t.reason === "stop_loss" })
+        }
+        return shapes
+    }
+
     function sbtOverlay(sbt, showArrays) {
         var shapes = []
         var arrays = showArrays ? (sbt.pdArrays || []) : []
@@ -55,10 +107,12 @@ GlowCard {
     }
 
     property Labels labels
-    // 0 = TradingView, 1 = AI chart. Without the web view there is only the AI chart.
-    property int view: trading.webViewAvailable ? 0 : 1
-    // TradingView was tried and could not be reached; the AI chart took its place.
+    // 0 = the strategy chart, 1 = FOREX.com's chart on TradingView (only with the web view).
+    property int view: 0
+    // TradingView's site was tried and could not be reached; the strategy chart took its place.
     property bool tradingViewDown: false
+    // The built-in chart: without the web view.
+    readonly property bool builtIn: !trading.webViewAvailable
     readonly property var quote: trading.quote
     readonly property var signalData: trading.signal
     readonly property bool showLevels: (signalData.state || "") === "ready" && signalData.action !== "hold"
@@ -89,10 +143,11 @@ GlowCard {
             NxSegmented {
                 visible: trading.webViewAvailable
                 Accessible.name: qsTr("Chart view")
-                model: [qsTr("TradingView"), qsTr("AI chart")]
+                model: [qsTr("Strategy chart"),
+                        trading.tradingViewSymbol.indexOf("FOREXCOM:") === 0 ? qsTr("FOREX.com") : qsTr("TradingView")]
                 currentIndex: root.view
                 onActivated: (index) => {
-                    if (index === 0)
+                    if (index === 1)
                         root.tradingViewDown = false   // try again
                     root.view = index
                 }
@@ -110,7 +165,7 @@ GlowCard {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 // The candle under the pointer; without one, the newest candle.
-                readonly property bool pointed: root.view === 1 && chart.hovered.close !== undefined
+                readonly property bool pointed: chart.visible && chart.hovered.close !== undefined
                 readonly property var shown: pointed ? chart.hovered : root.quote
                 // All four prices where there is room, else the close and the change.
                 readonly property bool roomy: root.width >= 900
@@ -131,14 +186,28 @@ GlowCard {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // ---- TradingView -------------------------------------------------
+            // ---- the strategy chart (TradingView's library) -------------------
+            Loader {
+                id: strategyLoader
+                anchors.fill: parent
+                active: trading.webViewAvailable && root.view === 0
+                visible: active && root.quote.close !== undefined
+                source: active ? "StrategyChartPane.qml" : ""
+                onLoaded: item.colours = {
+                    background: Theme.bgSurface, text: Theme.textMuted, grid: Theme.borderSubtle,
+                    up: Theme.success, down: Theme.danger, accent: Theme.accent, muted: Theme.textSecondary,
+                    font: Theme.fontUi
+                }
+            }
+
+            // ---- FOREX.com on TradingView ------------------------------------
             Loader {
                 id: webLoader
                 anchors.fill: parent
-                active: trading.webViewAvailable && root.view === 0
+                active: trading.webViewAvailable && root.view === 1
                 visible: active
                 source: active ? "TradingViewPane.qml" : ""
-                readonly property string offlineText: qsTr("TradingView could not be loaded. Check the internet connection, or use the AI chart.")
+                readonly property string offlineText: qsTr("TradingView could not be loaded. Check the internet connection, or use the strategy chart.")
                 onLoaded: item.page = trading.tradingViewPage(Theme.dark, offlineText)
                 // Rebuild the page when the market or the interval changes.
                 Connections {
@@ -148,24 +217,24 @@ GlowCard {
                             webLoader.item.page = trading.tradingViewPage(Theme.dark, webLoader.offlineText)
                     }
                 }
-                // No route to TradingView: show the AI chart instead of an empty pane.
+                // No route to TradingView: show the strategy chart instead of an empty pane.
                 Connections {
                     target: webLoader.item
                     ignoreUnknownSignals: true
                     function onUnreachableChanged() {
                         if (webLoader.item && webLoader.item.unreachable) {
                             root.tradingViewDown = true
-                            root.view = 1
+                            root.view = 0
                         }
                     }
                 }
             }
 
-            // ---- AI chart ----------------------------------------------------
+            // ---- the built-in chart (no web view) -----------------------------
             ChartItem {
                 id: chart
                 anchors.fill: parent
-                visible: root.view === 1 && root.quote.close !== undefined
+                visible: root.builtIn && root.quote.close !== undefined
                 source: trading
                 entry: root.holding ? root.position.entry : root.showLevels ? root.signalData.entry : 0
                 stop: root.holding ? root.position.stop : root.showLevels ? root.signalData.stop : 0
@@ -183,7 +252,7 @@ GlowCard {
                 bandColor: Theme.alpha(Theme.accentBlue, 0.7)
                 entryColor: Theme.textPrimary
                 // SBT Model 1: the setup's zone, levels and marks, and the PD arrays in play.
-                overlay: root.sbtOverlay(trading.sbt, trading.sbtSettings.require_pd_array === true)
+                overlay: root.historyShapes(trading.sbtHistory).concat(root.sbtOverlay(trading.sbt, trading.sbtSettings.require_pd_array === true))
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSizeCaption
                 Accessible.role: Accessible.Graphic
@@ -296,7 +365,7 @@ GlowCard {
             NxEmptyState {
                 anchors.centerIn: parent
                 width: Math.min(parent.width - Theme.spaceXl * 2, 460)
-                visible: root.view === 1 && root.quote.close === undefined
+                visible: root.view === 0 && root.quote.close === undefined
                 icon: trading.dataState === "error" ? "alert-triangle" : "activity"
                 tone: trading.dataState === "error" ? "warning" : "neutral"
                 title: trading.dataState === "error" ? qsTr("No market data") : qsTr("Loading %1…").arg(trading.symbolName)
@@ -307,10 +376,12 @@ GlowCard {
 
         Label {
             Layout.fillWidth: true
-            visible: !trading.webViewAvailable || root.tradingViewDown
-            text: root.tradingViewDown
-                ? qsTr("TradingView could not be reached (no internet connection, or the site is blocked). Showing the AI chart, drawn from the same candles the analysts read. Choose TradingView above to try again.")
-                : qsTr("The TradingView view needs the package qml6-module-qtwebengine. Showing the AI chart, drawn from the same candles the analysts read.")
+            visible: !trading.webViewAvailable || root.tradingViewDown || root.view === 0
+            text: !trading.webViewAvailable
+                ? qsTr("The TradingView charts need the package qml6-module-qtwebengine. Showing the built-in chart of the same candles the strategy reads, with its setup and past trades.")
+                : root.tradingViewDown
+                ? qsTr("TradingView's site could not be reached (no internet connection, or the site is blocked). Showing the strategy chart. Choose %1 above to try again.").arg(trading.tradingViewSymbol.indexOf("FOREXCOM:") === 0 ? qsTr("FOREX.com") : qsTr("TradingView"))
+                : qsTr("Strategy chart: the candles SBT Model 1 reads (%1), its setup in play and its past trades: BUY or SELL where each entered, the take profit (green) and stop loss (red) until it ended, TP or SL where one was reached. Charting by TradingView.").arg(trading.dataSource)
             color: Theme.textMuted
             font.pixelSize: Theme.fontSizeCaption
             wrapMode: Text.WordWrap

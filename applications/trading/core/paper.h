@@ -65,6 +65,8 @@ struct Trade
     double quantity = 0;
     double entry = 0;
     double exit = 0;
+    double stop = 0;        // the position's stop and target when it closed (0: none)
+    double takeProfit = 0;
     long long openedAt = 0;
     long long closedAt = 0;
     double fees = 0;     // both sides

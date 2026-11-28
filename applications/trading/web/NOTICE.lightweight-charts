@@ -1,0 +1,8 @@
+TradingView Lightweight Charts™
+Copyright (c) 2026 TradingView, Inc. https://www.tradingview.com/
+
+web/lightweight-charts.standalone.production.js is the unmodified standalone
+build of lightweight-charts 5.2.1 from the npm registry, under the Apache
+License 2.0 (LICENSE.lightweight-charts). It incorporates parts of tslib
+((c) Microsoft Corporation, BSD Zero Clause License). The strategy chart shows
+TradingView's attribution link on the chart itself (attributionLogo).

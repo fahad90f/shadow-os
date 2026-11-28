@@ -43,21 +43,6 @@ Item {
                 spacing: Theme.spaceSm
 
                 ModePill {}
-                // Which markets the desk shows: crypto, or currency pairs and gold.
-                NxSegmented {
-                    id: kindSwitch
-                    readonly property var kinds: ["crypto", "forex"]
-                    Accessible.name: qsTr("Markets")
-                    model: [qsTr("Crypto"), qsTr("Forex")]
-                    currentIndex: Math.max(0, kinds.indexOf(trading.marketKind))
-                    onActivated: (index) => {
-                        var error = trading.setMarketKind(kinds[index])
-                        if (error !== "") {
-                            ApplicationWindow.window.toaster.show(error, "warning")
-                            currentIndex = Qt.binding(() => Math.max(0, kinds.indexOf(trading.marketKind)))
-                        }
-                    }
-                }
                 // The desk runs behind every page; this says what it is doing and opens it.
                 NxButton {
                     kind: "ghost"

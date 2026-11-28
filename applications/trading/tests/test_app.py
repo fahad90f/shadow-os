@@ -24,7 +24,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 BIN = os.environ.get("SHADOW_TRADING_BIN", "")
 sys.path.insert(0, HERE)
-from fake_services import PANEL, PANEL_MODELS, SEATS, TEST_KEY  # noqa: E402  (the stand-in's own test key)
+from fake_services import OANDA_TOKEN, PANEL, PANEL_MODELS, SEATS, TEST_KEY  # noqa: E402  (the stand-in's own test keys)
 
 BUY = {"action": "buy", "confidence": 85, "stop_pct": -1.0, "target_pct": 2.5}
 SELL = {"action": "sell", "confidence": 85, "stop_pct": -1.0, "target_pct": 2.5}
@@ -32,8 +32,9 @@ HOLD = {"action": "hold"}
 # Auto trade on. The analyses are the ones a test asks for: left on, the
 # application would also analyze whenever a real quarter-hour passes mid-test.
 AUTO = "[engine]\nauto_trade=true\nauto_analyze=false\n"
-# The forex markets: currency pairs and gold from the stand-in for Kraken's public API.
-FOREX = "[market]\nkind=forex\n"
+# The forex markets from the stand-in for Kraken's public API (no key): currency
+# pairs and the gold token. The application's own default is OANDA (OANDA_KIND).
+FOREX = "[market]\nkind=forex\nforex_source=kraken\n"
 
 
 def free_port():
@@ -53,6 +54,10 @@ class AppTest(unittest.TestCase):
         self.server = None
         self.key = None  # NVIDIA_API_KEY of the application; None = not set
         self.stream = False  # True: the application is given the stand-in's live stream
+        # The stand-in exchange of most tests speaks the crypto service's API;
+        # None = what the application does by itself (forex, from OANDA).
+        self.market_kind = "crypto"
+        self.oanda = None  # SHADOW_TRADING_OANDA_TOKEN; None = not set
         self.conf_dir = os.path.join(self.dir, "config", "shadow")
         self.data_dir = os.path.join(self.dir, "data", "shadow", "trading")
         self.last_output = ""
@@ -96,6 +101,10 @@ class AppTest(unittest.TestCase):
         })
         if self.key is not None:
             env["NVIDIA_API_KEY"] = self.key
+        if self.market_kind is not None:
+            env["SHADOW_TRADING_MARKET_KIND"] = self.market_kind
+        if self.oanda is not None:
+            env["SHADOW_TRADING_OANDA_TOKEN"] = self.oanda
         # The stand-in's live stream, for the tests that ask for it; the others
         # get their prices the slow way, every five seconds.
         env["SHADOW_TRADING_STREAM_URL"] = f"ws://127.0.0.1:{self.port}" if self.stream else "off"
@@ -112,6 +121,7 @@ class AppTest(unittest.TestCase):
             text = f.read()
         self.assertEqual(done.returncode, 0, done.stderr[-2000:])
         self.last_output = text + done.stderr
+        self.last_stderr = done.stderr
         return json.loads(text)
 
     def requests(self, kind=None, model=None, review=False):
@@ -701,7 +711,115 @@ class AppTest(unittest.TestCase):
         self.assertEqual(out["signal"]["symbol"], "ETHUSDT")
         self.assertEqual(out["account"]["position"], {})          # ETH/USDT is on the chart: nothing open there
 
-    # ---- forex -------------------------------------------------------------------
+    # ---- forex from OANDA: what the application opens on ------------------------
+
+    def oanda_requests(self):
+        return self.requests("oanda")
+
+    def test_the_application_opens_on_gold_silver_and_the_euro_from_oanda(self):
+        self.serve()
+        self.market_kind = None
+        self.oanda = OANDA_TOKEN
+        config = self.dump("config")
+        self.assertEqual((config["marketKind"], config["accountCurrency"]), ("forex", "USD"))
+        self.assertEqual(config["watchlist"], ["XAUUSD", "XAGUSD", "EURUSD"])
+        self.assertEqual(config["symbol"], "XAUUSD")
+        self.assertEqual(config["tradingViewSymbol"], "FOREXCOM:XAUUSD")   # FOREX.com's chart on TradingView
+        source = config["priceSource"]
+        self.assertEqual((source["service"], source["needsToken"], source["hasToken"], source["tokenSource"],
+                          source["hint"], source["account"]),
+                         ("oanda", True, True, "environment", OANDA_TOKEN[-4:], "practice"))
+        self.assertEqual(config["streamSource"], "")            # asked for every few seconds
+        market = self.dump("market")
+        self.assertNotIn(OANDA_TOKEN, self.last_output)
+        self.assertNotIn(OANDA_TOKEN[:20], self.last_output)
+        listed = {m["symbol"]: m for m in market["watchlist"]}
+        self.assertEqual([listed[s]["name"] for s in ("XAUUSD", "XAGUSD", "EURUSD")], ["XAU/USD", "XAG/USD", "EUR/USD"])
+        self.assertTrue(all(m["hasPrice"] for m in market["watchlist"]), market["watchlist"])
+        self.assertAlmostEqual(listed["XAUUSD"]["price"], 4050, delta=200)
+        self.assertAlmostEqual(listed["XAGUSD"]["price"], 51.2, delta=3)
+        self.assertAlmostEqual(listed["EURUSD"]["price"], 1.0982, delta=0.06)
+        self.assertGreaterEqual(market["quote"]["candles"], 300)
+        asked = self.oanda_requests()
+        paths = {r["path"] for r in asked}
+        self.assertIn("/v3/instruments/XAU_USD/candles", paths)
+        self.assertTrue({"/v3/instruments/XAG_USD/candles", "/v3/instruments/EUR_USD/candles"} <= paths, paths)
+        chart = [r for r in asked if r["path"] == "/v3/instruments/XAU_USD/candles" and "granularity=M15" in r["query"]]
+        self.assertTrue(chart and "price=M" in chart[0]["query"], asked)
+        self.assertTrue(all(r["auth"] == "ok" and r["unix"] and r["status"] == 200 for r in asked), asked)
+        self.assertEqual(market["dataState"], "live", market.get("dataError"))
+
+    def test_without_an_oanda_token_the_application_says_where_to_add_one(self):
+        self.serve()
+        self.market_kind = None
+        market = self.dump("market")
+        self.assertEqual(market["dataState"], "error")
+        self.assertIn("Settings → Prices", market["dataError"])
+        self.assertEqual(self.oanda_requests(), [])              # nothing is asked without a token
+        config = self.dump("config")
+        self.assertEqual((config["priceSource"]["needsToken"], config["priceSource"]["hasToken"]), (True, False))
+
+    def test_a_token_oanda_refuses_is_reported_and_never_shown(self):
+        self.serve()
+        self.market_kind = None
+        wrong = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        self.oanda = wrong
+        market = self.dump("market")
+        self.assertEqual(market["dataState"], "error")
+        self.assertIn("OANDA did not accept the token", market["dataError"])
+        self.assertTrue(self.oanda_requests() and all(r["auth"] == "wrong" for r in self.oanda_requests()))
+        self.assertNotIn(wrong, self.last_output)
+
+    def test_an_oanda_token_is_saved_for_its_owner_only_and_used_at_once(self):
+        self.market_kind = None
+        out = self.act("oanda-token:nvapi-0000000000000000000000000,oanda-token:" + OANDA_TOKEN, {})
+        results = [a["result"] for a in out["actions"]]
+        self.assertIn("NVIDIA key", results[0])
+        self.assertEqual(results[1], "")
+        path = os.path.join(self.conf_dir, "trading", "oanda.token")
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(f.read().strip(), OANDA_TOKEN)
+        # Nowhere in what the application said (the test's own list of actions repeats it).
+        said = json.dumps({k: v for k, v in out.items() if k != "actions"}) + self.last_stderr
+        self.assertNotIn(OANDA_TOKEN, said)
+        self.assertNotIn(OANDA_TOKEN[:20], said)
+        self.assertEqual(out["market"]["dataState"], "live", out["market"].get("dataError"))
+        self.assertGreaterEqual(out["market"]["quote"]["candles"], 300)
+
+    def test_oanda_offers_gold_silver_and_the_dollar_pairs(self):
+        self.market_kind = None
+        self.oanda = OANDA_TOKEN
+        out = self.act("find:,add:BTCUSDT,add:EURGBP,remove:XAGUSD,add:XAGUSD,add:GBPUSD,select:XAGUSD,older", {})
+        results = [a["result"] for a in out["actions"]]
+        self.assertEqual(results[0].split(), ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "AUDUSD", "NZDUSD",
+                                              "USDJPY", "USDCHF", "USDCAD"])
+        self.assertIn("cannot be added", results[1])
+        self.assertIn("cannot be added", results[2])
+        self.assertEqual(results[3:6], ["", "", ""])
+        self.assertGreater(int(results[7]), 0)                   # older candles, asked with 'to'
+        self.assertTrue(any("to=" in r["query"] for r in self.oanda_requests() if r["path"].startswith("/v3/instruments/XAG_USD")))
+        self.assertEqual(self.dump("config")["symbol"], "XAGUSD")
+
+    def test_the_strategy_chart_page_is_self_contained_and_gets_the_candles(self):
+        self.market_kind = None
+        self.oanda = OANDA_TOKEN
+        out = self.act("", {})
+        chart = out["market"]["strategyChart"]
+        self.assertTrue(chart["library"] and chart["script"], chart)
+        self.assertGreater(chart["pageBytes"], 150_000)          # the library is in the page, not fetched
+        full, tail = chart["full"], chart["tail"]
+        self.assertTrue(full["full"])
+        self.assertEqual(full["key"], "XAUUSD:15m")
+        self.assertEqual(len(full["candles"]), out["market"]["chart"]["candles"])
+        times = [row[0] for row in full["candles"]]
+        self.assertEqual(times, sorted(set(times)))              # seconds, ascending, no repeats
+        self.assertEqual(times[1] - times[0], 900)
+        # Asked again with what the page has: only the newest candle.
+        self.assertFalse(tail["full"])
+        self.assertEqual([row[0] for row in tail["candles"]], times[-1:])
+
+    # ---- forex from Kraken ----------------------------------------------------------
 
     def test_the_forex_markets_come_from_the_forex_service(self):
         self.serve()
@@ -831,7 +949,7 @@ class AppTest(unittest.TestCase):
         # USD/CHF on the dollar account: the quantity is dollars, and a profit
         # in francs is turned back into dollars at the price it is taken at.
         plan = {"*": BUY, "market": self.BULL}
-        settings = "[market]\nkind=forex\nforex_symbol=USDCHF\n" + AUTO
+        settings = "[market]\nkind=forex\nforex_source=kraken\nforex_symbol=USDCHF\n" + AUTO
         out = self.act("analyze", plan, settings, moves=[(4, dict(plan, market=dict(self.BULL, move_pct=0.3)))],
                        seconds=9)
         self.assertEqual(out["signal"]["symbol"], "USDCHF")
@@ -865,7 +983,7 @@ class AppTest(unittest.TestCase):
 
     def test_switching_between_crypto_and_forex(self):
         out = self.act("kind:forex,kind:forex,analyze,kind:crypto,close-all,kind:crypto,kind:metals",
-                       {"*": BUY, "market": self.BULL}, settings=AUTO)
+                       {"*": BUY, "market": self.BULL}, settings=AUTO + "[market]\nforex_source=kraken\n")
         results = [a["result"] for a in out["actions"]]
         self.assertEqual(results[:2], ["", ""])
         self.assertIn("Close the open positions first", results[3])    # a position on EUR/USD is open
@@ -1428,6 +1546,34 @@ class AppTest(unittest.TestCase):
         self.assertTrue(all(e["sbt"] == "bullish" for e in reviews))
         self.assertTrue(all(e.get("system") for e in asked))
         self.assertEqual(sorted({e["seat"] for e in asked if e["seat"]}), sorted(SEATS))
+
+    def test_past_trades_are_drawn_with_their_entry_take_profit_and_stop_loss(self):
+        plan = {"*": BUY, "market": self.BULL}
+        out = self.act("wait:9", plan, AUTO + "[sbt]\nai_confirm=false\n",
+                       moves=[(1, dict(plan, market=dict(self.BULL, move_pct=6.0)))])
+        history = out["market"]["sbtHistory"]
+        self.assertGreaterEqual(history["candles"], 290)
+        entries = [h for h in history["setups"] if h["direction"] == "bullish"]
+        self.assertTrue(entries, history)
+        h = entries[-1]
+        self.assertAlmostEqual(h["entry"], 101.6 * self.SCALE, delta=0.01)
+        self.assertEqual(h["result"], "target")   # Level 3 was reached after the move
+        self.assertAlmostEqual(h["target"], 106.5 * self.SCALE, delta=0.01)
+        self.assertLess(h["stop"], 100.0 * self.SCALE)   # beyond the Level 2 zone
+        self.assertGreaterEqual(h["exitTime"], h["entryTime"])   # Level 3 can be reached in the entry candle itself
+        # The paper account's own trade on this market: entry, stop, target and how it ended.
+        trades = history["trades"]
+        self.assertEqual(len(trades), 1)
+        t = trades[0]
+        self.assertEqual((t["side"], t["open"], t["reason"]), ("buy", False, "take_profit"))
+        self.assertAlmostEqual(t["entryTime"], out["account"]["trades"][0]["openedAt"], delta=1)
+        self.assertAlmostEqual(t["target"], h["target"], delta=0.01)
+        self.assertAlmostEqual(t["stop"], h["stop"], delta=0.01)
+        # Kept with the trade in the account's file, for the next start.
+        with open(os.path.join(self.data_dir, "paper.json"), encoding="utf-8") as f:
+            saved = json.load(f)["trades"][0]
+        self.assertAlmostEqual(saved["take_profit"], t["target"], delta=0.01)
+        self.assertAlmostEqual(saved["stop"], t["stop"], delta=0.01)
 
     def test_sbt_bearish_setup_is_sold(self):
         self.serve({"*": SELL, "market": self.BEAR})

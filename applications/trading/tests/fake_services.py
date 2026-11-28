@@ -68,6 +68,8 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TEST_KEY = "nvapi-test-00000000000000000000000"
+# The stand-in OANDA's token: the shape of a real one, valid nowhere else.
+OANDA_TOKEN = "0123456789abcdef0123456789abcdef-fedcba9876543210fedcba9876543210"
 # The application's built-in panel, by role. The six analysis models are the
 # analysis team: each has a seat, in this order.
 PANEL = {
@@ -104,6 +106,13 @@ KRAKEN = {
 BASE_PRICE.update({"EURUSD": 1.0982, "GBPUSD": 1.3124, "USDCAD": 1.4201, "USDCHF": 0.8311, "AUDUSD": 0.6630,
                    "PAXGUSD": 3541.4, "XAUTUSD": 3540.1, "USDJPY": 157.2, "EURGBP": 0.8367, "XBTUSD": 92000.0})
 KRAKEN_MINUTES = {1: "1m", 5: "5m", 15: "15m", 60: "1h", 240: "4h", 1440: "1d"}
+# The forex service the application uses by default (OANDA's v20 REST API):
+# instrument -> symbol. Gold and silver against the dollar, and the dollar pairs.
+OANDA = {"XAU_USD": "XAUUSD", "XAG_USD": "XAGUSD", "EUR_USD": "EURUSD", "GBP_USD": "GBPUSD",
+         "AUD_USD": "AUDUSD", "NZD_USD": "NZDUSD", "USD_JPY": "USDJPY", "USD_CHF": "USDCHF", "USD_CAD": "USDCAD"}
+OANDA_GRANULARITY = {"M1": 60_000, "M5": 300_000, "M15": 900_000, "M30": 1_800_000, "H1": 3_600_000,
+                     "H4": 14_400_000, "D": 86_400_000}
+BASE_PRICE.update({"XAUUSD": 4050.0, "XAGUSD": 51.20, "NZDUSD": 0.5712})
 # The order a list of tickers comes back in, whatever order was asked for.
 LISTING_ORDER = ["BTCUSDT", "ETHUSDT", "EURUSDT", "SOLUSDT", "PAXGUSDT", "ETHBTC", "BNBUSDT", "XRPUSDT", "DOGEUSDT"]
 # The first candle the service has of any market, in hours before it started:
@@ -383,6 +392,34 @@ def kraken_ohlc(query, now_ms):
         c = candle(symbol, k, step, now_ms)
         rows.append([c[0] // 1000, c[1][:-3], c[2][:-3], c[3][:-3], c[4][:-3], c[4][:-3], c[5], 100])
     return 200, {"error": [], "result": {KRAKEN[symbol][0]: rows, "last": rows[-2][0]}}
+
+
+def oanda_candles(instrument, query, auth, now_ms):
+    """GET /v3/instruments/<instrument>/candles, with the token in the
+    Authorization header and the times as UNIX seconds (Accept-Datetime-Format)."""
+    if auth != "Bearer " + OANDA_TOKEN:
+        return 401, {"errorMessage": "Insufficient authorization to perform request."}
+    symbol = OANDA.get(instrument)
+    if symbol is None:
+        return 400, {"errorMessage": "Invalid value specified for 'instrument'"}
+    granularity = query.get("granularity", ["S5"])[0]
+    if granularity not in OANDA_GRANULARITY or query.get("price", ["M"])[0] != "M":
+        return 400, {"errorMessage": "Invalid value specified for 'granularity'"}
+    step = OANDA_GRANULARITY[granularity]
+    count = max(1, min(5000, int(query.get("count", ["500"])[0])))
+    last = now_ms // step
+    if "to" in query:
+        # Candles that start before that time (older history).
+        last = min(last, int(float(query["to"][0]) * 1000) // step - 1)
+    oldest = int((START_HOURS - HISTORY_HOURS) * 3_600_000) // step
+    rows = []
+    for k in range(max(oldest, last - count + 1), last + 1):
+        c = candle(symbol, k, step, now_ms)
+        digits = 3 if symbol.startswith("XA") else 5
+        price = lambda v: f"{float(v):.{digits}f}"
+        rows.append({"complete": c[6] < now_ms, "volume": int(float(c[5])) + 1, "time": f"{c[0] // 1000}.000000000",
+                     "mid": {"o": price(c[1]), "h": price(c[2]), "l": price(c[3]), "c": price(c[4])}})
+    return 200, {"instrument": instrument, "granularity": granularity, "candles": rows}
 
 
 def kraken_now(symbol, now_ms):
@@ -864,6 +901,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_stream(query)
         if parsed.path == "/v2":
             return self.serve_kraken_stream()
+        if parsed.path.startswith("/v3/instruments/") and parsed.path.endswith("/candles"):
+            instrument = parsed.path.split("/")[3]
+            market = scenario().get("market", {})
+            if "status" in market:
+                record({"kind": "oanda", "path": parsed.path, "status": market["status"]})
+                return self.reply(market["status"], {"errorMessage": "Service unavailable"})
+            auth = self.headers.get("Authorization", "")
+            status, payload = oanda_candles(instrument, query, auth, now_ms)
+            # Whether a token came, and whether it was right; never the token.
+            record({"kind": "oanda", "path": parsed.path, "query": parsed.query, "status": status,
+                    "auth": "ok" if auth == "Bearer " + OANDA_TOKEN else ("wrong" if auth else "none"),
+                    "unix": self.headers.get("Accept-Datetime-Format") == "UNIX"})
+            return self.reply(status, payload)
         if parsed.path.startswith("/0/public/"):
             market = scenario().get("market", {})
             if "status" in market:

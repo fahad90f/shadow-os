@@ -1,6 +1,7 @@
 # Shadow Trading (`shadow-trading`)
 
-A trading desk for Shadow OS. Live prices and a chart on the left; on the
+A forex trading desk for Shadow OS: gold (XAU/USD), silver (XAG/USD), the
+euro (EUR/USD) and the other dollar pairs. Prices and a chart on the left; on the
 right, the setup the trader's own strategy (**SBT Model 1**) has found, what
 a panel of AI analysts (models hosted by NVIDIA) says about that setup, the
 trade that follows from it, and every trade that was made. The models do
@@ -40,15 +41,20 @@ real ones.
 3. **SBT Model 1** (`core/sbt.cpp`, plain C++17, unit-tested in
    `tests/test_sbt.cpp`): the trader's strategy, and the only source of
    trades. One engine for both directions; bearish mirrors bullish:
-   1. a proper **1-2-3**: Level 1 a swing high (a high above the two candles
-      on each side; *Swing strength*), Level 2 the lowest low after it;
+   1. a proper **1-2-3** of the **external** structure: Level 1 the
+      external high (the top of the last leg, confirmed by a valid pullback:
+      a candle closing below the low of the candle that made it), Level 2
+      the lowest low of the pullback after it. Swings inside a leg or inside
+      the pullback are internal structure and are never Level 1, 2 or 3;
+      a close above an internal lower high is no setup;
    2. a **break of structure** (BOS): a candle **closes** above Level 1;
    3. the **Level 2 zone**: the lowest **bearish** candle between Level 1
       and the BOS, its whole range (or low to body, *Level 2 zone*); no
       bearish candle there, no setup;
-   4. **Level 3**: the high after the BOS, confirmed once two candles have
-      closed without going higher, or by a candle that comes back to the
-      zone without a new high; it follows a new high until then;
+   4. **Level 3**: the top of the leg after the BOS, confirmed by a valid
+      pullback (a close below the low of the candle that made it) or by a
+      candle that comes back to the zone without a new high; it follows a
+      new high until then, also through pauses inside the leg;
    5. the **retest**: a closed candle reaches the zone; if it (or any candle
       before it) closes **below** the zone, the setup is invalid;
    6. **entry at the next candle's open**, target **Level 3**, the stop past
@@ -70,6 +76,14 @@ real ones.
    move into the zone; the candle that marks the zone does not confirm
    itself. They are listed with a setup when present; only with the filter
    on must one confirm the retest.
+
+   External structure, as the engine follows it: a bullish BOS makes Level 2
+   the external (protected) low and starts the leg up; the leg's top becomes
+   the external high at its valid pullback. The next close above that high
+   is the next bullish setup; a close below the external low is a bearish
+   one (Level 1 that low, Level 2 the highest point between). The structure
+   starts from the first candle's range; a break of that start range only
+   starts the structure and is never a setup.
 
    Only closed candles decide; the forming candle gives the entry's open
    and an "in the zone now" note that is shown, never acted on. Nothing is
@@ -162,7 +176,7 @@ dashed while it forms), the BOS and retest marks and the entry; past setups
 are not drawn. The PD arrays in play (FVG blue, order blocks violet, demand
 green, supply red, dashed) are drawn only with the PD filter on. The strategy's settings are under
 *Settings → Strategy: SBT Model 1* (`[sbt]` in the file: `ai_confirm`,
-`require_pd_array`, `zone=wick|body`, `swing_strength`, `stop_buffer_atr`,
+`require_pd_array`, `zone=wick|body`, `stop_buffer_atr`,
 `pd_distance_atr`, `max_wait_candles`).
 
 ## The AI Desk
@@ -249,12 +263,17 @@ two nor changed).
 - **Live Trading**: the markets with 24-hour lines, chart, the signal (action,
   confidence, entry, stop, target, reasoning), models and skills, live trades,
   portfolio, risk.
-  **Crypto or forex**: the switch at the top chooses which markets the desk
-  shows. *Crypto*: coins against USDT, from Binance's public data. *Forex*:
-  the US dollar against the euro, the pound, the Australian and Canadian
-  dollar and the franc, and gold, from Kraken's public data; the account is
-  then counted in dollars. Each has its own list of markets. The paper
-  account is the same one, so the switch is refused while a position is open.
+  **Forex only.** The markets are gold (XAUUSD), silver (XAGUSD) and EUR/USD
+  to start with, and the other pairs with the US dollar can be added; the
+  account is counted in dollars. Their candles come from **OANDA** (its v20
+  REST API, with the trader's own token: *Settings → Prices: OANDA*; a free
+  practice account is enough). FOREX.com, whose charts TradingView shows,
+  has no public price service; OANDA's prices of the same markets differ
+  from FOREX.com's by a few cents (gold) or a fraction of a pip. Without a
+  token there are no prices, and the chart says where to add one. There is
+  no crypto in the window any more (the settings file can still name
+  `kind=crypto` or `forex_source=kraken`: the test suite's stand-in
+  exchange speaks those services' APIs).
   **An open position stays on show.** While a position is open on the market
   on the chart, its entry, stop and target are the lines on the chart (the
   entry line carries its side and running profit) and the three boxes of the
@@ -267,11 +286,28 @@ two nor changed).
   12; the new market goes onto the chart at once. The **×** on a card (or
   Delete with the card focused) removes it; the last market, and one with an
   open position, cannot be removed. More markets than fit scroll sideways.
-  The chart has two views: **TradingView** (TradingView's own embeddable
-  chart, loaded from tradingview.com in a web view; drawing tools and
-  indicators are TradingView's) and **AI chart** (drawn from the candles the
-  analysts read, with EMA 20/50, Bollinger bands and the trade's entry, stop
-  and target). The AI chart moves like any trading chart:
+  The chart has two views, both TradingView's:
+  - **Strategy chart** (the default): TradingView's open-source chart library
+    (Lightweight Charts 5.2.1, Apache-2.0, compiled into the application:
+    nothing is fetched) drawing the candles SBT Model 1 reads, the setup in
+    play (1, 2 with its zone, BOS, 3 and the entry) and the **past trades**:
+    BUY or SELL where each entered, its take profit (green) and stop loss
+    (red) as a short line from the entry, and TP or SL where one was
+    reached. The past trades are the strategy's entries over every candle
+    loaded, worked out in order as they would have been seen, and the paper
+    account's own trades on the market (with the stop and target they had).
+    An open position adds its Entry, SL and TP lines. Moving the chart to
+    its left edge loads older candles. The chart carries TradingView's
+    attribution link, as the library's licence asks.
+  - **FOREX.com**: TradingView's own embeddable chart of FOREX.com's prices
+    (`FOREXCOM:XAUUSD`, `FOREXCOM:XAGUSD`, `FOREXCOM:EURUSD`), loaded from
+    tradingview.com; its drawing tools and indicators are TradingView's. It
+    shows the broker's chart; the strategy's marks are on the strategy chart.
+
+  Both need the web view (`qml6-module-qtwebengine`). Without it the
+  built-in chart shows the same candles, the setup and the past trades, with
+  EMA 20/50 and Bollinger bands. The built-in chart moves like any trading
+  chart:
 
   | Do | With |
   |---|---|
@@ -331,16 +367,22 @@ candle closes* turns the automatic analyses off.
 |---|---|
 | `~/.config/shadow/trading.conf` | settings (INI, see below) |
 | `~/.config/shadow/trading/nvidia.key` | the NVIDIA API key |
+| `~/.config/shadow/trading/oanda.token` | the OANDA token, for the forex prices (mode 600; `SHADOW_TRADING_OANDA_TOKEN` takes its place) |
 | `~/.local/share/shadow/trading/paper.json` | the paper account: balance, open positions, trade history, equity curve (mode 600). A file that cannot be read is moved to `paper.json.unreadable`, never overwritten |
 | `~/.local/share/shadow/trading/desk.json` | the AI Desk: the conversation (the newest 400 messages), the analysis of each market discussed, the changes (mode 600). A file of another version is moved to `desk.json.unreadable` |
 
 ```ini
 [market]
-; crypto (default) or forex. The window's switch writes this line.
-; kind=crypto
-; Forex has its own source, list and selection: forex_data_url
-; (https://api.kraken.com), forex_stream_url (wss://ws.kraken.com),
-; forex_watchlist (EURUSD,GBPUSD,AUDUSD,USDCAD,USDCHF,PAXGUSD), forex_symbol.
+; forex (default). crypto only for the test suite's stand-in exchange.
+; kind=forex
+; Where the forex prices come from: oanda (default; needs the token) or
+; kraken (no key; no silver, gold only as a token).
+; forex_source=oanda
+; The OANDA account the token belongs to: practice (api-fxpractice.oanda.com)
+; or live (api-fxtrade.oanda.com). Only prices are read.
+; oanda_account=practice
+; Forex has its own list and selection: forex_watchlist (XAUUSD,XAGUSD,EURUSD),
+; forex_symbol; forex_data_url replaces the service's address.
 ; Binance-compatible public market data; no account, no key.
 ; data_url=https://data-api.binance.vision
 ; The live stream (WebSocket). "off": no stream, prices every 5 seconds.
@@ -397,9 +439,15 @@ that is not of the form `publisher/model` is ignored.
 
 ## Data sources and runtime dependencies
 
-- Forex market data: `GET <forex_data_url>/0/public/OHLC`, `/0/public/Ticker`
-  and the stream `<forex_stream_url>/v2` (channels `trade`, `ohlc`,
-  `ticker`, subscribed to once connected).
+- Forex market data (OANDA): `GET <forex_data_url>/v3/instruments/<XAU_USD>/candles`
+  with `granularity` (M1 … D), `price=M` (mid prices), `count` and, for older
+  candles, `to`; the header `Authorization: Bearer <token>` and
+  `Accept-Datetime-Format: UNIX`. The watchlist's prices are each market's
+  two newest daily candles (the day starting at 17:00 New York). Asked for
+  every 5 seconds; no stream.
+- Forex market data (Kraken, `forex_source=kraken`): `GET <forex_data_url>/0/public/OHLC`,
+  `/0/public/Ticker` and the stream `<forex_stream_url>/v2` (channels `trade`,
+  `ohlc`, `ticker`, subscribed to once connected).
 - Market data: `GET <data_url>/api/v3/klines` (with `endTime` for older
   candles), `/api/v3/ticker/24hr` and, for *Add a market*,
   `/api/v3/ticker/price` (QtNetwork); the live stream
@@ -408,9 +456,12 @@ that is not of the form `publisher/model` is ignored.
   the PAX Gold token (`PAXGUSDT`) and `EURUSDT`, not spot XAU/USD or EUR/USD.
 - Models: HTTPS requests to NVIDIA's endpoint (QtNetwork), one connection pool
   per request in flight so all models are asked at once.
-- Packages: `shadow-ui`, `libqt6websockets6`; for the TradingView view `qml6-module-qtwebengine`
-  (recommended; without it only the AI chart is offered and the application
+- Packages: `shadow-ui`, `libqt6websockets6`; for the TradingView charts `qml6-module-qtwebengine`
+  (recommended; without it the built-in chart is shown and the application
   says so).
+- TradingView Lightweight Charts™ 5.2.1 (`web/lightweight-charts.standalone.production.js`,
+  unmodified, Apache License 2.0, `web/LICENSE.lightweight-charts` and
+  `web/NOTICE.lightweight-charts`): © TradingView, Inc., https://www.tradingview.com/.
 - No privileged operation, no helper, no polkit action.
 
 ## Diagnostics and tests
@@ -427,7 +478,7 @@ prints the conversation, the analysis, the status and a timed event log).
 |---|---|---|
 | `tests/test_skills.cpp` | indicators and patterns against hand-worked values (3276 checks) | build command in the file's header; plain `g++`, sanitizers |
 | `tests/test_core.cpp` | consensus, rule-based analyst, risk rules, paper account, markets priced in another currency (346 checks) | as above |
-| `tests/test_sbt.cpp` | SBT Model 1: a hand-drawn bullish chart and the same chart upside down for bearish; Level 1/2/3, the BOS, the zone, the retest, a close through the zone, a wick through it, no retest before Level 3, Level 3 following a new high, no BOS without a close, the strategy's own bullish and bearish charts with the default settings (and a testing candle that closes through the zone), reward/risk and the optional PD filter, history not traded, expiry, no bearish candle at 2, FVG/order block/supply detection, old candles ignored, a 6000-candle random run (bounded memory, no entry twice) (14949 checks) | `tests/run-unit.sh sbt` |
+| `tests/test_sbt.cpp` | SBT Model 1: a hand-drawn bullish chart and the same chart upside down for bearish; Level 1/2/3, the BOS, the zone, the retest, a close through the zone, a wick through it, no retest before Level 3, Level 3 following a new high, no BOS without a close, the strategy's own bullish and bearish charts with the default settings (and a testing candle that closes through the zone), external structure only (an internal lower high and a pause inside the leg are never Level 1 or 3), reward/risk and the optional PD filter, history not traded, expiry, no bearish candle at 2, FVG/order block/supply detection, old candles ignored, a 6000-candle random run (bounded memory, no entry twice) (13160 checks) | `tests/run-unit.sh sbt` |
 | `tests/test_desk.cpp` | the desk's reading of messages (markets, levels and the numbers that are not levels, observations, intent, Roman Urdu questions) and its analysis state (books per market, merging, plan and reward/risk, levels against the live price) (134 checks) | `tests/run-unit.sh desk` |
 | `tests/test_app.py` | the real binary against `tests/fake_services.py` (62 tests): the watchlist and markets the data service does not list, adding and removing markets, the forex markets (the other service's requests and stream, what is offered, a dollar-base pair counted in dollars, switching kinds, recorded answers and messages of the real service), an open position staying on show after a hold, models that are slow or fail once (asked again, left out after two tries, only so many at a time), the live stream (prices, a stop hit between two polls, a stream that drops or is switched off, recorded messages of the real service), older candles back to the start of history, the panel and its skill briefs, the analysis team's seats and its review (a changed call, a failed review, review off, a team of one), signals, trade placement, stops and targets as the price moves, the candle-close loop, manual placing and closing, halts, key handling, failing models, bad files; and the AI Desk (9 tests): messages accepted at once and built on (the answer sees the earlier messages, the model reads each message once), messages taken while a slow answer is written (two answers under way, a double send is one message, the chart following the conversation), live facts and no key, level alerts from the live price, the team started for a trade question and its call forming, a model's reading adding what the quick reading missed, stopping an answer, the conversation surviving a restart, gold found where it is listed | `SHADOW_TRADING_BIN=… python3 -B tests/test_app.py` |
 
@@ -463,8 +514,19 @@ application against it by hand. Test hooks: `SHADOW_TRADING_DATA_URL`,
 - Markets that are not on the chart get one price a second from the stream
   (every 5 seconds without it), so a move and its reversal inside that
   interval can be missed there; on the chart every trade is seen.
-- **Forex prices are an exchange's, not a broker's.** They are the prices at
-  which the currency pairs trade on Kraken: within a pip or so of the
+- **The strategy's prices are OANDA's, the FOREX.com tab's are FOREX.com's.**
+  The two brokers quote the same markets a few cents (gold, silver) or a
+  fraction of a pip (pairs) apart, so a level can sit a hair differently on
+  the two charts. The forex market is closed at weekends: no candles then.
+  OANDA's prices are asked for every 5 seconds (no stream); a stop or
+  target that is touched and left inside those seconds can be missed.
+  **Not checked against OANDA's real service here** (the build environment
+  cannot reach it and has no token): the requests and answers follow OANDA's
+  v20 documentation and were exercised against a stand-in
+  (`tests/fake_services.py`). If OANDA answers differently, the chart shows
+  its error message.
+- **Forex prices from Kraken (`forex_source=kraken`) are an exchange's, not a
+  broker's.** They are the prices at which the currency pairs trade on Kraken: within a pip or so of the
   interbank rates for the pairs that trade often there, and trading goes on
   at weekends. Offered are the pairs with the US dollar, and gold (the PAX
   Gold and Tether Gold tokens against the dollar), that had at least 500
@@ -493,6 +555,7 @@ application against it by hand. Test hooks: `SHADOW_TRADING_DATA_URL`,
   that the three vision models accept the chart picture, and how the team
   behaves in its review were exercised only against the stand-in; a model
   that does not cope is shown with its error on the Model Panel and left out.
-  The TradingView chart was checked only up to its "could not be reached"
-  fallback to the AI chart. The chart's mouse handling was driven in a
+  The FOREX.com chart (tradingview.com) was checked only up to its "could
+  not be reached" fallback to the strategy chart; the strategy chart
+  (compiled in) was rendered in a virtual display. The chart's mouse handling was driven in a
   virtual display (drag, wheel, pointer), not by hand on a real screen.

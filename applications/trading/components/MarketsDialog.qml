@@ -47,8 +47,9 @@ Dialog {
         NxSearchField {
             id: search
             Layout.fillWidth: true
-            placeholderText: trading.marketKind === "forex" ? qsTr("Search: EUR, GBP, CHF, gold (PAXG)…")
-                                                              : qsTr("Search: BTC, DOGE, XRP, EUR…")
+            placeholderText: trading.priceSource.service === "oanda" ? qsTr("Search: XAU (gold), XAG (silver), EUR, GBP, JPY…")
+                : trading.marketKind === "forex" ? qsTr("Search: EUR, GBP, CHF, gold (PAXG)…")
+                : qsTr("Search: BTC, DOGE, XRP, EUR…")
             // Enter adds the first match.
             onAccepted: if (!root.full && root.matches.length > 0 && !root.matches[0].listed) root.add(root.matches[0].symbol)
         }
@@ -56,6 +57,8 @@ Dialog {
             Layout.fillWidth: true
             text: root.full
                 ? qsTr("The list is full (%1 markets). Remove one to add another.").arg(trading.maxMarkets)
+                : trading.priceSource.service === "oanda"
+                    ? qsTr("%1 of %2 markets in the list. Offered: gold, silver and the currency pairs with the US dollar, with prices from %3.").arg(root.count).arg(trading.maxMarkets).arg(trading.dataSource)
                 : trading.marketKind === "forex"
                     ? qsTr("%1 of %2 markets in the list. Offered: currency pairs with the US dollar, and gold, that trade often enough at %3 for their prices to mean something.").arg(root.count).arg(trading.maxMarkets).arg(trading.dataSource)
                     : qsTr("%1 of %2 markets in the list. Prices come from %3.").arg(root.count).arg(trading.maxMarkets).arg(trading.dataSource)

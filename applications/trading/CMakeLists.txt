@@ -6,6 +6,9 @@ file(GLOB TRADING_QML CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
      pages/*.qml components/*.qml components/*.js)
 # The skill briefs the models are given, compiled into the binary.
 file(GLOB TRADING_PROMPTS CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} prompts/*.md)
+# The strategy chart: TradingView's Lightweight Charts library (Apache-2.0,
+# web/LICENSE.lightweight-charts) and the page's own script, compiled in.
+set(TRADING_WEB web/lightweight-charts.standalone.production.js web/strategy-chart.js)
 
 # The shared formatting script is imported by path. Listed in the module's
 # qmldir it would make the module "ambiguous" for every file that both sits in
@@ -38,7 +41,7 @@ shadow_add_app(shadow-trading
         skills/indicators.cpp skills/indicators.h
         skills/smc.cpp skills/smc.h
     QML Main.qml ${TRADING_QML}
-    RESOURCES ${TRADING_PROMPTS}
+    RESOURCES ${TRADING_PROMPTS} ${TRADING_WEB}
     DESKTOP org.shadow.trading.desktop
     LIBS Qt6::Network Qt6::WebSockets
 )

@@ -668,8 +668,115 @@ static void testOwnersCharts()
     testTheOwnersChart(mirror(ownerBullish()), false); // the bearish chart is the same picture upside down
 }
 
+// External, not internal. The pull-back from Level 1 (candle 6, 128) has an
+// internal lower high at candle 10 (112, a swing point with two lower
+// candles on each side) and the rally after Level 2 (candle 14, 78) closes
+// above it at 17: an internal break, not a setup. The external BOS is the
+// close above 128 at 19. The leg up then pauses at candle 20 (150, again a
+// two-candle swing point) without a valid pullback (no close below candle
+// 20's low): internal, so 23's close above 150 is no setup either, and
+// Level 3 is the leg's top at 24 (182), confirmed by 26's close below 24's
+// low. The test at 31 closes inside the zone: BUY at 32's open.
+static std::vector<Candle> internalSwings()
+{
+    std::vector<Candle> v;
+    v.push_back(bar(0, 50, 57, 49, 56));
+    v.push_back(bar(1, 56, 63, 55, 62));
+    v.push_back(bar(2, 62, 71, 61, 70));
+    v.push_back(bar(3, 70, 86, 69, 85));
+    v.push_back(bar(4, 85, 101, 70, 100));
+    v.push_back(bar(5, 100, 112, 85, 110));
+    v.push_back(bar(6, 110, 128, 109, 122));  // 1 (external high)
+    v.push_back(bar(7, 122, 124, 104, 106));  // closes below 6's low: 128 is confirmed
+    v.push_back(bar(8, 106, 107, 96, 98));
+    v.push_back(bar(9, 98, 105, 97, 104));
+    v.push_back(bar(10, 104, 112, 103, 110)); // internal lower high
+    v.push_back(bar(11, 110, 111, 100, 102));
+    v.push_back(bar(12, 102, 103, 92, 94));
+    v.push_back(bar(13, 94, 95, 86, 88));
+    v.push_back(bar(14, 88, 89, 78, 80));     // 2: the lowest bearish candle
+    v.push_back(bar(15, 80, 92, 79, 90));
+    v.push_back(bar(16, 90, 104, 89, 102));
+    v.push_back(bar(17, 102, 116, 101, 114)); // closes above the internal 112: no setup
+    v.push_back(bar(18, 114, 124, 112, 122));
+    v.push_back(bar(19, 122, 135, 120, 133)); // external BOS: closes above 128
+    v.push_back(bar(20, 133, 150, 132, 148)); // internal pause in the leg
+    v.push_back(bar(21, 148, 150, 143, 145));
+    v.push_back(bar(22, 145, 147, 140, 142));
+    v.push_back(bar(23, 142, 165, 141, 163)); // closes above the internal 150: no setup
+    v.push_back(bar(24, 163, 182, 162, 178)); // 3
+    v.push_back(bar(25, 178, 180, 168, 170));
+    v.push_back(bar(26, 170, 171, 155, 158)); // closes below 24's low: 182 is confirmed
+    v.push_back(bar(27, 158, 159, 140, 142));
+    v.push_back(bar(28, 142, 143, 124, 126));
+    v.push_back(bar(29, 126, 127, 108, 110));
+    v.push_back(bar(30, 110, 111, 94, 96));
+    v.push_back(bar(31, 96, 97, 84, 87));     // the test: into the zone, closes inside it
+    v.push_back(bar(32, 87, 100, 86, 98));    // BUY at its open
+    v.push_back(bar(33, 98, 130, 97, 128));
+    v.push_back(bar(34, 128, 160, 127, 158));
+    v.push_back(bar(35, 158, 175, 157, 170));
+    v.push_back(bar(36, 170, 185, 169, 181)); // Level 3 reached (no close above 182)
+    return v;
+}
+
+static void testExternalNotInternal(const std::vector<Candle> &v, bool bull)
+{
+    Run r;
+    r.closeAll(v, 32);
+    CHECK(r.count("armed") == 1);
+    const Event *armed = r.find("armed");
+    CHECK(armed != nullptr);
+    if (armed) {
+        const Setup &s = armed->setup;
+        CHECK(s.level1.time == v[6].openTime);
+        NEAR(s.level1.price, bull ? 128 : 72, 1e-9);
+        CHECK(s.bos.time == v[19].openTime);
+        CHECK(s.level2.time == v[14].openTime);
+        NEAR(s.level2.price, bull ? 78 : 122, 1e-9);
+        CHECK(s.zoneTime == v[14].openTime);
+    }
+    // Internal swing points were seen, and none became Level 1.
+    bool sawInternal = false;
+    for (const Swing &w : r.engine.swings())
+        sawInternal = sawInternal || w.point.time == v[10].openTime || w.point.time == v[20].openTime;
+    CHECK(sawInternal);
+    const Event *trig = r.find("triggered");
+    CHECK(trig != nullptr);
+    if (trig) {
+        CHECK(trig->setup.retest.time == v[31].openTime);
+        CHECK(trig->setup.level3.time == v[24].openTime); // the leg's top, not the internal 150
+        NEAR(trig->setup.target, bull ? 182 : 18, 1e-9);
+    }
+    // The external points now: Level 3 is the external high (bearish: low),
+    // Level 2 the external low (high).
+    const Point hi = r.engine.candidate(bull ? Direction::Bullish : Direction::Bearish);
+    const Point lo = r.engine.candidate(bull ? Direction::Bearish : Direction::Bullish);
+    CHECK(hi.time == v[24].openTime);
+    CHECK(lo.time == v[14].openTime);
+    Candle forming = v[32];
+    forming.closed = false;
+    forming.high = forming.low = forming.close = forming.open;
+    r.form(forming);
+    const Event *in = r.find("entered");
+    CHECK(in != nullptr);
+    if (in)
+        NEAR(in->setup.entry, bull ? 87 : 113, 1e-9);
+    r.closeAll(v, v.size());
+    CHECK(r.count("entered") == 1);
+    CHECK(r.find("target") != nullptr);
+    CHECK(r.count("armed") == 1);
+}
+
+static void testExternalStructure()
+{
+    testExternalNotInternal(internalSwings(), true);
+    testExternalNotInternal(mirror(internalSwings()), false);
+}
+
 int main()
 {
+    testExternalStructure();
     testOwnersCharts();
     testBullish();
     testBearish();

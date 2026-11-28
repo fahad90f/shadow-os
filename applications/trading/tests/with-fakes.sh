@@ -11,11 +11,11 @@
 #   FAKE_PORT=18080        port of the stand-in services
 #   FAKE_TREND=up          up | down | flat: the shape of the made-up prices
 #   FAKE_SCENARIO=FILE     how the models answer (see fake_services.py)
-#   FAKE_KEYS=1            give the application the stand-in's test key
+#   FAKE_KEYS=1            give the application the stand-in's test keys (NVIDIA, OANDA)
 #   FAKE_STREAM=0          no live stream
 #   FAKE_AUTO_TRADE=1      write a settings file with auto trade on
 #   FAKE_INTERVAL=1m       start on this candle interval
-#   FAKE_KIND=forex        start on the forex markets
+#   FAKE_KIND=crypto       start on the crypto markets (forex, from OANDA, is the default)
 #   FAKE_HISTORY=1         start from a paper account with a few made-up trades
 #   FAKE_LOG=FILE          request log of the stand-in services
 set -euo pipefail
@@ -44,6 +44,7 @@ fi
 if [ "${FAKE_KEYS:-0}" = 1 ]; then
     # The stand-in's own test key: it opens nothing anywhere else.
     export NVIDIA_API_KEY="nvapi-test-00000000000000000000000"
+    export SHADOW_TRADING_OANDA_TOKEN="0123456789abcdef0123456789abcdef-fedcba9876543210fedcba9876543210"
 fi
 config="${XDG_CONFIG_HOME:-$HOME/.config}/shadow"
 data="${XDG_DATA_HOME:-$HOME/.local/share}/shadow/trading"

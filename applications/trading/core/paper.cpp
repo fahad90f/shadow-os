@@ -196,6 +196,8 @@ Trade PaperAccount::settle(size_t index, double fillPrice, long long nowMs, cons
     t.quantity = p.quantity;
     t.entry = p.entry;
     t.exit = fillPrice;
+    t.stop = p.stop;
+    t.takeProfit = p.takeProfit;
     t.openedAt = p.openedAt;
     t.closedAt = nowMs;
     t.fees = p.openFee + closeFee;

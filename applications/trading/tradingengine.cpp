@@ -98,6 +98,7 @@ QJsonObject tradeJson(const Trade &t)
     return {{QStringLiteral("inverse"), t.inverse}, {QStringLiteral("id"), qint64(t.id)}, {QStringLiteral("symbol"), qs(t.symbol)},
             {QStringLiteral("long"), t.isLong}, {QStringLiteral("quantity"), t.quantity},
             {QStringLiteral("entry"), t.entry}, {QStringLiteral("exit"), t.exit},
+            {QStringLiteral("stop"), t.stop}, {QStringLiteral("take_profit"), t.takeProfit},
             {QStringLiteral("opened_at"), qint64(t.openedAt)}, {QStringLiteral("closed_at"), qint64(t.closedAt)},
             {QStringLiteral("fees"), t.fees}, {QStringLiteral("pnl"), t.pnl}, {QStringLiteral("pnl_pct"), t.pnlPct},
             {QStringLiteral("reason"), qs(t.reason)}, {QStringLiteral("confidence"), t.confidence},
@@ -114,6 +115,8 @@ Trade tradeFrom(const QJsonObject &o)
     t.quantity = o.value(QLatin1String("quantity")).toDouble();
     t.entry = o.value(QLatin1String("entry")).toDouble();
     t.exit = o.value(QLatin1String("exit")).toDouble();
+    t.stop = o.value(QLatin1String("stop")).toDouble();
+    t.takeProfit = o.value(QLatin1String("take_profit")).toDouble();
     t.openedAt = o.value(QLatin1String("opened_at")).toInteger();
     t.closedAt = o.value(QLatin1String("closed_at")).toInteger();
     t.fees = o.value(QLatin1String("fees")).toDouble();
@@ -222,6 +225,7 @@ TradingEngine::TradingEngine(TradingConfig *config, QObject *parent)
         // A new key starts with a clean slate.
         m_analystState.clear();
         Q_EMIT analystsChanged();
+        Q_EMIT priceSourceChanged();
     });
     m_signal.insert(QStringLiteral("state"), QStringLiteral("none"));
     load();
@@ -244,11 +248,86 @@ QString TradingEngine::marketKind() const { return m_config->forex() ? QStringLi
 // The data service and its stream, as the settings name them.
 void TradingEngine::applySource()
 {
-    const MarketData::Service service = m_config->forex() ? MarketData::Service::Kraken : MarketData::Service::Binance;
+    const bool oanda = m_config->forex() && m_config->forexSource() == QLatin1String("oanda");
+    const MarketData::Service service = oanda ? MarketData::Service::Oanda
+        : m_config->forex() ? MarketData::Service::Kraken : MarketData::Service::Binance;
     m_data->setService(service);
     m_data->setBaseUrl(m_config->dataUrl());
-    m_stream->setService(service);
-    m_stream->setBaseUrl(m_config->streamUrl());
+    m_data->setToken(oanda ? m_config->oandaToken() : QString());
+    // OANDA's prices are asked for every few seconds; the others stream.
+    m_stream->setService(oanda ? MarketData::Service::Kraken : service);
+    m_stream->setBaseUrl(oanda ? QString() : m_config->streamUrl());
+}
+
+bool TradingEngine::forexMarket(const QString &symbol) const
+{
+    return m_config->forexSource() == QLatin1String("oanda") ? MarketData::oandaForex(symbol)
+                                                            : MarketData::krakenForex(symbol);
+}
+
+QVariantMap TradingEngine::priceSource() const
+{
+    const bool oanda = m_config->forex() && m_config->forexSource() == QLatin1String("oanda");
+    return {{QStringLiteral("service"), oanda ? QStringLiteral("oanda") : m_config->forex() ? QStringLiteral("kraken")
+                                                                                               : QStringLiteral("binance")},
+            {QStringLiteral("host"), dataSource()},
+            {QStringLiteral("needsToken"), oanda},
+            {QStringLiteral("hasToken"), oanda && !m_config->oandaToken().isEmpty()},
+            {QStringLiteral("tokenSource"), oanda ? m_config->oandaTokenSource() : QString()},
+            {QStringLiteral("hint"), oanda ? m_config->oandaTokenHint() : QString()},
+            {QStringLiteral("account"), m_config->oandaAccount()},
+            {QStringLiteral("markets"), oanda ? QVariant(MarketData::oandaMarkets()) : QVariant()}};
+}
+
+// Start again on the prices: a new token, account or source.
+void TradingEngine::restartPrices()
+{
+    m_stream->stop();
+    applySource();
+    m_tickers.clear();
+    m_marketCatalog.clear();
+    m_marketsLoading = false;
+    m_marketsError.clear();
+    m_dataError.clear();
+    m_tickerError.clear();
+    m_candleError.clear();
+    m_dataState = QStringLiteral("loading");
+    resetMarket(); // the candles are read again, from the new source
+    Q_EMIT priceSourceChanged();
+    Q_EMIT marketsChanged();
+    Q_EMIT selectionChanged();
+    Q_EMIT marketChanged();
+    if (m_running) {
+        m_pollCount = 0;
+        poll();
+    }
+}
+
+QString TradingEngine::saveOandaToken(const QString &token)
+{
+    const QString error = m_config->saveOandaToken(token);
+    if (error.isEmpty()) {
+        log(QStringLiteral("info"), tr("The OANDA token was saved; prices are read with it now."));
+        restartPrices();
+    }
+    return error;
+}
+
+void TradingEngine::removeOandaToken()
+{
+    m_config->removeOandaToken();
+    log(QStringLiteral("info"), tr("The OANDA token was removed."));
+    restartPrices();
+}
+
+void TradingEngine::setOandaAccount(const QString &account)
+{
+    if (account == m_config->oandaAccount())
+        return;
+    if (!m_account.positions().empty())
+        return; // their prices come from the account in use
+    m_config->setOandaAccount(account);
+    restartPrices();
 }
 
 bool TradingEngine::inverseOf(const QString &symbol) const
@@ -279,6 +358,7 @@ QString TradingEngine::setMarketKind(const QString &kind)
     m_candleError.clear();
     m_dataState = QStringLiteral("loading");
     resetMarket();
+    Q_EMIT priceSourceChanged();
     log(QStringLiteral("info"), forex ? tr("Showing the forex markets (prices from %1).").arg(dataSource())
                                       : tr("Showing the crypto markets (prices from %1).").arg(dataSource()));
     Q_EMIT marketsChanged();
@@ -559,6 +639,7 @@ void TradingEngine::onCandles(const QString &symbol, const QString &interval, co
         }
         ++m_chartRevision;
         Q_EMIT chartChanged();
+        updateSbtHistory(); // the strategy reads the older candles too
         return;
     }
     if (purpose == QLatin1String("higher")) {
@@ -821,16 +902,19 @@ QString TradingEngine::addMarket(const QString &raw)
     if (!m_marketCatalog.isEmpty()) {
         const bool known = std::any_of(m_marketCatalog.cbegin(), m_marketCatalog.cend(),
                                        [&symbol](const QPair<QString, double> &m) { return m.first == symbol; });
-        if (!known && m_config->forex() && MarketData::krakenForex(symbol)) {
+        if (!known && m_config->forex() && forexMarket(symbol)) {
             return tr("%1 is not offered: the data service does not list it, or it trades there too rarely for "
                       "its prices to mean anything.").arg(displayName(symbol));
         }
         if (!known && !m_config->forex())
             return tr("%1 is not a market the data service lists.").arg(symbol.isEmpty() ? raw.trimmed() : symbol);
     }
-    if (m_config->forex() && !MarketData::krakenForex(symbol)) {
-        return tr("%1 cannot be added to the forex markets: only currency pairs with the US dollar, and gold "
-                  "against the dollar, are offered.").arg(symbol.isEmpty() ? raw.trimmed() : symbol);
+    if (m_config->forex() && !forexMarket(symbol)) {
+        return m_config->forexSource() == QLatin1String("oanda")
+            ? tr("%1 cannot be added: the forex markets are gold (XAUUSD), silver (XAGUSD) and the currency pairs "
+                 "with the US dollar.").arg(symbol.isEmpty() ? raw.trimmed() : symbol)
+            : tr("%1 cannot be added to the forex markets: only currency pairs with the US dollar, and gold "
+                 "against the dollar, are offered.").arg(symbol.isEmpty() ? raw.trimmed() : symbol);
     }
     const QString problem = m_config->addMarket(symbol);
     if (!problem.isEmpty())
@@ -891,6 +975,8 @@ void TradingEngine::recordClosed(const std::vector<Trade> &closed)
 
 void TradingEngine::afterAccountChange(bool tradeClosed)
 {
+    // The trades drawn on the chart.
+    QMetaObject::invokeMethod(this, &TradingEngine::updateSbtHistory, Qt::QueuedConnection);
     const qint64 now = nowMs();
     m_account.mark(now);
     const AccountView view = accountView(m_config->symbol(), now);
@@ -944,7 +1030,8 @@ const QList<TradingEngine::Seat> &TradingEngine::teamSeats()
          QStringLiteral("the stop and the target: the stop beyond the Level 2 zone and Level 3 as the target against "
                         "the ATR and the Bollinger bands, and whether the reward/risk is realistic.")},
         {QStringLiteral("structure"), tr("Structure"),
-         QStringLiteral("the 1-2-3 itself: whether Level 1, 2 and 3 are real swing points, the Level 2 zone is the "
+         QStringLiteral("the 1-2-3 itself: whether Level 1, 2 and 3 are external swing points (not swings inside a "
+                        "leg), the Level 2 zone is the "
                         "right candle (the lowest bearish candle at 2; bearish: the highest bullish one) and the "
                         "test did not close through it.")},
         {QStringLiteral("volume"), tr("Volume and candles"),
@@ -1050,8 +1137,9 @@ QString TradingEngine::systemPrompt(const QString &role, double minRewardRisk, c
         "not look for trades of your own. You check this setup against the strategy's rules and the market snapshot, "
         "and confirm or reject it.\n\n"
         "SBT Model 1 (bullish; a bearish setup mirrors it):\n"
-        "1) There must be a proper 1-2-3: Level 1 a swing high, Level 2 the low after it, Level 3 the high after "
-        "the break.\n"
+        "1) There must be a proper 1-2-3 of the EXTERNAL structure: Level 1 the external high (the top of the last "
+        "leg, confirmed by a real pullback), Level 2 the low of the pullback after it, Level 3 the top of the leg "
+        "after the break. Swings inside a leg are internal structure and do not count.\n"
         "2) There must be a break of structure (BOS): a candle closed beyond Level 1.\n"
         "3) The lowest bearish candle at Level 2 marks the zone (bearish setup: the highest bullish candle).\n"
         "4) Price comes back to test that zone.\n"
@@ -2166,6 +2254,63 @@ void TradingEngine::log(const QString &kind, const QString &text)
     Q_EMIT activityChanged();
 }
 
+double TradingEngine::intervalMs() const
+{
+    return double(TradingConfig::intervalMs(m_config->interval()));
+}
+
+QString TradingEngine::strategyChartPage(const QString &theme) const
+{
+    const auto read = [](const QString &name) {
+        QFile f(QStringLiteral(":/qt/qml/org/shadow/trading/web/") + name);
+        return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+    };
+    // Only a JSON object of colours goes into the page.
+    const QJsonDocument colours = QJsonDocument::fromJson(theme.toUtf8());
+    const QString themeJson = colours.isObject() ? QString::fromUtf8(colours.toJson(QJsonDocument::Compact))
+                                                 : QStringLiteral("{}");
+    const QString background = colours.object().value(QLatin1String("background")).toString(QStringLiteral("#0f1117"));
+    return QStringLiteral(
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        "<style>html,body{height:100%;margin:0;overflow:hidden;background:%1}#chart{position:absolute;inset:0}</style>"
+        "</head><body><div id=\"chart\"></div>"
+        "<script>window.SHADOW_THEME=%2;</script><script>%3</script><script>%4</script>"
+        "</body></html>")
+        .arg(background.toHtmlEscaped(), themeJson, read(QStringLiteral("lightweight-charts.standalone.production.js")),
+             read(QStringLiteral("strategy-chart.js")));
+}
+
+QString TradingEngine::chartJson(const QString &key, double first, double last) const
+{
+    if (m_chart.empty())
+        return {};
+    const QString now = m_config->symbol() + QLatin1Char(':') + m_config->interval();
+    const qint64 front = m_chart.front().openTime / 1000;
+    const bool full = key != now || qint64(first) != front;
+    QJsonArray rows;
+    for (const Candle &c : m_chart) {
+        const qint64 t = c.openTime / 1000;
+        if (!full && t < qint64(last))
+            continue;
+        rows.append(QJsonArray{t, c.open, c.high, c.low, c.close});
+    }
+    return QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("full"), full}, {QStringLiteral("key"), now},
+                                                       {QStringLiteral("candles"), rows}})
+                                 .toJson(QJsonDocument::Compact));
+}
+
+// The market on TradingView: FOREX.com's own prices for the forex markets
+// (FOREXCOM:XAUUSD, FOREXCOM:XAGUSD, FOREXCOM:EURUSD), the exchange's for the others.
+QString TradingEngine::tradingViewSymbol() const
+{
+    const QString symbol = m_config->symbol();
+    if (!m_config->forex())
+        return QStringLiteral("BINANCE:") + symbol;
+    if (m_config->forexSource() == QLatin1String("kraken") && !MarketData::oandaForex(symbol))
+        return QStringLiteral("KRAKEN:") + symbol; // a gold token: not on FOREX.com
+    return QStringLiteral("FOREXCOM:") + symbol;
+}
+
 QString TradingEngine::tradingViewPage(bool dark, const QString &offlineText) const
 {
     // The symbol comes from the validated watchlist (letters and digits only)
@@ -2176,7 +2321,7 @@ QString TradingEngine::tradingViewPage(bool dark, const QString &offlineText) co
         {QStringLiteral("4h"), QStringLiteral("240")}, {QStringLiteral("1d"), QStringLiteral("D")}};
     const QJsonObject options{
         {QStringLiteral("autosize"), true},
-        {QStringLiteral("symbol"), QStringLiteral("BINANCE:") + m_config->symbol()},
+        {QStringLiteral("symbol"), tradingViewSymbol()},
         {QStringLiteral("interval"), minutes.value(m_config->interval(), QStringLiteral("15"))},
         {QStringLiteral("timezone"), QStringLiteral("Etc/UTC")},
         {QStringLiteral("theme"), dark ? QStringLiteral("dark") : QStringLiteral("light")},
@@ -2323,6 +2468,8 @@ QJsonObject TradingEngine::dumpConfig() const
             {QStringLiteral("risk"), QJsonObject::fromVariantMap(riskSettings())},
             {QStringLiteral("paper"), QJsonObject::fromVariantMap(paperSettings())},
             {QStringLiteral("panel"), panel},
+            {QStringLiteral("priceSource"), QJsonObject::fromVariantMap(priceSource())},
+            {QStringLiteral("tradingViewSymbol"), tradingViewSymbol()},
             {QStringLiteral("webViewAvailable"), m_webViewAvailable}};
 }
 
@@ -2348,5 +2495,21 @@ QJsonObject TradingEngine::dumpMarket() const
             {QStringLiteral("watchlist"), QJsonArray::fromVariantList(watchlist())},
             {QStringLiteral("quote"), QJsonObject::fromVariantMap(quote())},
             {QStringLiteral("sbt"), QJsonObject::fromVariantMap(sbt())},
+            {QStringLiteral("sbtHistory"), QJsonObject::fromVariantMap(sbtHistory())},
+            // What the strategy chart's page is given: the page, and the candles as it gets them.
+            {QStringLiteral("strategyChart"), [this] {
+                 const QString page = strategyChartPage(QStringLiteral("{\"background\":\"#101010\"}"));
+                 const QJsonObject data = QJsonDocument::fromJson(chartJson(QString(), 0, 0).toUtf8()).object();
+                 const QJsonArray rows = data.value(QStringLiteral("candles")).toArray();
+                 const QJsonObject tail = QJsonDocument::fromJson(
+                     chartJson(data.value(QStringLiteral("key")).toString(),
+                               rows.isEmpty() ? 0 : rows.first().toArray().first().toDouble(),
+                               rows.isEmpty() ? 0 : rows.last().toArray().first().toDouble()).toUtf8()).object();
+                 return QJsonObject{{QStringLiteral("pageBytes"), int(page.size())},
+                                    {QStringLiteral("library"), page.contains(QLatin1String("TradingView Lightweight Charts"))},
+                                    {QStringLiteral("script"), page.contains(QLatin1String("window.shadow ="))},
+                                    {QStringLiteral("full"), data},
+                                    {QStringLiteral("tail"), tail}};
+             }()},
             {QStringLiteral("readings"), QJsonObject::fromVariantMap(readings())}};
 }
