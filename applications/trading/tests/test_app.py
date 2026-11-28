@@ -749,6 +749,35 @@ class AppTest(unittest.TestCase):
         self.assertTrue(all(r["auth"] == "ok" and r["unix"] and r["status"] == 200 for r in asked), asked)
         self.assertEqual(market["dataState"], "live", market.get("dataError"))
 
+    def test_a_settings_file_of_the_crypto_days_still_opens_on_forex(self):
+        # An earlier version's Crypto/Forex switch wrote kind=crypto and its own
+        # lists; there is no switch any more, so they are not followed.
+        self.serve()
+        self.market_kind = None
+        self.oanda = OANDA_TOKEN
+        self.settings("[market]\nkind=crypto\nwatchlist=BTCUSDT,ETHUSDT\nsymbol=BTCUSDT\n"
+                      "forex_watchlist=EURUSD,GBPUSD,PAXGUSD\nforex_symbol=PAXGUSD\n")
+        config = self.dump("config")
+        self.assertEqual(config["marketKind"], "forex")
+        self.assertEqual(config["watchlist"], ["XAUUSD", "XAGUSD", "EURUSD"])
+        self.assertEqual(config["tradingViewSymbol"], "FOREXCOM:XAUUSD")
+        self.assertNotIn("BINANCE", json.dumps(config))
+
+    def test_the_tradingview_widget_shows_forex_com_with_the_markets_and_its_symbol_search(self):
+        self.serve()
+        self.market_kind = None
+        self.oanda = OANDA_TOKEN
+        out = self.act("add:GBPUSD,select:XAGUSD", {})
+        self.assertEqual([a["result"] for a in out["actions"]], ["", ""])
+        widget = self.dump("config")["tradingView"]
+        self.assertEqual(widget["symbol"], "FOREXCOM:XAGUSD")
+        self.assertEqual(widget["interval"], "15")
+        # The markets of the desk are the widget's watchlist; its search adds any other chart.
+        self.assertEqual(widget["watchlist"], ["FOREXCOM:XAUUSD", "FOREXCOM:XAGUSD", "FOREXCOM:EURUSD", "FOREXCOM:GBPUSD"])
+        self.assertTrue(widget["allow_symbol_change"])
+        self.assertFalse(widget["hide_side_toolbar"])     # the drawing tools
+        self.assertEqual(widget["studies"], [])           # no RSI, EMA or other indicator lines
+
     def test_without_an_oanda_token_the_application_says_where_to_add_one(self):
         self.serve()
         self.market_kind = None

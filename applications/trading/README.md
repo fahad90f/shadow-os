@@ -271,9 +271,12 @@ two nor changed).
   has no public price service; OANDA's prices of the same markets differ
   from FOREX.com's by a few cents (gold) or a fraction of a pip. Without a
   token there are no prices, and the chart says where to add one. There is
-  no crypto in the window any more (the settings file can still name
-  `kind=crypto` or `forex_source=kraken`: the test suite's stand-in
-  exchange speaks those services' APIs).
+  no crypto any more: a `kind=crypto` left in the settings file by an
+  earlier version's switch is not followed (only the test suite, through
+  `SHADOW_TRADING_MARKET_KIND`, still drives the crypto service its stand-in
+  speaks), and OANDA's markets have a list of their own (`fx_watchlist`),
+  so a list saved for earlier services starts afresh as gold, silver and
+  the euro.
   **An open position stays on show.** While a position is open on the market
   on the chart, its entry, stop and target are the lines on the chart (the
   entry line carries its side and running profit) and the three boxes of the
@@ -287,7 +290,15 @@ two nor changed).
   Delete with the card focused) removes it; the last market, and one with an
   open position, cannot be removed. More markets than fit scroll sideways.
   The chart has two views, both TradingView's:
-  - **Strategy chart** (the default): TradingView's open-source chart library
+  - **TradingView · FOREX.com** (the default): TradingView's own chart widget
+    with FOREX.com's prices (`FOREXCOM:XAUUSD`, `FOREXCOM:XAGUSD`,
+    `FOREXCOM:EURUSD`), loaded from tradingview.com. The desk's markets are
+    the widget's own watchlist (one click charts another); its symbol
+    search adds any other chart TradingView has; its drawing tools,
+    indicators and date ranges are TradingView's. Choosing a market on the
+    desk, or another interval, charts it here too. It shows the broker's
+    chart; the strategy's marks are on the strategy chart.
+  - **Strategy chart**: TradingView's open-source chart library
     (Lightweight Charts 5.2.1, Apache-2.0, compiled into the application:
     nothing is fetched) drawing the candles SBT Model 1 reads, the setup in
     play (1, 2 with its zone, BOS, 3 and the entry) and the **past trades**:
@@ -299,14 +310,11 @@ two nor changed).
     An open position adds its Entry, SL and TP lines. Moving the chart to
     its left edge loads older candles. The chart carries TradingView's
     attribution link, as the library's licence asks.
-  - **FOREX.com**: TradingView's own embeddable chart of FOREX.com's prices
-    (`FOREXCOM:XAUUSD`, `FOREXCOM:XAGUSD`, `FOREXCOM:EURUSD`), loaded from
-    tradingview.com; its drawing tools and indicators are TradingView's. It
-    shows the broker's chart; the strategy's marks are on the strategy chart.
 
   Both need the web view (`qml6-module-qtwebengine`). Without it the
-  built-in chart shows the same candles, the setup and the past trades, with
-  EMA 20/50 and Bollinger bands. The built-in chart moves like any trading
+  built-in chart shows the same candles, the setup and the past trades
+  (price only: no EMA, RSI or Bollinger lines; the TradingView widget also
+  starts without indicators). The built-in chart moves like any trading
   chart:
 
   | Do | With |
@@ -381,8 +389,9 @@ candle closes* turns the automatic analyses off.
 ; The OANDA account the token belongs to: practice (api-fxpractice.oanda.com)
 ; or live (api-fxtrade.oanda.com). Only prices are read.
 ; oanda_account=practice
-; Forex has its own list and selection: forex_watchlist (XAUUSD,XAGUSD,EURUSD),
-; forex_symbol; forex_data_url replaces the service's address.
+; OANDA's markets have their own list and selection: fx_watchlist
+; (XAUUSD,XAGUSD,EURUSD), fx_symbol; fx_data_url replaces its address.
+; (Kraken's: forex_watchlist, forex_symbol, forex_data_url.)
 ; Binance-compatible public market data; no account, no key.
 ; data_url=https://data-api.binance.vision
 ; The live stream (WebSocket). "off": no stream, prices every 5 seconds.
@@ -439,7 +448,7 @@ that is not of the form `publisher/model` is ignored.
 
 ## Data sources and runtime dependencies
 
-- Forex market data (OANDA): `GET <forex_data_url>/v3/instruments/<XAU_USD>/candles`
+- Forex market data (OANDA): `GET <fx_data_url>/v3/instruments/<XAU_USD>/candles`
   with `granularity` (M1 … D), `price=M` (mid prices), `count` and, for older
   candles, `to`; the header `Authorization: Bearer <token>` and
   `Accept-Datetime-Format: UNIX`. The watchlist's prices are each market's
@@ -555,7 +564,9 @@ application against it by hand. Test hooks: `SHADOW_TRADING_DATA_URL`,
   that the three vision models accept the chart picture, and how the team
   behaves in its review were exercised only against the stand-in; a model
   that does not cope is shown with its error on the Model Panel and left out.
-  The FOREX.com chart (tradingview.com) was checked only up to its "could
-  not be reached" fallback to the strategy chart; the strategy chart
+  The TradingView · FOREX.com widget (tradingview.com) was checked only up
+  to its settings (symbol, watchlist, symbol search, drawing tools) and its
+  "could not be reached" fallback to the strategy chart: the build
+  environment cannot reach tradingview.com; the strategy chart
   (compiled in) was rendered in a virtual display. The chart's mouse handling was driven in a
   virtual display (drag, wheel, pointer), not by hand on a real screen.

@@ -28,9 +28,9 @@ struct Palette
     QColor text;
     QColor up;
     QColor down;
-    QColor fast;   // EMA 20
-    QColor slow;   // EMA 50
-    QColor band;   // Bollinger bands
+    QColor fast;   // EMA 20 (fully transparent: not drawn)
+    QColor slow;   // EMA 50 (the same)
+    QColor band;   // Bollinger bands (the same)
     QColor entry;
     QColor stop;
     QColor target;

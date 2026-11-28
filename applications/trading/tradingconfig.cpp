@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "tradingconfig.h"
 
+#include "marketdata.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -258,9 +260,15 @@ void TradingConfig::reload()
     // pairs; or Kraken's public data) or, only where the settings ask for it,
     // crypto (Binance's public data). Each has its own source, its own list of
     // markets and its own selection.
-    QString kind = ini.value(QStringLiteral("market/kind")).toString().trimmed().toLower();
+    // The window offers forex only. A "kind=crypto" left in the file by an
+    // earlier version (its Crypto/Forex switch) is not followed: there is no
+    // switch any more to leave it with. Only the test suite, which names
+    // SHADOW_TRADING_MARKET_KIND, gets the crypto service its stand-in speaks.
+    const QString kindEnv = QString::fromUtf8(qgetenv("SHADOW_TRADING_MARKET_KIND")).trimmed().toLower();
+    QString kind = kindEnv.isEmpty() ? QStringLiteral("forex")
+                                     : ini.value(QStringLiteral("market/kind")).toString().trimmed().toLower();
     if (kind.isEmpty())
-        kind = QString::fromUtf8(qgetenv("SHADOW_TRADING_MARKET_KIND")).trimmed().toLower();
+        kind = kindEnv;
     m_forex = kind != QLatin1String("crypto");
     m_forexSource = ini.value(QStringLiteral("market/forex_source")).toString().trimmed().toLower() == QLatin1String("kraken")
         ? QStringLiteral("kraken") : QStringLiteral("oanda");
@@ -304,7 +312,8 @@ void TradingConfig::reload()
                                    .split(QLatin1Char(','), Qt::SkipEmptyParts);
     for (const QString &raw : listed) {
         const QString symbol = raw.trimmed().toUpper();
-        if (validSymbol(symbol) && !m_watchlist.contains(symbol) && m_watchlist.size() < 12)
+        if (validSymbol(symbol) && !m_watchlist.contains(symbol) && m_watchlist.size() < 12
+            && (!oanda || MarketData::oandaForex(symbol))) // a list from the other services keeps only what OANDA has
             m_watchlist.append(symbol);
     }
     if (m_watchlist.isEmpty() && oanda) {
@@ -666,6 +675,11 @@ void TradingConfig::setOandaAccount(const QString &account)
 
 QString TradingConfig::marketKey(const QString &name) const
 {
+    // OANDA's list and selection are their own ("fx_"): a list saved for the
+    // gold token and the pairs of the earlier forex service starts afresh as
+    // gold, silver and the euro.
+    if (m_forex && m_forexSource == QLatin1String("oanda"))
+        return QStringLiteral("market/fx_") + name;
     return (m_forex ? QStringLiteral("market/forex_") : QStringLiteral("market/")) + name;
 }
 

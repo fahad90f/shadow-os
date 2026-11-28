@@ -107,8 +107,11 @@ GlowCard {
     }
 
     property Labels labels
-    // 0 = the strategy chart, 1 = FOREX.com's chart on TradingView (only with the web view).
+    // 0 = FOREX.com's chart on TradingView (the TradingView widget, the default),
+    // 1 = the strategy chart. Without the web view there is only the built-in chart.
     property int view: 0
+    readonly property bool widgetShown: trading.webViewAvailable && view === 0
+    readonly property bool strategyShown: !widgetShown
     // TradingView's site was tried and could not be reached; the strategy chart took its place.
     property bool tradingViewDown: false
     // The built-in chart: without the web view.
@@ -143,11 +146,11 @@ GlowCard {
             NxSegmented {
                 visible: trading.webViewAvailable
                 Accessible.name: qsTr("Chart view")
-                model: [qsTr("Strategy chart"),
-                        trading.tradingViewSymbol.indexOf("FOREXCOM:") === 0 ? qsTr("FOREX.com") : qsTr("TradingView")]
+                model: [trading.tradingViewSymbol.indexOf("FOREXCOM:") === 0 ? qsTr("TradingView · FOREX.com") : qsTr("TradingView"),
+                        qsTr("Strategy chart")]
                 currentIndex: root.view
                 onActivated: (index) => {
-                    if (index === 1)
+                    if (index === 0)
                         root.tradingViewDown = false   // try again
                     root.view = index
                 }
@@ -190,7 +193,7 @@ GlowCard {
             Loader {
                 id: strategyLoader
                 anchors.fill: parent
-                active: trading.webViewAvailable && root.view === 0
+                active: trading.webViewAvailable && root.view === 1
                 visible: active && root.quote.close !== undefined
                 source: active ? "StrategyChartPane.qml" : ""
                 onLoaded: item.colours = {
@@ -204,18 +207,24 @@ GlowCard {
             Loader {
                 id: webLoader
                 anchors.fill: parent
-                active: trading.webViewAvailable && root.view === 1
+                active: root.widgetShown
                 visible: active
                 source: active ? "TradingViewPane.qml" : ""
                 readonly property string offlineText: qsTr("TradingView could not be loaded. Check the internet connection, or use the strategy chart.")
                 onLoaded: item.page = trading.tradingViewPage(Theme.dark, offlineText)
-                // Rebuild the page when the market or the interval changes.
+                // Rebuild the page when the market, the interval or the list of
+                // markets (the widget's own watchlist) changes; not for prices.
+                function refresh() {
+                    if (!webLoader.item)
+                        return
+                    var page = trading.tradingViewPage(Theme.dark, webLoader.offlineText)
+                    if (page !== webLoader.item.page)
+                        webLoader.item.page = page
+                }
                 Connections {
                     target: trading
-                    function onSelectionChanged() {
-                        if (webLoader.item)
-                            webLoader.item.page = trading.tradingViewPage(Theme.dark, webLoader.offlineText)
-                    }
+                    function onSelectionChanged() { webLoader.refresh() }
+                    function onMarketChanged() { webLoader.refresh() }
                 }
                 // No route to TradingView: show the strategy chart instead of an empty pane.
                 Connections {
@@ -224,7 +233,7 @@ GlowCard {
                     function onUnreachableChanged() {
                         if (webLoader.item && webLoader.item.unreachable) {
                             root.tradingViewDown = true
-                            root.view = 0
+                            root.view = 1
                         }
                     }
                 }
@@ -247,9 +256,10 @@ GlowCard {
                 textColor: Theme.textMuted
                 upColor: Theme.success
                 downColor: Theme.danger
-                fastColor: Theme.accentAmber
-                slowColor: Theme.accentViolet
-                bandColor: Theme.alpha(Theme.accentBlue, 0.7)
+                // Price only: no EMA or Bollinger lines on the window's chart.
+                fastColor: "transparent"
+                slowColor: "transparent"
+                bandColor: "transparent"
                 entryColor: Theme.textPrimary
                 // SBT Model 1: the setup's zone, levels and marks, and the PD arrays in play.
                 overlay: root.historyShapes(trading.sbtHistory).concat(root.sbtOverlay(trading.sbt, trading.sbtSettings.require_pd_array === true))
@@ -267,40 +277,6 @@ GlowCard {
                 border.width: 1
                 border.color: Theme.accent
             }
-            // The legend sits on a plate so a level line behind it stays readable.
-            Rectangle {
-                anchors.fill: legend
-                anchors.margins: -Theme.spaceXs
-                visible: legend.visible
-                radius: Theme.radiusXs
-                color: Theme.alpha(Theme.bgSurface, 0.9)
-            }
-            RowLayout {
-                id: legend
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.margins: Theme.spaceSm + Theme.spaceXs
-                visible: chart.visible
-                spacing: Theme.spaceMd
-                Repeater {
-                    model: [
-                        { text: qsTr("EMA 20"), tone: Theme.accentAmber },
-                        { text: qsTr("EMA 50"), tone: Theme.accentViolet },
-                        { text: qsTr("Bollinger 20, 2"), tone: Theme.accentBlue },
-                    ]
-                    RowLayout {
-                        required property var modelData
-                        spacing: Theme.spaceXs
-                        Rectangle { width: 10; height: 2; color: modelData.tone }
-                        Label {
-                            text: modelData.text
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSizeCaption
-                        }
-                    }
-                }
-            }
-
             // Where the view is in time, when it is not at the newest candles.
             Rectangle {
                 anchors.fill: pastHint
@@ -365,7 +341,7 @@ GlowCard {
             NxEmptyState {
                 anchors.centerIn: parent
                 width: Math.min(parent.width - Theme.spaceXl * 2, 460)
-                visible: root.view === 0 && root.quote.close === undefined
+                visible: root.strategyShown && root.quote.close === undefined
                 icon: trading.dataState === "error" ? "alert-triangle" : "activity"
                 tone: trading.dataState === "error" ? "warning" : "neutral"
                 title: trading.dataState === "error" ? qsTr("No market data") : qsTr("Loading %1…").arg(trading.symbolName)
@@ -376,12 +352,14 @@ GlowCard {
 
         Label {
             Layout.fillWidth: true
-            visible: !trading.webViewAvailable || root.tradingViewDown || root.view === 0
+            visible: true
             text: !trading.webViewAvailable
                 ? qsTr("The TradingView charts need the package qml6-module-qtwebengine. Showing the built-in chart of the same candles the strategy reads, with its setup and past trades.")
                 : root.tradingViewDown
-                ? qsTr("TradingView's site could not be reached (no internet connection, or the site is blocked). Showing the strategy chart. Choose %1 above to try again.").arg(trading.tradingViewSymbol.indexOf("FOREXCOM:") === 0 ? qsTr("FOREX.com") : qsTr("TradingView"))
-                : qsTr("Strategy chart: the candles SBT Model 1 reads (%1), its setup in play and its past trades: BUY or SELL where each entered, the take profit (green) and stop loss (red) until it ended, TP or SL where one was reached. Charting by TradingView.").arg(trading.dataSource)
+                ? qsTr("TradingView's site could not be reached (no internet connection, or the site is blocked). Showing the strategy chart. Choose TradingView above to try again.")
+                : root.widgetShown
+                ? qsTr("TradingView's chart of %1 with FOREX.com's prices. Its watchlist (right) holds your markets; its symbol search (top left) adds any other chart, and its drawing tools are on the left. SBT Model 1's setups and past trades are on the Strategy chart.").arg(trading.tradingViewSymbol)
+                : qsTr("Strategy chart: the candles SBT Model 1 reads (%1), its setup in play and its past trades: BUY or SELL where each entered, its take profit (green) and stop loss (red), TP or SL where one was reached. Charting by TradingView.").arg(trading.dataSource)
             color: Theme.textMuted
             font.pixelSize: Theme.fontSizeCaption
             wrapMode: Text.WordWrap

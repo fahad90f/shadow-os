@@ -200,10 +200,16 @@ Geometry paint(QPainter *painter, const QRectF &rect, const Trading::Candles &ca
         painter->setPen(QPen(color, width));
         painter->drawPath(path);
     };
-    line(bands.upper, palette.band, 1.0);
-    line(bands.lower, palette.band, 1.0);
-    line(slow, palette.slow, 1.4);
-    line(fast, palette.fast, 1.4);
+    // The indicator lines; a fully transparent colour leaves one out (the
+    // window's chart shows price only; the models' picture keeps them).
+    if (palette.band.alpha() > 0) {
+        line(bands.upper, palette.band, 1.0);
+        line(bands.lower, palette.band, 1.0);
+    }
+    if (palette.slow.alpha() > 0)
+        line(slow, palette.slow, 1.4);
+    if (palette.fast.alpha() > 0)
+        line(fast, palette.fast, 1.4);
     painter->setRenderHint(QPainter::Antialiasing, false);
 
     // The strategy's zones, behind the candles.

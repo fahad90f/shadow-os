@@ -250,6 +250,8 @@ public:
     // 'offlineText' is shown in the page when TradingView cannot be reached.
     Q_INVOKABLE QString tradingViewPage(bool dark, const QString &offlineText) const;
     QString tradingViewSymbol() const;
+    QString tradingViewName(const QString &symbol) const;
+    QJsonObject tradingViewOptions(bool dark) const;
     double intervalMs() const;
     // The strategy chart's page: TradingView's Lightweight Charts library and
     // the page's script, both compiled in (no network). 'theme' is a JSON

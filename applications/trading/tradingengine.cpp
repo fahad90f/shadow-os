@@ -2303,7 +2303,12 @@ QString TradingEngine::chartJson(const QString &key, double first, double last) 
 // (FOREXCOM:XAUUSD, FOREXCOM:XAGUSD, FOREXCOM:EURUSD), the exchange's for the others.
 QString TradingEngine::tradingViewSymbol() const
 {
-    const QString symbol = m_config->symbol();
+    return tradingViewName(m_config->symbol());
+}
+
+// TradingView's name of one of the markets: FOREXCOM:XAUUSD and so on.
+QString TradingEngine::tradingViewName(const QString &symbol) const
+{
     if (!m_config->forex())
         return QStringLiteral("BINANCE:") + symbol;
     if (m_config->forexSource() == QLatin1String("kraken") && !MarketData::oandaForex(symbol))
@@ -2311,15 +2316,21 @@ QString TradingEngine::tradingViewSymbol() const
     return QStringLiteral("FOREXCOM:") + symbol;
 }
 
-QString TradingEngine::tradingViewPage(bool dark, const QString &offlineText) const
+// The widget's settings. The symbols come from the validated watchlist
+// (letters and digits only) and the interval from a fixed table: nothing
+// here is free text.
+QJsonObject TradingEngine::tradingViewOptions(bool dark) const
 {
-    // The symbol comes from the validated watchlist (letters and digits only)
-    // and the interval from a fixed table: nothing here is free text.
     static const QHash<QString, QString> minutes = {
         {QStringLiteral("1m"), QStringLiteral("1")}, {QStringLiteral("5m"), QStringLiteral("5")},
         {QStringLiteral("15m"), QStringLiteral("15")}, {QStringLiteral("1h"), QStringLiteral("60")},
         {QStringLiteral("4h"), QStringLiteral("240")}, {QStringLiteral("1d"), QStringLiteral("D")}};
-    const QJsonObject options{
+    // The markets of the desk as the widget's own watchlist: one click there
+    // charts another; its search adds any other chart TradingView has.
+    QJsonArray watchlist;
+    for (const QString &symbol : m_config->watchlist())
+        watchlist.append(tradingViewName(symbol));
+    return QJsonObject{
         {QStringLiteral("autosize"), true},
         {QStringLiteral("symbol"), tradingViewSymbol()},
         {QStringLiteral("interval"), minutes.value(m_config->interval(), QStringLiteral("15"))},
@@ -2327,9 +2338,20 @@ QString TradingEngine::tradingViewPage(bool dark, const QString &offlineText) co
         {QStringLiteral("theme"), dark ? QStringLiteral("dark") : QStringLiteral("light")},
         {QStringLiteral("style"), QStringLiteral("1")},
         {QStringLiteral("locale"), QStringLiteral("en")},
-        {QStringLiteral("allow_symbol_change"), false},
+        {QStringLiteral("allow_symbol_change"), true},     // the symbol search: add any chart
+        {QStringLiteral("watchlist"), watchlist},
+        {QStringLiteral("hide_side_toolbar"), false},      // the drawing tools
+        {QStringLiteral("studies"), QJsonArray()},         // no indicators: price only
+        {QStringLiteral("withdateranges"), true},
+        {QStringLiteral("details"), false},
+        {QStringLiteral("calendar"), false},
         {QStringLiteral("support_host"), QStringLiteral("https://www.tradingview.com")},
     };
+}
+
+QString TradingEngine::tradingViewPage(bool dark, const QString &offlineText) const
+{
+    const QJsonObject options = tradingViewOptions(dark);
     // The message is hidden unless TradingView's script fails to load.
     return QStringLiteral(
         "<!doctype html><html><head><meta charset=\"utf-8\">"
@@ -2470,6 +2492,7 @@ QJsonObject TradingEngine::dumpConfig() const
             {QStringLiteral("panel"), panel},
             {QStringLiteral("priceSource"), QJsonObject::fromVariantMap(priceSource())},
             {QStringLiteral("tradingViewSymbol"), tradingViewSymbol()},
+            {QStringLiteral("tradingView"), tradingViewOptions(true)},
             {QStringLiteral("webViewAvailable"), m_webViewAvailable}};
 }
 
