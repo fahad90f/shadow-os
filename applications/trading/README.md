@@ -43,14 +43,19 @@ real ones.
    trades. One engine for both directions; bearish mirrors bullish:
    1. a proper **1-2-3** of the **external** structure: Level 1 the
       external high (the top of the last leg, confirmed by a valid pullback:
-      a candle closing below the low of the candle that made it), Level 2
-      the lowest low of the pullback after it. Swings inside a leg or inside
-      the pullback are internal structure and are never Level 1, 2 or 3;
-      a close above an internal lower high is no setup;
+      a candle closing below the low of the candle that made it). **The
+      valid swing low (Level 2) is the Higher Low (HL)**: the lowest low of
+      the pullback after Level 1, above the swing low before it (the external
+      low, or the low of a leg down still running). Bearish: **the valid
+      swing high is the Lower High (LH)**, below the swing high before it. A
+      low that is not a higher low (a high that is not a lower high) is no
+      valid swing, so no setup (shown as skipped with the reason). Swings
+      inside a leg or inside the pullback are internal structure and are
+      never Level 1, 2 or 3; a close above an internal lower high is no setup;
    2. a **break of structure** (BOS): a candle **closes** above Level 1;
-   3. the **Level 2 zone**: at the valid swing low, the lowest **bearish**
+   3. the **Level 2 zone**: at the Higher Low, the lowest **bearish**
       candle between Level 1 and the BOS, **from its opening price to its
-      lowest wick** (bearish: at the swing high, the highest bullish candle,
+      lowest wick** (bearish: at the Lower High, the highest bullish candle,
       from its open to its highest wick); no such candle there, no setup.
       **That same candle must be both the order block and the demand zone**
       (bearish: the supply zone), or the setup is skipped with the reason:

@@ -12,11 +12,16 @@
 //
 // Bullish (bearish mirrors it):
 //  1. A proper 1-2-3 of the EXTERNAL structure: Level 1 is the external high
-//     (the top of the last leg, confirmed by a real pullback), Level 2 the
-//     low of the pullback after it. Swings inside a leg (internal structure)
-//     are never Level 1, 2 or 3.
+//     (the top of the last leg, confirmed by a real pullback). The valid
+//     swing low, Level 2, is the HIGHER LOW (HL): the low of the pullback
+//     after Level 1, above the swing low before it (the external low, or the
+//     low of the leg down still running). Bearish: the valid swing high is
+//     the LOWER HIGH (LH), below the swing high before it. A low that is not
+//     a higher low (a high that is not a lower high) is no valid swing: no
+//     setup. Swings inside a leg (internal structure) are never Level 1, 2
+//     or 3.
 //  2. A break of structure (BOS): a candle CLOSES above Level 1.
-//  3. The lowest BEARISH candle at the swing low (between Level 1 and the
+//  3. The lowest BEARISH candle at the higher low (between Level 1 and the
 //     BOS) marks the Level 2 zone, measured from its OPEN to its lowest wick
 //     (bearish: the highest bullish candle, from its open to its highest
 //     wick). That same candle must be both the ORDER BLOCK and the DEMAND
@@ -118,6 +123,7 @@ struct Setup
     Direction direction = Direction::Bullish;
     Point level1;
     Point level2;
+    Point previousSwing;      // the swing low before Level 2: Level 2 is the higher low above it (bearish: lower high below it)
     Point bos;                // the candle that closed beyond Level 1 (its close)
     Point level3;
     bool level3Confirmed = false;

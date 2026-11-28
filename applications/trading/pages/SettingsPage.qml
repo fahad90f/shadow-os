@@ -86,7 +86,7 @@ NxPage {
         NxRow {
             icon: "target"
             title: qsTr("SBT Model 1 decides the trades")
-            subtitle: qsTr("Bullish and bearish, on the external structure only (swings inside a leg are ignored): a proper 1-2-3, a break of structure (a close beyond Level 1), the Level 2 zone (at the swing low the lowest bearish candle, from its open to its lowest wick; at the swing high the highest bullish candle, from its open to its highest wick), and that same candle must be both the order block and the demand (supply) zone; a retest that does not close through it, entry at the next candle's open, target Level 3. After a gap up or down nothing is analysed or traded until the market trades normally again. The AI models do not trade on their own view; they review the setups this strategy finds.")
+            subtitle: qsTr("Bullish and bearish, on the external structure only (swings inside a leg are ignored): a proper 1-2-3, a break of structure (a close beyond Level 1), the valid swing low is the Higher Low (HL) and the valid swing high the Lower High (LH); the Level 2 zone (at the HL the lowest bearish candle, from its open to its lowest wick; at the LH the highest bullish candle, from its open to its highest wick), and that same candle must be both the order block and the demand (supply) zone; a retest that does not close through it, entry at the next candle's open, target Level 3. After a gap up or down nothing is analysed or traded until the market trades normally again. The AI models do not trade on their own view; they review the setups this strategy finds.")
             NxBadge { text: qsTr("In use"); kind: "success" }
         }
         NxRow {

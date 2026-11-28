@@ -155,7 +155,9 @@ def level(symbol, x, step_ms):
     hours = x * step_ms / 3_600_000.0
     # The trend is measured from when the server started, so prices stay near
     # the base price: lower in the past for "up", higher for "down".
-    drift = {"up": 0.0009, "down": -0.0009, "flat": 0.0}[ARGS.trend] * (hours - START_HOURS)
+    # "steep": a rise stronger than the waves at any time of day (the plain
+    # "up" can read as mixed while a wave falls).
+    drift = {"up": 0.0009, "down": -0.0009, "flat": 0.0, "steep": 0.004}[ARGS.trend] * (hours - START_HOURS)
     wave = 0.006 * math.sin(hours / 9.0) + 0.0025 * math.sin(hours / 2.3)
     return base * math.exp(drift + wave)
 
@@ -1083,7 +1085,7 @@ def main():
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--scenario", default="")
     parser.add_argument("--log", default="")
-    parser.add_argument("--trend", choices=("up", "down", "flat"), default="up")
+    parser.add_argument("--trend", choices=("up", "down", "flat", "steep"), default="up")
     ARGS = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", ARGS.port), Handler)
     server.daemon_threads = True

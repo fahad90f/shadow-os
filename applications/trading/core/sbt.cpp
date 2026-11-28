@@ -293,6 +293,13 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
         const Point one = level1;
         const bool real = bull ? m_extHighReal : m_extLowReal;
         level1 = Point(); // broken once
+        // The swing on the other side before this break (bullish: the
+        // external low, or the low of a leg still running): Level 2 must be
+        // a higher low than it (bearish: a lower high).
+        const Point &otherExt = bull ? m_extLow : m_extHigh;
+        const Point &otherLeg = bull ? m_legLow : m_legHigh;
+        const bool otherReal = bull ? m_extLowReal : m_extHighReal;
+        const Point previous = otherLeg.index >= 0 ? otherLeg : otherReal ? otherExt : Point();
         // Level 2: the extreme between Level 1 and the BOS. It is the new
         // external point on the other side; the leg after the break is
         // followed until its pullback. (Level 1 on the candle just before:
@@ -324,6 +331,7 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
         s.bos = {c.openTime, c.close, n};
         s.updated = c.openTime;
         s.level2 = {at(l2).openTime, bull ? at(l2).low : at(l2).high, l2};
+        s.previousSwing = previous;
         // The zone: the lowest bearish candle (bullish setup) or the highest
         // bullish candle (bearish setup) between Level 1 and the BOS.
         int z = -1;
@@ -358,6 +366,12 @@ void Engine::checkBos(const Candle &c, std::vector<Event> *events)
         std::string why;
         if (m_gap.active)
             why = "the market opened with a gap: no setups until it trades normally again";
+        else if (previous.index < 0)
+            why = bull ? "no valid swing low: no earlier swing low to make this one a higher low"
+                       : "no valid swing high: no earlier swing high to make this one a lower high";
+        else if (bull ? !(s.level2.price > previous.price) : !(s.level2.price < previous.price))
+            why = bull ? "no valid swing low: Level 2 is not a higher low (not above the previous swing low " + fixed(previous.price, 5) + ")"
+                       : "no valid swing high: Level 2 is not a lower high (not below the previous swing high " + fixed(previous.price, 5) + ")";
         else
             why = zoneCheck(s, z, n);
         if (!why.empty()) {

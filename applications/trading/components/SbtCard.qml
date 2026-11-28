@@ -129,6 +129,16 @@ GlowCard {
             Cell { label: root.has && root.s.level3Confirmed ? qsTr("Level 3 · target") : qsTr("Level 3 (forming)")
                    value: root.has ? Format.price(root.s.target) : ""; valueColor: root.sideTone }
         }
+        // The valid swing: Level 2 is the Higher Low (bearish: the Lower High).
+        Label {
+            Layout.fillWidth: true
+            visible: root.has && root.s.previousSwing !== undefined && root.s.previousSwing.price !== undefined
+            text: !visible ? ""
+                : root.bull ? qsTr("Level 2 is the Higher Low (above the swing low at %1)").arg(Format.price(root.s.previousSwing.price))
+                            : qsTr("Level 2 is the Lower High (below the swing high at %1)").arg(Format.price(root.s.previousSwing.price))
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontSizeCaption
+        }
         // Rules 3/4: the zone candle as the order block and the demand (supply) zone.
         Label {
             Layout.fillWidth: true

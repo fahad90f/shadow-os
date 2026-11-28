@@ -897,8 +897,64 @@ static void testOwnersRules()
     testGapFilter(false);
 }
 
+// Bullish Level 2 must be a higher low (bearish: a lower high). On the
+// owner's chart the second structure (Level 1 = candle 17, 182; BOS at 28)
+// has its Level 2 at candle 24 (85), above the first one's Level 2 (78): a
+// higher low, armed. With candle 24's wick down to 76 (a sweep under 78,
+// closing back inside the first zone), its Level 2 is a lower low: skipped.
+static void testLevel2IsAHigherLow(bool bull)
+{
+    const auto chart = [bull](std::vector<Candle> v) { return bull ? v : mirror(v); };
+    {
+        const std::vector<Candle> v = chart(ownerBullish());
+        Run r;
+        r.closeAll(v, v.size());
+        const Setup *second = nullptr;
+        for (const Setup &x : r.engine.setups())
+            second = x.level1.time == v[17].openTime ? &x : second;
+        CHECK(second != nullptr);
+        if (second) {
+            CHECK(second->status == Status::Armed);
+            NEAR(second->level2.price, bull ? 85 : 115, 1e-9);
+            NEAR(second->previousSwing.price, bull ? 78 : 122, 1e-9);   // higher low (lower high)
+        }
+        const Event *first = r.find("armed");
+        CHECK(first && first->setup.level1.time == v[6].openTime);
+        CHECK(first && first->setup.previousSwing.index >= 0
+              && (bull ? first->setup.level2.price > first->setup.previousSwing.price
+                       : first->setup.level2.price < first->setup.previousSwing.price));
+    }
+    {
+        std::vector<Candle> v = ownerBullish();
+        Candle sweep = bar(24, 97, 98, 76, 88);
+        sweep.openTime = v[24].openTime;
+        v[24] = sweep;
+        v = chart(v);
+        Run r;
+        r.closeAll(v, 25);
+        CHECK(r.find("triggered") != nullptr);      // the first setup: a wick under its zone, close inside
+        Candle forming = v[25];
+        forming.closed = false;
+        forming.high = forming.low = forming.close = forming.open;
+        r.form(forming);
+        r.closeAll(v, v.size());
+        CHECK(r.count("entered") == 1);
+        const Event *skipped = nullptr;
+        for (const Event &e : r.events)
+            skipped = e.kind == "skipped" && e.setup.level1.time == v[17].openTime ? &e : skipped;
+        CHECK(skipped != nullptr);
+        if (skipped) {
+            const std::string why = bull ? "no valid swing low: Level 2 is not a higher low" : "no valid swing high: Level 2 is not a lower high";
+            CHECK(skipped->setup.note.find(why) != std::string::npos);
+            NEAR(skipped->setup.level2.price, bull ? 76 : 124, 1e-9);
+        }
+    }
+}
+
 int main()
 {
+    testLevel2IsAHigherLow(true);
+    testLevel2IsAHigherLow(false);
     testOwnersRules();
     testExternalStructure();
     testOwnersCharts();

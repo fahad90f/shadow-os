@@ -412,6 +412,9 @@ QVariantMap TradingEngine::setupMap(const Sbt::Setup &s) const
         {QStringLiteral("bos"), point(s.bos)},
         {QStringLiteral("level3"), point(s.level3)},
         {QStringLiteral("level3Confirmed"), s.level3Confirmed},
+        // The swing Level 2 is the higher low above (bearish: the lower high below).
+        {QStringLiteral("previousSwing"), s.previousSwing.index < 0 ? QVariantMap()
+             : QVariantMap{{QStringLiteral("price"), s.previousSwing.price}, {QStringLiteral("time"), double(s.previousSwing.time)}}},
         {QStringLiteral("zone"), QVariantMap{{QStringLiteral("top"), s.zoneTop}, {QStringLiteral("bottom"), s.zoneBottom},
                                              {QStringLiteral("time"), double(s.zoneTime)},
                                              // Rules 3/4: the zone candle is the order block and the demand (supply) zone.
